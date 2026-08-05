@@ -3,7 +3,7 @@
 // 用法：node setup.mjs            # 检测 + 引导安装
 //       node setup.mjs --install  # 自动安装缺失依赖
 //       node setup.mjs --start    # 安装检查后启动服务
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 import fs from "node:fs";
@@ -97,12 +97,20 @@ const flag = process.argv.includes("--start") || process.argv.includes("--instal
 if (flag) {
   const cwd = process.env.PI_WEB_CWD || path.join(os.homedir(), "pi-workspace");
   try { fs.mkdirSync(cwd, { recursive: true }); } catch {}
-  console.log(`  工作目录: ${cwd}`);
-  console.log("  访问地址: http://127.0.0.1:8787");
-  console.log("  令牌: 见 .token 文件\n");
   try {
-    execSync("node server.mjs", { cwd: __dirname, stdio: "inherit", env: { ...process.env, PI_WEB_CWD: cwd } });
-  } catch { fail("服务退出"); }
+    const child = spawn(process.execPath, ["server.mjs"], {
+      cwd: __dirname, detached: true, stdio: "ignore",
+      env: { ...process.env, PI_WEB_CWD: cwd },
+    });
+    child.unref(); // 与父进程脱离：setup 退出后服务继续
+    ok("服务已在后台启动（独立运行，关终端不影响）");
+  } catch (e) {
+    fail("启动失败: " + String(e?.message || e).slice(0, 120));
+    warn("请手动启动：node server.mjs");
+  }
+  console.log("  访问地址: http://127.0.0.1:" + (process.env.PI_WEB_PORT || "8787"));
+  console.log("  令牌: 见 .token 文件");
+  console.log("  停止服务: taskkill /F /IM node.exe");
 } else {
-  ok("检查完成，启动服务：node server.mjs   （或重跑 node setup.mjs --start）");
+  ok("检查完成，启动服务：node setup.mjs --start");
 }
