@@ -402,6 +402,7 @@ console.log(`[pi-web] 可用模型: ${modelList.length} 个（含 ${Object.keys(
 const SUPPORTED_PROVIDERS = ["deepseek", "openai", "openrouter", "anthropic", "google", "qwen", "xai", "moonshotai", "zai", "minimax", "together", "mistral"];
 
 function readJsonFile(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return {}; } }
+function writeJsonFile(p, obj) { try { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(obj, null, 2), "utf8"); return true; } catch { return false; } }
 // 对外请求：用 python 子进程（自动走系统代理，部分平台如 apihub.agnes-ai.com 直连不通）
 const { spawn } = await import("node:child_process");
 async function httpJsonFetch(url, options = {}) {
