@@ -24,3 +24,9 @@ dist/
 # 系统
 .DS_Store
 Thumbs.db
+
+# 测试/实验产物
+yangpifazi/
+think_check.py
+_install_test.ps1
+_install*.ps1
