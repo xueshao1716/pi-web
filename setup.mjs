@@ -68,6 +68,16 @@ else {
   ok(`已生成令牌: ${t}`);
 }
 
+// 3.5 模型清单（自动初始化模板）
+console.log("[3.5/5] 模型清单");
+const MODELS_EXAMPLE = path.join(__dirname, "models.example.json");
+try { fs.mkdirSync(AGENT_DIR, { recursive: true }); } catch {}
+if (fs.existsSync(MODELS_FILE)) ok("已存在（~/.pi/agent/models-store.json）");
+else if (fs.existsSync(MODELS_EXAMPLE)) {
+  try { fs.copyFileSync(MODELS_EXAMPLE, MODELS_FILE); ok("已从 models.example.json 自动初始化"); }
+  catch { warn("自动初始化失败，请手动复制：cp models.example.json ~/.pi/agent/models-store.json"); }
+} else warn("未找到 models.example.json");
+
 // 4. 模型密钥
 console.log("[4/5] 模型 API 密钥");
 if (fs.existsSync(AUTH_FILE)) ok("已配置 API 密钥（~/.pi/agent/auth.json）");
