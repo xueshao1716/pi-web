@@ -2,6 +2,21 @@
 
 基于 [pi 引擎](https://github.com/earendil-works/pi-coding-agent) 的 Web 工作台：会话、工具调用、媒体生成、工作空间管理，前后端一体。
 
+## 🚀 新机器一键安装（Windows）
+
+复制下面**一整条命令**到 PowerShell 运行，自动完成：装 Node → 下载源码 → 装后端 pi 引擎 → 生成令牌 → 启动服务：
+
+```powershell
+powershell -ExecutionPolicy Bypass -Command "curl.exe -L -o %TEMP%\pi-web-install.ps1 https://raw.githubusercontent.com/xueshao1716/pi-web/main/install.ps1 && powershell -ExecutionPolicy Bypass -File %TEMP%\pi-web-install.ps1"
+```
+
+装完后：
+1. 浏览器打开 `http://127.0.0.1:8787`
+2. 输入访问令牌（查看 `C:\Users\你的用户名\pi-web\.token`）
+3. 配置 API 密钥（编辑 `~/.pi/agent/auth.json`，如 deepseek）
+
+> 国内网络自动切换 ghproxy 镜像下载，无需手动处理。
+
 ## 特性
 
 - 💬 多模型对话（deepseek / minimax / 小米 mimo 等）+ 思考 + 工具调用
