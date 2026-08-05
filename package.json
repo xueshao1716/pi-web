@@ -1,0 +1,10 @@
+{
+  "name": "pi-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "pi coding agent web interface (SSE chat over pi SDK)",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  }
+}

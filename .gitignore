@@ -1,0 +1,26 @@
+# 敏感信息 —— 绝不提交
+.token
+*.token
+.env
+.env.*
+!.env.example
+config.local.*
+*.log
+server.log
+
+# 备份 / 临时
+*.bak
+*.bak-*
+*.orig
+tmp/
+_temp/
+backups/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# 系统
+.DS_Store
+Thumbs.db
