@@ -1,5 +1,5 @@
 // pi-web Service Worker —— 静态资源缓存，API 不缓存
-const CACHE = "pi-web-v9"; // v9: 手机端排版优化（顶栏按钮恢复 + 瘦身）
+const CACHE = "pi-web-v10"; // v10: 新会话引导界面（renderWelcome）
 const STATIC = ["/", "/index.html", "/static/app.css",
   "/static/js/core.js", "/static/js/theme.js", "/static/js/chat.js",
   "/static/js/wallpaper.js", "/static/js/model.js", "/static/js/ui.js",
