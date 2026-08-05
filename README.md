@@ -10,12 +10,54 @@
 powershell -ExecutionPolicy Bypass -Command "curl.exe -L -o %TEMP%\pi-web-install.ps1 https://raw.githubusercontent.com/xueshao1716/pi-web/main/install.ps1 && powershell -ExecutionPolicy Bypass -File %TEMP%\pi-web-install.ps1"
 ```
 
+**国内用户（Gitee 镜像，更快）：**
+
+```powershell
+powershell -ExecutionPolicy Bypass -Command "curl.exe -L -o %TEMP%\pi-web-install.ps1 https://gitee.com/linxinyu520xue/pi-web/raw/main/install.ps1 && powershell -ExecutionPolicy Bypass -File %TEMP%\pi-web-install.ps1"
+```
+
+**或手动 clone（已装 git 时）：**
+
+```bash
+# Gitee（国内快）
+git clone https://gitee.com/linxinyu520xue/pi-web.git
+# 或 GitHub
+git clone https://github.com/xueshao1716/pi-web.git
+cd pi-web
+node setup.mjs --install
+```
+
 装完后：
 1. 浏览器打开 `http://127.0.0.1:8787`
 2. 输入访问令牌（查看 `C:\Users\你的用户名\pi-web\.token`）
 3. 配置 API 密钥（编辑 `~/.pi/agent/auth.json`，如 deepseek）
 
 > 国内网络自动切换 ghproxy 镜像下载，无需手动处理。
+
+## 🧩 内置技能（开箱即用）
+
+| 技能 | 用途 |
+|---|---|
+| `web-search` | 网页搜索（Brave API，可选 key） |
+| `image-generation` | 图片生成（配图/画图） |
+| `voice-transcribe` | 语音转文字（录音/会议） |
+| `session-export-redacted` | 导出会话自动脱敏 |
+
+技能面板（左侧 ⚡）直接可用，无需额外安装。
+
+## 🤖 支持模型
+
+| Provider | 模型 | 说明 |
+|---|---|---|
+| deepseek | `deepseek-v4-flash` / `deepseek-v4-pro` | 默认，推理强 |
+| 小米 mimo | `mimo-v2.5` / `mimo-v2.5-pro` / `mimo-v2-pro` | 中文好，v2.5 支持图片 |
+| Agnes | `agnes-2.5-pro` / `agnes-2.5-flash` 等 | 多用途 |
+| 阿里云百炼 | `wan2.7-image` 等 | 图像生成 |
+| openrouter | 全模型（Claude/GPT/Gemini/Kimi 等） | 需 openrouter key |
+| openai | `gpt-4.1` / `gpt-5` 系列 | 需 openai key |
+| 火山方舟 | `volces-ark` 系列 | 需 ark key |
+
+> 完整模型清单见 `models.example.json`，复制到 `~/.pi/agent/models-store.json` 即可。
 
 ## 特性
 
