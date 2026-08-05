@@ -4,11 +4,14 @@
 //       node setup.mjs --install  # 自动安装缺失依赖
 //       node setup.mjs --start    # 安装检查后启动服务
 import { execSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
 
+const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const AGENT_DIR = path.join(os.homedir(), ".pi", "agent");
 const AUTH_FILE = path.join(AGENT_DIR, "auth.json");
@@ -63,7 +66,7 @@ else {
 console.log("[3/5] 访问令牌");
 if (fs.existsSync(TOKEN_FILE)) ok("令牌已存在（.token）");
 else {
-  const t = require("node:crypto").randomBytes(24).toString("hex");
+  const t = randomBytes(24).toString("hex");
   fs.writeFileSync(TOKEN_FILE, t, { mode: 0o600 });
   ok(`已生成令牌: ${t}`);
 }
