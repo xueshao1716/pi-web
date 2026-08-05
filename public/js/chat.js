@@ -20,6 +20,9 @@ async function tryLogin() {
     populateModels(data);
     renderWelcome();
     await refreshSessions();
+    // 刷新后自动恢复上次打开的会话（避免回主界面重新找）
+    const lastSid = localStorage.getItem("pi_last_session");
+    if (lastSid && sessions.some(s => s.id === lastSid)) selectSession(lastSid);
     updateFooter();
   } catch (e) {
     // 401：token 无效 → 清除旧 token，提示正确来源（不回显 token/系统路径，防泄露）
@@ -239,8 +242,74 @@ function fmtDate(iso) {
   return d.toDateString() === now.toDateString() ? d.toTimeString().slice(0, 5) : `${d.getMonth() + 1}/${d.getDate()}`;
 }
 let currentLeafId = null; // 当前会话的分叉叶子（分叉后置位；普通会话为 null = 显示全部）
+// 渲染会话消息（含工具卡片/思考块），供加载与缓存复用
+// 文件卡片（聊天界面可见、可下载）
+function addFileMsg(file, role) {
+  const box = $("messages");
+  const el = document.createElement("div");
+  el.className = "msg " + (role === "user" ? "user" : "assistant");
+  const url = "/api/ws/file?path=" + encodeURIComponent(file.path || "");
+  const icon = (file.mime || "").startsWith("image/") ? "🖼" : (file.mime || "").startsWith("audio/") ? "🎵" : (file.mime || "").startsWith("video/") ? "🎬" : "📄";
+  const size = file.size ? (file.size > 1048576 ? (file.size / 1048576).toFixed(1) + "MB" : Math.max(1, Math.round(file.size / 1024)) + "KB") : "";
+  el.innerHTML = `<div class="who"><span class="avatar">${role === "user" ? "你" : "π"}</span><span class="name">${role === "user" ? "你" : "小语"}</span><span class="msg-time">${nowTime()}</span></div>
+    <div class="file-card">
+      <span class="fc-icon">${icon}</span>
+      <span class="fc-info"><span class="fc-name">${esc(file.name || "文件")}</span><span class="fc-meta">${esc(size || "")}</span></span>
+      <a class="fc-dl" href="${url}" download>⬇ 下载</a>
+    </div>`;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+
+// 刷新当前会话消息（文件上传后调用）
+async function refreshMessages() {
+  if (!currentId) return;
+  const data = await api(`/api/sessions/${encodeURIComponent(currentId)}/messages`).catch(() => null);
+  if (!data) return;
+  clearMessages();
+  renderMessages(data.messages);
+  const w = $("messages").querySelector(".welcome");
+  if (w) w.remove();
+}
+
+function renderMessages(msgs) {
+  // 连续 assistant 的思考合并为一个块，避免多轮工具调用时思考块堆叠
+  let thinkBuf = "";
+  let thinkN = 0;
+  const flush = () => {
+    if (thinkN > 0) {
+      appendExternalThink(thinkN > 1 ? `思考过程（${thinkN} 轮）` : "思考过程", thinkBuf);
+      thinkBuf = ""; thinkN = 0;
+    }
+  };
+  for (const m of msgs) {
+    if (m.role === "user") { flush(); addUserMsg(m.text, m.id); if (Array.isArray(m.files)) m.files.forEach(f => addFileMsg(f, "user")); }
+    else if (m.role === "assistant") {
+      if (m.think && m.think.trim()) { thinkBuf += (thinkBuf ? "\n\n" : "") + m.think; thinkN++; }
+      if (Array.isArray(m.tools) && m.tools.length) {
+        for (const t of m.tools) {
+          let argsText = "";
+          if (t.args && typeof t.args === "object") {
+            if (t.args.command) argsText = t.args.command;
+            else if (t.args.path) argsText = t.args.path;
+            else argsText = JSON.stringify(t.args, null, 2);
+          } else argsText = String(t.args || "");
+          addTool(t.name, argsText, t.id, t.args);
+          if (t.output) updateToolOutput(t.id, t.output);
+          endTool(t.id, !!t.isError);
+        }
+        document.querySelectorAll("#messages .tool").forEach(el => el.classList.remove("expanded"));
+      }
+      if (m.text) { flush(); addAssistantMsg(m.text, m.ts, m.id); }
+      if (Array.isArray(m.files)) m.files.forEach(f => addFileMsg(f, "assistant"));
+    }
+  }
+  flush();
+}
+
 async function selectSession(id) {
   currentId = id;
+  try { localStorage.setItem("pi_last_session", id); } catch {}
   currentLeafId = null; // 切换会话时重置分叉视图
   closeSidebar();
   renderSessions();
@@ -248,30 +317,36 @@ async function selectSession(id) {
   $("session-name").textContent = s ? s.name : "新会话";
   clearMessages();
   $("messages").innerHTML = '<div class="welcome" style="padding:60px 20px"><div class="sub">加载会话中…</div></div>';
+  // ══ 会话缓存：同浏览器重复打开不再重新下载（localStorage，限文本消息防超容量）══
+  const CACHE_KEY = "piweb_msgcache_" + id;
+  let cacheUsed = false;
+  try {
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      const c = JSON.parse(cached);
+      if (c && Array.isArray(c.messages) && c.messages.length && Date.now() - (c.ts || 0) < 30 * 60 * 1000) {
+        // 30 分钟内的缓存：先渲染（秒开），后台再校验更新
+        renderMessages(c.messages);
+        cacheUsed = true;
+      }
+    }
+  } catch {}
   try {
     const data = await api(`/api/sessions/${encodeURIComponent(id)}/messages${currentLeafId ? "?leafId=" + encodeURIComponent(currentLeafId) : ""}`);
-    for (const m of data.messages) {
-      if (m.role === "user") addUserMsg(m.text, m.id);
-      else if (m.role === "assistant") {
-        // 历史中的工具调用还原为卡片（默认收起）
-        if (Array.isArray(m.tools) && m.tools.length) {
-          for (const t of m.tools) {
-            let argsText = "";
-            if (t.args && typeof t.args === "object") {
-              if (t.args.command) argsText = t.args.command;
-              else if (t.args.path) argsText = t.args.path;
-              else argsText = JSON.stringify(t.args, null, 2);
-            } else argsText = String(t.args || "");
-            addTool(t.name, argsText, t.id, t.args);
-            if (t.output) updateToolOutput(t.id, t.output);
-            endTool(t.id, !!t.isError);
-          }
-          document.querySelectorAll("#messages .tool").forEach(el => el.classList.remove("expanded"));
-        }
-        if (m.text) addAssistantMsg(m.text, m.ts, m.id);
-        // 历史中的思考在 pi 消息之后显示（先 pi 再思考）
-        if (m.think && m.think.trim()) appendExternalThink(m.think.slice(0, 20), m.think);
+    // 缓存最新消息（仅文本，控制大小 ≤ 400KB）
+    try {
+      const slim = data.messages.map(m => ({ role: m.role, text: (m.text || "").slice(0, 2000), tools: m.tools, think: m.think, ts: m.ts, id: m.id }));
+      if (JSON.stringify(slim).length < 400000) {
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), messages: slim }));
       }
+    } catch {}
+    if (!cacheUsed) renderMessages(data.messages);
+    else {
+      // 缓存已显示，但消息数变化（有更新）时重渲
+      const fresh = data.messages.length;
+      let cachedCount = 0;
+      try { const c = JSON.parse(localStorage.getItem(CACHE_KEY)); cachedCount = c?.messages?.length || 0; } catch {}
+      if (fresh !== cachedCount) renderMessages(data.messages);
     }
   } catch {}
   // 移除“加载会话中…”占位
@@ -287,6 +362,7 @@ async function selectSession(id) {
 async function newSession() {
   freshNewSession = true;
   currentId = null;
+  try { localStorage.removeItem("pi_last_session"); } catch {}  // 新建会话时不恢复旧会话
   closeSidebar();
   $("session-name").textContent = "新会话";
   // 清空输入框与附件，避免上一条输入/引用被带到新会话

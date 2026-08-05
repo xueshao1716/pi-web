@@ -19,7 +19,7 @@ powershell -ExecutionPolicy Bypass -Command "curl.exe -L -o %TEMP%\pi-web-instal
 
 ## 特性
 
-- 💬 多模型对话（deepseek / minimax / 小米 mimo 等）+ 思考 + 工具调用
+- 💬 多模型对话（deepseek / 小米 mimo 等）+ 思考 + 工具调用
 - 🛠 编程工具：读文件 / 写文件 / 编辑 / 跑命令
 - 🖼 媒体生成：配图、配音（自动归档到工作空间）
 - 📡 外网分享：项目放入分享目录，一键生成公网链接
@@ -112,8 +112,7 @@ cp models.example.json ~/.pi/agent/models-store.json
 ```json
 {
   "deepseek": { "type": "api_key", "key": "sk-xxx", "baseUrl": "https://api.deepseek.com" },
-  "minimax": { "type": "api_key", "key": "sk-xxx", "baseUrl": "https://api.minimaxi.com" },
-  "openrouter": { "type": "api_key", "key": "sk-or-xxx", "baseUrl": "https://openrouter.ai/api/v1" }
+    "openrouter": { "type": "api_key", "key": "sk-or-xxx", "baseUrl": "https://openrouter.ai/api/v1" }
 }
 ```
 

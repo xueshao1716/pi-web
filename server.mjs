@@ -69,7 +69,6 @@ const KEEP_MODELS = new Set([
   "openrouter/z-ai/glm-4.6",
   "openrouter/mistralai/mistral-large",
   "openrouter/meta-llama/llama-4-maverick",
-  "openrouter/minimax/minimax-m3",
   "openrouter/nvidia/nemotron-3-super-120b-a12b",
 ]);
 
@@ -142,9 +141,30 @@ function makeLoader(agentDir) {
       "用户偏好：请始终使用中文进行思考和回答；思考过程（thinking）也用中文。",
       "当任务涉及文件操作、命令执行时，请主动使用 read/write/edit/bash 工具完成，而不是只给出建议。",
       "自我认知：当被问及“你是谁/叫什么/介绍下自己/你的能力”等身份类问题时，按固定格式回答（不要主动自我介绍，也不要一开口就背身份）。固定格式：我叫小语，你的 AI 工作伙伴。我能干：写代码、做设计、整理文档、分析数据，并直接操作工作空间完成交付。由 pi 引擎驱动。当前使用模型与模型特色见对话上下文的系统信息。",
+      "任务完成后请主动归纳经验：把本次任务的成功做法/踩过的坑/可复用知识按格式追加到经验库（默认路径 工程/经验库/experience.md），每次最多 3 条、每条 3 行内，并在回复末尾简要说明已沉淀的经验。",
       ...loadProjectRules(),
+      ...loadExperience(),
     ],
   });
+}
+
+// ── 经验库：新任务自动加载最近经验（自动进化）──
+// 经验库路径：工作空间/工程/经验库/experience.md；每次加载最近 N 个条目注入上下文
+let expCache = null, expMtime = 0;
+function loadExperience(maxEntries = 6) {
+  try {
+    const f = path.join(CONFIG.cwd, "工程", "经验库", "experience.md");
+    const st = fs.statSync(f);
+    if (st.mtimeMs !== expMtime || !expCache) {
+      expMtime = st.mtimeMs;
+      const raw = fs.readFileSync(f, "utf8");
+      const blocks = raw.split(/\n### /).filter(b => b.includes("✅") || b.includes("⚠️") || b.includes("📌"));
+      const recent = blocks.slice(-maxEntries).map(b => "### " + b.trim());
+      expCache = recent;
+    }
+    if (!expCache.length) return [];
+    return [`【经验库·最近 ${expCache.length} 条】遇到同类任务时参考，避免重复踩坑：\n${expCache.join("\n\n")}`];
+  } catch { return []; }
 }
 
 // ── 项目规则（借鉴 Windsurf .windsurfrules）：工作空间下的 .pi-rules.md 自动加载 ──
@@ -304,9 +324,11 @@ function extractMessages(entries, leafId) {
     if (!m) continue;
     if (m.role === "user") {
       const text = extractText(m.content);
-      if (text) out.push({ role: "user", text, ts: e.timestamp, id: e.id });
+      const files = extractFiles(m.content);
+      if (text || files.length) out.push({ role: "user", text, files, ts: e.timestamp, id: e.id });
     } else if (m.role === "assistant") {
       const text = extractText(m.content);
+      const files = extractFiles(m.content);
       const tools = [];
       let think = "";
       if (Array.isArray(m.content)) {
@@ -319,7 +341,7 @@ function extractMessages(entries, leafId) {
           }
         }
       }
-      if (text || tools.length || think) out.push({ role: "assistant", text, tools, think, ts: e.timestamp, id: e.id });
+      if (text || files.length || tools.length || think) out.push({ role: "assistant", text, files, tools, think, ts: e.timestamp, id: e.id });
     }
   }
   return out;
@@ -330,6 +352,12 @@ function extractText(content) {
     return content.filter(b => b.type === "text").map(b => b.text || "").join("");
   }
   return "";
+}
+
+// 从消息 content 提取文件附件（type: file 的块）
+function extractFiles(content) {
+  if (!Array.isArray(content)) return [];
+  return content.filter(b => b.type === "file").map(b => ({ name: b.name, path: b.path, size: b.size, mime: b.mime }));
 }
 
 function listSessions() {
@@ -396,7 +424,7 @@ if (CONFIG.model) {
   defaultModel = modelList.find(m => `${m.provider}/${m.id}` === CONFIG.model) || undefined;
 }
 if (!defaultModel) {
-  defaultModel = modelList.find(m => m.provider === "deepseek") || modelList.find(m => m.provider === "minimax") || modelList[0];
+  defaultModel = modelList.find(m => m.provider === "deepseek") || modelList[0];
 }
 console.log(`[pi-web] 可用模型: ${modelList.length} 个（含 ${Object.keys(readJsonFile(MODELS_PATH)).join(", ")}）`);
 const SUPPORTED_PROVIDERS = ["deepseek", "openai", "openrouter", "anthropic", "google", "qwen", "xai", "moonshotai", "zai", "minimax", "together", "mistral"];
@@ -987,10 +1015,25 @@ async function handleSwitchModel(req, res, body) {
       try {
         const ag = await ensureAgent(entry2, fullModel);
         await ag.setModel(fullModel);
+        // 切换模型后：由 pi 引擎注入上下文补丁（纯文本历史），让新模型追上上下文
+        // 不造引擎：仅用 sessionManager 数据层，灌输由 pi 引擎下次组装历史时完成
+        try { await syncContextAfterSwitch(entry2); } catch {}
       } catch {}
     }
   }
   json(res, 200, { ok: true, model: { provider: m.provider, id: m.id } });
+}
+
+// 切换模型后的上下文灌输：注入一条指令消息（作为最新消息必然被新模型读到），
+// 让 pi 引擎用 read 工具读取会话文件恢复上下文——绕开历史消息格式兼容问题
+async function syncContextAfterSwitch(entry) {
+  try {
+    const file = entry.sm.sessionFile;
+    if (!file || !fs.existsSync(file)) return;
+    const patch = `【上下文同步】模型已切换。请先用 read 工具读取会话文件恢复此前对话上下文，然后继续与用户沟通（不要重复自我介绍，直接基于已恢复的上下文工作）：\n文件路径：${file}`;
+    await entry.sm.appendMessage({ role: "user", content: [{ type: "text", text: patch }] });
+    console.log(`[pi-web] 切换模型后已注入“读会话文件”灌输指令`);
+  } catch {}
 }
 
 // POST /api/chat —— SSE 流式
@@ -1594,7 +1637,7 @@ async function unifiedChat(model, messages, opts = {}) {
 
 // ══ 消息看板：pi 更新 + 能力看板 ══
 const CAPABILITIES = [
-  { icon: "💬", name: "多模型对话", desc: "deepseek / minimax / 小米 mimo / Agnes，思考 + 工具调用" },
+  { icon: "💬", name: "多模型对话", desc: "deepseek / 小米 mimo / Agnes，思考 + 工具调用" },
   { icon: "🛠", name: "编程工具", desc: "读文件 / 写文件 / 编辑 / 跑命令（与 TUI 同一引擎）" },
   { icon: "🧠", name: "思考块", desc: "reasoning 思考过程内联显示" },
   { icon: "🖼", name: "媒体生成", desc: "配图 / 配音 / 视频，自动落盘到工作空间" },
@@ -1980,6 +2023,7 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal)
 async function handleChat(req, res, body) {
   let message = typeof body.message === "string" ? body.message.trim() : "";
   const sessionId = typeof body.sessionId === "string" ? body.sessionId : null;
+  console.log(`[chat] msg="${message.slice(0, 20)}" sid=${sessionId} model=${defaultModel?.provider}/${defaultModel?.id} agent=${body.model || ""}`);
   if (!message) return json(res, 400, { error: "消息不能为空" });
 
   // @ 文件引用：把文件内容拼入消息上下文
@@ -2600,6 +2644,44 @@ const API_ROUTES = [
   ["POST", "/api/share", async (res, req) => handleShare(res, await readBody(req))],
   ["GET", "/api/share/status", (res) => handleShareStatus(res)],
   ["POST", "/api/share/stop", (res) => handleShareStop(res)],
+  // ── 文件传输：上传任意文件到工作空间，写入会话 file 消息（聊天界面可见可下载）──
+  ["POST", "/api/files/upload", async (res, req) => {
+    const body = await readBody(req, 24);
+    const name = String(body.name || "").slice(0, 120);
+    const data = String(body.data || "");
+    const sessionId = String(body.sessionId || "");
+    if (!name || !data) return json(res, 400, { error: "name 和 data 必填" });
+    try {
+      const buf = Buffer.from(data, "base64");
+      if (buf.length > 20 * 1024 * 1024) return json(res, 400, { error: "文件过大（限 20MB）" });
+      const date = new Date().toISOString().slice(0, 10);
+      const dir = path.join(WS_ROOT, "收发文件", date);
+      fs.mkdirSync(dir, { recursive: true });
+      let fp = path.join(dir, name);
+      if (fs.existsSync(fp)) { const pp = path.parse(name); fp = path.join(dir, `${pp.name}-${Date.now().toString(36)}${pp.ext}`); }
+      fs.writeFileSync(fp, buf);
+      const rel = path.relative(WS_ROOT, fp).replace(/\\/g, "/");
+      // 挂到有效会话：优先指定会话（含从磁盘打开的），其次最近未命名会话，否则自动新建（保证界面可显示）
+      let entry = sessionId && activeSessions.has(sessionId) ? activeSessions.get(sessionId) : null;
+      if (!entry && sessionId) {
+        // 会话文件存在但不在内存（如 CLI 会话 / 重启后）→ 从磁盘打开，挂到正确会话
+        try {
+          const opened = await openSession(sessionId);
+          if (opened) { entry = opened; activeSessions.set(sessionId, opened); }
+        } catch {}
+      }
+      if (!entry && lastUnnamedId && activeSessions.get(lastUnnamedId)) entry = activeSessions.get(lastUnnamedId);
+      if (!entry) { try { const nid = await createSession(); entry = activeSessions.get(nid); } catch {} }
+      if (entry) {
+        try {
+          await entry.sm.appendMessage({ role: "user", content: [{ type: "file", name, path: rel, size: buf.length, mime: body.mime || "" }] });
+          // 触发落盘：pi 引擎在出现 assistant 消息前不写文件，追加一条空 assistant 强制 flush（空消息渲染时被过滤，不影响显示）
+          await entry.sm.appendMessage({ role: "assistant", content: [] });
+        } catch {}
+      }
+      return json(res, 200, { ok: true, name, path: rel, size: buf.length, url: `/api/ws/file?path=${encodeURIComponent(rel)}`, sessionId: entry?.sm?.getSessionId() || null });
+    } catch (e) { return json(res, 500, { error: String(e.message || e).slice(0, 100) }); }
+  }],
   // ── 技能/搜索/Git/文件 ──
   ["GET", "/api/skills", (res) => handleSkills(res)],
   ["GET", "/api/skills/read", (res, req, url) => handleSkillRead(res, url.searchParams.get("path") || "")],

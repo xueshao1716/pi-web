@@ -1009,6 +1009,26 @@
   .msg.user .bubble { order: 1; margin-left: auto; }
   .msg.assistant .who { order: 0; }
   .msg.assistant .bubble { order: 1; margin-left: 0; }
+
+  /* 文件卡片（聊天文件传输） */
+  .file-card {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px;
+    margin: 6px 0; max-width: 420px;
+  }
+  .msg.user .file-card { background: var(--panel-3); }
+  .file-card .fc-icon { font-size: 22px; }
+  .file-card .fc-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .file-card .fc-name { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-card .fc-meta { font-size: 11px; color: var(--dim-2); }
+  .file-card .fc-dl {
+    font-size: 12px; color: var(--accent); text-decoration: none;
+    border: 1px solid var(--accent); border-radius: 6px; padding: 4px 10px;
+    white-space: nowrap; transition: background .2s, color .2s;
+  }
+  .file-card .fc-dl:hover { background: var(--accent); color: #0b0c0f; }
+
   /* 命令面板命令项（Raycast/Linear 风格） */
   .pal-item {
     display: flex; align-items: center; gap: 10px;

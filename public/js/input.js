@@ -368,49 +368,56 @@ $("local-file").addEventListener("change", async (e) => {
   const files = [...e.target.files];
   e.target.value = "";
   if (!files.length) return;
-  let added = 0, skipped = 0;
+  let added = 0, skipped = 0, transferred = 0;
+  const sessionId = window.currentId || null;
   for (const f of files.slice(0, 10)) {
     const ext = (f.name.split(".").pop() || "").toLowerCase();
     try {
+      // 1. 任意文件都上传保存（会话 file 消息，界面可下载）
+      if (f.size <= 20 * 1024 * 1024) {
+        const b64 = await fileToBase64(f);
+        const up = await api("/api/files/upload", { method: "POST", body: { name: f.name, data: b64, mime: f.type, sessionId } });
+        if (up?.ok) {
+          transferred++;
+          // 若上传时无当前会话，自动挂到返回的会话并同步前端（保证界面显示卡片）
+          if (up.sessionId && !window.currentId) {
+            window.currentId = up.sessionId;
+            refreshSessions();
+          }
+          refreshMessages();
+        }
+        else { skipped++; toast(`「${f.name}」上传失败`); continue; }
+      } else { skipped++; toast(`「${f.name}」超 20MB 已跳过`); continue; }
+      // 2. 文本/Office：额外读内容给 agent 引用；图片：额外进视觉附件
       let text = null;
+      if (IMG_TYPES.includes(f.type)) {
+        if (pendingImages.length < 3 && f.size <= 2 * 1024 * 1024) {
+          const b64 = await fileToBase64(f);
+          pendingImages.push({ data: b64, mimeType: f.type, name: f.name });
+          added++;
+        }
+        continue;
+      }
       if (OFFICE_EXTS.has(ext)) {
-        if (f.size > 5 * 1024 * 1024) { skipped++; toast(`「${f.name}」超 5MB 已跳过`); continue; }
+        if (f.size > 5 * 1024 * 1024) { continue; }
         const b64 = await fileToBase64(f);
         const r = await api("/api/parse-file", { method: "POST", body: { name: f.name, base64: b64 } });
         text = r.text || "";
-        if (!text) { skipped++; toast(`「${f.name}」无文本内容`); continue; }
       } else if (TEXT_EXTS.has(ext)) {
-        if (f.size > 200 * 1024) { skipped++; toast(`「${f.name}」超 200KB 已跳过`); continue; }
+        if (f.size > 200 * 1024) { continue; }
         text = await f.text();
-      } else if (IMG_TYPES.includes(f.type)) {
-        if (pendingImages.length >= 3) { skipped++; toast("最多 3 张图片"); continue; }
-        if (f.size > 2 * 1024 * 1024) { skipped++; toast(`「${f.name}」超 2MB 已跳过`); continue; }
-        const b64 = await fileToBase64(f);
-        pendingImages.push({ data: b64, mimeType: f.type, name: f.name });
-        added++;
-        // 模型自动路由提示（借鉴 Windsurf）：当前模型不支持图片时提醒可切换
-        const curModel = modelList.find(m => `${m.provider}/${m.id}` === (window.currentModelKey || ""));
-        const supportsImg = !curModel || (curModel.input || []).includes("image");
-        if (!supportsImg && !window._imgModelWarned) {
-          window._imgModelWarned = true;
-          toast("⚠️ 当前模型不支持图片，可在输入框右侧 ◈ 切换（如 MiniMax-M3）");
-        }
-        continue;
-      } else {
-        skipped++; toast(`「${f.name}」不支持的类型`);
-        continue;
       }
-      pendingFiles.push({ path: f.name, content: text });
-      added++;
+      if (text) { pendingFiles.push({ path: f.name, content: text }); added++; }
     } catch (err) {
       skipped++;
-      toast(`「${f.name}」解析失败: ${String(err.message || err).slice(0, 30)}`);
+      toast(`「${f.name}」处理失败: ${String(err.message || err).slice(0, 40)}`);
     }
   }
   renderChips();
   $("input").focus();
-  if (added) toast(`已引用 ${added} 个文件` + (skipped ? `，跳过 ${skipped} 个` : ""));
-  else if (skipped) toast(`没有可引用的文件（跳过 ${skipped} 个）`);
+  if (transferred) toast(`📎 已传输 ${transferred} 个文件` + (added ? `，${added} 个已引用给 agent` : "") + (skipped ? `，跳过 ${skipped}` : ""));
+  else if (added) toast(`已引用 ${added} 个文件` + (skipped ? `，跳过 ${skipped} 个` : ""));
+  else if (skipped) toast(`跳过 ${skipped} 个文件`);
 });
 $("btn-cmd").addEventListener("click", () => { showSlashMenu(); $("input").focus(); });
 
