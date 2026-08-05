@@ -11,6 +11,7 @@ import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 
 import { CONFIG } from "./config.mjs";
+const emotion = await import("./emotion.mjs");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -2264,8 +2265,13 @@ async function handleChat(req, res, body) {
   });
 
   try {
+    // 情绪感知：更新会话情绪状态，注入行为指令（反向情绪激发：情绪驱动行为风格）
+    const sessKey = sessionId || findKeyByEntry(entry) || "new";
+    emotion.updateEmotion(sessKey, message);
+    const emoPrompt = emotion.emotionPrompt(sessKey);
     // 自我认知：仅当用户问"你是谁/介绍自己"等身份问题时注入固定答案（不主动开场白）
     let promptMsg = message;
+    if (emoPrompt) promptMsg = emoPrompt + "\n\n" + promptMsg;
     if (/谁|介绍.*(自己|一下|你)|你是|你叫|名字|叫什么|干嘛的|干什么的|身份|自我介绍|能力/.test(message) && message.length < 80) {
       const m = defaultModel;
       const features = [];
