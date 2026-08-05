@@ -260,7 +260,7 @@ async function createSessionAgent(sm, model) {
   return created.session;
 }
 
-// 确保 entry 的 agent 存在（minimax 直调通道后 agent 被销毁，从 session 文件重建以恢复记忆）
+// 确保 entry 的 agent 存在（直调通道后 agent 可能被销毁，从 session 文件重建以恢复记忆）
 async function ensureAgent(entry, model) {
   if (entry.agent) return entry.agent;
   const agent = await createSessionAgent(entry.sm, model || defaultModel);
@@ -487,7 +487,7 @@ if (!defaultModel) {
   defaultModel = modelList.find(m => m.provider === "deepseek") || modelList[0];
 }
 console.log(`[pi-web] 可用模型: ${modelList.length} 个（含 ${Object.keys(readJsonFile(MODELS_PATH)).join(", ")}）`);
-const SUPPORTED_PROVIDERS = ["deepseek", "openai", "openrouter", "anthropic", "google", "qwen", "xai", "moonshotai", "zai", "minimax", "together", "mistral"];
+const SUPPORTED_PROVIDERS = ["deepseek", "openai", "openrouter", "anthropic", "google", "qwen", "xai", "moonshotai", "zai", "together", "mistral"];
 
 function readJsonFile(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return {}; } }
 function writeJsonFile(p, obj) { try { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(obj, null, 2), "utf8"); return true; } catch { return false; } }
@@ -690,7 +690,7 @@ async function handleImage(res, body) {
 
 // POST /api/models/remove {provider}
 // 内置 provider（走 pi agent）；其余自定义 provider 走直调通道
-const KNOWN_PROVIDERS = new Set(["deepseek", "openai", "openrouter", "anthropic", "google", "qwen", "xai", "moonshotai", "zai", "minimax", "together", "mistral"]);
+const KNOWN_PROVIDERS = new Set(["deepseek", "openai", "openrouter", "anthropic", "google", "qwen", "xai", "moonshotai", "zai", "together", "mistral"]);
 
 // 解析 provider 的认证：优先 auth.json，其次环境变量（如 OPENROUTER_API_KEY）
 function resolveAuth(provider) {
@@ -2289,7 +2289,7 @@ async function handleChat(req, res, body) {
       if (mr.url) mr.url = await saveArtifact(mr);  // 产物落盘 → 本地路径
       sseWrite(res, "media", mr);
     }
-    // 空回复兜底：agent 完成但无任何文本输出（如 minimax 偶发把回答全放 <think>）→ 直调模型接口补一次
+    // 空回复兜底：agent 完成但无任何文本输出（部分推理模型偶发把回答全放 <think>）→ 直调模型接口补一次
     if (!sawDelta && defaultModel) {
       const fallback = await directChat(defaultModel, message);
       if (fallback?.text) {
