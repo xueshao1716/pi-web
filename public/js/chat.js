@@ -65,7 +65,13 @@ function populateModels(data) {
     window.currentModelKey = `${data.current.provider}/${data.current.id}`;
   }
   // 用 onchange 而非 addEventListener：populateModels 会被多次调用，避免监听器重复叠加
-  sel.onchange = () => { switchModel(sel.selectedOptions[0].dataset.provider, sel.selectedOptions[0].dataset.modelId); };
+  // 关键：程序赋值 sel.value 会触发 change → 必须用标志位跳过，否则刷新页面就自动切模型+注入上下文同步
+  let suppress = true;
+  sel.onchange = () => {
+    if (suppress) { suppress = false; return; }
+    switchModel(sel.selectedOptions[0].dataset.provider, sel.selectedOptions[0].dataset.modelId);
+  };
+  setTimeout(() => { suppress = false; }, 300);
   // 同步输入框旁的模型名
   const curOpt = sel.selectedOptions[0];
   $("input-model-name").textContent = curOpt ? curOpt.dataset.modelId : "…";

@@ -1002,6 +1002,7 @@ function handleModels(res) {
 async function handleSwitchModel(req, res, body) {
   const m = modelList.find(x => x.provider === body.provider && x.id === body.modelId);
   if (!m) return json(res, 404, { error: `模型未找到: ${body.provider}/${body.modelId}` });
+  const switched = !(defaultModel?.provider === m.provider && defaultModel?.id === m.id);
   defaultModel = m;
   // 完整 runtime 模型（含 compat/thinkingFormat，简版模型会导致 agent 通道 reasoning 处理异常）
   let fullModel = m;
@@ -1015,24 +1016,24 @@ async function handleSwitchModel(req, res, body) {
       try {
         const ag = await ensureAgent(entry2, fullModel);
         await ag.setModel(fullModel);
-        // 切换模型后：由 pi 引擎注入上下文补丁（纯文本历史），让新模型追上上下文
-        // 不造引擎：仅用 sessionManager 数据层，灌输由 pi 引擎下次组装历史时完成
-        try { await syncContextAfterSwitch(entry2); } catch {}
+        // 只有模型真的变了才注入上下文同步（同一模型重复切换不注入，避免刷屏污染会话）
+        if (switched) { try { await syncContextAfterSwitch(entry2, m); } catch {} }
       } catch {}
     }
   }
   json(res, 200, { ok: true, model: { provider: m.provider, id: m.id } });
 }
 
-// 切换模型后的上下文灌输：注入一条指令消息（作为最新消息必然被新模型读到），
-// 让 pi 引擎用 read 工具读取会话文件恢复上下文——绕开历史消息格式兼容问题
-async function syncContextAfterSwitch(entry) {
+// 切换模型后的上下文灌输：注入一条简短的模型信息提示（不再让模型 read 会话文件——
+// 那会导致模型反复读文件卡住；新模型从 pi 引擎组装的历史中自然获得上下文）
+async function syncContextAfterSwitch(entry, model) {
   try {
     const file = entry.sm.sessionFile;
     if (!file || !fs.existsSync(file)) return;
-    const patch = `【上下文同步】模型已切换。请先用 read 工具读取会话文件恢复此前对话上下文，然后继续与用户沟通（不要重复自我介绍，直接基于已恢复的上下文工作）：\n文件路径：${file}`;
+    const mName = model?.name || model?.id || "新模型";
+    const patch = `（提示）当前会话已切换模型为 ${mName}。请直接根据对话历史继续回答，无需重复确认。`;
     await entry.sm.appendMessage({ role: "user", content: [{ type: "text", text: patch }] });
-    console.log(`[pi-web] 切换模型后已注入“读会话文件”灌输指令`);
+    console.log(`[pi-web] 模型切换为 ${mName}，已注入简短上下文提示`);
   } catch {}
 }
 
