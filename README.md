@@ -55,9 +55,58 @@ node server.mjs
 
 ## 配置模型与密钥
 
-- 模型列表：`~/.pi/agent/models-store.json`
-- API 密钥：`~/.pi/agent/auth.json`（**仓库外，不提交**）
-- 会话记录：`~/.pi/agent/sessions/`
+### 两个文件，分工明确
+
+| 文件 | 位置 | 内容 | 是否入库 |
+|---|---|---|---|
+| `models-store.json` | `~/.pi/agent/` | 模型清单（ID、接口、地址、计费） | ❌ 本地私有（仓库提供 `models.example.json` 模板） |
+| `auth.json` | `~/.pi/agent/` | 各 provider 的 API 密钥 | ❌ 绝不入库 |
+
+### 模型清单（models-store.json）
+
+仓库提供了精简模板 [`models.example.json`](models.example.json)，包含 6 个 provider 的代表模型：
+
+```bash
+cp models.example.json ~/.pi/agent/models-store.json
+```
+
+每个模型的字段：
+
+```json
+{
+  "id": "deepseek-v4-flash",      // 模型 ID（请求时使用）
+  "name": "DeepSeek V4 Flash",    // 显示名
+  "api": "openai-completions",     // 接口协议：openai-completions / openai-responses
+  "provider": "deepseek",          // 提供方名（与 auth.json 的 key 对应）
+  "baseUrl": "https://api.deepseek.com",  // API 地址
+  "reasoning": true,               // 是否推理模型
+  "input": ["text"],               // 支持的输入：text / image
+  "cost": { "input": 0.3 },        // 计费（可选）
+  "contextWindow": 1000000,        // 上下文窗口
+  "maxTokens": 384000              // 最大输出
+}
+```
+
+### API 密钥（auth.json）
+
+模型文件本身**不含密钥**。密钥按 provider 名放在 `~/.pi/agent/auth.json`：
+
+```json
+{
+  "deepseek": { "type": "api_key", "key": "sk-xxx", "baseUrl": "https://api.deepseek.com" },
+  "minimax": { "type": "api_key", "key": "sk-xxx", "baseUrl": "https://api.minimaxi.com" },
+  "openrouter": { "type": "api_key", "key": "sk-or-xxx", "baseUrl": "https://openrouter.ai/api/v1" }
+}
+```
+
+- `provider` 字段（models-store.json）与 auth.json 的**顶层 key 必须同名**，服务才能找到对应密钥
+- 会话记录同样在 `~/.pi/agent/sessions/`（仓库外，不提交）
+
+### 添加新 provider 三步
+
+1. `models-store.json` 加一个 provider 节点（照模板抄）
+2. `auth.json` 加同名 key + API 密钥
+3. 重启服务，底部模型选择器即可看到
 
 ## 外网分享（可选）
 
