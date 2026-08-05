@@ -948,7 +948,7 @@ async function send() {
     const reader = r.body.getReader();
     const decoder = new TextDecoder();
     let buf = "", done = false;
-    // 无事件 watchdog：30s 没有任何 SSE 事件且无工具在跑 → 提示可能卡住/断线
+    // 无事件 watchdog：90s 没有任何 SSE 事件且无工具在跑 → 提示可能卡住/断线
     let lastEvent = Date.now();
     let idleWarned = false;
     watchdogEpoch = epoch;
@@ -957,14 +957,14 @@ async function send() {
       if (watchdogEpoch !== epoch) { clearInterval(watchdog); watchdog = null; return; }
       const idle = (Date.now() - lastEvent) / 1000;
       const hasRunning = [...render.toolEls.values()].some(c => c.el.classList.contains("running"));
-      // 45s 无事件才警告（thinking 模型首 token 延迟可达 30s+，避免误报）
-      if (idle > 45 && !idleWarned && !hasRunning) {
+      // 推理模型首 token 延迟可能较长：90s 无事件才警告，且措辞中性
+      if (idle > 90 && !idleWarned && !hasRunning) {
         idleWarned = true;
         if (currentKey() === key) {
-          appendDelta(`\n\n⚠️ 已 ${Math.round(idle)}s 无响应——可能网络中断或模型卡住，可点「停止」后重试`);
-          setStatus(`无响应 ${Math.round(idle)}s`, "error");
+          appendDelta(`\n\n⚠️ 已 ${Math.round(idle)}s 无新消息——模型可能在深度思考或网络不畅，可稍候或点「停止」重试`);
+          setStatus(`等待响应 ${Math.round(idle)}s`, "error");
         }
-      } else if (idleWarned && (idle <= 45 || hasRunning)) {
+      } else if (idleWarned && (idle <= 90 || hasRunning)) {
         idleWarned = false;
       }
     }, 1000);
