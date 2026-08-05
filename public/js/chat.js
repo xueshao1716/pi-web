@@ -254,7 +254,8 @@ function addFileMsg(file, role) {
   const box = $("messages");
   const el = document.createElement("div");
   el.className = "msg " + (role === "user" ? "user" : "assistant");
-  const url = "/api/ws/file?path=" + encodeURIComponent(file.path || "");
+  // 文件下载链接带上 token（浏览器直接 GET 无法带 header，用 URL 参数鉴权）
+  const url = "/api/ws/file?path=" + encodeURIComponent(file.path || "") + "&token=" + encodeURIComponent(token);
   const icon = (file.mime || "").startsWith("image/") ? "🖼" : (file.mime || "").startsWith("audio/") ? "🎵" : (file.mime || "").startsWith("video/") ? "🎬" : "📄";
   const size = file.size ? (file.size > 1048576 ? (file.size / 1048576).toFixed(1) + "MB" : Math.max(1, Math.round(file.size / 1024)) + "KB") : "";
   el.innerHTML = `<div class="who"><span class="avatar">${role === "user" ? "你" : "π"}</span><span class="name">${role === "user" ? "你" : "小语"}</span><span class="msg-time">${nowTime()}</span></div>

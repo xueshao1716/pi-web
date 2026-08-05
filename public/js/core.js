@@ -97,3 +97,9 @@ function fmtSize(n) {
   return `${(n/1024/1024).toFixed(2)} MB`;
 }
 
+// 文件/媒体 URL 补鉴权 token（浏览器直接 GET 无法带 header，用 URL 参数）
+function ensureFileToken(url) {
+  if (!url || url.startsWith("data:") || url.startsWith("http")) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return url + sep + "token=" + encodeURIComponent(token);
+}

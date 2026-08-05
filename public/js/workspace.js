@@ -44,7 +44,8 @@ function wsItem(it, depth) {
 // 打开工作空间文件（按类型预览）
 async function openWsFile(it) {
   const ext = (it.name.split(".").pop() || "").toLowerCase();
-  const url = "/api/ws/file?path=" + encodeURIComponent(it.path);
+  // 带上 token（浏览器直接 GET 无法带 header）
+  const url = "/api/ws/file?path=" + encodeURIComponent(it.path) + "&token=" + encodeURIComponent(token);
   if (["png","jpg","jpeg","gif","webp","bmp"].includes(ext)) return openWsMedia(url, "image", it.name);
   if (["wav","mp3","ogg","m4a"].includes(ext)) return openWsMedia(url, "audio", it.name);
   if (["mp4","webm","mov"].includes(ext)) return openWsMedia(url, "video", it.name);

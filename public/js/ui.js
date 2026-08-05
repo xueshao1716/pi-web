@@ -339,7 +339,8 @@ function renderVideoMsg(videoUrl) {
   const box = $("messages");
   const el = document.createElement("div");
   el.className = "msg assistant";
-  el.innerHTML = `<div class="who"><span class="avatar">π</span><span class="name">小语</span><span class="msg-time">${nowTime()}</span></div><div class="bubble"><video src="${videoUrl}" controls style="max-width:100%;border-radius:12px;border:1px solid var(--border);background:#000"></video><div style="margin-top:6px"><a href="${videoUrl}" target="_blank" rel="noopener" style="color:var(--accent);font-size:12px">⬇ 打开 / 下载视频</a></div></div>`;
+  const u = ensureFileToken(videoUrl);
+  el.innerHTML = `<div class="who"><span class="avatar">π</span><span class="name">小语</span><span class="msg-time">${nowTime()}</span></div><div class="bubble"><video src="${u}" controls style="max-width:100%;border-radius:12px;border:1px solid var(--border);background:#000"></video><div style="margin-top:6px"><a href="${u}" target="_blank" rel="noopener" style="color:var(--accent);font-size:12px">⬇ 打开 / 下载视频</a></div></div>`;
   box.appendChild(el);
   box.scrollTop = box.scrollHeight;
 }
@@ -348,7 +349,8 @@ function renderAudioMsg(audioUrl) {
   const box = $("messages");
   const el = document.createElement("div");
   el.className = "msg assistant";
-  el.innerHTML = `<div class="who"><span class="avatar">π</span><span class="name">小语</span><span class="msg-time">${nowTime()}</span></div><div class="bubble" style="display:flex;align-items:center;gap:10px"><audio src="${audioUrl}" controls style="max-width:100%"></audio><a href="${audioUrl}" download="speech.wav" style="color:var(--accent);font-size:12px;flex-shrink:0">⬇ 下载</a></div>`;
+  const u = ensureFileToken(audioUrl);
+  el.innerHTML = `<div class="who"><span class="avatar">π</span><span class="name">小语</span><span class="msg-time">${nowTime()}</span></div><div class="bubble" style="display:flex;align-items:center;gap:10px"><audio src="${u}" controls style="max-width:100%"></audio><a href="${u}" download="speech.wav" style="color:var(--accent);font-size:12px;flex-shrink:0">⬇ 下载</a></div>`;
   box.appendChild(el);
   box.scrollTop = box.scrollHeight;
 }
@@ -357,7 +359,9 @@ function renderImageMsg(imageUrl) {
   const box = $("messages");
   const el = document.createElement("div");
   el.className = "msg assistant";
-  el.innerHTML = `<div class="who"><span class="avatar">π</span><span class="name">小语</span><span class="msg-time">${nowTime()}</span></div><div class="bubble"><img src="${imageUrl}" alt="绘图" style="max-width:100%;border-radius:12px;border:1px solid var(--border);box-shadow:0 4px 20px rgba(0,0,0,.3)">${imageUrl.startsWith("data:") ? "" : `<div style="margin-top:6px"><a href="${imageUrl}" target="_blank" rel="noopener" style="color:var(--accent);font-size:12px">⬇ 打开 / 下载原图</a></div>`}</div>`;
+  // 图片/文件 URL 补 token（浏览器直接 GET 无法带 header）
+  const u = ensureFileToken(imageUrl);
+  el.innerHTML = `<div class="who"><span class="avatar">π</span><span class="name">小语</span><span class="msg-time">${nowTime()}</span></div><div class="bubble"><img src="${u}" alt="绘图" style="max-width:100%;border-radius:12px;border:1px solid var(--border);box-shadow:0 4px 20px rgba(0,0,0,.3)">${u.startsWith("data:") ? "" : `<div style="margin-top:6px"><a href="${u}" target="_blank" rel="noopener" style="color:var(--accent);font-size:12px">⬇ 打开 / 下载原图</a></div>`}</div>`;
   box.appendChild(el);
   box.scrollTop = box.scrollHeight;
 }
