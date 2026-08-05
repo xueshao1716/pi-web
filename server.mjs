@@ -2370,25 +2370,50 @@ async function handleCompact(res, id) {
   }
 }
 
-// GET /api/skills —— 技能列表（与 pi 相同的资源加载逻辑）
+// GET /api/skills —— 技能列表（pi 引擎资源 + pi-web 内置技能）
+const BUILTIN_SKILLS_DIR = path.join(__dirname, "skills");
+function listBuiltinSkills() {
+  try {
+    const root = BUILTIN_SKILLS_DIR;
+    if (!fs.existsSync(root)) return [];
+    const out = [];
+    for (const d of fs.readdirSync(root, { withFileTypes: true })) {
+      if (!d.isDirectory()) continue;
+      const skillDir = path.join(root, d.name);
+      const skillFile = path.join(skillDir, "SKILL.md");
+      if (!fs.existsSync(skillFile)) continue;
+      let name = d.name, desc = "";
+      try {
+        const content = fs.readFileSync(skillFile, "utf8");
+        const nameM = content.match(/^name:\s*(.+)$/m);
+        const descM = content.match(/^description:\s*(.+)$/m);
+        if (nameM) name = nameM[1].trim();
+        if (descM) desc = descM[1].trim();
+      } catch {}
+      out.push({ name, description: desc, location: "package", path: skillFile });
+    }
+    return out;
+  } catch { return []; }
+}
 async function handleSkills(res) {
   try {
     const agentDir = getAgentDir();
     const loader = new DefaultResourceLoader({ cwd: CONFIG.cwd, agentDir });
     await loader.reload();
     const { skills, diagnostics } = loader.getSkills();
+    const merged = [...(skills || []).map(s => ({
+      name: s.name,
+      description: s.description || "",
+      location: (() => {
+        const fp = s.filePath || "";
+        if (fp.includes("node_modules")) return "package";
+        if (fp.includes(".agents") || fp.includes(".pi")) return "user";
+        return "project";
+      })(),
+      path: s.filePath || "",
+    })), ...listBuiltinSkills()];
     json(res, 200, {
-      skills: (skills || []).map(s => ({
-        name: s.name,
-        description: s.description || "",
-        location: (() => {
-          const fp = s.filePath || "";
-          if (fp.includes("node_modules")) return "package";
-          if (fp.includes(".agents") || fp.includes(".pi")) return "user";
-          return "project";
-        })(),
-        path: s.filePath || "",
-      })),
+      skills: merged,
       diagnostics: diagnostics || [],
     });
   } catch (e) {
@@ -2400,7 +2425,7 @@ async function handleSkills(res) {
 async function handleSkillRead(res, p) {
   const agentDir = getAgentDir();
   const globalSkills = path.join(os.homedir(), ".agents", "skills");
-  const roots = [agentDir, globalSkills];
+  const roots = [agentDir, globalSkills, path.join(__dirname, "skills")];
   const resolved = path.resolve(p);
   const ok = roots.some(root => resolved === root || resolved.startsWith(root + path.sep));
   if (!ok) return json(res, 403, { error: "路径越界" });
@@ -2473,8 +2498,14 @@ print("\\n".join(lines))`;
   }
 }
 
-// GET /api/sessions/:id/export?format=html|jsonl —— 导出会话
+// GET /api/sessions/:id/export?format=html|jsonl —— 导出会话（自动脱敏）
 function escHtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+// 脱敏模块（自动擦除 API key/令牌/密码）
+let sanitizeContent = null;
+try {
+  ({ sanitizeContent } = await import("./sanitize.mjs"));
+} catch {}
 async function handleExport(res, id, format) {
   const found = getSessionList().find(s => s.id === id);
   if (!found || !found.file || !fs.existsSync(found.file)) return json(res, 404, { error: "会话不存在" });
@@ -2483,16 +2514,35 @@ async function handleExport(res, id, format) {
   const name = (found.name || "会话").replace(/[\\/:*?"<>|]/g, "_");
   const dlName = encodeURIComponent(name);
   if (format === "jsonl") {
+    // JSONL 导出：整文件过脱敏（每行逐条处理，保留结构）
+    const raw = fs.readFileSync(found.file, "utf8");
+    const sanitized = raw.split("\n").map(line => {
+      if (!line.trim()) return line;
+      try {
+        const obj = JSON.parse(line);
+        const walk = (o) => {
+          if (!o || typeof o !== "object") return;
+          for (const k of Object.keys(o)) {
+            const v = o[k];
+            if (typeof v === "string") o[k] = sanitizeContent ? sanitizeContent(v) : v;
+            else walk(v);
+          }
+        };
+        walk(obj);
+        return JSON.stringify(obj);
+      } catch { return sanitizeContent ? sanitizeContent(line) : line; }
+    }).join("\n");
     res.writeHead(200, {
       "Content-Type": "application/jsonl",
       "Content-Disposition": `attachment; filename="pi-session.jsonl"; filename*=UTF-8''${dlName}.jsonl`,
     });
-    res.end(fs.readFileSync(found.file));
+    res.end(sanitized);
     return;
   }
   const bodyHtml = msgs.map(m => {
     const who = m.role === "user" ? "你" : "pi";
-    return `<div class="msg ${m.role}"><div class="who">${who}</div><div class="text">${escHtml(m.text)}</div></div>`;
+    const text = sanitizeContent ? sanitizeContent(m.text, "html") : m.text;
+    return `<div class="msg ${m.role}"><div class="who">${who}</div><div class="text">${escHtml(text)}</div></div>`;
   }).join("\n");
   const html = `<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><title>${escHtml(name)}</title><style>
 body{max-width:800px;margin:0 auto;padding:24px;font-family:-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#0b0c0f;color:#e6e8ee}
@@ -2712,6 +2762,12 @@ const API_ROUTES = [
   ["GET", "/api/search", (res, req, url) => handleSearch(res, url.searchParams.get("q") || "")],
   ["GET", "/api/git/status", (res) => handleGitStatus(res)],
   ["GET", "/api/git/diff", (res) => handleGitDiff(res)],
+  // ── 浏览器操作（CDP 控制 Chrome）──
+  ["POST", "/api/browser/start", async (res, req) => { const b = await import("./browser.mjs"); const r = await b.startChrome(); json(res, r.error ? 500 : 200, r); }],
+  ["POST", "/api/browser/stop", async (res) => { const b = await import("./browser.mjs"); json(res, 200, b.stopChrome()); }],
+  ["POST", "/api/browser/navigate", async (res, req) => { const b = await import("./browser.mjs"); const body = await readBody(req); json(res, 200, await b.navigate(String(body.url || ""))); }],
+  ["POST", "/api/browser/screenshot", async (res) => { const b = await import("./browser.mjs"); json(res, 200, await b.screenshot()); }],
+  ["POST", "/api/browser/text", async (res) => { const b = await import("./browser.mjs"); json(res, 200, await b.pageText()); }],
   ["GET", "/api/fs", (res, req, url) => handleFsList(res, url.searchParams.get("path") || ".")],
   ["GET", "/api/fs/read", (res, req, url) => handleFsRead(res, url.searchParams.get("path") || "")],
   // ── 模型 ──
