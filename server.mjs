@@ -2265,14 +2265,14 @@ async function handleChat(req, res, body) {
   });
 
   try {
-    // 情绪感知：更新会话情绪状态，注入行为指令（反向情绪激发：情绪驱动行为风格）
+    // 情绪感知：更新会话情绪状态，注入行为指令（用 nextTurn 机制，不写入会话历史）
     const sessKey = sessionId || findKeyByEntry(entry) || "new";
     emotion.updateEmotion(sessKey, message);
     const emoPrompt = emotion.emotionPrompt(sessKey);
     // 自我认知：仅当用户问"你是谁/介绍自己"等身份问题时注入固定答案（不主动开场白）
     let promptMsg = message;
-    if (emoPrompt) promptMsg = emoPrompt + "\n\n" + promptMsg;
-    if (/谁|介绍.*(自己|一下|你)|你是|你叫|名字|叫什么|干嘛的|干什么的|身份|自我介绍|能力/.test(message) && message.length < 80) {
+    const isIdentityAsk = /谁|介绍.*(自己|一下|你)|你是|你叫|名字|叫什么|干嘛的|干什么的|身份|自我介绍|能力/.test(message) && message.length < 80;
+    if (isIdentityAsk) {
       const m = defaultModel;
       const features = [];
       if (m?.reasoning) features.push("推理型");
@@ -2286,6 +2286,14 @@ async function handleChat(req, res, body) {
 回答完直接等用户下一步指令。
 
 用户消息：${message}`;
+    } else if (emoPrompt) {
+      // 非身份类：情绪指令通过 nextTurn 注入（不污染会话历史）
+      try {
+        await entry.agent?.sendCustomMessage?.(
+          { customType: "context", content: [{ type: "text", text: emoPrompt }] },
+          { deliverAs: "nextTurn" }
+        );
+      } catch {}
     }
     // 媒体生成与主模型并行（拿到文字即可继续推下一步，不用等全部完成）
     const mediaResults = mediaIntents.length ? await mediaPromise : [];
