@@ -607,6 +607,7 @@ async function tryLogin() {
     modelList = data.models;
     $("cwd-label").textContent = "cwd: " + (data.cwd || "");
     populateModels(data);
+    renderWelcome();
     await refreshSessions();
     updateFooter();
   } catch (e) {
@@ -869,11 +870,37 @@ async function newSession() {
   autoGrow();
   histIdx = -1;
   clearMessages();
+  renderWelcome();
   renderLatestNewStream(); // 若正在新建会话中，继续显示进度
   syncBusyUI();
   updateFooter();
   await refreshSessions();
   $("input").focus();
+}
+// 新会话引导界面：说明前端是什么、能干什么、怎么操作、当前模型
+function renderWelcome() {
+  const sel = $("model-select");
+  const cur = sel.selectedOptions[0];
+  const curModel = cur ? cur.dataset.provider + "/" + cur.dataset.modelId : "…";
+  $("messages").innerHTML = `<div class="welcome" style="padding:56px 20px 24px">
+    <div class="w-logo">语</div>
+    <div class="big">小语 · AI 工作台</div>
+    <div class="sub">基于 pi 引擎的 AI 工作伙伴 · 会话 / 工具 / 媒体 / 工作空间</div>
+    <div class="w-model">当前模型：<b>${esc(curModel)}</b></div>
+    <div class="w-feats">
+      <span>💬 多模型对话</span><span>🛠 编程工具</span><span>🖼 媒体生成</span>
+      <span>📦 工作空间</span><span>📄 文档解析</span><span>🌳 会话管理</span>
+    </div>
+    <div class="w-hint">直接输入问题开始对话 · <code>@</code> 引用文件 · <code>/</code> 查看命令</div>
+    <div class="w-actions">
+      <button id="w-new">＋ 新建会话</button>
+      <button id="w-file">@ 引用文件</button>
+      <button id="w-cmd">/ 斜杠命令</button>
+    </div>
+  </div>`;
+  $("w-new").addEventListener("click", newSession);
+  $("w-file").addEventListener("click", openFilePicker);
+  $("w-cmd").addEventListener("click", showSlashMenu);
 }
 // 渲染最新的未命名流式会话（存在多个新会话并发时取最新）
 function renderLatestNewStream() {

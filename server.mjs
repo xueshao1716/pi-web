@@ -141,6 +141,7 @@ function makeLoader(agentDir) {
     appendSystemPrompt: [
       "用户偏好：请始终使用中文进行思考和回答；思考过程（thinking）也用中文。",
       "当任务涉及文件操作、命令执行时，请主动使用 read/write/edit/bash 工具完成，而不是只给出建议。",
+      "自我认知：当被问及“你是谁/叫什么/介绍下自己/你的能力”等身份类问题时，按固定格式回答（不要主动自我介绍，也不要一开口就背身份）。固定格式：我叫小语，你的 AI 工作伙伴。我能干：写代码、做设计、整理文档、分析数据，并直接操作工作空间完成交付。由 pi 引擎驱动。当前使用模型与模型特色见对话上下文的系统信息。",
       ...loadProjectRules(),
     ],
   });
@@ -246,6 +247,15 @@ async function ensureAgent(entry, model) {
   entry.agent = agent;
   console.log(`[pi-web] agent 重建（直调后恢复记忆）`);
   return agent;
+}
+
+// 判断会话是否还没有任何对话消息（新会话首轮）
+function isFirstTurn(sm) {
+  try {
+    const roots = sm.getTree() || [];
+    const hasMsg = roots.some(n => n.entry?.type === "message" && ["user", "assistant"].includes(n.entry?.message?.role));
+    return !hasMsg;
+  } catch { return false; }
 }
 
 async function deleteSession(id) {
@@ -2148,9 +2158,26 @@ async function handleChat(req, res, body) {
   });
 
   try {
+    // 自我认知：仅当用户问"你是谁/介绍自己"等身份问题时注入固定答案（不主动开场白）
+    let promptMsg = message;
+    if (/谁|介绍.*(自己|一下|你)|你是|你叫|名字|叫什么|干嘛的|干什么的|身份|自我介绍|能力/.test(message) && message.length < 80) {
+      const m = defaultModel;
+      const features = [];
+      if (m?.reasoning) features.push("推理型");
+      if (m?.contextWindow) features.push(`上下文 ${Math.round(m.contextWindow / 1000)}k`);
+      if (Array.isArray(m?.input) && m.input.includes("image")) features.push("支持图片");
+      const featText = features.length ? features.join(" · ") : "标准模型";
+      const modelName = m?.name || m?.id || "未知";
+      const providerName = m?.provider ? `（${m.provider}）` : "";
+      promptMsg = `（自我认知指令）用户问了身份类问题。请按固定格式回答，不要展开、不要加开场白以外的内容：
+"我叫小语，你的 AI 工作伙伴。我能干：写代码、做设计、整理文档、分析数据，并直接操作工作空间完成交付。由 pi 引擎驱动。当前使用模型是：${modelName}${providerName}。模型特色：${featText}。"
+回答完直接等用户下一步指令。
+
+用户消息：${message}`;
+    }
     // 媒体生成与主模型并行（拿到文字即可继续推下一步，不用等全部完成）
     const mediaResults = mediaIntents.length ? await mediaPromise : [];
-    await agent.prompt(message, { images });
+    await agent.prompt(promptMsg, { images });
     for (const mr of mediaResults) {
       if (!mr) continue;
       if (mr.url) mr.url = await saveArtifact(mr);  // 产物落盘 → 本地路径
