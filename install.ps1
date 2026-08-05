@@ -29,15 +29,24 @@ if (Get-Command node -ErrorAction SilentlyContinue) {
   $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path', 'User')
 }
 
-# 2. 下载 pi-web 源码（zip 方式，不需要 Git）
+# 2. 下载 pi-web 源码（zip 方式，不需要 Git；GitHub 直连失败自动切镜像）
 Write-Host ''
 Write-Host '[2/3] 获取 pi-web 源码 ...' -ForegroundColor Yellow
 if (Test-Path "$HOME\pi-web\server.mjs") {
   Write-Host '  已存在 ~/pi-web' -ForegroundColor Green
 } else {
-  Write-Host '  下载源码（GitHub zip）...'
-  curl.exe -sL -o "$ZIP" 'https://github.com/xueshao1716/pi-web/archive/refs/heads/main.zip'
-  if (-not (Test-Path "$ZIP")) { Write-Host '  源码下载失败！' -ForegroundColor Red; exit 1 }
+  Write-Host '  下载源码（GitHub zip，失败自动切镜像）...'
+  $ZIP_URLS = @(
+    'https://github.com/xueshao1716/pi-web/archive/refs/heads/main.zip',
+    'https://ghproxy.net/https://github.com/xueshao1716/pi-web/archive/refs/heads/main.zip',
+    'https://gh-proxy.com/https://github.com/xueshao1716/pi-web/archive/refs/heads/main.zip'
+  )
+  $downloaded = $false
+  foreach ($u in $ZIP_URLS) {
+    curl.exe -sL --connect-timeout 8 --max-time 60 -o "$ZIP" $u
+    if ((Test-Path "$ZIP") -and ((Get-Item "$ZIP").Length -gt 100000)) { $downloaded = $true; break }
+  }
+  if (-not $downloaded) { Write-Host '  源码下载失败（GitHub 与镜像均不可达，请检查网络）' -ForegroundColor Red; exit 1 }
   Expand-Archive -Path "$ZIP" -DestinationPath "$HOME" -Force
   Move-Item -Path "$HOME\pi-web-main" -Destination "$HOME\pi-web" -ErrorAction SilentlyContinue
   if (-not (Test-Path "$HOME\pi-web\server.mjs")) {

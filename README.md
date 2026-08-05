@@ -21,6 +21,9 @@
 ## 快速开始
 
 ```bash
+# 方式零：Windows 一键安装（推荐给小白用户，自动装 Node + 下载 + 启动）
+powershell -ExecutionPolicy Bypass -File install.ps1
+
 # 方式一：一键安装向导（推荐，跨平台）
 node setup.mjs            # 检测环境并引导
 node setup.mjs --install  # 自动安装缺失依赖

@@ -54,7 +54,11 @@ else {
   fail("未安装 pi 引擎");
   if (process.argv.includes("--install")) {
     console.log("  正在安装 @earendil-works/pi-coding-agent ...");
-    try { sh("npm i -g @earendil-works/pi-coding-agent"); ok("安装完成"); }
+    try {
+      const reg = sh("npm config get registry");
+      const args = reg && /registry\.npmmirror\.com/.test(reg) ? [] : ["--registry=https://registry.npmmirror.com"];
+      sh("npm i -g @earendil-works/pi-coding-agent " + args.join(" ")); ok("安装完成");
+    }
     catch { fail("自动安装失败，请手动执行：npm i -g @earendil-works/pi-coding-agent"); }
   } else {
     warn("请执行：npm i -g @earendil-works/pi-coding-agent");
