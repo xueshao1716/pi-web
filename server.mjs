@@ -143,6 +143,7 @@ function makeLoader(agentDir) {
       "当任务涉及文件操作、命令执行时，请主动使用 read/write/edit/bash 工具完成，而不是只给出建议。",
       "自我认知：当被问及“你是谁/叫什么/介绍下自己/你的能力”等身份类问题时，按固定格式回答（不要主动自我介绍，也不要一开口就背身份）。固定格式：我叫小语，你的 AI 工作伙伴。我能干：写代码、做设计、整理文档、分析数据，并直接操作工作空间完成交付。由 pi 引擎驱动。当前使用模型与模型特色见对话上下文的系统信息。",
       "任务完成后请主动归纳经验：把本次任务的成功做法/踩过的坑/可复用知识按格式追加到经验库（默认路径 工程/经验库/experience.md），每次最多 3 条、每条 3 行内，并在回复末尾简要说明已沉淀的经验。",
+      ...loadMemory(),
       ...loadProjectRules(),
       ...loadExperience(),
     ],
@@ -182,6 +183,23 @@ function loadProjectRules() {
     }
     if (!projectRulesCache) return [];
     return [`以下为项目规则（.pi-rules.md），请严格遵守：\n${projectRulesCache}`];
+  } catch {
+    return [];
+  }
+}
+
+// 固定记忆：每次对话自动加载（工作空间根/记忆.md）
+let memoryCache = null, memoryMtime = 0;
+function loadMemory() {
+  try {
+    const f = path.join(CONFIG.cwd, "记忆.md");
+    const st = fs.statSync(f);
+    if (st.mtimeMs !== memoryMtime) {
+      memoryCache = fs.readFileSync(f, "utf8").trim();
+      memoryMtime = st.mtimeMs;
+    }
+    if (!memoryCache) return [];
+    return [`以下为固定记忆（记忆.md），跨会话长期有效，涉及重要约定/项目状态时以它为准：\n${memoryCache}`];
   } catch {
     return [];
   }
@@ -1152,13 +1170,17 @@ async function handleWsTree(res, reqPath) {
   json(res, 200, { items, current: path.relative(WS_ROOT, safe) || "." });
 }
 
-// GET /api/ws/file —— 提供文件（图片/音频/视频/文本）
-async function handleWsFile(res, reqPath) {
+// GET /api/ws/file —— 提供文件（图片/音频/视频/文本；?download=1 强制下载）
+async function handleWsFile(res, reqPath, url) {
   const safe = wsSafePath(reqPath);
   if (!safe || !fs.existsSync(safe)) return json(res, 404, { error: "文件不存在" });
   const ext = path.extname(safe).toLowerCase();
   const mime = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".wav": "audio/wav", ".mp3": "audio/mpeg", ".mp4": "video/mp4", ".webm": "video/webm", ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8", ".json": "application/json" }[ext] || "application/octet-stream";
-  res.writeHead(200, { "Content-Type": mime, "Cache-Control": "no-cache" });
+  const headers = { "Content-Type": mime, "Cache-Control": "no-cache" };
+  if (url?.searchParams.get("download") === "1") {
+    headers["Content-Disposition"] = `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(safe))}`;
+  }
+  res.writeHead(200, headers);
   fs.createReadStream(safe).pipe(res);
 }
 
@@ -2761,7 +2783,7 @@ const API_ROUTES = [
   // ── 工作空间 ──
   ["GET", "/api/prompts", (res) => handlePrompts(res)],
   ["GET", "/api/ws/tree", (res, req, url) => handleWsTree(res, url.searchParams.get("path") || "")],
-  ["GET", "/api/ws/file", (res, req, url) => handleWsFile(res, url.searchParams.get("path") || "")],
+  ["GET", "/api/ws/file", (res, req, url) => handleWsFile(res, url.searchParams.get("path") || "", url)],
   ["GET", "/api/ws/read", (res, req, url) => handleWsRead(res, url.searchParams.get("path") || "")],
   ["GET", "/api/ws/artifacts", (res) => handleWsArtifacts(res)],
   ["POST", "/api/ws/write", async (res, req) => handleWsWrite(res, await readBody(req))],
