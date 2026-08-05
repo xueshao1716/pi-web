@@ -1093,6 +1093,10 @@ async function send() {
             onToolEnd(key, obj.id, !!obj.isError, obj.output);
             break;
           case "turn_end": break;
+          case "file":
+            // 模型产出的文件附件 → 聊天界面直接展示文件卡片（而非只给链接）
+            if (obj && obj.path) addFileMsg(obj, "assistant");
+            break;
           case "media":
             // 媒体路由结果：图片/音频直接渲染到消息区
             if (currentKey() === key) {
@@ -1179,6 +1183,13 @@ async function send() {
         appendDelta("\n\n[连接错误] " + (e.message || e));
         // 连接建立前失败（fetch failed）→ 消息未发出，恢复输入框内容
         if (!streamingStarted) { $("input").value = text; autoGrow(); updateSendBtn(); }
+        else {
+          // 流中途断开：服务端已中止任务，把消息恢复到输入框，方便一键重发
+          $("input").value = text;
+          autoGrow();
+          updateSendBtn();
+          toast("连接中断，消息已恢复，可直接重发");
+        }
       }
     }
   } finally {

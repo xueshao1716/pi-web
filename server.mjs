@@ -360,6 +360,24 @@ function extractFiles(content) {
   return content.filter(b => b.type === "file").map(b => ({ name: b.name, path: b.path, size: b.size, mime: b.mime }));
 }
 
+// 从会话最新 assistant 消息提取文件附件（供 SSE 实时推送）
+function extractMessageFiles(sm) {
+  try {
+    const file = sm.sessionFile;
+    if (!file || !fs.existsSync(file)) return [];
+    const entries = readEntriesFromFile(file);
+    // 从后往前找最近的 assistant 消息，收集其中的 file 块
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i];
+      if (e?.type !== "message" || e?.message?.role !== "assistant") continue;
+      const c = e.message.content;
+      const files = extractFiles(c);
+      if (files.length) return files;
+    }
+    return [];
+  } catch { return []; }
+}
+
 function listSessions() {
   const files = scanSessionFiles();
   return files.map(parseSessionFile)
@@ -2245,6 +2263,11 @@ async function handleChat(req, res, body) {
     if (!entry.sm.getSessionName()) {
       try { entry.sm.appendSessionInfo(message.slice(0, 24)); } catch {}
     }
+    // 本轮产生的文件附件 → 前端实时展示（文件卡片）
+    try {
+      const files = extractMessageFiles(entry.sm);
+      for (const f of files) sseWrite(res, "file", f);
+    } catch {}
     sseWrite(res, "done", { sessionId: sessionId || findKeyByEntry(entry) });
   } catch (e) {
     // 官方 agent 管线异常 → 降级到自制 unifiedChat 兑底（避免任务静默失败）
