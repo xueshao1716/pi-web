@@ -45,6 +45,8 @@ node setup.mjs --install
 
 技能面板（左侧 ⚡）直接可用，无需额外安装。
 
+> 📋 完整技能清单（含 78 个用户技能）见 [SKILLS.md](SKILLS.md)
+
 ## 🤖 支持模型
 
 | Provider | 模型 | 说明 |
