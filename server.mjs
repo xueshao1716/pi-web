@@ -402,7 +402,7 @@ function extractMessageFiles(sm) {
 // 扫描工作空间里最近被工具创建/修改的文件（本轮产物），供前端展示文件卡片
 // 排除：隐藏目录、node_modules、.git、backups、临时文件
 const SCAN_EXCLUDE = /(^|[\\/])(node_modules|\.git|\.cache|backups?|temp|tmp|\.token)([\\/]|$)/i;
-function scanRecentArtifacts(withinMs = 5 * 60 * 1000, max = 10) {
+function scanRecentArtifacts(withinMs = 30 * 60 * 1000, max = 10) {
   try {
     const root = path.resolve(CONFIG.cwd);
     if (!fs.existsSync(root)) return [];
@@ -436,8 +436,10 @@ function scanRecentArtifacts(withinMs = 5 * 60 * 1000, max = 10) {
       }
     };
     walk(root, 0);
-    // 按修改时间倒序，取最新
-    return out.sort((a, b) => (b.mtimeMs || 0) - (a.mtimeMs || 0)).slice(0, max);
+    // 按修改时间倒序，取最新；同名文件去重（同一产物多副本只推最新一份）
+    const seen = new Set();
+    return out.filter(f => { if (seen.has(f.name)) return false; seen.add(f.name); return true; })
+      .sort((a, b) => (b.mtimeMs || 0) - (a.mtimeMs || 0)).slice(0, max);
   } catch { return []; }
 }
 
@@ -1180,9 +1182,20 @@ async function handleWsTree(res, reqPath) {
 }
 
 // GET /api/ws/file —— 提供文件（图片/音频/视频/文本；?download=1 强制下载）
-async function handleWsFile(res, reqPath, url) {
-  const safe = wsSafePath(reqPath);
-  if (!safe || !fs.existsSync(safe)) return json(res, 404, { error: "文件不存在" });
+async function handleWsFile(res, req, url) {
+  // 优先：签名 URL（path+exp+sig，安全防篡改、可过期，不依赖内存映射）
+  const fb = await import("./filebox.mjs");
+  let target = null;
+  if (url?.searchParams.get("sig")) {
+    const v = fb.verifySigned(req);
+    if (v.ok) target = wsSafePath(v.rel);
+    else return json(res, 403, { error: v.reason || "无权访问" });
+  } else if (url?.searchParams.get("path")) {
+    // 兼容旧链接（直接 path，需带 token 鉴权）
+    target = wsSafePath(url.searchParams.get("path") || "");
+  }
+  if (!target || !fs.existsSync(target)) return json(res, 404, { error: "文件不存在" });
+  const safe = target;
   const ext = path.extname(safe).toLowerCase();
   const mime = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".wav": "audio/wav", ".mp3": "audio/mpeg", ".mp4": "video/mp4", ".webm": "video/webm", ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8", ".json": "application/json" }[ext] || "application/octet-stream";
   const headers = { "Content-Type": mime, "Cache-Control": "no-cache" };
@@ -2864,7 +2877,7 @@ const API_ROUTES = [
   // ── 工作空间 ──
   ["GET", "/api/prompts", (res) => handlePrompts(res)],
   ["GET", "/api/ws/tree", (res, req, url) => handleWsTree(res, url.searchParams.get("path") || "")],
-  ["GET", "/api/ws/file", (res, req, url) => handleWsFile(res, url.searchParams.get("path") || "", url)],
+  ["GET", "/api/ws/file", (res, req, url) => handleWsFile(res, req, url)],
   ["GET", "/api/ws/read", (res, req, url) => handleWsRead(res, url.searchParams.get("path") || "")],
   ["GET", "/api/ws/artifacts", (res) => handleWsArtifacts(res)],
   ["POST", "/api/ws/write", async (res, req) => handleWsWrite(res, await readBody(req))],
@@ -2970,7 +2983,15 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
     const isStatic = (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/sw.js" || WORKSHOP_PAGES[url.pathname])) ||
                      (req.method === "GET" && url.pathname.startsWith("/static/"));
-    if (!isStatic && !checkAuth(req)) {
+    // 签名文件链接（filebox 签名）免 token：签名本身是凭证
+    let isSignedFile = false;
+    try {
+      if (url.pathname === "/api/ws/file" && url.searchParams.get("sig")) {
+        const fb = await import("./filebox.mjs");
+        isSignedFile = fb.verifySigned(req).ok;
+      }
+    } catch {}
+    if (!isStatic && !isSignedFile && !checkAuth(req)) {
       return json(res, 401, { error: "未授权，请提供访问令牌" });
     }
 
