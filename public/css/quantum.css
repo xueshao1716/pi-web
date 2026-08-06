@@ -73,6 +73,28 @@ html[data-theme="quantum"] .main-top::after {
 html[data-theme="quantum"] .main-top .session-name { color: var(--dim); font-family: var(--mono); font-size: 12px; letter-spacing: .3px; }
 html[data-theme="quantum"] .main-top .session-name:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 html[data-theme="quantum"] .status-pill { backdrop-filter: blur(8px); }
+/* 情绪指示器：霓虹玻璃 + 情绪态发光 */
+html[data-theme="quantum"] .emo-pill {
+  background: linear-gradient(180deg, rgba(20,30,54,.85), rgba(13,19,38,.85));
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  box-shadow: inset 0 0 14px rgba(35,230,255,.05);
+}
+html[data-theme="quantum"] .emo-pill[data-emo="risk"] {
+  color: var(--yellow); border-color: color-mix(in srgb, var(--yellow) 55%, var(--border));
+  box-shadow: 0 0 14px color-mix(in srgb, var(--yellow) 25%, transparent);
+  animation: riskBlink 1.2s ease-in-out infinite;
+}
+@keyframes riskBlink { 50% { box-shadow: 0 0 22px color-mix(in srgb, var(--yellow) 45%, transparent); } }
+html[data-theme="quantum"] .emo-pill[data-emo="high"] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+html[data-theme="quantum"] .emo-pill[data-emo="calm"] {
+  color: var(--green); border-color: color-mix(in srgb, var(--green) 45%, var(--border));
+  box-shadow: 0 0 12px color-mix(in srgb, var(--green) 20%, transparent);
+}
 
 /* ── 按钮体系：渐变边框 + 霓虹发光 + 按压反馈 ── */
 html[data-theme="quantum"] .tool-btn,

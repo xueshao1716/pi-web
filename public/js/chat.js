@@ -23,6 +23,7 @@ async function tryLogin() {
     // 刷新后自动恢复上次打开的会话（避免回主界面重新找）
     const lastSid = localStorage.getItem("pi_last_session");
     if (lastSid && sessions.some(s => s.id === lastSid)) selectSession(lastSid);
+    else refreshEmotion(); // 无恢复会话时初始化情绪指示器
     updateFooter();
   } catch (e) {
     // 401：token 无效 → 清除旧 token，提示正确来源（不回显 token/系统路径，防泄露）
@@ -369,6 +370,7 @@ function renderChunk(list) {
 async function selectSession(id) {
   currentId = id;
   try { localStorage.setItem("pi_last_session", id); } catch {}
+  refreshEmotion(); // 切换会话同步情绪指示器
   currentLeafId = null; // 切换会话时重置分叉视图
   closeSidebar();
   renderSessions();
@@ -1010,6 +1012,36 @@ function setStatus(text, state) {
   $("status-text").textContent = text;
 }
 
+// ══ 情绪指示器：把服务端 VAD 三维情绪映射成可见状态 ══
+function emoMeta(s) {
+  const v = s.valence || 0, a = s.arousal || 0;
+  const tags = s.tags || [];
+  if (tags.includes("alert_risk")) return { emoji: "🛡", label: "安全警觉", cls: "risk" };
+  if (tags.includes("user_frustrated")) return { emoji: "🤝", label: "安抚模式", cls: "calm" };
+  if (tags.includes("user_urgent")) return { emoji: "⚡", label: "快速响应", cls: "high" };
+  if (tags.includes("user_anxious")) return { emoji: "🤗", label: "稳住局面", cls: "calm" };
+  if (tags.includes("task_accomplish")) return { emoji: "🎉", label: "交付达成", cls: "high" };
+  if (a >= 0.6 && v >= 0.4) return { emoji: "🔥", label: "兴奋", cls: "high" };
+  if (a >= 0.6) return { emoji: "⚠", label: "警觉", cls: "risk" };
+  if (v >= 0.4 && a <= 0.45) return { emoji: "😌", label: "平和", cls: "calm" };
+  if (v <= 0.1) return { emoji: "🌧", label: "低落", cls: "low" };
+  if (a >= 0.45 && v < 0.3) return { emoji: "🤨", label: "有压力", cls: "low" };
+  return { emoji: "🧘", label: "专注", cls: "focus" };
+}
+async function refreshEmotion() {
+  try {
+    const s = await api("/api/emotion?session=" + encodeURIComponent(currentId || "new"));
+    const m = emoMeta(s);
+    $("emo-ico").textContent = m.emoji;
+    $("emo-label").textContent = m.label;
+    const pill = $("emo-pill");
+    if (pill.dataset.emo !== m.cls) {
+      pill.dataset.emo = m.cls;
+      pill.classList.remove("pop"); void pill.offsetWidth; pill.classList.add("pop");
+    }
+  } catch {}
+}
+
 // ══ 发送（支持跨会话并发流式）══
 const controllers = new Map(); // key -> AbortController（停止当前会话的生成）
 
@@ -1076,6 +1108,7 @@ async function send() {
   renderChips();
   ensureNotify();
   setStatus("处理中…", "busy");
+  refreshEmotion(); // 发送后立即反映情绪（风险/急躁等线索在服务端已更新）
   updateSendBtn();
   $("inputbar").classList.add("sending");
   const controller = new AbortController();
@@ -1223,6 +1256,7 @@ async function send() {
       }
     }
     // 收尾（仅当当前视图仍是本会话时操作 DOM）
+    refreshEmotion(); // 对话结束同步情绪（完成/兴奋等线索已更新）
     if (currentKey() === key) {
       if (st.toolStarted) {
         // 工具任务：结论单独成消息，排在所有工具卡片之后

@@ -88,6 +88,11 @@ export function emotionPrompt(key) {
   return `【当前情绪语境】${d}`;
 }
 
+// 情绪快照（供前端情绪指示器展示）
+export function getSnapshot(key) {
+  return { ...getState(key) };
+}
+
 // 会话关闭清理
 export function clearEmotion(key) { states.delete(key); }
 

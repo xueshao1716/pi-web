@@ -2834,8 +2834,15 @@ function wsCtx() {
   return { CONFIG, SESSIONS_DIR, defaultModel, createSessionAgent, SessionManager, scanRecentArtifacts, sseWrite, json, getAgentDir, DefaultResourceLoader, WS_ROOT };
 }
 
+// 情绪指示器：返回当前会话情绪快照（前端展示用）
+function handleEmotion(res, url) {
+  const key = url.searchParams.get("session") || "new";
+  json(res, 200, emotion.getSnapshot(key));
+}
+
 const API_ROUTES = [
   // ── 会话 ──
+  ["GET", "/api/emotion", (res, req, url) => handleEmotion(res, url)],
   ["GET", /^\/api\/sessions\/([^/]+)\/tree$/, (res, req, url, m) => handleSessionTree(res, decodeURIComponent(m[1]))],
   ["POST", /^\/api\/sessions\/([^/]+)\/branch$/, async (res, req, url, m) => handleSessionBranch(res, decodeURIComponent(m[1]), await readBody(req))],
   ["GET", /^\/api\/sessions\/([^/]+)\/messages$/, (res, req, url, m) => handleMessages(res, decodeURIComponent(m[1]), req, url)],
