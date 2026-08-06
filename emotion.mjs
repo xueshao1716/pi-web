@@ -90,7 +90,11 @@ export function emotionPrompt(key) {
 
 // 情绪快照（供前端情绪指示器展示）
 export function getSnapshot(key) {
-  return { ...getState(key) };
+  const st = getState(key);
+  // 情绪标签是瞬时的：快照返回后即清除（避免"交付达成"反复显示——标签粘滞 bug）
+  const snap = { ...st, tags: st.tags ? [...st.tags] : [] };
+  st.tags = [];
+  return snap;
 }
 
 // 会话关闭清理
