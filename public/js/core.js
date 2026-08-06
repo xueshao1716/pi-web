@@ -103,3 +103,37 @@ function ensureFileToken(url) {
   const sep = url.includes("?") ? "&" : "?";
   return url + sep + "token=" + encodeURIComponent(token);
 }
+
+// ══ 可拖拽侧边栏（借鉴 agegr/pi-web：CSS 变量 + localStorage 持久化，桌面端）══
+(function initSidebarResize() {
+  const sidebar = $("sidebar");
+  if (!sidebar) return;
+  const MIN = 180, MAX = 480, DEF = 260;
+  let w = parseInt(localStorage.getItem("pi_sidebar_width") || "", 10);
+  if (!(w >= MIN && w <= MAX)) w = DEF;
+  document.documentElement.style.setProperty("--sidebar-width", w + "px");
+  if (window.innerWidth <= 768) return; // 移动端抽屉不拖拽
+  const grip = document.createElement("div");
+  grip.className = "sidebar-grip";
+  grip.title = "拖拽调整侧边栏宽度";
+  sidebar.appendChild(grip);
+  let dragging = false;
+  grip.addEventListener("pointerdown", (e) => {
+    dragging = true;
+    grip.setPointerCapture(e.pointerId);
+    document.body.classList.add("resizing-sidebar");
+  });
+  grip.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const w2 = Math.round(Math.max(MIN, Math.min(MAX, e.clientX - sidebar.getBoundingClientRect().left)));
+    document.documentElement.style.setProperty("--sidebar-width", w2 + "px");
+  });
+  const stop = () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove("resizing-sidebar");
+    try { localStorage.setItem("pi_sidebar_width", String(parseInt(getComputedStyle(sidebar).width, 10) || DEF)); } catch {}
+  };
+  grip.addEventListener("pointerup", stop);
+  grip.addEventListener("pointercancel", stop);
+})();

@@ -59,13 +59,23 @@
 
   /* ── 侧边栏 ── */
   #sidebar {
-    width: 268px; flex-shrink: 0;
+    width: var(--sidebar-width, 260px); flex-shrink: 0;
     background: var(--sidebar);
     border-right: 1px solid var(--border);
     display: flex; flex-direction: column;
     transition: margin-left .18s ease;
+    position: relative;
   }
-  body.sidebar-collapsed #sidebar { margin-left: -268px; }
+  /* 可拖拽手柄（借鉴 agegr/pi-web：CSS 变量 + localStorage 持久化） */
+  .sidebar-grip {
+    position: absolute; top: 0; right: -3px; bottom: 0;
+    width: 6px; cursor: col-resize; z-index: 30;
+  }
+  .sidebar-grip:hover, body.resizing-sidebar .sidebar-grip {
+    background: color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+  body.resizing-sidebar { cursor: col-resize; user-select: none; }
+  body.sidebar-collapsed #sidebar { margin-left: calc(var(--sidebar-width, 260px) * -1); }
   body.sidebar-collapsed #main { }
   /* 全屏壁纸：背景层 + 面板半透明 */
   body.has-wallpaper { background-size: cover; background-position: center; background-attachment: fixed; }
@@ -79,7 +89,7 @@
   body.has-wallpaper #inputbar { background: transparent; }
   body.has-wallpaper .input-shell { background: color-mix(in srgb, var(--bg) 76%, transparent); backdrop-filter: blur(8px); }
   body.has-wallpaper .side-view, body.has-wallpaper .side-body { background: transparent; }
-  .side-head { display: flex; align-items: center; gap: 10px; padding: 16px 18px 12px; }
+  .side-head { display: flex; align-items: center; gap: 8px; padding: 11px 14px 8px; }
   .side-head .logo {
     font-family: var(--mono); font-weight: 700; font-size: 18px; color: var(--accent); letter-spacing: -.5px;
     display: flex; align-items: center; gap: 8px;
@@ -307,8 +317,8 @@
   /* 会话列表（横排条目） */
   .sg-body { display: flex; flex-direction: column; gap: 2px; padding: 2px 4px 6px; }
   .session-item {
-    display: flex; align-items: center; gap: 10px;
-    padding: 8px 10px; border-radius: 10px; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-radius: 8px; cursor: pointer;
     border: 1px solid transparent; position: relative;
     transition: background .12s, border-color .12s;
   }
@@ -964,7 +974,7 @@
   }
   .side-backdrop.show { opacity: 1; pointer-events: auto; }
   .main-top {
-    display: flex; align-items: center; gap: 12px; padding: 12px 22px;
+    display: flex; align-items: center; gap: 8px; padding: 9px 16px;
     border-bottom: 1px solid var(--border);
     background: color-mix(in srgb, var(--bg) 72%, transparent);
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
@@ -1001,7 +1011,7 @@
   .msg-fork:hover { color: var(--accent); border-color: var(--accent); }
 
   /* ── 对话式消息布局：用户左 / 助手右，有主次感 ── */
-  .msg { max-width: 900px; margin: 0 auto; padding: 18px 20px 2px; animation: fadeIn .18s ease; display: flex; gap: 10px; align-items: flex-start; position: relative; flex-wrap: wrap; }
+  .msg { max-width: 940px; margin: 0 auto; padding: 18px 20px 2px; animation: fadeIn .18s ease; display: flex; gap: 10px; align-items: flex-start; position: relative; flex-wrap: wrap; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; } }
   .msg .who {
     display: flex; flex-direction: column; align-items: center; gap: 3px;
@@ -1111,7 +1121,7 @@
 
   /* ── 工具调用卡片（美化版）── */
   .tool {
-    max-width: 860px; margin: 12px auto;
+    max-width: 940px; margin: 12px auto;
     background: linear-gradient(180deg, rgba(255,255,255,.015), transparent);
     border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
     font-size: 12.5px;
@@ -1186,7 +1196,7 @@
   .think-block .chev { font-size: 9px; transition: transform .15s; }
   .think-block.collapsed .chev { transform: rotate(-90deg); }
 
-  .welcome { text-align: center; padding: 70px 20px 20px; font-family: var(--mono); }
+  .welcome { text-align: center; padding: 40px 16px 16px; font-family: var(--mono); }
   .welcome .w-logo {
     width: 58px; height: 58px; margin: 0 auto 18px;
     border-radius: 18px;
@@ -1236,9 +1246,9 @@
   }
 
   /* ── 输入区 ── */
-  #inputbar { flex-shrink: 0; padding: 10px 24px 18px; background: var(--bg); border-top: 1px solid transparent; }
+  #inputbar { flex-shrink: 0; padding: 8px 16px 12px; background: var(--bg); border-top: 1px solid transparent; }
   .input-shell {
-    max-width: 900px; margin: 0 auto; /* 与消息区一致，居中美观 */
+    max-width: 940px; margin: 0 auto; /* 与消息区一致，居中美观 */
     background: var(--panel-2); border: 1px solid var(--border);
     border-radius: 16px; padding: 12px 14px 10px;
     transition: border-color .15s, box-shadow .15s;
