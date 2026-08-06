@@ -1,15 +1,68 @@
 // ===== workspace.js（从 app.js 拆分，全局作用域，保持原逻辑不变）=====
 // ══ 工作空间面板（目录树 + 文件预览）══
-const WS_ICONS = { "工程": "🏗", "生成物": "🖼", "文档": "📄", "交付": "📦" };
+const WS_ICONS = { "工程": "🏗", "生成物": "🖼", "文档": "📄", "交付": "📦", "外网分享": "📡", "收发文件": "📥" };
+// 分类定义：顶层面板按工作区分类分区展示（借鉴 VS Code/飞书云文档）
+const WS_CATEGORIES = [
+  { name: "工程", icon: "🏗", match: (n) => n === "工程" },
+  { name: "文档", icon: "📄", match: (n) => n === "文档" },
+  { name: "生成物", icon: "🖼", match: (n) => n === "生成物" },
+  { name: "交付", icon: "📦", match: (n) => n === "交付" },
+  { name: "外网分享", icon: "📡", match: (n) => n === "外网分享" },
+  { name: "收发文件", icon: "📥", match: (n) => n === "收发文件" },
+];
+function wsGroup(gkey) {
+  const collapsed = !!collapsedGroups[gkey];
+  const g = document.createElement("div");
+  g.className = "sess-group";
+  g.innerHTML = `
+    <div class="sg-head"><span class="sg-arrow">${collapsed ? "▸" : "▾"}</span><span class="sg-name"></span><span class="sg-count"></span></div>
+    <div class="sg-body" ${collapsed ? "hidden" : ""}></div>`;
+  g.querySelector(".sg-head").addEventListener("click", () => toggleGroup(gkey));
+  return g;
+}
 async function loadWsTree() {
   const box = $("ws-tree");
   box.innerHTML = '<div class="fp-empty">加载中…</div>';
   try {
     const root = await api("/api/ws/tree");
     box.innerHTML = "";
-    const sorted = [...root.items].sort((a, b) => (a.type === "dir" ? 0 : 1) - (b.type === "dir" ? 0 : 1));
-    for (const it of sorted) box.appendChild(wsItem(it, 0));
-    if (!root.items.length) box.innerHTML = '<div class="fp-empty">工作空间为空</div>';
+    const dirs = root.items.filter(i => i.type === "dir");
+    const files = root.items.filter(i => i.type === "file");
+    let rendered = 0;
+    // 1. 按分类分组展示（工程/文档/生成物/交付/外网分享/收发文件）
+    for (const cat of WS_CATEGORIES) {
+      const items = dirs.filter(d => cat.match(d.name));
+      if (!items.length) continue;
+      const g = wsGroup("ws-" + cat.name);
+      g.querySelector(".sg-name").textContent = cat.icon + " " + cat.name;
+      g.querySelector(".sg-count").textContent = items.length;
+      const body = g.querySelector(".sg-body");
+      for (const it of items) body.appendChild(wsItem(it, 0));
+      box.appendChild(g);
+      rendered++;
+    }
+    // 2. 其他散目录（非分类的顶层目录）
+    const otherDirs = dirs.filter(d => !WS_CATEGORIES.some(c => c.match(d.name)));
+    if (otherDirs.length) {
+      const g = wsGroup("ws-其他");
+      g.querySelector(".sg-name").textContent = "📁 其他";
+      g.querySelector(".sg-count").textContent = otherDirs.length;
+      const body = g.querySelector(".sg-body");
+      for (const it of otherDirs) body.appendChild(wsItem(it, 0));
+      box.appendChild(g);
+      rendered++;
+    }
+    // 3. 根目录散文件
+    if (files.length) {
+      const g = wsGroup("ws-根文件");
+      g.querySelector(".sg-name").textContent = "📄 根目录文件";
+      g.querySelector(".sg-count").textContent = files.length;
+      const body = g.querySelector(".sg-body");
+      for (const it of files) body.appendChild(wsItem(it, 0));
+      box.appendChild(g);
+      rendered++;
+    }
+    if (!rendered) box.innerHTML = '<div class="fp-empty">工作空间为空</div>';
   } catch { box.innerHTML = '<div class="fp-empty">加载失败</div>'; }
 }
 function wsItem(it, depth) {
