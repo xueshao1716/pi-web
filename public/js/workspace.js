@@ -1,4 +1,5 @@
 // ===== workspace.js（从 app.js 拆分，全局作用域，保持原逻辑不变）=====
+function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 // ══ 工作空间面板（目录树 + 文件预览）══
 const WS_ICONS = { "工程": "🏗", "生成物": "🖼", "文档": "📄", "交付": "📦", "外网分享": "📡", "收发文件": "📥" };
 // 分类定义：顶层面板按工作区分类分区展示（借鉴 VS Code/飞书云文档）
@@ -353,3 +354,121 @@ $("repair-btn").addEventListener("click", async () => {
 });
 $("rp-close").addEventListener("click", () => $("repair-modal").classList.remove("show"));
 
+
+// ══ 工作空间全屏浏览（保留侧边栏，全屏查看文件）══
+$("ws-full-btn").addEventListener("click", openWsFull);
+$("wsfull-close").addEventListener("click", () => $("wsfull-modal").classList.remove("show"));
+$("wsfull-modal").addEventListener("click", (e) => { if (e.target === $("wsfull-modal")) $("wsfull-modal").classList.remove("show"); });
+
+let wsFullCurrent = null; // 当前预览的文件路径
+
+function openWsFull() {
+  $("wsfull-modal").classList.add("show");
+  loadWsFullTree("");
+  $("wsfull-search").value = "";
+  $("wsfull-search").focus();
+  const el = $("wsfull-tree");
+  el.innerHTML = '<div class="fp-empty">加载中…</div>';
+}
+
+async function loadWsFullTree(path) {
+  const box = $("wsfull-tree");
+  box.innerHTML = '<div class="fp-empty">…</div>';
+  try {
+    const data = await api("/api/ws/tree?path=" + encodeURIComponent(path || ""));
+    box.innerHTML = "";
+    const sorted = [...data.items].sort((a, b) => (a.type === "dir" ? 0 : 1) - (b.type === "dir" ? 0 : 1));
+    for (const it of sorted) box.appendChild(wsFullItem(it, 0));
+    if (!sorted.length) box.innerHTML = '<div class="fp-empty">空</div>';
+  } catch { box.innerHTML = '<div class="fp-empty">加载失败</div>'; }
+}
+
+function wsFullItem(it, depth) {
+  const el = document.createElement("div");
+  el.className = "ft-item " + it.type;
+  el.style.paddingLeft = (8 + depth * 14) + "px";
+  const isDir = it.type === "dir";
+  el.innerHTML = `<span class="ft-arrow">${isDir ? "▸" : ""}</span><span class="ft-ico">${isDir ? (WS_ICONS[it.name] || "📁") : "📄"}</span><span class="ft-name">${esc(it.name)}</span>`;
+  if (isDir) {
+    const childBox = document.createElement("div");
+    childBox.hidden = true;
+    el.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const willExpand = childBox.hidden;
+      el.querySelector(".ft-arrow").textContent = willExpand ? "▾" : "▸";
+      childBox.hidden = !willExpand;
+      if (willExpand) {
+        childBox.innerHTML = '<div class="fp-empty">…</div>';
+        try {
+          const data = await api("/api/ws/tree?path=" + encodeURIComponent(it.path));
+          childBox.innerHTML = "";
+          const sorted = [...data.items].sort((a, b) => (a.type === "dir" ? 0 : 1) - (b.type === "dir" ? 0 : 1));
+          for (const sub of sorted) childBox.appendChild(wsFullItem(sub, depth + 1));
+        } catch { childBox.innerHTML = '<div class="fp-empty">加载失败</div>'; }
+      }
+    });
+    el.appendChild(childBox);
+  } else {
+    el.addEventListener("click", () => previewWsFull(it));
+  }
+  return el;
+}
+
+async function previewWsFull(it) {
+  wsFullCurrent = it;
+  const url = "/api/ws/file?path=" + encodeURIComponent(it.path) + "&token=" + encodeURIComponent(token);
+  const ext = (it.name.split(".").pop() || "").toLowerCase();
+  const ph = $("wsfull-ph"), pv = $("wsfull-preview");
+  ph.hidden = true; pv.hidden = false;
+  $("wsfull-info").textContent = it.path + " · " + fmtSize(it.size || 0);
+  $("wsfull-dl").hidden = false;
+  $("wsfull-deliver").hidden = false;
+  if (["png","jpg","jpeg","gif","webp","bmp"].includes(ext)) {
+    pv.innerHTML = `<img src="${url}" alt="${esc(it.name)}">`;
+  } else if (["mp4","webm","mov"].includes(ext)) {
+    pv.innerHTML = `<video src="${url}" controls style="max-width:100%;max-height:70vh"></video>`;
+  } else if (["mp3","wav","m4a"].includes(ext)) {
+    pv.innerHTML = `<audio src="${url}" controls></audio>`;
+  } else if (ext === "pdf") {
+    pv.innerHTML = `<iframe src="${url}"></iframe>`;
+  } else {
+    try {
+      const d = await api("/api/ws/read?path=" + encodeURIComponent(it.path));
+      const txt = String(d.content || "").slice(0, 20000);
+      const isMd = ext === "md";
+      pv.innerHTML = isMd ? `<div class="markdown">${renderSimpleMd ? renderSimpleMd(txt) : "<pre>"+esc(txt)+"</pre>"}</div>` : `<pre>${esc(txt)}</pre>`;
+    } catch {
+      pv.innerHTML = `<div class="fp-empty">无法预览（二进制文件），点击下载</div>`;
+    }
+  }
+}
+$("wsfull-dl").addEventListener("click", () => {
+  if (!wsFullCurrent) return;
+  const url = "/api/ws/file?path=" + encodeURIComponent(wsFullCurrent.path) + "&token=" + encodeURIComponent(token) + "&download=1";
+  window.open(url, "_blank");
+});
+$("wsfull-deliver").addEventListener("click", async () => {
+  if (!wsFullCurrent) return;
+  const r = await api("/api/ws/deliver", { method: "POST", body: { path: wsFullCurrent.path } });
+  if (r.ok) toast("✅ 已交付 → " + r.path);
+  else toast("交付失败: " + (r.error || ""));
+});
+// 搜索
+$("wsfull-search").addEventListener("input", debounce(async (e) => {
+  const q = e.target.value.trim();
+  if (!q) { loadWsFullTree(""); return; }
+  const box = $("wsfull-tree");
+  box.innerHTML = '<div class="fp-empty">搜索中…</div>';
+  try {
+    const d = await api("/api/ws/search?q=" + encodeURIComponent(q));
+    box.innerHTML = "";
+    for (const r of (d.results || []).slice(0, 30)) {
+      const el = document.createElement("div");
+      el.className = "ft-item file";
+      el.innerHTML = `📄 <span class="ft-name">${esc(r.name)}</span> <span class="ws-search-path" style="font-size:10px;color:var(--dim-2)">${esc(r.path)}</span>`;
+      el.addEventListener("click", () => previewWsFull(r));
+      box.appendChild(el);
+    }
+    if (!d.results || !d.results.length) box.innerHTML = '<div class="fp-empty">无结果</div>';
+  } catch { box.innerHTML = '<div class="fp-empty">搜索失败</div>'; }
+}, 300));

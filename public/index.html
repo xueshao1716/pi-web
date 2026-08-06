@@ -57,7 +57,7 @@
           <div id="skill-list"></div>
         </div>
         <div class="tab-panel" id="panel-workspace" hidden>
-          <div class="ft-head"><span>📦 工作空间</span><span style="display:flex;gap:4px"><button class="ft-refresh" id="ws-git-btn" title="Git 状态">⎇</button><button class="ft-refresh" id="ws-new-proj" title="新建项目">＋项目</button><button class="ft-refresh" id="ws-refresh" title="刷新">↻</button></span></div>
+          <div class="ft-head"><span>📦 工作空间</span><span style="display:flex;gap:4px"><button class="ft-refresh" id="ws-git-btn" title="Git 状态">⎇</button><button class="ft-refresh" id="ws-full-btn" title="全屏浏览">⛶</button><button class="ft-refresh" id="ws-new-proj" title="新建项目">＋项目</button><button class="ft-refresh" id="ws-refresh" title="刷新">↻</button></span></div>
           <div class="ws-search-wrap"><input id="ws-search" placeholder="🔍 搜索工作空间文件…" autocomplete="off"></div>
           <div id="ws-search-results"></div>
           <div class="ws-del-head">📤 最近交付</div>
@@ -347,6 +347,33 @@
       <button id="fv-convert">🔄 转 Markdown</button>
       <button id="fv-edit">✏️ 编辑</button>
       <button id="fv-delete" style="color:#ff6b6b">🗑 删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 工作空间全屏浏览（保留侧边栏，全屏查看文件） -->
+<div class="modal-overlay" id="wsfull-modal">
+  <div class="wsfull">
+    <div class="wsfull-head">
+      <span class="wsfull-title">📦 工作空间</span>
+      <span class="spacer"></span>
+      <input id="wsfull-search" class="wsfull-search" placeholder="🔍 搜索文件…">
+      <button class="close" id="wsfull-close">✕</button>
+    </div>
+    <div class="wsfull-body">
+      <div class="wsfull-side">
+        <div class="wsfull-cats" id="wsfull-tree"></div>
+      </div>
+      <div class="wsfull-main">
+        <div class="wsfull-placeholder" id="wsfull-ph">← 选择左侧文件查看</div>
+        <div class="wsfull-preview" id="wsfull-preview" hidden></div>
+      </div>
+    </div>
+    <div class="wsfull-foot">
+      <span id="wsfull-info"></span>
+      <span class="spacer"></span>
+      <button id="wsfull-dl" hidden>⬇ 下载</button>
+      <button id="wsfull-deliver" hidden>📦 交付</button>
     </div>
   </div>
 </div>
