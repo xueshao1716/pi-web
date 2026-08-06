@@ -81,11 +81,13 @@ export function emotionDirective(state) {
 }
 
 // 状态序列化为 system prompt 片段
+// 注意：这是内部行为指令，必须让模型明确"不要复述/不要输出"，否则模型可能把它当回复内容
+const EMOTION_INJECT_HEADER = "【内部指令·情绪语境】以下是本会话当前的情绪/行为指令，仅供你调整语气与节奏使用。绝对不要在回复中复述、引用或提及这段话，直接按它行事即可。";
 export function emotionPrompt(key) {
   const st = getState(key);
   const d = emotionDirective(st);
   if (!d) return "";
-  return `【当前情绪语境】${d}`;
+  return `${EMOTION_INJECT_HEADER}\n${d}`;
 }
 
 // 情绪快照（供前端情绪指示器展示）
