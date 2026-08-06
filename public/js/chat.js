@@ -255,15 +255,21 @@ function addFileMsg(file, role) {
   const el = document.createElement("div");
   el.className = "msg " + (role === "user" ? "user" : "assistant");
   // 文件下载链接带上 token（浏览器直接 GET 无法带 header，用 URL 参数鉴权）
-  const url = "/api/ws/file?path=" + encodeURIComponent(file.path || "") + "&token=" + encodeURIComponent(token);
+  const url = "/api/ws/file?path=" + encodeURIComponent(file.path || "") + "&token=" + encodeURIComponent(token) + "&download=1";
   const icon = (file.mime || "").startsWith("image/") ? "🖼" : (file.mime || "").startsWith("audio/") ? "🎵" : (file.mime || "").startsWith("video/") ? "🎬" : "📄";
   const size = file.size ? (file.size > 1048576 ? (file.size / 1048576).toFixed(1) + "MB" : Math.max(1, Math.round(file.size / 1024)) + "KB") : "";
   el.innerHTML = `<div class="who"><span class="avatar">${role === "user" ? "你" : "π"}</span><span class="name">${role === "user" ? "你" : "小语"}</span><span class="msg-time">${nowTime()}</span></div>
-    <div class="file-card">
+    <div class="file-card" title="点击预览，⬇ 下载">
       <span class="fc-icon">${icon}</span>
       <span class="fc-info"><span class="fc-name">${esc(file.name || "文件")}</span><span class="fc-meta">${esc(size || "")}</span></span>
       <a class="fc-dl" href="${url}" download>⬇ 下载</a>
     </div>`;
+  // 整张卡片可点击：预览文件（下载按钮除外）
+  const card = el.querySelector(".file-card");
+  card.addEventListener("click", (e) => {
+    if (e.target.closest(".fc-dl")) return;
+    if (file.path && typeof openWsFile === "function") openWsFile({ name: file.name, path: file.path });
+  });
   box.appendChild(el);
   box.scrollTop = box.scrollHeight;
 }
