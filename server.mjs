@@ -519,14 +519,19 @@ async function httpJsonFetch(url, options = {}) {
   const tmpFile = path.join(os.tmpdir(), "piweb-req-" + Date.now() + "-" + Math.floor(Math.random() * 1e6));
   try { fs.writeFileSync(tmpFile, options.body || "", "utf8"); } catch { return Promise.reject(new Error("临时文件写入失败")); }
   const pyCode = [
-    "import urllib.request, json, sys",
+    "import urllib.request, json, sys, urllib.error",
     "url=sys.argv[1]; method=sys.argv[2]; headers=json.loads(sys.argv[3]); timeout=float(sys.argv[4]); body_file=sys.argv[5]",
     "try: body=open(body_file, 'r', encoding='utf-8').read()",
     "except: body=''",
     "req=urllib.request.Request(url, data=body.encode() if body else None, method=method or 'GET', headers=headers)",
-    "r=urllib.request.urlopen(req, timeout=timeout)",
-    "data=r.read()",
-    "sys.stdout.write(str(r.status)+chr(10)+data.decode('utf-8','replace'))",
+    "try:",
+    "  r=urllib.request.urlopen(req, timeout=timeout)",
+    "  data=r.read()",
+    "  sys.stdout.write(str(r.status)+chr(10)+data.decode('utf-8','replace'))",
+    "except urllib.error.HTTPError as e:",
+    "  # 非 2xx 也返回 status+body（如 404/401），让调用方走 endpoint fallback 链",
+    "  data=e.read()",
+    "  sys.stdout.write(str(e.code)+chr(10)+data.decode('utf-8','replace'))",
     "os_remove=1",
   ].join("\n");
   return new Promise((resolve, reject) => {
@@ -652,7 +657,7 @@ async function generateTTS(text) {
 }
 
 // 绘图：返回图片数据（供 handleChat 绘图模型通道复用）
-async function generateImage(provider, modelId, prompt) {
+async function generateImage(provider, modelId, prompt, size) {
   const resolved = resolveAuth(provider);
   if (!resolved) return null;
   const baseUrl = resolved.baseUrl || (readJsonFile(MODELS_PATH)[provider]?.models || []).find(m => m.id === modelId)?.baseUrl;
@@ -662,11 +667,12 @@ async function generateImage(provider, modelId, prompt) {
   const mkReq = (u) => httpJsonFetch(u, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model: modelId, prompt, n: 1, size: "1024x1024" }),
+    body: JSON.stringify({ model: modelId, prompt, n: 1, size: size || "1024x1024" }),
     timeout: 180000,
   });
   let r = await mkReq(`${baseNoV1}/v1/images/generations`);
-  if (r.status === 404) r = await mkReq(`${baseNoV1}/images/generations`);
+  if (!r.ok) r = await mkReq(`${baseNoV1}/images/generations`);
+  if (!r.ok) r = await mkReq(`${baseNoV1}/v3/images/generations`); // 火山方舟规划版等 v3 endpoint
   if (!r.ok) return null;
   const data = await r.json();
   const item = data.data?.[0];
@@ -677,7 +683,7 @@ async function generateImage(provider, modelId, prompt) {
 }
 
 async function handleImage(res, body) {
-  const { provider, modelId, prompt } = body || {};
+  const { provider, modelId, prompt, size } = body || {};
   if (!provider || !modelId || !prompt) return json(res, 400, { error: "缺少 provider / modelId / prompt" });
   const resolved = resolveAuth(provider);
   if (!resolved) return json(res, 400, { error: `${provider} 未配置 API Key（模型管理中添加）` });
@@ -689,11 +695,12 @@ async function handleImage(res, body) {
     const mkReq = (u) => httpJsonFetch(u, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify({ model: modelId, prompt, n: 1, size: "1024x1024" }),
+      body: JSON.stringify({ model: modelId, prompt, n: 1, size: size || "1024x1024" }),
       timeout: 180000,
     });
     let r = await mkReq(`${baseNoV1}/v1/images/generations`);
-    if (r.status === 404) r = await mkReq(`${baseNoV1}/images/generations`);
+    if (!r.ok) r = await mkReq(`${baseNoV1}/images/generations`);
+    if (!r.ok) r = await mkReq(`${baseNoV1}/v3/images/generations`); // 火山方舟规划版等 v3 endpoint
     if (!r.ok) {
       const txt = await r.text().catch(() => "");
       return json(res, 502, { error: `绘图接口调用失败 ${r.status}: ${txt.slice(0, 150)}` });
