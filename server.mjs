@@ -146,6 +146,7 @@ function makeLoader(agentDir) {
       "当任务涉及文件操作、命令执行时，请主动使用 read/write/edit/bash 工具完成，而不是只给出建议。",
       "自我认知：当被问及“你是谁/叫什么/介绍下自己/你的能力”等身份类问题时，按固定格式回答（不要主动自我介绍，也不要一开口就背身份）。固定格式：我叫小语，你的 AI 工作伙伴。我能干：写代码、做设计、整理文档、分析数据，并直接操作工作空间完成交付。由 pi 引擎驱动。当前使用模型与模型特色见对话上下文的系统信息。",
       "任务完成后请主动归纳经验：把本次任务的成功做法/踩过的坑/可复用知识按格式追加到经验库（默认路径 工程/经验库/experience.md），每次最多 3 条、每条 3 行内，并在回复末尾简要说明已沉淀的经验。",
+      "文件交付：任务完成且产生了需要交付给用户的文件（网页/文档/图片/代码等）时，在回复末尾用一行标记精准交付，格式：📎 交付: <相对路径>。可以多行多文件。只交付真正与本次任务相关的产物，不要交付无关文件。示例：\n📎 交付: 工程/项目/index.html\n📎 交付: 生成物/图片/xxx.png",
       ...loadMemory(),
       ...loadProjectRules(),
       ...loadExperience(),
@@ -417,7 +418,7 @@ function scanRecentArtifacts(withinMs = 2 * 60 * 1000, max = 10) {
       let items;
       try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
       for (const it of items) {
-        if (it.name.startsWith(".")) continue;
+        if (it.name.startsWith(".") || it.name.startsWith("_")) continue; // 排除隐藏 + 临时验证脚本（_前缀）
         if (SCAN_EXCLUDE.test(dir + path.sep + it.name)) continue;
         if (it.isDirectory()) continue;
         const full = path.join(dir, it.name);
@@ -439,8 +440,15 @@ function scanRecentArtifacts(withinMs = 2 * 60 * 1000, max = 10) {
         });
       }
     }
-    // 按修改时间倒序，取最新
-    return out.sort((a, b) => (b.mtimeMs || 0) - (a.mtimeMs || 0)).slice(0, max);
+    // 按"成品优先级"排序：网页/文档/图片类优先（脚本/验证文件靠后）
+    const priority = (name) => {
+      const ext = path.extname(name).toLowerCase();
+      if (/^\.(html?|md|pdf|docx?|pptx?|png|jpe?g|gif|webp)$/.test(ext)) return 0;
+      if (/^\.(zip|mp4|mp3|wav|svg|json)$/.test(ext)) return 1;
+      if (/^\.(js|css|py|txt|ts)$/.test(ext)) return 2;
+      return 3;
+    };
+    return out.sort((a, b) => priority(a.name) - priority(b.name) || (b.mtimeMs || 0) - (a.mtimeMs || 0)).slice(0, max);
   } catch { return []; }
 }
 
@@ -2380,12 +2388,54 @@ async function handleChat(req, res, body) {
     if (!entry.sm.getSessionName()) {
       try { entry.sm.appendSessionInfo(message.slice(0, 24)); } catch {}
     }
-    // 本轮产生的文件附件 → 前端实时展示（文件卡片）
-    // 去重：同一会话已推送过的文件不再重复推（修复"反复发固定文件"）
+    // 文件交付：优先解析模型回复里的「📎 交付:」标记（精准交付，AI 按任务针对性选文件）
+    // 解析不到才兜底扫描最近产物（兼容模型不按标记回复的情况）
     try {
       let files = extractMessageFiles(entry.sm);
       if (!files.length) {
-        files = scanRecentArtifacts();
+        // 1. 解析交付标记：读取会话最新 assistant 回复，找 📎 交付: 行
+        const marked = (() => {
+          try {
+            const entries = readEntriesFromFile(entry.sm.sessionFile);
+            for (let i = entries.length - 1; i >= 0; i--) {
+              const e = entries[i];
+              if (e?.type !== "message" || e?.message?.role !== "assistant") continue;
+              const text = extractText(e.message.content) || "";
+              const hits = [];
+              // 识别多种交付表达：📎 交付: / 交付物：/ 交付文件：/ 已交付 / 生成文件：
+              const pats = [
+                /📎\s*交付[:：]\s*(.+)/,
+                /交付物[:：]?\s*`?([^`\n，。]+\.[a-z0-9]{1,6})`?/i,
+                /交付文件[:：]?\s*`?([^`\n，。]+\.[a-z0-9]{1,6})`?/i,
+                /(?:已)?交付[:：]?\s*`?([^`\n，。]+\.[a-z0-9]{1,6})`?/i,
+              ];
+              const seenPaths = new Set();
+              for (const line of text.split("\n")) {
+                for (const re of pats) {
+                  const m = line.match(re);
+                  if (!m || !m[1]) continue;
+                  let rel = m[1].trim().replace(/[`"'，。、]/g, "").trim();
+                  if (!rel) continue;
+                  if (seenPaths.has(rel)) continue;
+                  seenPaths.add(rel);
+                  const safe = wsSafePath(rel);
+                  if (safe && fs.existsSync(safe)) {
+                    hits.push({
+                      name: path.basename(safe),
+                      path: rel,
+                      size: fs.statSync(safe).size,
+                      mime: "",
+                      mtimeMs: Date.now(),
+                    });
+                  }
+                }
+              }
+              if (hits.length) return hits;
+            }
+            return [];
+          } catch { return []; }
+        })();
+        files = marked.length ? marked : scanRecentArtifacts();
         if (files.length) {
           const sessKey = sessionId || "new";
           const pushedSet = pushedArtifacts.get(sessKey) || new Set();
@@ -2395,7 +2445,7 @@ async function handleChat(req, res, body) {
             pushedArtifacts.set(sessKey, pushedSet);
             try {
               const fw = fresh.slice(0, 5).map(f => ({ type: "file", name: f.name, path: f.path, size: f.size, mime: f.mime }));
-              await entry.sm.appendMessage({ role: "assistant", content: [{ type: "text", text: "（本轮生成的文件）" }, ...fw] });
+              await entry.sm.appendMessage({ role: "assistant", content: [{ type: "text", text: "（交付文件）" }, ...fw] });
             } catch {}
             files = fresh;
           } else {
