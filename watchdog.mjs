@@ -74,7 +74,7 @@ async function restart() {
     await killOldServer();
     await new Promise(r => setTimeout(r, 1500));
     const fd = fs.openSync(LOG, "a");
-    const child = spawn("node", [SERVER], { cwd: CWD, stdio: ["ignore", fd, fd], detached: true });
+    const child = spawn("node", [SERVER], { cwd: CWD, stdio: ["ignore", fd, fd], detached: true, env: { ...process.env, PI_WEB_CWD: process.env.PI_WEB_CWD || CONFIG.cwd } });
     child.unref();
   } catch (e) {
     console.log("[watchdog] 重启失败:", e.message);

@@ -40,10 +40,17 @@ function resolvePiPackage() {
   return "";
 }
 
-// 默认工作空间：主目录/pi-workspace（跨平台），存在则用；否则退回启动目录
+// 默认工作空间：优先已存在的 pi-workspace（多盘符探测，兼容 C/D 盘部署）；否则退回启动目录
 function defaultCwd() {
-  const hw = path.join(os.homedir(), "pi-workspace");
-  try { if (fs.statSync(hw).isDirectory()) return hw; } catch {}
+  // 常见位置：D:\pi-workspace（本机真实工作空间）> 主目录/pi-workspace > 启动目录
+  const candidates = [];
+  if (process.platform === "win32") {
+    for (const drive of ["D:", "E:", "C:"]) candidates.push(path.join(drive, "pi-workspace"));
+  }
+  candidates.push(path.join(os.homedir(), "pi-workspace"));
+  for (const c of candidates) {
+    try { if (fs.statSync(c).isDirectory()) return c; } catch {}
+  }
   return process.cwd();
 }
 
