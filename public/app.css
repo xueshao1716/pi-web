@@ -1440,3 +1440,66 @@
   .msg .bubble tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
   .msg .bubble a { text-decoration: none; }
   .msg .bubble a:hover { text-decoration: underline; text-underline-offset: 2px; }
+
+  /* ══ v1.5.0 专项工作台 ══ */
+  .workshop-modal { width: min(980px, 94vw); }
+  .ws-body { display: flex; height: min(560px, 72vh); }
+  .ws-left { width: 300px; flex-shrink: 0; border-right: 1px solid var(--border); padding: 14px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+  .ws-panel-title { font-size: 12px; font-weight: 700; color: var(--accent); letter-spacing: .5px; }
+  .ws-form { display: flex; flex-direction: column; gap: 10px; }
+  .ws-field { display: flex; flex-direction: column; gap: 5px; }
+  .ws-field label { font-size: 11px; color: var(--dim-2); font-weight: 600; }
+  .ws-field input, .ws-field select {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 8px 10px; font-size: 13px; outline: none;
+    transition: border-color .12s;
+  }
+  .ws-field input:focus, .ws-field select:focus { border-color: var(--accent); }
+  .ws-row { display: flex; gap: 8px; }
+  .ws-row .ws-field { flex: 1; }
+  .ws-go {
+    margin-top: 4px; padding: 10px 0; border: none; border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+    color: #0b0c0f; font-weight: 700; font-size: 13.5px; cursor: pointer;
+    transition: filter .15s;
+  }
+  .ws-go:hover:not(:disabled) { filter: brightness(1.12); }
+  .ws-go:disabled { opacity: .6; cursor: not-allowed; }
+  .ws-tip { font-size: 11px; color: var(--dim-2); line-height: 1.6; }
+  .ws-coming { font-size: 11.5px; color: var(--dim-2); text-align: center; padding: 10px; border: 1px dashed var(--border); border-radius: 8px; }
+  .ws-right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .ws-right .ws-panel-title { padding: 14px 16px 0; }
+  .ws-progress { flex: 1; overflow-y: auto; padding: 10px 16px; font-family: var(--mono); font-size: 12px; display: flex; flex-direction: column; gap: 5px; }
+  .ws-empty { color: var(--dim-2); font-family: var(--sans); padding: 40px 0; text-align: center; }
+  .ws-log { color: var(--dim); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+  .ws-log.note { color: var(--text); font-weight: 600; }
+  .ws-log.ok { color: var(--green); }
+  .ws-log.warn { color: var(--yellow); }
+  .ws-log.err { color: var(--red); }
+  .ws-tool {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 10px; font-size: 11.5px;
+  }
+  .ws-tool.running { border-color: color-mix(in srgb, var(--yellow) 40%, var(--border)); }
+  .ws-tool.ok { border-color: color-mix(in srgb, var(--green) 30%, var(--border)); }
+  .ws-tool.err { border-color: color-mix(in srgb, var(--red) 35%, var(--border)); }
+  .ws-tool-ico { color: var(--green); font-weight: 700; }
+  .ws-tool-name { color: var(--accent); font-weight: 700; flex-shrink: 0; }
+  .ws-tool-cmd { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  .ws-tool-state { flex-shrink: 0; font-size: 10.5px; color: var(--dim-2); }
+  .ws-result { border-top: 1px solid var(--border); padding: 10px 16px; }
+  .ws-result-card {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px;
+  }
+  .ws-result-ico { font-size: 20px; }
+  .ws-result-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .ws-result-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ws-result-meta { font-size: 11px; color: var(--dim-2); }
+  .ws-result-dl {
+    font-size: 12px; color: var(--accent); text-decoration: none;
+    border: 1px solid var(--accent); border-radius: 6px; padding: 5px 12px; white-space: nowrap;
+    transition: background .2s, color .2s;
+  }
+  .ws-result-dl:hover { background: var(--accent); color: #0b0c0f; }
