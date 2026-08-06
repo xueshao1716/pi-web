@@ -1732,10 +1732,19 @@ const CAPABILITIES = [
   { icon: "🎨", name: "主题系统", desc: "霓虹主题 + 全屏壁纸 + 侧边栏透明" },
   { icon: "👤", name: "人格小语", desc: "直接、有条理、有审美、讨厌机器人味" },
 ];
+// 更新看板缓存：GitHub API 无 token 限流 60 次/时，缓存 6h 缓解 403（限流期不再反复拉取）
+const NOTICES_TTL = 6 * 3600 * 1000;
+let noticesCache = null;
+let noticesCacheAt = 0;
 async function handleNotices(res) {
-  let releases = [];
-  try {
-    const py = `import urllib.request, json, sys, io
+  let releases;
+  const now = Date.now();
+  if (noticesCache && now - noticesCacheAt < NOTICES_TTL) {
+    releases = noticesCache;
+  } else {
+    releases = [];
+    try {
+      const py = `import urllib.request, json, sys, io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 try:
     req = urllib.request.Request("https://api.github.com/repos/earendil-works/pi/releases?per_page=8", headers={"User-Agent":"pi-web","Accept":"application/vnd.github+json"})
@@ -1744,12 +1753,17 @@ try:
         print(json.dumps({"tag": r.get("tag_name",""), "name": r.get("name",""), "date": (r.get("published_at") or "")[:10], "body": (r.get("body") or "")[:300]}, ensure_ascii=False))
 except Exception as e:
     print("ERR:" + str(e))`;
-    const out = await new Promise((resolve, reject) => execFile("python", ["-c", py], { timeout: 30000, windowsHide: true, encoding: "utf8" }, (err, stdout) => err ? reject(err) : resolve(stdout)));
-    for (const line of out.trim().split("\n").filter(Boolean)) {
-      if (line.startsWith("ERR:")) { console.log("[pi-web] GitHub 拉取失败:", line.slice(4).slice(0, 60)); continue; }
-      try { releases.push(JSON.parse(line)); } catch {}
-    }
-  } catch {}
+      const out = await new Promise((resolve, reject) => execFile("python", ["-c", py], { timeout: 30000, windowsHide: true, encoding: "utf8" }, (err, stdout) => err ? reject(err) : resolve(stdout)));
+      for (const line of out.trim().split("\n").filter(Boolean)) {
+        if (line.startsWith("ERR:")) { console.log("[pi-web] GitHub 拉取失败:", line.slice(4).slice(0, 60)); continue; }
+        try { releases.push(JSON.parse(line)); } catch {}
+      }
+    } catch {}
+    // 失败也缓存（空列表），限流期不反复打 GitHub
+    noticesCache = releases;
+    noticesCacheAt = now;
+    console.log(`[pi-web] 更新看板缓存刷新（${releases.length} 条 release，缓存 ${NOTICES_TTL/3600000}h）`);
+  }
   let piVersion = "?";
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(path.dirname(CONFIG.piPackage), "..", "package.json"), "utf8"));

@@ -1378,3 +1378,19 @@
     background: linear-gradient(180deg, var(--accent-2), var(--accent-deep));
     box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 55%, transparent);
   }
+
+  /* ══ v1.4.2 视觉打磨：工具卡折叠提示 + 消息间距节奏（纯 CSS）══ */
+  /* 工具卡折叠态：头部右侧 chevron 提示可展开（展开态 ▾ / 折叠态 ▸） */
+  .tool .tool-head::after {
+    content: "▾"; font-size: 10px; color: var(--dim-2); flex-shrink: 0;
+    transition: transform .15s;
+  }
+  .tool:not(.expanded) .tool-head::after { transform: rotate(-90deg); }
+  /* 工具卡折叠态轻微淡化，展开后恢复（区分主次） */
+  .tool:not(.expanded):not(.running) { opacity: .82; }
+  .tool:not(.expanded):not(.running):hover { opacity: 1; }
+  /* 消息间距节奏：相邻消息紧凑，用户/助手角色切换时留白呼吸 */
+  #messages .msg { padding-top: 10px; }
+  #messages .msg.user + .msg.assistant, #messages .msg.assistant + .msg.user { padding-top: 18px; }
+  #messages .msg + .tool { margin-top: 4px; }
+  #messages .tool + .msg { margin-top: 14px; }
