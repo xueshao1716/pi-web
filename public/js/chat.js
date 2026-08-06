@@ -796,6 +796,36 @@ function endTool(toolCallId, isError) {
   if (card.hasDiff) card.el.classList.add("expanded");
 }
 
+// ══ 工具卡运行时长监控：running 卡片实时显示已用时长，超 120s 标「可能卡住」 ══
+// （解决「bash 卡住但无提示」：旧逻辑看门狗因 hasRunning 跳过警告，卡住的卡片会无限转圈）
+setInterval(() => {
+  for (const card of render.toolEls.values()) {
+    if (!card.el.classList.contains("running")) continue;
+    const sec = Math.round((performance.now() - card.start) / 1000);
+    card.durEl.textContent = "已运行 " + fmtDur(performance.now() - card.start);
+    if (sec > 120 && !card.timeoutWarned) {
+      card.timeoutWarned = true;
+      card.el.classList.add("tool-timeout");
+      card.stateEl.innerHTML = `<span style="color:var(--yellow)">⚠ 可能卡住</span>`;
+      setStatus("工具可能卡住", "error");
+    }
+  }
+}, 1000);
+
+// ══ 回到底部按钮：滚动远离底部时出现，点击平滑回底（长对话便捷） ══
+(function initScrollBottom() {
+  const msgs = $("messages");
+  const btn = $("scroll-bottom");
+  if (!msgs || !btn) return;
+  msgs.addEventListener("scroll", () => {
+    const far = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight > 200;
+    if (btn.hidden !== !far) btn.hidden = !far;
+  }, { passive: true });
+  btn.addEventListener("click", () => {
+    msgs.scrollTo({ top: msgs.scrollHeight, behavior: "smooth" });
+  });
+})();
+
 // ══ 简易 Markdown ══
 function md(src) {
   let s = esc(src);

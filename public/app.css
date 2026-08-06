@@ -1394,3 +1394,20 @@
   #messages .msg.user + .msg.assistant, #messages .msg.assistant + .msg.user { padding-top: 18px; }
   #messages .msg + .tool { margin-top: 4px; }
   #messages .tool + .msg { margin-top: 14px; }
+
+  /* ══ v1.4.3 视觉：回到底部按钮 + 工具卡超时态（配合 app.js 超时监控）══ */
+  #main { position: relative; }
+  .scroll-bottom {
+    position: absolute; right: 18px; bottom: 96px; z-index: 20;
+    width: 34px; height: 34px; border-radius: 50%;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--dim);
+    font-size: 15px; cursor: pointer; line-height: 1;
+    box-shadow: 0 4px 16px rgba(0,0,0,.4);
+    transition: color .12s, border-color .12s, opacity .18s;
+  }
+  .scroll-bottom:hover { color: var(--accent); border-color: var(--accent); }
+  .scroll-bottom[hidden] { display: none; }
+  .tool.tool-timeout {
+    border-color: color-mix(in srgb, var(--yellow) 40%, var(--border));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--yellow) 15%, transparent);
+  }
