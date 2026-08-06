@@ -1043,7 +1043,7 @@ async function refreshEmotion() {
     const s = await api("/api/emotion?session=" + encodeURIComponent(currentId || "new"));
     const m = emoMeta(s);
     $("emo-ico").textContent = m.emoji;
-    $("emo-label").textContent = m.label;
+    $("emo-pill").title = "小语情绪：" + m.label; // 状态名放悬停提示，不占顶栏
     const pill = $("emo-pill");
     if (pill.dataset.emo !== m.cls) {
       pill.dataset.emo = m.cls;

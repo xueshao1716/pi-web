@@ -998,23 +998,24 @@
   .status-pill.idle .dot { background: var(--dim-2); }
   @keyframes pulse { 50% { opacity: .25; } }
 
-  /* ── 情绪指示器（小语情绪控制系统的前端展示）── */
+  /* ── 情绪指示器（小语情绪控制系统的前端展示，仅 emoji + 悬停提示）── */
   .emo-pill {
-    display: flex; align-items: center; gap: 6px; flex-shrink: 0;
-    font-size: 11.5px; font-weight: 600; color: var(--dim);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    min-width: 30px; height: 30px;
+    font-size: 15px;
     background: var(--panel); border: 1px solid var(--border);
-    border-radius: 20px; padding: 5px 12px;
-    transition: color .2s, border-color .2s, box-shadow .2s;
+    border-radius: 50%; padding: 0;
+    transition: border-color .2s, box-shadow .2s;
     user-select: none;
   }
-  .emo-pill .emo-ico { font-size: 13px; line-height: 1; }
+  .emo-pill .emo-ico { line-height: 1; }
   .emo-pill.pop { animation: emoPop .4s ease; }
   @keyframes emoPop { 0% { transform: scale(1); } 40% { transform: scale(1.18); } 100% { transform: scale(1); } }
   .emo-pill[data-emo="risk"] { color: var(--yellow); border-color: color-mix(in srgb, var(--yellow) 45%, var(--border)); }
   .emo-pill[data-emo="high"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 18%, transparent); }
   .emo-pill[data-emo="calm"] { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, var(--border)); }
   .emo-pill[data-emo="low"] { color: var(--dim-2); }
-  @media (max-width: 768px) { .emo-pill .emo-label { display: none; } }
+  @media (max-width: 480px) { .emo-pill { min-width: 28px; height: 28px; font-size: 14px; } }
 
   /* ── 消息区 ── */
   #messages { flex: 1; overflow-y: auto; min-height: 0; scroll-behavior: smooth; padding-bottom: 6px; }
