@@ -1332,6 +1332,29 @@ async function handleWsFile(res, req, url) {
   if (url?.searchParams.get("download") === "1") {
     headers["Content-Disposition"] = `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(safe))}`;
   }
+  // 断点续传支持（HTTP Range，借鉴 file-transfer-go）：大文件中断后可从断点续传
+  const stat = fs.statSync(safe);
+  const total = stat.size;
+  const range = req.headers?.range || "";
+  const m = range.match(/bytes=(\d+)-(\d*)/);
+  if (m) {
+    let start = parseInt(m[1], 10);
+    let end = m[2] ? parseInt(m[2], 10) : total - 1;
+    if (isNaN(start) || start >= total) {
+      res.writeHead(416, { "Content-Range": `bytes */${total}` });
+      res.end();
+      return;
+    }
+    if (end >= total) end = total - 1;
+    headers["Content-Range"] = `bytes ${start}-${end}/${total}`;
+    headers["Accept-Ranges"] = "bytes";
+    headers["Content-Length"] = end - start + 1;
+    res.writeHead(206, headers);
+    fs.createReadStream(safe, { start, end }).pipe(res);
+    return;
+  }
+  headers["Accept-Ranges"] = "bytes";
+  headers["Content-Length"] = total;
   res.writeHead(200, headers);
   fs.createReadStream(safe).pipe(res);
 }
