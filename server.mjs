@@ -2689,11 +2689,16 @@ async function handleChat(req, res, body) {
         })();
         // 模型有明确交付标记 → 直接用；否则按用户请求关键词+类型智能查找工作空间；再无兜底最近产物
         if (!marked.length) {
+          // 用户是否明确要文件（发/给/看/发一下/要文件/找文件）——创作指令（做个/帮我写）不推文件
+          const wantFile = /发|给.*(我|你|他|她)|看(看|下|一下)?|发(个|一下|我)|找.*文件|要文件|文件.*(发|给|看)/.test(message);
+          if (wantFile) {
           // 从用户请求提取关键词（去掉"发/给/我/一下/的/个/看"等虚词，保留"酒店/ppt/图片"等实词）
           const kwRaw = message.replace(/[发给我你它他她们一下看个这那张张那些最最近做的的了的地得把请帮忙]/g, " ");
           const typeExts = wantImg ? [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"] : wantPpt ? [".ppt", ".pptx"] : wantDoc ? [".doc", ".docx", ".pdf", ".md", ".txt"] : null;
-          const found = findWorkspaceFiles({ keyword: kwRaw, types: typeExts });
-          files = found.length ? found : scanRecentArtifacts();
+            const found = findWorkspaceFiles({ keyword: kwRaw, types: typeExts });
+            files = found.length ? found : scanRecentArtifacts();
+          }
+          // 不明确要文件（创作/对话）→ 不推任何文件
         } else {
           files = marked;
         }
