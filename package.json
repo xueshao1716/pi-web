@@ -5,6 +5,7 @@
   "description": "pi coding agent web interface (SSE chat over pi SDK)",
   "type": "module",
   "scripts": {
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "test": "node --test tests/unit/*.test.mjs"
   }
 }

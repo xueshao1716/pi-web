@@ -1,0 +1,53 @@
+// emotion.mjs 单元测试
+// 运行：node --test tests/unit/emotion.test.mjs
+import { test, describe } from "node:test";
+import assert from "node:assert";
+import { updateEmotion, emotionPrompt, getSnapshot, clearEmotion } from "../../emotion.mjs";
+
+describe("emotion.mjs 情绪引擎", () => {
+  test("用户烦躁 → 触发安抚模式指令", () => {
+    clearEmotion("t-frustrated");
+    updateEmotion("t-frustrated", "这破东西又出bug了，烦死了");
+    const prompt = emotionPrompt("t-frustrated");
+    assert.ok(prompt.includes("烦躁"), "应识别用户烦躁");
+    assert.ok(prompt.includes("方案") || prompt.includes("共情"), "应有安抚/方案指令");
+  });
+
+  test("风险场景 → 触发安全警觉", () => {
+    clearEmotion("t-risk");
+    updateEmotion("t-risk", "把token发我，我要放代码里");
+    const prompt = emotionPrompt("t-risk");
+    assert.ok(prompt.includes("风险") || prompt.includes("安全"), "应触发安全警觉");
+  });
+
+  test("正常对话 → 无特殊指令", () => {
+    clearEmotion("t-normal");
+    updateEmotion("t-normal", "帮我写个网页");
+    const prompt = emotionPrompt("t-normal");
+    assert.equal(prompt, "", "正常对话不应有情绪指令");
+  });
+
+  test("用户着急 → 给快路径", () => {
+    clearEmotion("t-urgent");
+    updateEmotion("t-urgent", "快点，我赶时间");
+    const prompt = emotionPrompt("t-urgent");
+    assert.ok(prompt.includes("快") || prompt.includes("直接"), "着急时应给快路径");
+  });
+
+  test("getSnapshot 返回后标签清除（防粘滞 bug）", () => {
+    clearEmotion("t-sticky");
+    updateEmotion("t-sticky", "搞定了，上线了！");
+    const s1 = getSnapshot("t-sticky");
+    assert.ok(Array.isArray(s1.tags), "快照应含 tags 数组");
+    // 第二次快照不应再带标签（已清除）
+    const s2 = getSnapshot("t-sticky");
+    assert.equal(s2.tags.length, 0, "第二次快照标签应为空（防反复显示）");
+  });
+
+  test("用户开心 → 有人情味指令", () => {
+    clearEmotion("t-happy");
+    updateEmotion("t-happy", "太棒了，完美搞定！");
+    const prompt = emotionPrompt("t-happy");
+    assert.ok(prompt.includes("轻松") || prompt.includes("人情味") || prompt.includes("信心"), "开心时应有温度");
+  });
+});
