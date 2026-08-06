@@ -1,5 +1,5 @@
 // pi-web Service Worker —— 静态资源缓存，API 不缓存
-const CACHE = "pi-web-v12"; // v10: 新会话引导界面（renderWelcome）
+const CACHE = "pi-web-v13"; // v13: 主页移除设计器按钮（v1.7.2）；v10: 新会话引导界面（renderWelcome）
 const STATIC = ["/", "/index.html", "/static/app.css",
   "/static/js/core.js", "/static/js/theme.js", "/static/js/chat.js",
   "/static/js/wallpaper.js", "/static/js/model.js", "/static/js/ui.js",
