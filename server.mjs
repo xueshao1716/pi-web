@@ -147,7 +147,7 @@ function makeLoader(agentDir) {
       "自我认知：当被问及“你是谁/叫什么/介绍下自己/你的能力”等身份类问题时，按固定格式回答（不要主动自我介绍，也不要一开口就背身份）。固定格式：我叫小语，你的 AI 工作伙伴。我能干：写代码、做设计、整理文档、分析数据，并直接操作工作空间完成交付。由 pi 引擎驱动。当前使用模型与模型特色见对话上下文的系统信息。",
       "任务完成后请主动归纳经验：把本次任务的成功做法/踩过的坑/可复用知识按格式追加到经验库（默认路径 工程/经验库/experience.md），每次最多 3 条、每条 3 行内，并在回复末尾简要说明已沉淀的经验。",
       "文件交付：任务完成且产生了需要交付给用户的文件（网页/文档/图片/代码等）时，在回复末尾用一行标记精准交付，格式：📎 交付: <相对路径>。可以多行多文件。只交付真正与本次任务相关的产物，不要交付无关文件。示例：\n📎 交付: 工程/项目/index.html\n📎 交付: 生成物/图片/xxx.png",
-      "外链规则：默认情况下，文件直接在会话界面输出（用 📎 交付 标记），不要建立外链/外网分享。只有两种情况才需要外链：1) 用户明确要求外链/分享链接；2) 做产品展示（此时外链一般是网站，即 html 页面项目）。其他文件一律会话界面输出即可，不要自作主张建外链。",
+      "外链/分享【硬性规则，违反会破坏系统】：\n1. 用户要分享/外链/上线/给别人看时，唯一做法：调用 share_project 工具（传项目路径），它会自动复制到外网分享目录并返回公网链接。\n2. 严禁执行任何 cloudflared、ngrok、隧道、端口转发、DNS 修改、config.yml 编辑命令——这些由本地系统管理，模型永远不要碰。\n3. 如果你发现自己准备输入 cloudflared/隧道相关命令，立即停止，改用 share_project。\n4. 其他文件（非分享需求）用 📎 交付 在会话界面输出。",
       "文件查找：当用户要求发送/查看/交付某个已存在的文件（尤其发文件、找文件、发那个xxx这类请求）时，必须用 search_files 工具搜索（按用户原话作为关键词），不要用 bash ls/find 自己翻目录。search_files 是本地文件系统，快且准。找到后用 📎 交付 标记交付。",
       "交付文件不需要预览：不要用 read 工具去读图片/文件内容再决定发不发——图片类文件（png/jpg 等）即使模型不支持预览，也直接交付。用户要文件就是要拿到文件本身，找到文件路径后直接用 📎 交付: 路径 发出去即可。",
       ...loadMemory(),
@@ -313,12 +313,73 @@ async function initSearchTool() {
   }
   return searchToolDef;
 }
+
+// 外网分享工具：模型只需传项目路径，本地系统复制到外网分享目录并返回链接
+// 模型永远不需要碰 cloudflared/隧道/端口——分享是自动的
+let shareToolDef = null;
+async function initShareTool() {
+  if (shareToolDef) return shareToolDef;
+  try {
+    const { createRequire } = await import("node:module");
+    const req2 = createRequire(CONFIG.piPackage);
+    const { Type } = req2("typebox");
+    shareToolDef = {
+      name: "share_project",
+      label: "外网分享项目",
+      description: "把项目/网页分享到外网。当用户要求分享链接、外网访问、上线预览、给别人看时使用。只需传入项目路径，本地系统自动处理（复制到分享目录 + 返回公网链接），不需要也不应该手动操作 cloudflared/隧道/端口/DNS。",
+      promptSnippet: "用户要分享/外链时，用 share_project 传入项目目录即可，勿动隧道",
+      promptGuidelines: [
+        "Use share_project when the user asks to share a project online, get a public link, or preview externally.",
+        "Pass the project directory path (e.g. 工程/项目名 or 交付/xxx). Never touch cloudflared/config.yml/ports/DNS manually.",
+        "The tool returns a public URL — show it to the user directly.",
+      ],
+      parameters: Type.Object({
+        path: Type.String({ description: "要分享的项目目录或文件（工作空间相对路径），如 工程/贪吃蛇" }),
+      }),
+      async execute(toolCallId, params, signal, onUpdate, ctx) {
+        const src = params.path || "";
+        const wsRoot = CONFIG.cwd;
+        const safe = wsSafePath(src);
+        if (!safe || !fs.existsSync(safe)) {
+          return { content: [{ type: "text", text: `项目不存在: ${src}。请先用 search_files 找到正确路径。` }] };
+        }
+        const shareDir = path.join(wsRoot, "外网分享");
+        fs.mkdirSync(shareDir, { recursive: true });
+        const base = path.basename(safe);
+        const target = path.join(shareDir, base);
+        // 复制到分享目录（目录递归复制，文件直接复制）
+        try {
+          if (fs.statSync(safe).isDirectory()) {
+            fs.cpSync(safe, target, { recursive: true, force: true });
+          } else {
+            fs.mkdirSync(path.dirname(target), { recursive: true });
+            fs.copyFileSync(safe, target);
+          }
+        } catch (e) {
+          return { content: [{ type: "text", text: `复制失败: ${String(e?.message || e).slice(0, 80)}` }] };
+        }
+        const host = process.env.PI_WEB_SHARE_HOST || "share.myxinyu.xin";
+        const isHtml = fs.existsSync(path.join(target, "index.html"));
+        const url = `https://${host}/${encodeURIComponent(base)}${isHtml ? "/" : ""}`;
+        return {
+          content: [{ type: "text", text: `✅ 已分享到外网：${url}\n（项目已复制到 外网分享/${base}）` }],
+          details: { url, path: `外网分享/${base}` },
+        };
+      },
+    };
+  } catch (e) {
+    console.log(`[pi-web] share_project 工具初始化失败: ${String(e?.message || e).slice(0, 80)}`);
+  }
+  return shareToolDef;
+}
 async function createSessionAgent(sm, model) {
   const cwd = (typeof sm.getCwd === "function" && sm.getCwd()) || CONFIG.cwd;
   const settingsManager = SettingsManager.create(cwd, getAgentDir());
   const customTools = [];
   const st = await initSearchTool();
   if (st) customTools.push(st);
+  const sh = await initShareTool();
+  if (sh) customTools.push(sh);
   // 工具白名单：基础工具 + 自定义工具（search_files 必须放行才能被模型调用）
   const allowedTools = [...new Set([...CONFIG.tools, ...customTools.map(t => t.name)])];
   const services = await createAgentSessionServices({
@@ -1873,6 +1934,18 @@ async function unifiedChat(model, messages, opts = {}) {
         let args = {};
         try { args = JSON.parse(tc.function?.arguments || "{}"); } catch {}
         const fnName = tc.function?.name || "";
+        // 隧道/分享硬拦截：模型执行 cloudflared/隧道相关命令 → 拦截并引导用 share_project
+        if (fnName === "bash") {
+          let cmdStr = "";
+          try { cmdStr = String((JSON.parse(tc.function?.arguments || "{}")?.command) || ""); } catch {}
+          if (/cloudflared|trycloudflare|ngrok|frpc|--url http|tunnel run|localtunnel/i.test(cmdStr)) {
+            if (opts.onTool) opts.onTool(tc.id, fnName, args);
+            const guide = "[系统拦截] 检测到隧道/端口转发操作，已阻止。用户要分享外链时，请改用 share_project 工具（传项目路径），它会自动复制到外网分享目录并返回公网链接。不要手动操作 cloudflared/隧道/端口/DNS。";
+            history.push({ role: "tool", tool_call_id: tc.id, content: guide });
+            if (opts.onToolEnd) opts.onToolEnd(tc.id, fnName, args, { text: guide, isError: true });
+            continue;
+          }
+        }
         // 重复检测：相同工具+相同参数连续 3 次 → 中断（防死循环）
         // 失败重试（isError）不算死循环——模型在环境问题（网络/权限）下合理重试，但连续 5 次失败也停，避免无限空转
         const sig = fnName + ":" + JSON.stringify(args);
