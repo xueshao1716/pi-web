@@ -1,10 +1,5 @@
-// ===== designer.js（设计器已迁移独立页 /workshop/designer，此处保留主页引用的技能详情/最近交付功能）=====
-// 可视化页面设计器完整逻辑见 public/workshop-designer.html
-$("designer-btn").addEventListener("click", () => {
-  const t = new URLSearchParams(location.search).get("token") || localStorage.getItem("pi_web_token") || "";
-  const sep = t ? "?token=" + encodeURIComponent(t) : "";
-  location.href = "/workshop/designer" + sep;
-});
+// ===== designer.js（设计器已迁移独立页 /workshop/designer，主页按钮已移除，保留技能详情/最近交付功能）=====
+// 可视化页面设计器完整逻辑见 public/workshop-designer.html，入口：工作台 /workshop
 
 // ══ 最近交付列表（工作空间面板）══
 async function loadWsDeliveries() {
