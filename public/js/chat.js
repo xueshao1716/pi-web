@@ -313,6 +313,19 @@ function renderHistoryWindow() {
   box.scrollTop = box.scrollHeight;
 }
 
+// 加载更早一批（滚动触发 / 哨兵按钮点击共用）
+function loadOlderHistory() {
+  const box = $("messages");
+  if (histBusy || histLoaded >= histMsgs.length) return;
+  if (render.assistantEl) return; // 流式进行中
+  histBusy = true;
+  const dist = box.scrollHeight - box.scrollTop; // 锚定：保持距底部距离
+  histLoaded = Math.min(histMsgs.length, histLoaded + HIST_PAGE);
+  renderHistoryWindow();
+  box.scrollTop = Math.max(0, box.scrollHeight - dist);
+  setTimeout(() => { histBusy = false; }, 120);
+}
+
 // 渲染一批历史消息（思考合并逻辑原样保留）
 function renderChunk(list) {
   let thinkBuf = "";
@@ -355,16 +368,12 @@ function renderChunk(list) {
   box.addEventListener("scroll", () => {
     if (histBusy || histLoaded >= histMsgs.length) return;
     if (render.assistantEl) return; // 流式进行中
-    if (box.scrollTop < 100) {
-      histBusy = true;
-      const dist = box.scrollHeight - box.scrollTop; // 锚定：记录距底部距离
-      histLoaded = Math.min(histMsgs.length, histLoaded + HIST_PAGE);
-      renderHistoryWindow();
-      box.scrollTop = Math.max(0, box.scrollHeight - dist);
-      // 防连击：渲染引发的 scroll 事件异步重入时忽略，下帧再放行
-      setTimeout(() => { histBusy = false; }, 120);
-    }
+    if (box.scrollTop < 100) loadOlderHistory();
   }, { passive: true });
+  // 哨兵按钮点击加载（手机端上滑触发不可靠时的兜底入口）
+  box.addEventListener("click", (e) => {
+    if (e.target && e.target.id === "lazy-more") loadOlderHistory();
+  });
 })();
 
 async function selectSession(id) {
@@ -381,6 +390,7 @@ async function selectSession(id) {
   // ══ 会话缓存：同浏览器重复打开不再重新下载（localStorage，限文本消息防超容量）══
   const CACHE_KEY = "piweb_msgcache_" + id;
   let cacheUsed = false;
+  let cacheUsedCount = 0; // 缓存命中时的条数（用于与新鲜数据对比，判断是否需要重渲）
   try {
     const cached = localStorage.getItem(CACHE_KEY);
     if (cached) {
@@ -389,6 +399,7 @@ async function selectSession(id) {
         // 30 分钟内的缓存：先渲染（秒开），后台再校验更新
         renderMessages(c.messages);
         cacheUsed = true;
+        cacheUsedCount = c.messages.length;
       }
     }
   } catch {}
@@ -403,11 +414,10 @@ async function selectSession(id) {
     } catch {}
     if (!cacheUsed) renderMessages(data.messages);
     else {
-      // 缓存已显示，但消息数变化（有更新）时重渲
+      // 缓存已显示，但服务端消息数与缓存命中时不同（有更新）→ 重渲
+      // 修复：用缓存命中时的条数对比，不能用刚写入的新缓存（否则恒相等永不重渲）
       const fresh = data.messages.length;
-      let cachedCount = 0;
-      try { const c = JSON.parse(localStorage.getItem(CACHE_KEY)); cachedCount = c?.messages?.length || 0; } catch {}
-      if (fresh !== cachedCount) renderMessages(data.messages);
+      if (fresh !== cacheUsedCount) renderMessages(data.messages);
     }
   } catch {}
   // 移除“加载会话中…”占位
