@@ -472,3 +472,39 @@ $("wsfull-search").addEventListener("input", debounce(async (e) => {
     if (!d.results || !d.results.length) box.innerHTML = '<div class="fp-empty">无结果</div>';
   } catch { box.innerHTML = '<div class="fp-empty">搜索失败</div>'; }
 }, 300));
+
+// ══ 全屏侧边栏拖拽调宽（记住用户偏好）══
+(function () {
+  const resizer = $("wsfull-resizer");
+  if (!resizer) return;
+  let startX = 0, startW = 0, dragging = false;
+  const side = () => document.querySelector(".wsfull-side");
+  const WSFULL_W_KEY = "pi_wsfull_side_w";
+  // 恢复记忆的宽度
+  try {
+    const saved = parseInt(localStorage.getItem(WSFULL_W_KEY) || "280", 10);
+    if (saved >= 160 && saved <= 600) side().style.width = saved + "px";
+  } catch {}
+  resizer.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    dragging = true;
+    resizer.classList.add("dragging");
+    startX = e.clientX;
+    startW = side().offsetWidth;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    const w = Math.min(600, Math.max(160, startW + (e.clientX - startX)));
+    side().style.width = w + "px";
+  });
+  window.addEventListener("mouseup", () => {
+    if (!dragging) return;
+    dragging = false;
+    resizer.classList.remove("dragging");
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    try { localStorage.setItem(WSFULL_W_KEY, String(side().offsetWidth)); } catch {}
+  });
+})();
