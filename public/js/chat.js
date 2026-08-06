@@ -286,7 +286,34 @@ async function refreshMessages() {
 }
 
 function renderMessages(msgs) {
-  // 连续 assistant 的思考合并为一个块，避免多轮工具调用时思考块堆叠
+  histMsgs = msgs || [];
+  histLoaded = Math.min(HIST_PAGE, histMsgs.length);
+  renderHistoryWindow();
+}
+
+// ══ 历史消息窗口渲染（借鉴 agegr/pi-web chat-lazy-load）══
+// 尾部窗口渲染 + 顶部哨兵 + 滚动加载更早 + 滚动锚定（保持距底部距离，插入旧消息不跳动）
+const HIST_PAGE = 60;
+let histMsgs = [];
+let histLoaded = 0;
+let histBusy = false;
+
+function renderHistoryWindow() {
+  const box = $("messages");
+  box.innerHTML = "";
+  if (histLoaded < histMsgs.length) {
+    const s = document.createElement("div");
+    s.className = "lazy-more";
+    s.id = "lazy-more";
+    s.textContent = `↑ 加载更早消息（还有 ${histMsgs.length - histLoaded} 条）`;
+    box.appendChild(s);
+  }
+  renderChunk(histMsgs.slice(-histLoaded));
+  box.scrollTop = box.scrollHeight;
+}
+
+// 渲染一批历史消息（思考合并逻辑原样保留）
+function renderChunk(list) {
   let thinkBuf = "";
   let thinkN = 0;
   const flush = () => {
@@ -295,7 +322,7 @@ function renderMessages(msgs) {
       thinkBuf = ""; thinkN = 0;
     }
   };
-  for (const m of msgs) {
+  for (const m of list) {
     if (m.role === "user") { flush(); addUserMsg(m.text, m.id); if (Array.isArray(m.files)) m.files.forEach(f => addFileMsg(f, "user")); }
     else if (m.role === "assistant") {
       if (m.think && m.think.trim()) { thinkBuf += (thinkBuf ? "\n\n" : "") + m.think; thinkN++; }
@@ -319,6 +346,25 @@ function renderMessages(msgs) {
   }
   flush();
 }
+
+// 滚动到顶加载更早消息（流式进行中不重建，避免打断进行中的视图）
+(function initLazyHistory() {
+  const box = $("messages");
+  if (!box) return;
+  box.addEventListener("scroll", () => {
+    if (histBusy || histLoaded >= histMsgs.length) return;
+    if (render.assistantEl) return; // 流式进行中
+    if (box.scrollTop < 100) {
+      histBusy = true;
+      const dist = box.scrollHeight - box.scrollTop; // 锚定：记录距底部距离
+      histLoaded = Math.min(histMsgs.length, histLoaded + HIST_PAGE);
+      renderHistoryWindow();
+      box.scrollTop = Math.max(0, box.scrollHeight - dist);
+      // 防连击：渲染引发的 scroll 事件异步重入时忽略，下帧再放行
+      setTimeout(() => { histBusy = false; }, 120);
+    }
+  }, { passive: true });
+})();
 
 async function selectSession(id) {
   currentId = id;
