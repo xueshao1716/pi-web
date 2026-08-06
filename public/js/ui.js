@@ -149,7 +149,6 @@ async function openGit(tab) {
     out.textContent = "Git 出错: " + e.message;
   }
 }
-$("git-btn").addEventListener("click", () => openGit("status"));
 $("git-close").addEventListener("click", () => $("git-modal").classList.remove("show"));
 $("git-modal").addEventListener("click", (e) => { if (e.target === $("git-modal")) $("git-modal").classList.remove("show"); });
 $("git-tab-status").addEventListener("click", () => openGit("status"));
@@ -396,17 +395,15 @@ function notifyDone() {
 
 // ══ 侧边栏视图：单按钮 + 下拉切换 ══
 let activeTab = "sessions";
-const VIEW_LABELS = { sessions: "会话", files: "文件", skills: "技能", workspace: "工作空间" };
+const VIEW_LABELS = { sessions: "会话", skills: "技能", workspace: "工作空间" };
 function switchView(v) {
   activeTab = v;
   $("view-current").textContent = VIEW_LABELS[v];
   $("panel-sessions").hidden = v !== "sessions";
-  $("panel-files").hidden = v !== "files";
   $("panel-skills").hidden = v !== "skills";
   $("panel-workspace").hidden = v !== "workspace";
   $("view-menu").hidden = true;
   $("view-btn").classList.remove("open");
-  if (v === "files") loadFileTree();
   if (v === "skills") loadSkills();
   if (v === "workspace") { loadWsTree(); loadWsDeliveries(); }
 }
@@ -467,7 +464,6 @@ async function renderDir(p, container, depth) {
     container.innerHTML = `<div class="fp-empty">加载失败: ${esc(e.message)}</div>`;
   }
 }
-$("ft-refresh").addEventListener("click", loadFileTree);
 // 新建项目分组
 $("proj-add").addEventListener("click", async () => {
   const name = await appPrompt("新建项目分组：", "", "新建项目");

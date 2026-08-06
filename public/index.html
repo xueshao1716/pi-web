@@ -42,7 +42,6 @@
         <button class="view-btn" id="view-btn">☰ 菜单 <span id="view-current" class="view-current">会话</span> <span class="caret">▾</span></button>
         <div class="view-menu" id="view-menu" hidden>
           <div class="view-item" data-view="sessions">☰ 会话历史</div>
-          <div class="view-item" data-view="files">📁 文件浏览</div>
           <div class="view-item" data-view="skills">⚡ 技能</div>
           <div class="view-item" data-view="workspace">📦 工作空间</div>
         </div>
@@ -53,16 +52,12 @@
           <div class="ft-head"><span>会话历史</span><button class="ft-refresh" id="proj-add" title="新建项目分组">＋ 项目</button></div>
           <div id="session-list"></div>
         </div>
-        <div class="tab-panel" id="panel-files" hidden>
-          <div class="ft-head"><span>📁 工作目录</span><span style="display:flex;gap:4px"><button class="ft-refresh" id="git-btn" title="Git 状态">⎇</button><button class="ft-refresh" id="ft-refresh" title="刷新">↻</button></span></div>
-          <div id="file-tree"></div>
-        </div>
         <div class="tab-panel" id="panel-skills" hidden>
           <div class="ft-head"><span>⚡ 技能</span><button class="ft-refresh" id="sk-refresh" title="刷新">↻</button></div>
           <div id="skill-list"></div>
         </div>
         <div class="tab-panel" id="panel-workspace" hidden>
-          <div class="ft-head"><span>📦 工作空间</span><span style="display:flex;gap:4px"><button class="ft-refresh" id="ws-new-proj" title="新建项目">＋项目</button><button class="ft-refresh" id="ws-refresh" title="刷新">↻</button></span></div>
+          <div class="ft-head"><span>📦 工作空间</span><span style="display:flex;gap:4px"><button class="ft-refresh" id="ws-git-btn" title="Git 状态">⎇</button><button class="ft-refresh" id="ws-new-proj" title="新建项目">＋项目</button><button class="ft-refresh" id="ws-refresh" title="刷新">↻</button></span></div>
           <div class="ws-search-wrap"><input id="ws-search" placeholder="🔍 搜索工作空间文件…" autocomplete="off"></div>
           <div id="ws-search-results"></div>
           <div class="ws-del-head">📤 最近交付</div>

@@ -224,6 +224,7 @@ function openWsMedia(url, type, name) {
   document.body.appendChild(ov);
 }
 $("ws-refresh").addEventListener("click", () => { loadWsTree(); loadWsDeliveries(); });
+$("ws-git-btn").addEventListener("click", () => openGit("status"));
 
 // ⓘ 系统说明
 const SYS_VERSION = "v1.9.3"; // 版本号：更新说明书时递增
