@@ -338,15 +338,11 @@ $("send").addEventListener("click", () => {
 $("new-session").addEventListener("click", newSession);
 $("btn-file").addEventListener("click", (e) => {
   e.stopPropagation();
-  // 直接触发文件选择器（一步到位，不再钻菜单）；按住 Shift 才展开菜单（浏览工作目录）
-  if (e.shiftKey) {
-    const m = $("attach-menu");
-    m.hidden = !m.hidden;
-    closeFilePicker();
-    closeSlashMenu();
-  } else {
-    $("local-file").click();
-  }
+  // 展开菜单：⬆ 上传本地文件 / 📁 浏览工作目录（两个选项都保留）
+  const m = $("attach-menu");
+  m.hidden = !m.hidden;
+  closeFilePicker();
+  closeSlashMenu();
 });
 $("att-browse").addEventListener("click", () => {
   $("attach-menu").hidden = true;
