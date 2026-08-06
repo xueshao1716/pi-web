@@ -154,6 +154,13 @@
   .ft-refresh { background: none; border: none; color: var(--dim-2); cursor: pointer; font-size: 13px; }
   .ft-refresh:hover { color: var(--accent); }
   #file-tree, #skill-list { flex: 1; overflow-y: auto; min-height: 0; padding: 2px 6px 8px; }
+  /* 工作空间面板：搜索/交付固定，文件树可滚动（不与底部重叠） */
+  #panel-workspace { overflow: hidden; }
+  #panel-workspace .ws-search-wrap { flex-shrink: 0; padding: 6px 10px; }
+  #panel-workspace .ws-search-results { max-height: 30%; overflow-y: auto; flex-shrink: 0; }
+  #panel-workspace .ws-del-head { flex-shrink: 0; }
+  #panel-workspace .ws-deliveries { flex-shrink: 0; max-height: 22%; overflow-y: auto; }
+  #ws-tree { flex: 1; overflow-y: auto; min-height: 0; padding: 2px 6px 8px; }
   .ft-item {
     display: flex; align-items: center; gap: 5px;
     padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 12.5px;

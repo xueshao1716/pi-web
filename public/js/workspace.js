@@ -21,7 +21,9 @@ function wsItem(it, depth) {
   if (isDir) {
     const childBox = document.createElement("div");
     childBox.hidden = true;
-    el.addEventListener("click", async () => {
+    el.addEventListener("click", async (e) => {
+      // 阻止冒泡：点击子目录时不能触发父目录的展开/收起
+      e.stopPropagation();
       const willExpand = childBox.hidden;
       el.querySelector(".ft-arrow").textContent = willExpand ? "▾" : "▸";
       childBox.hidden = !willExpand;
