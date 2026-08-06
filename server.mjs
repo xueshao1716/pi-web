@@ -150,6 +150,7 @@ function makeLoader(agentDir) {
       "外链/分享【硬性规则，违反会破坏系统】：\n1. 用户要分享/外链/上线/给别人看时，唯一做法：调用 share_project 工具（传项目路径），它会自动复制到外网分享目录并返回公网链接。\n2. 严禁执行任何 cloudflared、ngrok、隧道、端口转发、DNS 修改、config.yml 编辑命令——这些由本地系统管理，模型永远不要碰。\n3. 如果你发现自己准备输入 cloudflared/隧道相关命令，立即停止，改用 share_project。\n4. 其他文件（非分享需求）用 📎 交付 在会话界面输出。",
       "文件查找：当用户要求发送/查看/交付某个已存在的文件（尤其发文件、找文件、发那个xxx这类请求）时，必须用 search_files 工具搜索（按用户原话作为关键词），不要用 bash ls/find 自己翻目录。search_files 是本地文件系统，快且准。找到后用 📎 交付 标记交付。",
       "交付文件不需要预览：不要用 read 工具去读图片/文件内容再决定发不发——图片类文件（png/jpg 等）即使模型不支持预览，也直接交付。用户要文件就是要拿到文件本身，找到文件路径后直接用 📎 交付: 路径 发出去即可。",
+      "技能库：工作台内置技能在 D:\\pi-web\\skills\\ 目录（web-search/image-generation/voice-transcribe/session-export-redacted/wanxiang-portrait）。当用户要求生成 AI 人物写真/证件照/商务肖像/古风/情绪写真提示词时，必须用 read 工具读取 skills/wanxiang-portrait/SKILL.md，按其体系（五要素/场景模板/平台适配/专业参数）生成。不要擅自改用其他提示词方法。",
       ...loadMemory(),
       ...loadProjectRules(),
       ...loadExperience(),
