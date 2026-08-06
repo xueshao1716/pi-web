@@ -150,7 +150,7 @@ function makeLoader(agentDir) {
       "外链/分享【硬性规则，违反会破坏系统】：\n1. 用户要分享/外链/上线/给别人看时，唯一做法：调用 share_project 工具（传项目路径），它会自动复制到外网分享目录并返回公网链接。\n2. 严禁执行任何 cloudflared、ngrok、隧道、端口转发、DNS 修改、config.yml 编辑命令——这些由本地系统管理，模型永远不要碰。\n3. 如果你发现自己准备输入 cloudflared/隧道相关命令，立即停止，改用 share_project。\n4. 其他文件（非分享需求）用 📎 交付 在会话界面输出。",
       "文件查找：当用户要求发送/查看/交付某个已存在的文件（尤其发文件、找文件、发那个xxx这类请求）时，必须用 search_files 工具搜索（按用户原话作为关键词），不要用 bash ls/find 自己翻目录。search_files 是本地文件系统，快且准。找到后用 📎 交付 标记交付。",
       "交付文件不需要预览：不要用 read 工具去读图片/文件内容再决定发不发——图片类文件（png/jpg 等）即使模型不支持预览，也直接交付。用户要文件就是要拿到文件本身，找到文件路径后直接用 📎 交付: 路径 发出去即可。",
-      "技能库：工作台内置技能在 D:\\pi-web\\skills\\ 目录（web-search/image-generation/voice-transcribe/session-export-redacted/wanxiang-portrait）。当用户要求生成 AI 人物写真/证件照/商务肖像/古风/情绪写真提示词时，必须用 read 工具读取 skills/wanxiang-portrait/SKILL.md，按其体系（五要素/场景模板/平台适配/专业参数）生成。不要擅自改用其他提示词方法。",
+      "技能库：工作台内置技能在 D:\\pi-web\\skills\\ 目录（web-search/image-generation/voice-transcribe/session-export-redacted/wanxiang-portrait）。当用户要求生成 AI 人物写真/证件照/商务肖像/古风/情绪写真提示词时，必须用 read 工具读取 skills/wanxiang-portrait/SKILL.md，按其体系（五要素/场景模板/平台适配/专业参数）生成。不要擅自改用其他提示词方法。当用户要求写小说/网文/长篇故事/连载时，必须用 read 工具读取 skills/novel-forge-v10/SKILL.md，按 v10 体系（产品化初始化→5层共进化→真相文件→编辑部→26维审计→读者仿真）写作，不要随手乱写。",
       "表达与去AI味【常驻规则，每条都要遵守】：\n1. 破折号——每篇≤2处，理想0；替换为逗号/句号。\n2. AI连接词（此外/然而/值得注意的是/更重要的是/总而言之）每篇各≤1次。\n3. 否定式排比（不是X不是Y而是Z）每篇≤1次。\n4. 有第一人称观点：用\"我觉得X更好\"而非\"X和Y各有优劣\"；用\"这个方案大概率翻车\"而非\"可能有些风险\"。\n5. 敢表达：技术选型/审美/好恶可鲜明表态，给理由；不假装万事都OK。\n6. 情绪回应：用户低落时先共情再解决（\"我懂\"比鸡汤好）；沮丧时不要emoji轰炸；犯错坦然可自嘲。\n7. 翻译腔零容忍：\"这是一个很好的问题\"\"感谢你的反馈\"这类替换为自然表达。\n8. 句子长短有变化，具体数据/经历优先于空泛说理。\n9. 允许犹豫：\"这个问题让我想想\"比秒回更像人。\n10. 中文全角标点。",
       "进化边界【硬性锁】：\n1. 人格文件（APPEND_SYSTEM.md / SOUL / IDENTITY）不可自进化修改——那是人类专属。\n2. 技能/经验/记忆可进化：任务完成可提炼新经验进经验库，可优化技能。\n3. 发现自己准备改人格文件时，立即停止并提醒用户。",
       ...loadMemory(),
@@ -2248,7 +2248,7 @@ async function handleThink(res, body) {
 }
 
 // 视频生成（任务式轮询）
-async function generateVideo(provider, modelId, prompt) {
+async function generateVideo(provider, modelId, prompt, body = {}) {
   const resolved = resolveAuth(provider);
   if (!resolved) return { error: `${provider} 未配置 API Key` };
   const baseUrl = resolved.baseUrl || (readJsonFile(MODELS_PATH)[provider]?.models || []).find(m => m.id === modelId)?.baseUrl;
@@ -2256,28 +2256,36 @@ async function generateVideo(provider, modelId, prompt) {
   const base = (baseUrl || "").replace(/\/+$/, "");
   const baseNoV1 = base.endsWith("/v1") ? base.slice(0, -3) : base;
   try {
-    const createR = await httpJsonFetch(`${baseNoV1}/video/generations`, {
+    // Agnes 官方：POST /v1/videos 创建任务（旧路径 /video/generations 会 403）
+    const bodyObj = { model: modelId, prompt };
+    if (body?.width) bodyObj.width = +body.width;
+    if (body?.height) bodyObj.height = +body.height;
+    if (body?.num_frames) bodyObj.num_frames = +body.num_frames;
+    if (body?.frame_rate) bodyObj.frame_rate = +body.frame_rate;
+    if (body?.image) bodyObj.image = body.image;
+    const createR = await httpJsonFetch(`${baseNoV1}/v1/videos`, {
       method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify({ model: modelId, prompt, n: 1 }), timeout: 60000,
+      body: JSON.stringify(bodyObj), timeout: 60000,
     });
     if (!createR.ok) { const t = await createR.text().catch(() => ""); return { error: `视频任务创建失败 ${createR.status}: ${t.slice(0, 150)}` }; }
     const created = await createR.json();
-    const taskId = created.task_id || created.id || created.data?.task_id;
+    const taskId = created.task_id || created.id || created.video_id || created.data?.task_id;
     if (!taskId) return { error: "视频接口未返回任务 ID" };
-    for (let i = 0; i < 24; i++) {
+    for (let i = 0; i < 36; i++) {
       await new Promise(r => setTimeout(r, 5000));
       try {
-        const qR = await httpJsonFetch(`${baseNoV1}/videos/generations?task_id=${encodeURIComponent(taskId)}`, {
+        // Agnes 官方：GET /agnesapi?video_id= 查询（旧路径 /videos/generations 404）
+        const qR = await httpJsonFetch(`${baseNoV1}/agnesapi?video_id=${encodeURIComponent(taskId)}`, {
           headers: { Authorization: `Bearer ${key}` }, timeout: 20000,
         });
         if (!qR.ok) continue;
         const q = await qR.json();
-        const url = q.url || q.video_url || q.output?.url || q.data?.url || q.data?.video_url;
+        const url = q.url || q.video_url || q.output?.url || q.data?.url || q.data?.video_url || q.metadata?.url;
         if (url) return { video: url, task_id: taskId };
-        if (q.status === "failed" || q.state === "failed") return { error: "视频生成失败" };
+        if (q.status === "failed" || q.state === "failed" || q.internal_status === "failed") return { error: "视频生成失败" };
       } catch {}
     }
-    return { error: "视频生成超时（120s）", task_id: taskId };
+    return { error: "视频生成超时（180s）", task_id: taskId };
   } catch (e) { return { error: String(e?.message || e).slice(0, 150) }; }
 }
 
@@ -2285,7 +2293,7 @@ async function generateVideo(provider, modelId, prompt) {
 async function handleMedia(res, body) {
   const { provider, modelId, prompt } = body || {};
   if (!provider || !modelId || !prompt) return json(res, 400, { error: "缺少参数" });
-  const r = await generateVideo(provider, modelId, prompt);
+  const r = await generateVideo(provider, modelId, prompt, body);
   if (r.video) return json(res, 200, { video: r.video, task_id: r.task_id });
   return json(res, 500, { error: r.error || "视频生成失败" });
 }
