@@ -1728,6 +1728,8 @@ const CAPABILITIES = [
   { icon: "📦", name: "工作空间", desc: "工程 / 生成物 / 文档 / 交付 四区管理" },
   { icon: "📤", name: "一键交付", desc: "成品交付 + 版本递增 + zip 打包" },
   { icon: "📄", name: "文档中心", desc: "Markdown 渲染 / PDF / Office 解析 / 转 Markdown" },
+  { icon: "📎", name: "拖放文件", desc: "桌面拖文件进窗口即引用：文本/图片/Office 自动分类处理" },
+  { icon: "🧩", name: "代码块增强", desc: "长代码块可展开/收起，一键复制，语法高亮" },
   { icon: "🌳", name: "会话分支", desc: "分支切换、模板、项目分组、导出" },
   { icon: "🎨", name: "主题系统", desc: "霓虹主题 + 全屏壁纸 + 侧边栏透明" },
   { icon: "👤", name: "人格小语", desc: "直接、有条理、有审美、讨厌机器人味" },
