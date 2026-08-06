@@ -1,6 +1,47 @@
 # 小语 · AI 工作台（pi-web）
 
-基于 [pi 引擎](https://github.com/earendil-works/pi-coding-agent) 的 Web 工作台：会话、工具调用、媒体生成、工作空间管理，前后端一体。
+<p align="center">
+  <b>一个有记忆、有情绪、会进化的 AI 工作伙伴</b>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Node-%3E%3D20-339933" alt="Node">
+  <img src="https://img.shields.io/badge/纯原生JS-无框架-4EC9B0" alt="no-framework">
+  <img src="https://img.shields.io/badge/多模型-DeepSeek%20%7C%20Mimo%20%7C%20Agnes-7C5CFF" alt="multi-model">
+  <img src="https://img.shields.io/badge/开源-MIT-FF6B6B" alt="license">
+</p>
+
+> 🧠 **记忆系统** · ❤️ **情绪引擎** · 🧬 **进化系统** · 📦 **智能文件交付** · 📡 **一键外网分享**
+
+基于 [pi 引擎](https://github.com/earendil-works/pi-coding-agent) 的 Web 工作台——把终端里的 AI agent 变成完整的浏览器工作伙伴：会话、工具调用、媒体生成、工作空间管理，前后端一体，纯原生实现零构建。
+
+## ✨ 为什么与众不同
+
+| 能力 | 说明 |
+|---|---|
+| 🧠 **记忆系统** | 固定记忆 + 记忆日志自动沉淀 + 经验库，跨会话长期记得你的偏好 |
+| ❤️ **情绪引擎** | VAD 三维情绪感知，对话自适应语气与节奏（烦躁时先安抚、着急时给快路径） |
+| 🧬 **进化系统** | 任务完成自动归纳经验，越用越懂你的习惯 |
+| 📦 **智能文件交付** | 要图只给图/要PPT只给PPT，关键词匹配 + 去重 + 断点续传 |
+| 📡 **一键外网分享** | 项目放分享目录即上线，稳定域名，多项目零配置 |
+| 🔍 **文件搜索工具** | search_files 按关键词/类型精准定位工作空间文件 |
+| 🎨 **工作空间分类视图** | 工程/文档/生成物/交付分类 + 全屏浏览 + 树状连接线 |
+| 🖼 **媒体生成** | 配图/配音/视频自动归档，钉钉式文件卡片展示 |
+| 🌳 **会话管理** | 分支、模板、项目分组、导出、置顶 |
+
+> 📸 截图（真实界面）：
+
+<p align="center">
+  <img src="docs/images/demo-main.png" alt="工作台主界面" width="640">
+  <br>
+  <em>工作台主界面</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/demo-workspace.png" alt="工作空间全屏" width="640">
+  <br>
+  <em>工作空间全屏浏览</em>
+</p>
 
 ## 🚀 新机器一键安装（Windows）
 
