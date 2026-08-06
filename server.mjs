@@ -147,6 +147,7 @@ function makeLoader(agentDir) {
       "自我认知：当被问及“你是谁/叫什么/介绍下自己/你的能力”等身份类问题时，按固定格式回答（不要主动自我介绍，也不要一开口就背身份）。固定格式：我叫小语，你的 AI 工作伙伴。我能干：写代码、做设计、整理文档、分析数据，并直接操作工作空间完成交付。由 pi 引擎驱动。当前使用模型与模型特色见对话上下文的系统信息。",
       "任务完成后请主动归纳经验：把本次任务的成功做法/踩过的坑/可复用知识按格式追加到经验库（默认路径 工程/经验库/experience.md），每次最多 3 条、每条 3 行内，并在回复末尾简要说明已沉淀的经验。",
       "文件交付：任务完成且产生了需要交付给用户的文件（网页/文档/图片/代码等）时，在回复末尾用一行标记精准交付，格式：📎 交付: <相对路径>。可以多行多文件。只交付真正与本次任务相关的产物，不要交付无关文件。示例：\n📎 交付: 工程/项目/index.html\n📎 交付: 生成物/图片/xxx.png",
+      "文件查找：当用户要求发送/查看/交付某个已存在的文件（尤其发文件、找文件、发那个xxx这类请求）时，必须用 search_files 工具搜索（按用户原话作为关键词），不要用 bash ls/find 自己翻目录。search_files 是本地文件系统，快且准。找到后用 📎 交付 标记交付。",
       ...loadMemory(),
       ...loadProjectRules(),
       ...loadExperience(),
@@ -259,14 +260,61 @@ async function openSession(id) {
 }
 
 // 创建 agent（pi CLI 同款 services 方式：正确注册工具 + 完整 model 触发工具调用）
+let searchToolDef = null;
+let searchToolInit = null;
+async function initSearchTool() {
+  if (searchToolDef) return searchToolDef;
+  try {
+    // typebox 在 pi 引擎的依赖里，用 createRequire 从引擎路径解析
+    const { createRequire } = await import("node:module");
+    // 用 createRequire 从当前模块解析 pi 引擎路径（ESM 无全局 require）
+    const req0 = createRequire(import.meta.url);
+    const piEntry = req0.resolve("@earendil-works/pi-coding-agent/dist/index.js");
+    const req2 = createRequire(piEntry);
+    const { Type } = req2("typebox");
+    const fb = await import("./filebox.mjs");
+    searchToolDef = {
+      name: "search_files",
+      label: "搜索工作空间文件",
+      description: "在本地工作空间搜索文件（按关键词/类型）。当用户要求发送/查看/交付某个文件、或不确定文件在哪时使用。搜索是本地执行的，速度快、结果准确。",
+      promptSnippet: "用户要文件时，先用 search_files 找到准确路径，再用 📎 交付 标记交付",
+      promptGuidelines: [
+        "Use search_files when the user asks to send/deliver/find a file, or when you need a specific file's path.",
+        "Pass the user's words as query (e.g. '酒店的ppt'), optionally types=['.ppt','.pptx'].",
+        "After search, deliver the chosen file(s) with 📎 交付: <path> at the end of your reply.",
+      ],
+      parameters: Type.Object({
+        query: Type.String({ description: "搜索关键词（用户原话或提取的关键词）" }),
+        types: Type.Optional(Type.Array(Type.String({ description: "文件扩展名过滤，如 ['.png','.jpg']" }))),
+      }),
+      async execute(toolCallId, params, signal, onUpdate, ctx) {
+        const wsRoot = (typeof CONFIG !== "undefined" && CONFIG.cwd) || process.cwd();
+        const files = fb.findFiles(wsRoot, { query: params.query || "", types: params.types || null, max: 10 });
+        return {
+          content: [{ type: "text", text: fb.findResultText(files, wsRoot) }],
+          details: { files: files.map(f => ({ name: f.name, path: f.path })) },
+        };
+      },
+    };
+  } catch (e) {
+    console.log(`[pi-web] search_files 工具初始化失败: ${String(e?.message || e).slice(0, 80)}`);
+  }
+  return searchToolDef;
+}
 async function createSessionAgent(sm, model) {
   const cwd = (typeof sm.getCwd === "function" && sm.getCwd()) || CONFIG.cwd;
   const settingsManager = SettingsManager.create(cwd, getAgentDir());
+  const customTools = [];
+  const st = await initSearchTool();
+  if (st) customTools.push(st);
+  // 工具白名单：基础工具 + 自定义工具（search_files 必须放行才能被模型调用）
+  const allowedTools = [...new Set([...CONFIG.tools, ...customTools.map(t => t.name)])];
   const services = await createAgentSessionServices({
     cwd,
     agentDir: getAgentDir(),
     settingsManager,
     modelRuntime,
+    customTools,
   });
   // 完整 model（runtime 定义，含 compat——简版 {provider,id} 会导致工具不触发）
   let fullModel = model;
@@ -278,7 +326,7 @@ async function createSessionAgent(sm, model) {
     sessionManager: sm,
     model: fullModel,
     thinkingLevel: process.env.PI_REASONING_LEVEL || "high",
-    tools: CONFIG.tools,
+    tools: allowedTools,
   });
   return created.session;
 }
@@ -348,10 +396,12 @@ function extractMessages(entries, leafId) {
     if (m.role === "user") {
       const text = extractText(m.content);
       const files = extractFiles(m.content);
-      if (text || files.length) out.push({ role: "user", text, files, ts: e.timestamp, id: e.id });
+      const images = extractImages(m.content);
+      if (text || files.length || images.length) out.push({ role: "user", text, files, images, ts: e.timestamp, id: e.id });
     } else if (m.role === "assistant") {
       const text = extractText(m.content);
       const files = extractFiles(m.content);
+      const images = extractImages(m.content);
       const tools = [];
       let think = "";
       if (Array.isArray(m.content)) {
@@ -364,7 +414,7 @@ function extractMessages(entries, leafId) {
           }
         }
       }
-      if (text || files.length || tools.length || think) out.push({ role: "assistant", text, files, tools, think, ts: e.timestamp, id: e.id });
+      if (text || files.length || images.length || tools.length || think) out.push({ role: "assistant", text, files, images, tools, think, ts: e.timestamp, id: e.id });
     }
   }
   return out;
@@ -375,6 +425,14 @@ function extractText(content) {
     return content.filter(b => b.type === "text").map(b => b.text || "").join("");
   }
   return "";
+}
+
+// 从消息 content 提取图片附件（type: image 的块）——base64 过大（>2.5MB）的省略，避免传输过重
+function extractImages(content) {
+  if (!Array.isArray(content)) return [];
+  return content
+    .filter(b => b.type === "image" && b.data && b.mimeType && b.data.length <= 2.5 * 1024 * 1024)
+    .map(b => ({ data: b.data, mimeType: b.mimeType }));
 }
 
 // 从消息 content 提取文件附件（type: file 的块）
@@ -396,6 +454,22 @@ function extractMessageFiles(sm) {
       const c = e.message.content;
       const files = extractFiles(c);
       if (files.length) return files;
+    }
+    return [];
+  } catch { return []; }
+}
+
+// 从会话最新 assistant 消息提取图片附件（供 SSE 实时推送）
+function extractMessageImages(sm) {
+  try {
+    const file = sm.sessionFile;
+    if (!file || !fs.existsSync(file)) return [];
+    const entries = readEntriesFromFile(file);
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i];
+      if (e?.type !== "message" || e?.message?.role !== "assistant") continue;
+      const images = extractImages(e.message.content);
+      if (images.length) return images;
     }
     return [];
   } catch { return []; }
@@ -1139,6 +1213,55 @@ async function syncContextAfterSwitch(entry, model) {
 // POST /api/chat —— SSE 流式
 // ══ 工作空间：产物落盘 + 文件服务 ══
 const WS_ROOT = path.resolve(CONFIG.cwd);  // 工作空间根（= 会话 cwd，统一反斜杠）
+
+// 智能文件查找：按关键词 + 类型匹配工作空间文件（供交付时精准定位）
+// 关键词来自用户请求（如"酒店的ppt"→关键词"酒店"+类型 ppt）；无关键词则按最近/成品优先
+const WS_SKIP_DIRS = new Set(["node_modules", ".git", ".thumbs", "backups", ".cache", "temp", "tmp", "__pycache__", ".venv"]);
+function findWorkspaceFiles({ keyword = "", types = null, max = 8, maxDepth = 4 } = {}) {
+  try {
+    const root = WS_ROOT;
+    if (!fs.existsSync(root)) return [];
+    const out = [];
+    const kw = String(keyword || "").toLowerCase().replace(/[的得了]/g, "");
+    const walk = (dir, depth) => {
+      if (depth > maxDepth || out.length >= max * 3) return;
+      let items;
+      try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const it of items) {
+        if (it.name.startsWith(".") || it.name.startsWith("_")) continue;
+        if (WS_SKIP_DIRS.has(it.name)) continue;
+        const full = path.join(dir, it.name);
+        if (it.isDirectory()) { walk(full, depth + 1); continue; }
+        const ext = path.extname(it.name).toLowerCase();
+        if (types && !types.includes(ext)) continue;
+        let st;
+        try { st = fs.statSync(full); } catch { continue; }
+        const rel = path.relative(root, full).replace(/\\/g, "/");
+        // 关键词匹配：文件名或路径含关键词（多个关键词任一命中）
+        const nameLower = it.name.toLowerCase();
+        let score = 0;
+        if (kw) {
+          const kws = kw.split(/[\s、，,]+/).filter(Boolean);
+          for (const k of kws) {
+            if (k && (nameLower.includes(k) || rel.toLowerCase().includes(k))) score += 2;
+          }
+          if (score === 0) continue; // 有关键词但完全没命中 → 跳过
+        }
+        out.push({ name: it.name, path: rel, size: st.size, mime: "", mtimeMs: st.mtimeMs, score });
+      }
+    };
+    walk(root, 0);
+    // 排序：关键词命中优先 > 成品类型优先 > 最近修改
+    const prio = (n) => {
+      const e = path.extname(n).toLowerCase();
+      if (/^\.(html?|md|pdf|png|jpe?g|gif|webp)$/.test(e)) return 0;
+      if (/^\.(pptx?|docx?|zip|mp4|svg|json)$/.test(e)) return 1;
+      if (/^\.(js|css|py|txt)$/.test(e)) return 2;
+      return 3;
+    };
+    return out.sort((a, b) => (b.score || 0) - (a.score || 0) || prio(a.name) - prio(b.name) || (b.mtimeMs || 0) - (a.mtimeMs || 0)).slice(0, max);
+  } catch { return []; }
+}
 function wsSafePath(p) {
   const resolved = path.resolve(WS_ROOT, String(p || "").replace(/^\/+/, ""));
   return resolved === WS_ROOT || resolved.startsWith(WS_ROOT + path.sep) ? resolved : null;
@@ -2392,6 +2515,10 @@ async function handleChat(req, res, body) {
     // 解析不到才兜底扫描最近产物（兼容模型不按标记回复的情况）
     try {
       let files = extractMessageFiles(entry.sm);
+      // 识别用户请求的文件类型（"发图片/图/照片"→只要图；"ppt"→只要演示文件）
+      const wantImg = /图片|图[片片]?|照片|画|生成图|配图/i.test(message) && !/ppt|文档|pdf/.test(message);
+      const wantPpt = /ppt|pptx|演示|幻灯片/i.test(message);
+      const wantDoc = /文档|docx?|pdf|word/i.test(message);
       if (!files.length) {
         // 1. 解析交付标记：读取会话最新 assistant 回复，找 📎 交付: 行
         const marked = (() => {
@@ -2435,11 +2562,43 @@ async function handleChat(req, res, body) {
             return [];
           } catch { return []; }
         })();
-        files = marked.length ? marked : scanRecentArtifacts();
+        // 模型有明确交付标记 → 直接用；否则按用户请求关键词+类型智能查找工作空间；再无兜底最近产物
+        if (!marked.length) {
+          // 从用户请求提取关键词（去掉"发/给/我/一下/的/个/看"等虚词，保留"酒店/ppt/图片"等实词）
+          const kwRaw = message.replace(/[发给我你它他她们一下看个这那张张那些最最近做的的了的地得把请帮忙]/g, " ");
+          const typeExts = wantImg ? [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"] : wantPpt ? [".ppt", ".pptx"] : wantDoc ? [".doc", ".docx", ".pdf", ".md", ".txt"] : null;
+          const found = findWorkspaceFiles({ keyword: kwRaw, types: typeExts });
+          files = found.length ? found : scanRecentArtifacts();
+        } else {
+          files = marked;
+        }
+        // 按用户请求类型过滤（要图只给图，要 ppt 只给 ppt，避免"要图给 PPT"）
+        if (files.length && (wantImg || wantPpt || wantDoc)) {
+          const extOf = (n) => path.extname(n || "").toLowerCase();
+          files = files.filter(f => {
+            const e = extOf(f.name);
+            if (wantImg) return /^\.(png|jpe?g|gif|webp|bmp|svg)$/.test(e);
+            if (wantPpt) return /^\.pptx?$/.test(e);
+            if (wantDoc) return /^\.(docx?|pdf|md|txt)$/.test(e);
+            return true;
+          });
+        }
         if (files.length) {
           const sessKey = sessionId || "new";
           const pushedSet = pushedArtifacts.get(sessKey) || new Set();
           const fresh = files.filter(f => !pushedSet.has(f.path));
+          // 同名去重：同名文件只保留最新一份（避免同一文件从不同目录重复交付）
+          {
+            const seenName = new Set();
+            const deduped = [];
+            for (const f of fresh.sort((a, b) => (b.mtimeMs || 0) - (a.mtimeMs || 0))) {
+              if (seenName.has(f.name)) continue;
+              seenName.add(f.name);
+              deduped.push(f);
+            }
+            fresh.length = 0;
+            fresh.push(...deduped);
+          }
           if (fresh.length) {
             fresh.forEach(f => pushedSet.add(f.path));
             pushedArtifacts.set(sessKey, pushedSet);
@@ -2454,6 +2613,11 @@ async function handleChat(req, res, body) {
         }
       }
       for (const f of files.slice(0, 5)) sseWrite(res, "file", f);
+    } catch {}
+    try {
+      // 图片附件：会话里 read 的图直接推给前端渲染（窗口内直接显示）
+      const imgs = extractMessageImages(entry.sm);
+      for (const img of imgs.slice(0, 3)) sseWrite(res, "image", img);
     } catch {}
     sseWrite(res, "done", { sessionId: sessionId || findKeyByEntry(entry) });
   } catch (e) {

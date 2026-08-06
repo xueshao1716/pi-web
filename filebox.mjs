@@ -1,6 +1,5 @@
-// pi-web 文件盒：临时签名下载 + 缩略图
-// 借鉴：飞书 file_token / 钉钉 media_id / Slack 签名 URL
-// 签名 URL 直接携带相对路径（签名防篡改 + 过期），重启不失效、不依赖内存映射
+// pi-web 文件盒：文件服务（查找/元数据/传输/交付）
+// 架构：pi 只理解意图并下指令（search_files/deliver），本地系统执行查找与传输
 import crypto from "node:crypto";
 import path from "node:path";
 import fs from "node:fs";
@@ -57,4 +56,70 @@ export function makeThumb(relPath, wsRoot) {
     });
     return rel;
   } catch { return null; }
+}
+
+// ══ 智能文件查找（独立文件系统的核心：pi 下指令 → 本地执行查找）══
+const SKIP_DIRS = new Set(["node_modules", ".git", ".thumbs", "backups", ".cache", "temp", "tmp", "__pycache__", ".venv", "logs"]);
+// 成品优先级：网页/文档/图片 > 演示/压缩/媒体 > 代码 > 其他
+function typePriority(name) {
+  const e = path.extname(name).toLowerCase();
+  if (/^\.(html?|md|pdf|png|jpe?g|gif|webp)$/.test(e)) return 0;
+  if (/^\.(pptx?|docx?|zip|mp4|svg|json)$/.test(e)) return 1;
+  if (/^\.(js|css|py|txt|ts)$/.test(e)) return 2;
+  return 3;
+}
+
+// 查找工作空间文件
+// opts: { query, types: ['.png'], max, keywordWeight, recentFirst }
+export function findFiles(wsRoot, opts = {}) {
+  try {
+    const root = path.resolve(wsRoot);
+    if (!fs.existsSync(root)) return [];
+    const { query = "", types = null, max = 8, maxDepth = 5 } = opts;
+    const out = [];
+    // 提取关键词：分词（空格/逗号/顿号），去掉虚词
+    const raw = String(query || "").toLowerCase();
+    const kws = raw.split(/[\s、，,，.。:：]+/).map(s => s.replace(/[发给我你它他她他们一下看个这那张张那些最最近做了的的地得把请帮忙]/g, "")).filter(s => s.length >= 2);
+    const walk = (dir, depth) => {
+      if (depth > maxDepth || out.length >= max * 4) return;
+      let items;
+      try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const it of items) {
+        if (it.name.startsWith(".") || it.name.startsWith("_")) continue;
+        if (SKIP_DIRS.has(it.name)) continue;
+        const full = path.join(dir, it.name);
+        if (it.isDirectory()) { walk(full, depth + 1); continue; }
+        const ext = path.extname(it.name).toLowerCase();
+        if (types && !types.includes(ext)) continue;
+        let st;
+        try { st = fs.statSync(full); } catch { continue; }
+        const rel = path.relative(root, full).split("\\").join("/");
+        const nameLower = it.name.toLowerCase();
+        const relLower = rel.toLowerCase();
+        let score = 0;
+        if (kws.length) {
+          for (const k of kws) {
+            if (nameLower.includes(k)) score += 3;
+            else if (relLower.includes(k)) score += 2;
+          }
+          if (score === 0) continue; // 有关键词但完全没命中 → 跳过
+        }
+        out.push({ name: it.name, path: rel, size: st.size, mime: "", mtimeMs: st.mtimeMs, score });
+      }
+    };
+    walk(root, 0);
+    // 排序：关键词命中 > 成品优先级 > 最近修改
+    return out.sort((a, b) =>
+      (b.score || 0) - (a.score || 0) ||
+      typePriority(a.name) - typePriority(b.name) ||
+      (b.mtimeMs || 0) - (a.mtimeMs || 0)
+    ).slice(0, max);
+  } catch { return []; }
+}
+
+// 查找结果 → 给 pi 的文本摘要（工具返回）
+export function findResultText(files, wsRoot) {
+  if (!files.length) return "未找到匹配的文件。可尝试：放宽关键词、检查文件名拼写，或用 read 工具列出目录。";
+  const lines = files.map((f, i) => `${i + 1}. ${f.name}（${f.path}）`).join("\n");
+  return `找到 ${files.length} 个文件：\n${lines}\n\n用户要交付哪个？直接用 deliver 标记（📎 交付: 路径）交付。`;
 }
