@@ -2,6 +2,7 @@
 // 借鉴 xi-system 记忆理念：重要信息自动写入、跨会话长期有效
 import fs from "node:fs";
 import path from "node:path";
+import { syncMemoryToTui } from "./memory-sync.mjs";
 
 // 记忆文件位置
 export function memoryPaths(wsRoot) {
@@ -78,6 +79,8 @@ export function appendState(wsRoot, line) {
       s = s.replace(/\n*$/, "") + `\n\n${marker}\n- ${line}\n`;
     }
     fs.writeFileSync(paths.fixed, s, "utf8");
+    // 同步到 TUI（两端记忆相通）
+    try { syncMemoryToTui(); } catch {}
     return true;
   } catch { return false; }
 }
