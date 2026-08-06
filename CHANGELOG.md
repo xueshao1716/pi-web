@@ -5,6 +5,16 @@
 
 ---
 
+## v1.6.2 · 2026-08-06
+
+### 专项工作台独立页（不再是挂件）
+- **独立 URL 直达**：`/workshop`（工作台首页：三专项卡片）+ `/workshop/ppt`（PPT 工作室独立页）；文章/视频路由已预留（`/workshop/article`、`/workshop/video`）
+- **页面自身鉴权**：独立页 HTML 无敏感数据（服务端静态豁免），页面 JS 读 localStorage token 调 API——未登录显示令牌输入界面，登录后进主界面
+- **主界面**：移除 modal 弹窗，🧰 按钮改为跳转 `/workshop`（带 token）；PPT 生成全流程（表单/SSE/工具卡/产物卡片）迁移到独立页
+- 验证：playwright 实测——三页面 200、无 token 显示登录、注入 token 后主界面+表单+「已连接 16 个模型」、主界面 🧰 跳转成功、零 JS 报错
+
+---
+
 ## v1.6.1 · 2026-08-06
 
 ### 长会话懒加载（吸纳 agegr/pi-web chat-lazy-load）

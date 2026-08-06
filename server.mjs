@@ -2880,6 +2880,14 @@ function handleShareStop(res) {
 // ── 路由表（声明式：method + 匹配器 + handler，替代 if/else 链）──
 // 匹配器：字符串=精确 pathname；正则=捕获组传给 handler（$1 $2 ...）
 // handler 签名：(res, req, url, match, body) => Promise|void
+// ── 工作台独立页映射（可直达 URL）──
+const WORKSHOP_PAGES = {
+  "/workshop": "workshop.html",
+  "/workshop/ppt": "workshop-ppt.html",
+  "/workshop/article": "workshop-article.html",
+  "/workshop/video": "workshop-video.html",
+};
+
 const API_ROUTES = [
   // ── 会话 ──
   ["GET", /^\/api\/sessions\/([^/]+)\/tree$/, (res, req, url, m) => handleSessionTree(res, decodeURIComponent(m[1]))],
@@ -3000,7 +3008,7 @@ const server = http.createServer(async (req, res) => {
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Referrer-Policy", "no-referrer");
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-    const isStatic = (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/sw.js")) ||
+    const isStatic = (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/sw.js" || WORKSHOP_PAGES[url.pathname])) ||
                      (req.method === "GET" && url.pathname.startsWith("/static/"));
     if (!isStatic && !checkAuth(req)) {
       return json(res, 401, { error: "未授权，请提供访问令牌" });
@@ -3010,6 +3018,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/sw.js")) return handleStatic(req, res);
     if (req.method === "GET" && url.pathname.startsWith("/static/")) {
       req.url = url.pathname.replace(/^\/static/, "") + (url.search || "");
+      return handleStatic(req, res);
+    }
+
+    // 工作台独立页（页面本身无敏感数据，鉴权由页面 JS 调 API 时执行；可直达 URL：/workshop /workshop/ppt 等）
+    if (req.method === "GET" && WORKSHOP_PAGES[url.pathname]) {
+      req.url = "/" + WORKSHOP_PAGES[url.pathname] + (url.search || "");
       return handleStatic(req, res);
     }
 
