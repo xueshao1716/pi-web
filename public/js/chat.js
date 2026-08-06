@@ -265,7 +265,7 @@ function addFileMsg(file, role) {
     el.innerHTML = `<div class="who"><span class="avatar">${role === "user" ? "你" : "π"}</span><span class="name">${role === "user" ? "你" : "小语"}</span><span class="msg-time">${nowTime()}</span></div>
       <div class="file-card img-card">
         <img src="${previewUrl}" alt="${esc(file.name || "图片")}" loading="lazy" style="max-width:280px;max-height:200px;border-radius:10px;cursor:zoom-in;display:block;object-fit:cover">
-        <div class="fc-row"><span class="fc-name">${esc(file.name || "图片")}</span><span class="fc-meta">${esc(size || "")}</span><a class="fc-dl" href="${dlUrl}" download>⬇ 下载</a></div>
+        <div class="fc-meta-row"><span class="fc-name">${esc(file.name || "图片")}</span><span class="fc-meta">${esc(size || "")}</span><a class="fc-dl" href="${dlUrl}" download>⬇ 下载</a></div>
       </div>`;
     const img = el.querySelector("img");
     img.addEventListener("click", (e) => { e.stopPropagation(); openWsMedia(previewUrl, "image", file.name); });

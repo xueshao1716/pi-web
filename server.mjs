@@ -132,6 +132,7 @@ function parseSessionFile(file) {
 
 // ── 会话管理 ───────────────────────────────────────────────────────
 const activeSessions = new Map();   // id -> { agent, sm, busy }
+const pushedArtifacts = new Map();  // sessionId -> Set(已推送文件路径)，防止重复推"本轮产物"
 let lastUnnamedId = null;           // 最近创建/复用的未命名会话（打断时复用同一会话）
 let lastUnnamedEntry = null;
 
@@ -402,44 +403,44 @@ function extractMessageFiles(sm) {
 // 扫描工作空间里最近被工具创建/修改的文件（本轮产物），供前端展示文件卡片
 // 排除：隐藏目录、node_modules、.git、backups、临时文件
 const SCAN_EXCLUDE = /(^|[\\/])(node_modules|\.git|\.cache|backups?|temp|tmp|\.token)([\\/]|$)/i;
-function scanRecentArtifacts(withinMs = 30 * 60 * 1000, max = 10) {
+function scanRecentArtifacts(withinMs = 2 * 60 * 1000, max = 10) {
   try {
     const root = path.resolve(CONFIG.cwd);
     if (!fs.existsSync(root)) return [];
     const now = Date.now();
     const out = [];
-    const walk = (dir, depth) => {
-      if (depth > 3 || out.length >= max) return;
+    // 只扫关键目录：根目录 + 生成物/ + 收发文件/今天（避免把工程/子目录的历史文件当本轮产物）
+    const today = new Date().toISOString().slice(0, 10);
+    const scanDirs = [root, path.join(root, "生成物"), path.join(root, "收发文件", today)];
+    const seenNames = new Set();
+    for (const dir of scanDirs) {
       let items;
-      try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
       for (const it of items) {
         if (it.name.startsWith(".")) continue;
         if (SCAN_EXCLUDE.test(dir + path.sep + it.name)) continue;
+        if (it.isDirectory()) continue;
         const full = path.join(dir, it.name);
         let st;
         try { st = fs.statSync(full); } catch { continue; }
-        if (it.isDirectory()) {
-          walk(full, depth + 1);
-        } else if (st.size > 0 && now - st.mtimeMs < withinMs) {
-          // 只收常见产物类型（避免把日志/缓存当文件卡片）
-          const ext = path.extname(it.name).toLowerCase();
-          if (/^\.(html|htm|md|txt|js|css|json|py|png|jpg|jpeg|gif|webp|pdf|docx?|xlsx?|pptx?|mp3|wav|mp4|webm|svg|zip)$/.test(ext)) {
-            out.push({
-              name: it.name,
-              path: path.relative(root, full).replace(/\\/g, "/"),
-              size: st.size,
-              mime: "",
-              mtimeMs: st.mtimeMs,
-            });
-          }
-        }
+        if (st.size <= 0 || now - st.mtimeMs >= withinMs) continue;
+        // 只收常见产物类型
+        const ext = path.extname(it.name).toLowerCase();
+        if (!/^\.(html|htm|md|txt|js|css|json|py|png|jpg|jpeg|gif|webp|pdf|docx?|xlsx?|pptx?|mp3|wav|mp4|webm|svg|zip)$/.test(ext)) continue;
+        // 同名去重（不同目录的同一产物只推最新一份）
+        if (seenNames.has(it.name)) continue;
+        seenNames.add(it.name);
+        out.push({
+          name: it.name,
+          path: path.relative(root, full).replace(/\\/g, "/"),
+          size: st.size,
+          mime: "",
+          mtimeMs: st.mtimeMs,
+        });
       }
-    };
-    walk(root, 0);
-    // 按修改时间倒序，取最新；同名文件去重（同一产物多副本只推最新一份）
-    const seen = new Set();
-    return out.filter(f => { if (seen.has(f.name)) return false; seen.add(f.name); return true; })
-      .sort((a, b) => (b.mtimeMs || 0) - (a.mtimeMs || 0)).slice(0, max);
+    }
+    // 按修改时间倒序，取最新
+    return out.sort((a, b) => (b.mtimeMs || 0) - (a.mtimeMs || 0)).slice(0, max);
   } catch { return []; }
 }
 
@@ -2380,16 +2381,26 @@ async function handleChat(req, res, body) {
       try { entry.sm.appendSessionInfo(message.slice(0, 24)); } catch {}
     }
     // 本轮产生的文件附件 → 前端实时展示（文件卡片）
+    // 去重：同一会话已推送过的文件不再重复推（修复"反复发固定文件"）
     try {
       let files = extractMessageFiles(entry.sm);
-      // 会话里没有 file 块（工具创建的文件）→ 扫描工作空间最近产物，写入会话并推送
       if (!files.length) {
         files = scanRecentArtifacts();
         if (files.length) {
-          try {
-            const fw = files.slice(0, 5).map(f => ({ type: "file", name: f.name, path: f.path, size: f.size, mime: f.mime }));
-            await entry.sm.appendMessage({ role: "assistant", content: [{ type: "text", text: "（本轮生成的文件）" }, ...fw] });
-          } catch {}
+          const sessKey = sessionId || "new";
+          const pushedSet = pushedArtifacts.get(sessKey) || new Set();
+          const fresh = files.filter(f => !pushedSet.has(f.path));
+          if (fresh.length) {
+            fresh.forEach(f => pushedSet.add(f.path));
+            pushedArtifacts.set(sessKey, pushedSet);
+            try {
+              const fw = fresh.slice(0, 5).map(f => ({ type: "file", name: f.name, path: f.path, size: f.size, mime: f.mime }));
+              await entry.sm.appendMessage({ role: "assistant", content: [{ type: "text", text: "（本轮生成的文件）" }, ...fw] });
+            } catch {}
+            files = fresh;
+          } else {
+            files = [];
+          }
         }
       }
       for (const f of files.slice(0, 5)) sseWrite(res, "file", f);
