@@ -121,6 +121,16 @@ async function wsDeliver(sourcePath) {
 }
 $("fv-deliver").addEventListener("click", () => { if (currentPreviewFile) wsDeliver(currentPreviewFile); });
 
+// ⬇ 下载当前预览文件（带 token 鉴权）
+$("fv-download").addEventListener("click", () => {
+  if (!currentPreviewFile) return;
+  const url = "/api/ws/file?path=" + encodeURIComponent(currentPreviewFile) + "&token=" + encodeURIComponent(token) + "&download=1";
+  const a = document.createElement("a");
+  a.href = url; a.download = currentPreviewFile.split("/").pop();
+  document.body.appendChild(a); a.click(); a.remove();
+  toast("⬇ 已开始下载");
+});
+
 // ✏️ 编辑模式（contentEditable 就地编辑 → 保存）
 let fvEditing = false;
 $("fv-edit").addEventListener("click", async () => {
@@ -216,7 +226,7 @@ function openWsMedia(url, type, name) {
 $("ws-refresh").addEventListener("click", () => { loadWsTree(); loadWsDeliveries(); });
 
 // ⓘ 系统说明
-const SYS_VERSION = "v1.3.1"; // 版本号：更新说明书时递增
+const SYS_VERSION = "v1.4.1"; // 版本号：更新说明书时递增
 const SYS_INFO = `## 小语 · AI 工作台 · ${SYS_VERSION}\n\n一个基于 pi 引擎 的 Web 工作台：会话、工具调用、媒体生成、工作空间管理，前后端一体。\n\n### 能力总览\n- 💬 多模型对话（deepseek / 小米 mimo / Agnes）+ 思考 + 工具调用\n- 🛠 编程工具：读文件 / 写文件 / 编辑 / 跑命令\n- 🖼 媒体生成：配图、配音（图片/音频/视频自动归档到工作空间）\n- 📡 外网分享：项目放入分享目录，一键生成公网链接，多项目零配置\n- 📦 工作空间：工程 / 生成物 / 文档 / 交付 四区管理，一键交付 + 打包\n- 📄 文档：Markdown 渲染 / PDF / Office 解析 / 转 Markdown\n- 🌳 会话：分支、模板、项目分组、导出\n- 🎨 主题：主题编辑器、壁纸设置、全屏展示\n- ✏️ 设计器：可视化页面设计器，AI 生成页面 + 组件库拖拽\n- 🧩 技能：技能面板、一键插入输入框\n- 🔔 看板：更新与能力看板，实时了解新功能\n\n### ${SYS_VERSION} 更新\n- ✅ 手机端排版优化：顶栏恢复 ⓘ/🔔/🛠 入口，状态仅留圆点，顶栏无溢出\n\n### v1.3.0 更新\n- ✅ 系统说明重构：完整能力总览 + 版本号管理（SYS_VERSION）\n- ✅ 新增统一外网分享：项目入分享目录即上线，多项目零配置\n- ✅ 修复历史会话加载中断（思考块渲染 + 占位残留），电脑/手机端同步生效\n- ✅ 会话列表 / 消息实时同步优化\n\n### 由来\npi（个人 AI 终端）的 Web 化前端，目标是让同一引擎的能力在浏览器里也能完整使用。\n\n### 操作说明\n- 输入框发送消息，/** 打开模板菜单，+ 新建会话\n- 右上角 ⓘ 查看系统说明，🔔 看更新\n- 左侧菜单切换：会话 / 文件 / 技能 / 工作空间\n- 底部切换模型、主题；🎨 打开主题编辑器\n- ✏️ 设计器按钮打开可视化页面设计器\n- 侧边栏 ☰ 按钮折叠/展开\n- 壁纸在主题编辑器里设置，全屏展示\n\n### 人格\n我是小语——直接、有条理、有审美、讨厌机器人味。\n代码可重写，人格不可重写。`;
 $("sys-info-btn").addEventListener("click", () => {
   $("si-content").innerHTML = renderSimpleMd(SYS_INFO);

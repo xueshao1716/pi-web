@@ -1296,10 +1296,18 @@
     box-shadow: 0 10px 30px rgba(0,0,0,.5);
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-  ::-webkit-scrollbar { width: 8px; height: 8px; }
-  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--border) 92%, transparent);
+    border-radius: 4px;
+    border: 1px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: var(--dim-2); }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-corner { background: transparent; }
+  /* Firefox 细滚动条 */
+  * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
   /* 中等屏幕：顶栏收紧、次要维护按钮折叠，避免拥挤 */
   @media (max-width: 1200px) {
     .main-top { gap: 8px; padding: 10px 16px; }
@@ -1348,4 +1356,25 @@
     .file-picker { max-height: 40vh; }
     .slash-menu { min-width: 240px; }
     .chips { margin-bottom: 6px; }
+  }
+
+  /* ══ v1.4 视觉打磨：键盘焦点 / 消息氛围 / 选中指示（纯 CSS，不碰功能）══ */
+  /* 键盘导航焦点可见性（不影响鼠标操作；input 已有 border 焦点态不重复） */
+  button:focus-visible, select:focus-visible, [role="button"]:focus-visible, .view-item:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+    outline-offset: 1px;
+  }
+  /* 助手气泡 hover 微亮（极淡，不抢戏） */
+  .msg.assistant .bubble { transition: border-color .15s, background .15s; }
+  .msg.assistant .bubble:hover { border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); }
+  /* 消息区顶部氛围光（无壁纸时；有壁纸自动失效） */
+  body:not(.has-wallpaper) #messages {
+    background: radial-gradient(900px 320px at 50% -40%, color-mix(in srgb, var(--accent) 4.5%, transparent), transparent 72%);
+  }
+  /* 会话列表选中项左侧指示条 */
+  .session-item.active::before {
+    content: ""; position: absolute; left: 0; top: 22%; bottom: 22%;
+    width: 3px; border-radius: 0 3px 3px 0;
+    background: linear-gradient(180deg, var(--accent-2), var(--accent-deep));
+    box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 55%, transparent);
   }

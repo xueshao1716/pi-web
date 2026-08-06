@@ -5,6 +5,19 @@
 
 ---
 
+## v1.4.1 · 2026-08-06
+
+### 视觉打磨（纯 CSS，零功能改动，可回滚）
+- **细滚动条**：全局 8px→6px，thumb 带内边距圆角 + hover 变亮；新增 Firefox `scrollbar-width: thin` 支持
+- **键盘焦点可见性**：`button/select/[role=button]` 加 `:focus-visible` accent 描边（键盘导航可辨，不影响鼠标操作）
+- **消息区氛围光**：无壁纸时消息区顶部极淡 accent 径向渐变（`body:not(.has-wallpaper)` 限定，不覆盖壁纸模式）
+- **助手气泡 hover**：边框微亮（accent 28% 混合），带过渡动画
+- **会话选中指示**：active 会话条目左侧 3px accent 渐变指示条 + 微光
+- 顺带修复：SYS_VERSION 上次迭代未同步（v1.3.1 → v1.4.1）
+- 验证：playwright 无头实测（1440×900）主界面正常、88 会话渲染、指示条 3px 呈现、气泡过渡生效、排除 Live2D 网络错误外零报错
+
+---
+
 ## v1.4.0 · 2026-08-05
 
 ### 全平台化 / 开源准备
