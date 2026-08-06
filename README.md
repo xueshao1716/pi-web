@@ -83,8 +83,11 @@ node setup.mjs --install
 | `image-generation` | 图片生成（配图/画图） |
 | `voice-transcribe` | 语音转文字（录音/会议） |
 | `session-export-redacted` | 导出会话自动脱敏 |
+| `wanxiang-portrait` | AI 人物写真提示词（MJ/SD/即梦/Imagen3 通用） |
 
 技能面板（左侧 ⚡）直接可用，无需额外安装。
+
+> 🎨 **独立技能仓库**：[wanxiang-portrait-skill](https://github.com/xueshao1716/wanxiang-portrait-skill) —— AI 人物写真提示词生成技能（含 37 章完整系统文档），可单独 clone 到任意技能目录使用。
 
 > 📋 完整技能清单（含 78 个用户技能）见 [SKILLS.md](SKILLS.md)
 
