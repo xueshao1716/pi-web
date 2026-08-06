@@ -285,7 +285,8 @@ function buildFileCard(file, role) {
   card.className = "file-card" + (isImg ? " img-card" : "");
   if (isImg) {
     card.innerHTML = `<img src="${previewUrl}" alt="${esc(file.name || "图片")}" loading="lazy" style="max-width:220px;max-height:160px;border-radius:8px;cursor:zoom-in;display:block;object-fit:cover">
-      <div class="fc-meta-row"><span class="fc-name">${esc(file.name || "图片")}</span><span class="fc-meta">${esc(size || "")}</span><a class="fc-dl" href="${dlUrl}" download>⬇ 下载</a></div>`;
+      <div class="fc-name-row" title="${esc(file.name || "图片")}">${esc(file.name || "图片")}</div>
+      <div class="fc-meta-row"><span class="fc-meta">${esc(size || "")}</span><a class="fc-dl" href="${dlUrl}" download>⬇ 下载</a></div>`;
     card.querySelector("img").addEventListener("click", (e) => { e.stopPropagation(); openWsMedia(previewUrl, "image", file.name); });
   } else {
     card.innerHTML = `<span class="fc-icon">${icon}</span>
@@ -309,7 +310,8 @@ function addImageMsg(img, role) {
   el.innerHTML = `<div class="who"><span class="avatar">${role === "user" ? "你" : "π"}</span><span class="name">${role === "user" ? "你" : "小语"}</span><span class="msg-time">${nowTime()}</span></div>
     <div class="file-card img-card">
       <img src="${dataUri}" alt="图片" loading="lazy" style="max-width:320px;max-height:240px;border-radius:10px;cursor:zoom-in;display:block;object-fit:cover">
-      <div class="fc-meta-row"><span class="fc-name">图片</span><a class="fc-dl" href="${dataUri}" download>⬇ 下载</a></div>
+      <div class="fc-name-row">图片</div>
+      <div class="fc-meta-row"><a class="fc-dl" href="${dataUri}" download>⬇ 下载</a></div>
     </div>`;
   const imgEl = el.querySelector("img");
   imgEl.addEventListener("click", (e) => {

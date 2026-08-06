@@ -1068,16 +1068,18 @@
   .file-card.img-card img { width: 100%; height: auto; }
   .file-card .fc-row { display: flex; align-items: center; gap: 8px; width: 100%; font-size: 12px; }
   .file-card .fc-row .fc-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .file-card.img-card .fc-meta-row {
-    display: flex; align-items: center; gap: 8px; width: 100%;
-    padding-top: 8px; margin-top: 8px; border-top: 1px solid var(--border);
-    font-size: 12px;
-  }
-  .file-card.img-card .fc-meta-row .fc-name {
-    flex: 1; min-width: 0; color: var(--text);
+  /* 图片卡片：文件名独立成行（可换行/省略），不再跟在图片后面 */
+  .file-card.img-card .fc-name-row {
+    margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border);
+    font-size: 12px; color: var(--text); width: 100%;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    cursor: default;
   }
-  .file-card.img-card .fc-meta-row .fc-meta { color: var(--dim-2); flex-shrink: 0; }
+  .file-card.img-card .fc-meta-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-top: 4px; width: 100%; font-size: 11px;
+  }
+  .file-card.img-card .fc-meta-row .fc-dl { color: var(--accent); text-decoration: none; }
   /* 钉钉式文件组：一条消息多个文件卡片紧凑排列 */
   .msg.file-group .fc-group-body { display: flex; flex-direction: column; gap: 6px; max-width: 420px; margin: 6px 0; }
   .msg.file-group .fc-group-body .file-card { margin: 0; }
