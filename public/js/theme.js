@@ -29,6 +29,7 @@ function makeVars(accent, accent2, deep, bg, sidebar, panel, panel2, border, tex
   };
 }
 const THEMES = {
+  quantum: { label:"量子引擎", vars: makeVars("#23e6ff","#6f8bff","#0d7ff2","#05070e","#070b16","#0b1120","#0e1628","#1d2b4a","#e8f0ff","#8ba0c8","#47597c", 0.9) },
   violet:  { label:"紫罗兰", vars: makeVars("#8b7cf6","#a394ff","#6d5ce7","#0b0c0f","#0f1116","#14161d","#171a22","#262b38","#e6e8ee","#8a91a5","#5c6375") },
   sky:     { label:"天蓝",   vars: makeVars("#38bdf8","#7dd3fc","#0ea5e9","#0a1118","#0d1620","#12202c","#162634","#1e3a4f","#e2edf7","#7f9db5","#51697e") },
   emerald: { label:"翡翠",   vars: makeVars("#34d399","#6ee7b7","#10b981","#081310","#0c1a15","#10241c","#143024","#1e4033","#e0f2ea","#7ea898","#4e7766") },
@@ -311,6 +312,7 @@ function getThemeVars(key) {
 function applyTheme(key, save = true) {
   currentTheme = key;
   applyVars(getThemeVars(key));
+  document.documentElement.dataset.theme = key; // 组件级主题覆盖层的挂载点（quantum.css）
   if (save) localStorage.setItem("pi_theme", key);
   renderSwatches();
   syncEditor();
