@@ -120,7 +120,7 @@ try {
   ok("/workshop/ppt 可访问 (" + page2 + ")", page2 === 200);
   await p.goto(BASE + "/workshop", { waitUntil: "networkidle" });
   await p.waitForTimeout(800);
-  ok("首页三卡片", await p.locator(".w-card").count() === 3);
+  ok("首页多卡片 (" + await p.locator(".w-card").count() + ")", (await p.locator(".w-card").count()) >= 3);
   await p.goto(BASE + "/workshop/ppt", { waitUntil: "networkidle" });
   await p.waitForTimeout(800);
   // 先清 token 测登录界面（前面步骤已存 token，需移除）
