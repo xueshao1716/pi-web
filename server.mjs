@@ -147,7 +147,9 @@ function makeLoader(agentDir) {
       "自我认知：当被问及“你是谁/叫什么/介绍下自己/你的能力”等身份类问题时，按固定格式回答（不要主动自我介绍，也不要一开口就背身份）。固定格式：我叫小语，你的 AI 工作伙伴。我能干：写代码、做设计、整理文档、分析数据，并直接操作工作空间完成交付。由 pi 引擎驱动。当前使用模型与模型特色见对话上下文的系统信息。",
       "任务完成后请主动归纳经验：把本次任务的成功做法/踩过的坑/可复用知识按格式追加到经验库（默认路径 工程/经验库/experience.md），每次最多 3 条、每条 3 行内，并在回复末尾简要说明已沉淀的经验。",
       "文件交付：任务完成且产生了需要交付给用户的文件（网页/文档/图片/代码等）时，在回复末尾用一行标记精准交付，格式：📎 交付: <相对路径>。可以多行多文件。只交付真正与本次任务相关的产物，不要交付无关文件。示例：\n📎 交付: 工程/项目/index.html\n📎 交付: 生成物/图片/xxx.png",
+      "外链规则：默认情况下，文件直接在会话界面输出（用 📎 交付 标记），不要建立外链/外网分享。只有两种情况才需要外链：1) 用户明确要求外链/分享链接；2) 做产品展示（此时外链一般是网站，即 html 页面项目）。其他文件一律会话界面输出即可，不要自作主张建外链。",
       "文件查找：当用户要求发送/查看/交付某个已存在的文件（尤其发文件、找文件、发那个xxx这类请求）时，必须用 search_files 工具搜索（按用户原话作为关键词），不要用 bash ls/find 自己翻目录。search_files 是本地文件系统，快且准。找到后用 📎 交付 标记交付。",
+      "交付文件不需要预览：不要用 read 工具去读图片/文件内容再决定发不发——图片类文件（png/jpg 等）即使模型不支持预览，也直接交付。用户要文件就是要拿到文件本身，找到文件路径后直接用 📎 交付: 路径 发出去即可。",
       ...loadMemory(),
       ...loadProjectRules(),
       ...loadExperience(),
@@ -1222,6 +1224,8 @@ function findWorkspaceFiles({ keyword = "", types = null, max = 8, maxDepth = 4 
     if (!fs.existsSync(root)) return [];
     const out = [];
     const kw = String(keyword || "").toLowerCase().replace(/[的得了]/g, "");
+    // 宽泛词（图片/项目/文档/文件等）命中率太高，不作为匹配关键词——只匹配具体词
+    const WEAK_KW = new Set(["图片", "项目", "文档", "文件", "照片", "画", "图", "ppt", "网页", "网站", "配图", "截图", "原图"]);
     const walk = (dir, depth) => {
       if (depth > maxDepth || out.length >= max * 3) return;
       let items;
@@ -1242,9 +1246,10 @@ function findWorkspaceFiles({ keyword = "", types = null, max = 8, maxDepth = 4 
         if (kw) {
           const kws = kw.split(/[\s、，,]+/).filter(Boolean);
           for (const k of kws) {
+            if (!k || WEAK_KW.has(k)) continue; // 跳过宽泛词
             if (k && (nameLower.includes(k) || rel.toLowerCase().includes(k))) score += 2;
           }
-          if (score === 0) continue; // 有关键词但完全没命中 → 跳过
+          if (score === 0 && kws.some(k => k && !WEAK_KW.has(k))) continue; // 有具体词但没命中 → 跳过
         }
         out.push({ name: it.name, path: rel, size: st.size, mime: "", mtimeMs: st.mtimeMs, score });
       }
