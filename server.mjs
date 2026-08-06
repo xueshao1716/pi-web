@@ -195,9 +195,10 @@ function loadProjectRules() {
   }
 }
 
-// 固定记忆：每次对话自动加载（工作空间根/记忆.md）
-let memoryCache = null, memoryMtime = 0;
+// 固定记忆：每次对话自动加载（工作空间根/记忆.md + 记忆日志）
+let memoryCache = null, memoryMtime = 0, memoryLogCache = null, memoryLogMtime = 0;
 function loadMemory() {
+  const out = [];
   try {
     const f = path.join(CONFIG.cwd, "记忆.md");
     const st = fs.statSync(f);
@@ -205,11 +206,22 @@ function loadMemory() {
       memoryCache = fs.readFileSync(f, "utf8").trim();
       memoryMtime = st.mtimeMs;
     }
-    if (!memoryCache) return [];
-    return [`以下为固定记忆（记忆.md），跨会话长期有效，涉及重要约定/项目状态时以它为准：\n${memoryCache}`];
-  } catch {
-    return [];
-  }
+    if (memoryCache) out.push(`以下为固定记忆（记忆.md），跨会话长期有效，涉及重要约定/项目状态时以它为准：\n${memoryCache}`);
+  } catch {}
+  try {
+    // 记忆日志最近条目（自动沉淀的重要事件）——同步读
+    const lf = path.join(CONFIG.cwd, "记忆", "记忆日志.md");
+    const lst = fs.statSync(lf);
+    if (lst.mtimeMs !== memoryLogMtime) {
+      const raw = fs.readFileSync(lf, "utf8");
+      const blocks = raw.split(/\n### /).filter(b => b.trim());
+      const rec = blocks.slice(-8).map(b => (b.startsWith("### ") ? b : "### " + b).trim());
+      memoryLogCache = rec.length ? `以下为最近记忆日志（自动沉淀的偏好/进展/交付），供参考：\n${rec.join("\n")}` : "";
+      memoryLogMtime = lst.mtimeMs;
+    }
+    if (memoryLogCache) out.push(memoryLogCache);
+  } catch {}
+  return out;
 }
 
 async function createSession(name) {
@@ -2655,6 +2667,24 @@ async function handleChat(req, res, body) {
       // 图片附件：会话里 read 的图直接推给前端渲染（窗口内直接显示）
       const imgs = extractMessageImages(entry.sm);
       for (const img of imgs.slice(0, 3)) sseWrite(res, "image", img);
+    } catch {}
+    // 自动记忆：对话结束，把本轮重要信息沉淀到记忆日志
+    try {
+      const mem = await import("./memory.mjs");
+      const assistLatest = (() => {
+        try {
+          const entries = readEntriesFromFile(entry.sm.sessionFile);
+          for (let i = entries.length - 1; i >= 0; i--) {
+            const e = entries[i];
+            if (e?.type === "message" && e?.message?.role === "assistant") {
+              const t = extractText(e.message.content) || "";
+              if (t.trim()) return t;
+            }
+          }
+        } catch {}
+        return "";
+      })();
+      mem.autoMemorize(CONFIG.cwd, { userMsg: message, assistantMsg: assistLatest });
     } catch {}
     sseWrite(res, "done", { sessionId: sessionId || findKeyByEntry(entry) });
   } catch (e) {
