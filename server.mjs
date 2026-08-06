@@ -267,10 +267,8 @@ async function initSearchTool() {
   try {
     // typebox 在 pi 引擎的依赖里，用 createRequire 从引擎路径解析
     const { createRequire } = await import("node:module");
-    // 用 createRequire 从当前模块解析 pi 引擎路径（ESM 无全局 require）
-    const req0 = createRequire(import.meta.url);
-    const piEntry = req0.resolve("@earendil-works/pi-coding-agent/dist/index.js");
-    const req2 = createRequire(piEntry);
+    // 用 CONFIG.piPackage（引擎入口路径，server 顶部已验证可用）解析 typebox
+    const req2 = createRequire(CONFIG.piPackage);
     const { Type } = req2("typebox");
     const fb = await import("./filebox.mjs");
     searchToolDef = {
