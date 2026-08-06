@@ -1064,7 +1064,10 @@
   .file-card .fc-meta { font-size: 11px; color: var(--dim-2); }
   .file-card .fc-dl {
     font-size: 12px; color: var(--accent); text-decoration: none;
-    border: 1px solid var(--accent); border-radius: 6px; padding: 4px 10px;
+  .file-card.img-card { flex-direction: column; align-items: flex-start; padding: 10px; max-width: 300px; }
+  .file-card.img-card img { width: 100%; height: auto; }
+  .file-card .fc-row { display: flex; align-items: center; gap: 8px; width: 100%; font-size: 12px; }
+  .file-card .fc-row .fc-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }    border: 1px solid var(--accent); border-radius: 6px; padding: 4px 10px;
     white-space: nowrap; transition: background .2s, color .2s;
   }
   .file-card .fc-dl:hover { background: var(--accent); color: #0b0c0f; }

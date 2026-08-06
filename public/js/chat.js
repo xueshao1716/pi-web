@@ -250,27 +250,38 @@ function fmtDate(iso) {
 }
 let currentLeafId = null; // 当前会话的分叉叶子（分叉后置位；普通会话为 null = 显示全部）
 // 渲染会话消息（含工具卡片/思考块），供加载与缓存复用
-// 文件卡片（聊天界面可见、可下载）
+// 文件卡片（聊天界面可见、可下载）；图片类型直接显示缩略图
 function addFileMsg(file, role) {
   const box = $("messages");
   const el = document.createElement("div");
   el.className = "msg " + (role === "user" ? "user" : "assistant");
-  // 文件下载链接带上 token（浏览器直接 GET 无法带 header，用 URL 参数鉴权）
-  const url = "/api/ws/file?path=" + encodeURIComponent(file.path || "") + "&token=" + encodeURIComponent(token) + "&download=1";
-  const icon = (file.mime || "").startsWith("image/") ? "🖼" : (file.mime || "").startsWith("audio/") ? "🎵" : (file.mime || "").startsWith("video/") ? "🎬" : "📄";
+  const isImg = (file.mime || "").startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name || "");
+  const dlUrl = "/api/ws/file?path=" + encodeURIComponent(file.path || "") + "&token=" + encodeURIComponent(token) + "&download=1";
+  const previewUrl = "/api/ws/file?path=" + encodeURIComponent(file.path || "") + "&token=" + encodeURIComponent(token);
+  const icon = isImg ? "🖼" : (file.mime || "").startsWith("audio/") ? "🎵" : (file.mime || "").startsWith("video/") ? "🎬" : "📄";
   const size = file.size ? (file.size > 1048576 ? (file.size / 1048576).toFixed(1) + "MB" : Math.max(1, Math.round(file.size / 1024)) + "KB") : "";
-  el.innerHTML = `<div class="who"><span class="avatar">${role === "user" ? "你" : "π"}</span><span class="name">${role === "user" ? "你" : "小语"}</span><span class="msg-time">${nowTime()}</span></div>
-    <div class="file-card" title="点击预览，⬇ 下载">
-      <span class="fc-icon">${icon}</span>
-      <span class="fc-info"><span class="fc-name">${esc(file.name || "文件")}</span><span class="fc-meta">${esc(size || "")}</span></span>
-      <a class="fc-dl" href="${url}" download>⬇ 下载</a>
-    </div>`;
-  // 整张卡片可点击：预览文件（下载按钮除外）
-  const card = el.querySelector(".file-card");
-  card.addEventListener("click", (e) => {
-    if (e.target.closest(".fc-dl")) return;
-    if (file.path && typeof openWsFile === "function") openWsFile({ name: file.name, path: file.path });
-  });
+  if (isImg) {
+    // 图片：直接显示缩略图 + 点击放大 + 下载
+    el.innerHTML = `<div class="who"><span class="avatar">${role === "user" ? "你" : "π"}</span><span class="name">${role === "user" ? "你" : "小语"}</span><span class="msg-time">${nowTime()}</span></div>
+      <div class="file-card img-card">
+        <img src="${previewUrl}" alt="${esc(file.name || "图片")}" loading="lazy" style="max-width:280px;max-height:200px;border-radius:10px;cursor:zoom-in;display:block;object-fit:cover">
+        <div class="fc-row"><span class="fc-name">${esc(file.name || "图片")}</span><span class="fc-meta">${esc(size || "")}</span><a class="fc-dl" href="${dlUrl}" download>⬇ 下载</a></div>
+      </div>`;
+    const img = el.querySelector("img");
+    img.addEventListener("click", (e) => { e.stopPropagation(); openWsMedia(previewUrl, "image", file.name); });
+  } else {
+    el.innerHTML = `<div class="who"><span class="avatar">${role === "user" ? "你" : "π"}</span><span class="name">${role === "user" ? "你" : "小语"}</span><span class="msg-time">${nowTime()}</span></div>
+      <div class="file-card" title="点击预览，⬇ 下载">
+        <span class="fc-icon">${icon}</span>
+        <span class="fc-info"><span class="fc-name">${esc(file.name || "文件")}</span><span class="fc-meta">${esc(size || "")}</span></span>
+        <a class="fc-dl" href="${dlUrl}" download>⬇ 下载</a>
+      </div>`;
+    const card = el.querySelector(".file-card");
+    card.addEventListener("click", (e) => {
+      if (e.target.closest(".fc-dl")) return;
+      openWsMedia(previewUrl, "file", file.name);
+    });
+  }
   box.appendChild(el);
   box.scrollTop = box.scrollHeight;
 }
