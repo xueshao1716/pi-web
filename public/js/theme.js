@@ -294,8 +294,16 @@ function saveCustomThemes() {
 }
 let customThemes = loadCustomThemes();
 
-let currentTheme = localStorage.getItem("pi_theme") || "violet";
-if (!THEMES[currentTheme] && !THEMES_CODEX[currentTheme] && !currentTheme.startsWith("custom:")) currentTheme = "violet";
+// v1.8.0 主题默认值迁移：量子引擎设为默认（一次性标记，之后用户手动切换不受影响）
+try {
+  if (!localStorage.getItem("pi_theme_v180")) {
+    localStorage.setItem("pi_theme", "quantum");
+    localStorage.setItem("pi_theme_v180", "1");
+  }
+} catch {}
+
+let currentTheme = localStorage.getItem("pi_theme") || "quantum";
+if (!THEMES[currentTheme] && !THEMES_CODEX[currentTheme] && !currentTheme.startsWith("custom:")) currentTheme = "quantum";
 let editVars = null;   // 编辑器当前编辑的变量组
 let editDirty = false; // 是否有未保存修改
 

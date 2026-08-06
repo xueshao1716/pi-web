@@ -1,5 +1,5 @@
 // pi-web Service Worker —— 静态资源缓存，API 不缓存
-const CACHE = "pi-web-v14"; // v14: 量子引擎主题 quantum.css；v13: 主页移除设计器按钮（v1.7.2）
+const CACHE = "pi-web-v15"; // v15: quantum 设为默认主题+资源版本戳（v1.8.0）；v14: quantum.css
 const STATIC = ["/", "/index.html", "/static/app.css", "/static/css/quantum.css",
   "/static/js/core.js", "/static/js/theme.js", "/static/js/chat.js",
   "/static/js/wallpaper.js", "/static/js/model.js", "/static/js/ui.js",

@@ -2451,13 +2451,56 @@ async function handleGlobalStats(res) {
   json(res, 200, { sessions: rows, totals, count: rows.length });
 }
 
+// 安全版会话统计：引擎 getSessionStats 遇到"无 usage 的 assistant 消息"会抛
+// "Cannot read properties of undefined (reading 'input')"（官方 bug），导致 stats 接口 500。
+// 这里自行聚合，跳过缺失 usage 的消息，保证任何会话都能拿到统计。
+function safeSessionStats(agent) {
+  let userMessages = 0, assistantMessages = 0, toolResults = 0, totalMessages = 0, toolCalls = 0;
+  const usageTotals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+  const addUsage = (u) => {
+    if (!u || typeof u.input !== "number" || typeof u.output !== "number") return;
+    usageTotals.input += u.input || 0;
+    usageTotals.output += u.output || 0;
+    usageTotals.cacheRead += u.cacheRead || 0;
+    usageTotals.cacheWrite += u.cacheWrite || 0;
+    usageTotals.cost += typeof u.cost === "number" ? u.cost : (u.cost?.total || 0);
+  };
+  for (const entry of agent.sessionManager.getEntries()) {
+    if ((entry.type === "branch_summary" || entry.type === "compaction") && entry.usage) addUsage(entry.usage);
+    if (entry.type !== "message") continue;
+    totalMessages++;
+    const m = entry.message;
+    if (m.role === "user") userMessages++;
+    else if (m.role === "toolResult") { toolResults++; if (m.usage) addUsage(m.usage); }
+    else if (m.role === "assistant") {
+      assistantMessages++;
+      if (Array.isArray(m.content)) toolCalls += m.content.filter(c => c.type === "toolCall").length;
+      if (m.usage) addUsage(m.usage);
+    }
+  }
+  let contextUsage;
+  try { contextUsage = agent.getContextUsage(); } catch {}
+  return {
+    sessionFile: agent.sessionFile,
+    sessionId: agent.sessionId,
+    userMessages, assistantMessages, toolCalls, toolResults, totalMessages,
+    tokens: {
+      input: usageTotals.input, output: usageTotals.output,
+      cacheRead: usageTotals.cacheRead, cacheWrite: usageTotals.cacheWrite,
+      total: usageTotals.input + usageTotals.output + usageTotals.cacheRead + usageTotals.cacheWrite,
+    },
+    cost: usageTotals.cost,
+    contextUsage,
+  };
+}
+
 // GET /api/sessions/:id/stats —— token/成本统计
 async function handleStats(res, id) {
   const entry = await openSession(id);
   if (!entry) return json(res, 404, { error: "会话不存在" });
   try {
-    const stats = entry.agent ? entry.agent.getSessionStats() : {};
-    json(res, 200, { stats: JSON.parse(JSON.stringify(stats)) });
+    const stats = entry.agent ? safeSessionStats(entry.agent) : {};
+    json(res, 200, { stats });
   } catch (e) {
     json(res, 500, { error: String(e?.message || e) });
   }
