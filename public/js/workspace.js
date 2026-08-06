@@ -93,7 +93,7 @@ function wsItem(it, depth) {
     });
     el.appendChild(childBox);
   } else {
-    el.addEventListener("click", () => openWsFile(it));
+    el.addEventListener("click", (e) => { e.stopPropagation(); openWsFile(it); });
   }
   return el;
 }
@@ -409,7 +409,7 @@ function wsFullItem(it, depth) {
     });
     el.appendChild(childBox);
   } else {
-    el.addEventListener("click", () => previewWsFull(it));
+    el.addEventListener("click", (e) => { e.stopPropagation(); previewWsFull(it); });
   }
   return el;
 }
