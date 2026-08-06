@@ -253,35 +253,70 @@ let currentLeafId = null; // 当前会话的分叉叶子（分叉后置位；普
 // 文件卡片（聊天界面可见、可下载）；图片类型直接显示缩略图
 function addFileMsg(file, role) {
   const box = $("messages");
+  // 钉钉式：同一角色连续的文件消息合并到上一个文件组（头像只出现一次，文件卡片紧凑排列）
+  const last = box.lastElementChild;
+  if (last && last.classList.contains("msg") && last.dataset.role === role && last.classList.contains("file-group")) {
+    const groupBody = last.querySelector(".fc-group-body");
+    if (groupBody) {
+      groupBody.appendChild(buildFileCard(file, role));
+      box.scrollTop = box.scrollHeight;
+      return;
+    }
+  }
+  // 新文件组（一条消息，含头像 + 多个文件卡片）
   const el = document.createElement("div");
-  el.className = "msg " + (role === "user" ? "user" : "assistant");
+  el.className = "msg " + (role === "user" ? "user" : "assistant") + " file-group";
+  el.dataset.role = role;
+  el.innerHTML = `<div class="who"><span class="avatar">${role === "user" ? "你" : "π"}</span><span class="name">${role === "user" ? "你" : "小语"}</span><span class="msg-time">${nowTime()}</span></div>
+    <div class="fc-group-body"></div>`;
+  el.querySelector(".fc-group-body").appendChild(buildFileCard(file, role));
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+
+// 构建单个文件卡片（钉钉样式：图标+文件名+大小+下载）
+function buildFileCard(file, role) {
   const isImg = (file.mime || "").startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name || "");
   const dlUrl = "/api/ws/file?path=" + encodeURIComponent(file.path || "") + "&token=" + encodeURIComponent(token) + "&download=1";
   const previewUrl = "/api/ws/file?path=" + encodeURIComponent(file.path || "") + "&token=" + encodeURIComponent(token);
   const icon = isImg ? "🖼" : (file.mime || "").startsWith("audio/") ? "🎵" : (file.mime || "").startsWith("video/") ? "🎬" : "📄";
   const size = file.size ? (file.size > 1048576 ? (file.size / 1048576).toFixed(1) + "MB" : Math.max(1, Math.round(file.size / 1024)) + "KB") : "";
+  const card = document.createElement("div");
+  card.className = "file-card" + (isImg ? " img-card" : "");
   if (isImg) {
-    // 图片：直接显示缩略图 + 点击放大 + 下载
-    el.innerHTML = `<div class="who"><span class="avatar">${role === "user" ? "你" : "π"}</span><span class="name">${role === "user" ? "你" : "小语"}</span><span class="msg-time">${nowTime()}</span></div>
-      <div class="file-card img-card">
-        <img src="${previewUrl}" alt="${esc(file.name || "图片")}" loading="lazy" style="max-width:280px;max-height:200px;border-radius:10px;cursor:zoom-in;display:block;object-fit:cover">
-        <div class="fc-meta-row"><span class="fc-name">${esc(file.name || "图片")}</span><span class="fc-meta">${esc(size || "")}</span><a class="fc-dl" href="${dlUrl}" download>⬇ 下载</a></div>
-      </div>`;
-    const img = el.querySelector("img");
-    img.addEventListener("click", (e) => { e.stopPropagation(); openWsMedia(previewUrl, "image", file.name); });
+    card.innerHTML = `<img src="${previewUrl}" alt="${esc(file.name || "图片")}" loading="lazy" style="max-width:220px;max-height:160px;border-radius:8px;cursor:zoom-in;display:block;object-fit:cover">
+      <div class="fc-meta-row"><span class="fc-name">${esc(file.name || "图片")}</span><span class="fc-meta">${esc(size || "")}</span><a class="fc-dl" href="${dlUrl}" download>⬇ 下载</a></div>`;
+    card.querySelector("img").addEventListener("click", (e) => { e.stopPropagation(); openWsMedia(previewUrl, "image", file.name); });
   } else {
-    el.innerHTML = `<div class="who"><span class="avatar">${role === "user" ? "你" : "π"}</span><span class="name">${role === "user" ? "你" : "小语"}</span><span class="msg-time">${nowTime()}</span></div>
-      <div class="file-card" title="点击预览，⬇ 下载">
-        <span class="fc-icon">${icon}</span>
-        <span class="fc-info"><span class="fc-name">${esc(file.name || "文件")}</span><span class="fc-meta">${esc(size || "")}</span></span>
-        <a class="fc-dl" href="${dlUrl}" download>⬇ 下载</a>
-      </div>`;
-    const card = el.querySelector(".file-card");
+    card.innerHTML = `<span class="fc-icon">${icon}</span>
+      <span class="fc-info"><span class="fc-name">${esc(file.name || "文件")}</span><span class="fc-meta">${esc(size || "")}</span></span>
+      <a class="fc-dl" href="${dlUrl}" download>⬇ 下载</a>`;
     card.addEventListener("click", (e) => {
       if (e.target.closest(".fc-dl")) return;
       openWsMedia(previewUrl, "file", file.name);
     });
   }
+  return card;
+}
+
+// 渲染消息里的图片附件（base64 data URI 直显，点击放大 / 可下载）
+function addImageMsg(img, role) {
+  const box = $("messages");
+  const el = document.createElement("div");
+  el.className = "msg " + (role === "user" ? "user" : "assistant");
+  const raw = img.data || "";
+  const dataUri = raw.startsWith("data:") ? raw : `data:${img.mimeType || "image/png"};base64,${raw}`;
+  el.innerHTML = `<div class="who"><span class="avatar">${role === "user" ? "你" : "π"}</span><span class="name">${role === "user" ? "你" : "小语"}</span><span class="msg-time">${nowTime()}</span></div>
+    <div class="file-card img-card">
+      <img src="${dataUri}" alt="图片" loading="lazy" style="max-width:320px;max-height:240px;border-radius:10px;cursor:zoom-in;display:block;object-fit:cover">
+      <div class="fc-meta-row"><span class="fc-name">图片</span><a class="fc-dl" href="${dataUri}" download>⬇ 下载</a></div>
+    </div>`;
+  const imgEl = el.querySelector("img");
+  imgEl.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const w = window.open();
+    if (w) { w.document.write(`<body style="margin:0;background:#111"><img src="${dataUri}" style="max-width:100%;display:block"></body>`); w.document.close(); }
+  });
   box.appendChild(el);
   box.scrollTop = box.scrollHeight;
 }
@@ -348,7 +383,7 @@ function renderChunk(list) {
     }
   };
   for (const m of list) {
-    if (m.role === "user") { flush(); addUserMsg(m.text, m.id); if (Array.isArray(m.files)) m.files.forEach(f => addFileMsg(f, "user")); }
+    if (m.role === "user") { flush(); addUserMsg(m.text, m.id); if (Array.isArray(m.files)) m.files.forEach(f => addFileMsg(f, "user")); if (Array.isArray(m.images)) m.images.forEach(img => addImageMsg(img, "user")); }
     else if (m.role === "assistant") {
       if (m.think && m.think.trim()) { thinkBuf += (thinkBuf ? "\n\n" : "") + m.think; thinkN++; }
       if (Array.isArray(m.tools) && m.tools.length) {
@@ -367,6 +402,7 @@ function renderChunk(list) {
       }
       if (m.text) { flush(); addAssistantMsg(m.text, m.ts, m.id); }
       if (Array.isArray(m.files)) m.files.forEach(f => addFileMsg(f, "assistant"));
+      if (Array.isArray(m.images)) m.images.forEach(img => addImageMsg(img, "assistant"));
     }
   }
   flush();
@@ -1244,6 +1280,10 @@ async function send() {
           case "file":
             // 模型产出的文件附件 → 聊天界面直接展示文件卡片（而非只给链接）
             if (obj && obj.path) addFileMsg(obj, "assistant");
+            break;
+          case "image":
+            // 会话里的图片附件 → 聊天界面直接显示
+            if (obj && obj.data) addImageMsg(obj, "assistant");
             break;
           case "media":
             // 媒体路由结果：图片/音频直接渲染到消息区

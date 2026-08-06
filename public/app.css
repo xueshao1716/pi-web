@@ -1077,7 +1077,11 @@
     flex: 1; min-width: 0; color: var(--text);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .file-card.img-card .fc-meta-row .fc-meta { color: var(--dim-2); flex-shrink: 0; }    border: 1px solid var(--accent); border-radius: 6px; padding: 4px 10px;
+  .file-card.img-card .fc-meta-row .fc-meta { color: var(--dim-2); flex-shrink: 0; }
+  /* 钉钉式文件组：一条消息多个文件卡片紧凑排列 */
+  .msg.file-group .fc-group-body { display: flex; flex-direction: column; gap: 6px; max-width: 420px; margin: 6px 0; }
+  .msg.file-group .fc-group-body .file-card { margin: 0; }
+  .msg.file-group .fc-group-body .file-card.img-card img { max-width: 220px; }    border: 1px solid var(--accent); border-radius: 6px; padding: 4px 10px;
     white-space: nowrap; transition: background .2s, color .2s;
   }
   .file-card .fc-dl:hover { background: var(--accent); color: #0b0c0f; }

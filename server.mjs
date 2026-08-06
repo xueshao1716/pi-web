@@ -440,13 +440,14 @@ function extractFiles(content) {
 }
 
 // 从会话最新 assistant 消息提取文件附件（供 SSE 实时推送）
-function extractMessageFiles(sm) {
+function extractMessageFiles(sm, baselineLines = 0) {
   try {
     const file = sm.sessionFile;
     if (!file || !fs.existsSync(file)) return [];
     const entries = readEntriesFromFile(file);
-    // 从后往前找最近的 assistant 消息，收集其中的 file 块
-    for (let i = entries.length - 1; i >= 0; i--) {
+    // 只提取本次对话开始之后（baselineLines 之后）新增的 assistant 消息中的 file 块
+    // 避免历史文件每次对话都被重新捞出来推送
+    for (let i = entries.length - 1; i >= baselineLines; i--) {
       const e = entries[i];
       if (e?.type !== "message" || e?.message?.role !== "assistant") continue;
       const c = e.message.content;
@@ -2298,6 +2299,8 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal)
 async function handleChat(req, res, body) {
   let message = typeof body.message === "string" ? body.message.trim() : "";
   const sessionId = typeof body.sessionId === "string" ? body.sessionId : null;
+  // 记录对话开始时会话行数（基线）：交付时只提取本轮新增的文件，避免历史文件重复推
+  let chatBaseline = 0;
   console.log(`[chat] msg="${message.slice(0, 20)}" sid=${sessionId} model=${defaultModel?.provider}/${defaultModel?.id} agent=${body.model || ""}`);
   if (!message) return json(res, 400, { error: "消息不能为空" });
 
@@ -2345,6 +2348,11 @@ async function handleChat(req, res, body) {
       } catch {}
     }
   }
+  // 记录对话开始时会话行数（交付去重基线：只推本轮新增文件）
+  try {
+    const sf = entry.sm.sessionFile;
+    if (sf && fs.existsSync(sf)) chatBaseline = fs.readFileSync(sf, "utf8").split("\n").filter(Boolean).length;
+  } catch {}
   // busy → 打断当前任务（对标 TUI interrupt：同一会话上处理新消息）
   if (entry.busy) {
     const curAgent = entry.agent;
@@ -2437,8 +2445,11 @@ async function handleChat(req, res, body) {
     try {
       if (event.type === "message_update" && event.assistantMessageEvent?.type === "text_delta") {
         sawDelta = true;
-        collected += event.assistantMessageEvent.delta;
-        sseWrite(res, "delta", { text: event.assistantMessageEvent.delta });
+        const delta = event.assistantMessageEvent.delta || "";
+        collected += delta;
+        // 过滤模型复述/泄漏的内部指令（情绪语境等），避免显示给用户
+        const cleaned = delta.replace(/【内部指令·情绪语境】[\s\S]*?(?=【|\n\n|$)/, "").replace(/【当前情绪语境】[\s\S]*?(?=【|\n\n|$)/, "");
+        if (cleaned) sseWrite(res, "delta", { text: cleaned });
       } else if (event.type === "message_update" && event.assistantMessageEvent?.type === "thinking_delta") {
         sseWrite(res, "think", { text: event.assistantMessageEvent.delta });
       } else if (event.type === "message_update" && event.assistantMessageEvent?.type === "thinking_end") {
@@ -2535,7 +2546,7 @@ async function handleChat(req, res, body) {
     // 文件交付：优先解析模型回复里的「📎 交付:」标记（精准交付，AI 按任务针对性选文件）
     // 解析不到才兜底扫描最近产物（兼容模型不按标记回复的情况）
     try {
-      let files = extractMessageFiles(entry.sm);
+      let files = extractMessageFiles(entry.sm, chatBaseline);
       // 识别用户请求的文件类型（"发图片/图/照片"→只要图；"ppt"→只要演示文件）
       const wantImg = /图片|图[片片]?|照片|画|生成图|配图/i.test(message) && !/ppt|文档|pdf/.test(message);
       const wantPpt = /ppt|pptx|演示|幻灯片/i.test(message);
