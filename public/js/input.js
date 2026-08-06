@@ -368,6 +368,12 @@ $("local-file").addEventListener("change", async (e) => {
   const files = [...e.target.files];
   e.target.value = "";
   if (!files.length) return;
+  await handleLocalFiles(files);
+});
+
+// ══ 本地文件统一处理：图片→视觉附件、Office→解析文本、文本→引用、其他→上传保存 ══
+// （提取自原 change 回调，供「选择文件」与「拖放文件」共用）
+async function handleLocalFiles(files) {
   let added = 0, skipped = 0, transferred = 0;
   const sessionId = window.currentId || null;
   for (const f of files.slice(0, 10)) {
@@ -418,7 +424,36 @@ $("local-file").addEventListener("change", async (e) => {
   if (transferred) toast(`📎 已传输 ${transferred} 个文件` + (added ? `，${added} 个已引用给 agent` : "") + (skipped ? `，跳过 ${skipped}` : ""));
   else if (added) toast(`已引用 ${added} 个文件` + (skipped ? `，跳过 ${skipped} 个` : ""));
   else if (skipped) toast(`跳过 ${skipped} 个文件`);
-});
+}
+
+// ══ 拖放文件到窗口：松开即引用（复用 handleLocalFiles）+ 遮罩反馈 ══
+(function initDragDrop() {
+  const overlay = document.createElement("div");
+  overlay.className = "drag-overlay";
+  overlay.innerHTML = "📎 松开以引用文件";
+  document.body.appendChild(overlay);
+  let depth = 0;
+  const hasFiles = (e) => e.dataTransfer && [...(e.dataTransfer.types || [])].includes("Files");
+  window.addEventListener("dragenter", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    depth++;
+    overlay.classList.add("show");
+  });
+  window.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
+  window.addEventListener("dragleave", (e) => {
+    if (!hasFiles(e)) return;
+    depth = Math.max(0, depth - 1);
+    if (depth === 0) overlay.classList.remove("show");
+  });
+  window.addEventListener("drop", async (e) => {
+    if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+    e.preventDefault();
+    depth = 0;
+    overlay.classList.remove("show");
+    await handleLocalFiles([...e.dataTransfer.files]);
+  });
+})();
 $("btn-cmd").addEventListener("click", () => { showSlashMenu(); $("input").focus(); });
 
 // ══ 输入框模型选择器（快速切换当前会话模型）══

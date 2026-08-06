@@ -1411,3 +1411,21 @@
     border-color: color-mix(in srgb, var(--yellow) 40%, var(--border));
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--yellow) 15%, transparent);
   }
+
+  /* ══ v1.4.4 视觉：拖放遮罩 + 消息内容细节（表格行高亮/链接下划线）══ */
+  .drag-overlay {
+    position: fixed; inset: 0; z-index: 500;
+    display: none; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--bg) 72%, transparent);
+    backdrop-filter: blur(4px);
+    font-size: 15px; color: var(--accent); font-weight: 600;
+    border: 2px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+    border-radius: 18px; margin: 12px; pointer-events: none;
+  }
+  .drag-overlay.show { display: flex; }
+  .msg .bubble table { border-collapse: collapse; margin: 8px 0; max-width: 100%; }
+  .msg .bubble th, .msg .bubble td { border: 1px solid var(--border); padding: 6px 12px; text-align: left; }
+  .msg .bubble th { background: var(--panel); font-weight: 600; }
+  .msg .bubble tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  .msg .bubble a { text-decoration: none; }
+  .msg .bubble a:hover { text-decoration: underline; text-underline-offset: 2px; }
