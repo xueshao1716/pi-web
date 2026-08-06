@@ -720,6 +720,17 @@
   }
   .code-head .copy-btn:hover { color: var(--accent); }
   .code-head .copy-btn.copied { color: var(--green); }
+  .code-head .code-actions { display: flex; align-items: center; gap: 2px; }
+  .code-head .code-expand {
+    background: none; border: none; color: var(--dim-2);
+    border-radius: 6px; padding: 3px 8px; font-size: 10.5px; cursor: pointer; font-family: var(--mono);
+    transition: color .12s;
+  }
+  .code-head .code-expand:hover { color: var(--accent); }
+  /* 长代码块（>25 行）：默认内部滚动上限 + 底部阴影提示可展开；展开后解除 */
+  .code-wrap pre { max-height: 340px; overflow-y: auto; }
+  .code-wrap.expanded pre { max-height: none; }
+  .code-wrap.is-long:not(.expanded) pre { box-shadow: inset 0 -26px 26px -26px rgba(0,0,0,.65); }
   .code-wrap pre { margin: 0; border: none; border-radius: 0; background: transparent; box-shadow: none; }
   .code-wrap pre code { display: block; padding: 12px 14px; }
   /* hljs 主题覆盖：背景透明，融入现有暗色容器 */

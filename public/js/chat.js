@@ -655,6 +655,15 @@ function bindCopyButtons(root) {
       });
     });
   });
+  // 长代码块展开/收起（md 里 >25 行自动加 is-long + 展开按钮）
+  root.querySelectorAll(".code-expand").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const wrap = btn.closest(".code-wrap");
+      if (!wrap) return;
+      const expanded = wrap.classList.toggle("expanded");
+      btn.textContent = expanded ? "收起" : "展开";
+    });
+  });
 }
 function appendDelta(text) {
   const box = $("messages");
@@ -835,7 +844,9 @@ function md(src) {
     if (lang === "mermaid") {
       blocks.push(`<pre class="mermaid">${code}</pre>`);
     } else {
-      blocks.push(`<div class="code-wrap"><div class="code-head"><span class="lang">${lang || "code"}</span><button class="copy-btn">复制</button></div><pre><code class="language-${lang || ""}">${code.length > 100000 ? code.slice(0, 100000) + "\n…[内容过长已截断，共 " + Math.round(code.length / 1024) + "KB]…" : code}</code></pre></div>`);
+      const lineCount = (code.match(/\n/g) || []).length + 1;
+      const isLong = lineCount > 25;
+      blocks.push(`<div class="code-wrap${isLong ? " is-long" : ""}"><div class="code-head"><span class="lang">${lang || "code"}</span><span class="code-actions"><button class="copy-btn">复制</button>${isLong ? `<button class="code-expand">展开 ${lineCount} 行</button>` : ""}</span></div><pre><code class="language-${lang || ""}">${code.length > 100000 ? code.slice(0, 100000) + "\n…[内容过长已截断，共 " + Math.round(code.length / 1024) + "KB]…" : code}</code></pre></div>`);
     }
     return id;
   });
