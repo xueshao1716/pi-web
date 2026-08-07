@@ -83,7 +83,9 @@
   .img-actions a:hover, .img-actions button:hover { background:rgba(200,164,74,.12); }
 
   #output { font-family:'Noto Sans SC',sans-serif; font-size:13.5px; line-height:1.85; white-space:pre-wrap;
-    word-break:break-word; }
+    word-break:break-word; width:100%; min-height:120px; }
+  #output.empty { color:var(--dim); text-align:center; padding:40px 0; font-size:13px; letter-spacing:2px; resize:vertical; }
+  #output:not(.empty) { resize:vertical; }
   .out-area { position:relative; }
   .gen-row { display:flex; gap:10px; align-items:center; margin-bottom:12px; }
   .gen-row .gen-btn { flex:1; margin:0; }
@@ -236,8 +238,11 @@
         <label>表情</label>
         <input type="text" id="expression" placeholder="如：自信微笑，眼神坚定">
       </div>
+    </div>
 
-      <div class="card" style="margin-top:16px">
+    <!-- 右：增强 & 输出 -->
+    <div>
+      <div class="card">
         <h2><span class="num">3</span> 光影 · 氛围 · 风格</h2>
         <label>光影方案</label>
         <select id="lighting">
@@ -272,11 +277,8 @@
         <label>背景环境</label>
         <input type="text" id="background" placeholder="如：办公室落地窗前 / 纯色无缝背景 / 海边沙滩">
       </div>
-    </div>
 
-    <!-- 右：增强 & 输出 -->
-    <div>
-      <div class="card">
+      <div class="card" style="margin-top:16px">
         <h2><span class="num">4</span> 技术增强（协议库）</h2>
         <div class="switch"><input type="checkbox" id="sw-uhq" checked><span class="box"></span><span class="txt">超高清画质协议（强制全局）</span></div>
         <div class="switch"><input type="checkbox" id="sw-zero" checked><span class="box"></span><span class="txt">零器材模式（无灯架/无器材入镜）</span></div>
@@ -334,8 +336,9 @@
     <div class="gen-row">
       <button class="gen-btn" id="genBtn" style="margin:0">生 成 提 示 词</button>
       <button class="copy-btn" id="copyBtn">复制</button>
+      <button class="copy-btn" id="transBtn" title="翻译成英文（部分生图模型不认中文）" style="background:#3a3f52">🌐 翻译 EN</button>
     </div>
-    <div id="output" class="empty">选择场景 → 填写信息 → 点击上方按钮生成</div>
+    <textarea id="output" class="empty" spellcheck="false" placeholder="选择场景 → 填写信息 → 点击上方按钮生成"></textarea>
     <!-- 直出图像区：模型选择 + 批量出图 + 网格展示 + 点击选图 -->
     <div class="img-area">
       <div class="img-controls">
@@ -635,13 +638,50 @@ const NEG = {
 // ---- 生成 ----
 $('genBtn').addEventListener('click', generate);
 $('copyBtn').addEventListener('click', async () => {
-  const txt = $('output').textContent;
+  const txt = $('output').value;
   if(txt && !txt.includes('选择场景')){
     try { await navigator.clipboard.writeText(txt); $('copyBtn').textContent='✓ 已复制'; setTimeout(()=>$('copyBtn').textContent='复制',1500); }
     catch(e){ /* 老浏览器 fallback */ }
   }
 });
 $('copyBtn').addEventListener('mousedown', e=>e.preventDefault());
+
+// 翻译成英文（部分生图模型不认中文）——用 deepseek 翻译
+$('transBtn').addEventListener('click', async () => {
+  const txt = $('output').value;
+  if (!txt || txt.includes('选择场景')) { $('output').value = '（请先生成提示词再翻译）'; $('output').classList.remove('empty'); return; }
+  $('transBtn').textContent = '⏳ 翻译中…';
+  $('transBtn').disabled = true;
+  try {
+    const r = await api('/api/chat', {
+      method: 'POST',
+      body: { message: '把下面这段中文图像生成提示词翻译成英文（保持专业摄影/写真术语，逗号分隔，不要加解释）：\n\n' + txt, fresh: true },
+    });
+    // SSE 流式，收集 delta
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '', out = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) !== -1) {
+        const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2);
+        if (chunk.includes('event: delta')) {
+          const m2 = chunk.match(/data: (.*)/);
+          if (m2) { try { out += JSON.parse(m2[1]).text || ''; } catch {} }
+        }
+      }
+    }
+    if (out.trim()) { $('output').value = out.trim(); $('output').classList.remove('empty'); $('transBtn').textContent = '🌐 翻译 EN'; }
+    else { $('transBtn').textContent = '🌐 翻译失败，重试'; }
+  } catch (e) {
+    $('transBtn').textContent = '🌐 翻译失败，重试';
+  } finally {
+    $('transBtn').disabled = false;
+  }
+});
 
 function generate(){
   // ===== 赌图模式：可控随机 =====
@@ -757,7 +797,7 @@ function generate(){
     const dice = Object.entries(rollResults).map(([k,v]) => `${k}:${v}`).join(' · ');
     final = '【本局掷骰】' + dice + '\n\n' + result;
   }
-  $('output').textContent = final;
+  $('output').value = final;
   $('output').classList.remove('empty');
 }
 
@@ -831,7 +871,7 @@ async function generateImageNow() {
   const sel = $imgModel.value;
   if (!sel) { setImgStatus('请先选择出图模型', true); return; }
   const { provider, modelId } = JSON.parse(sel);
-  const clean = extractCleanPrompt($('output').textContent);
+  const clean = extractCleanPrompt($('output').value);
   if (!clean) { setImgStatus('请先点击「生成提示词」', true); return; }
   const count = +$imgCount.value || 1;
   const size = $imgSize.value;
