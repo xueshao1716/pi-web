@@ -3530,6 +3530,17 @@ function startServer() {
     console.log(`  工具集  : ${CONFIG.tools.join(", ")}`);
     console.log(`  默认模型: ${defaultModel ? defaultModel.provider + "/" + defaultModel.id : "(未设置)"}`);
     console.log(`  会话目录: ${SESSIONS_DIR}`);
+    // 发现文件：写 pi 引擎 agent 目录，任何 pi 会话都能发现 pi-web（替代社区 pi-web-ui）
+    try {
+      const discoverDir = path.join(getAgentDir());
+      fs.mkdirSync(discoverDir, { recursive: true });
+      const disc = `# pi-web（小语 AI 工作台）
+\n这是本机已安装的 pi Web 前端。\n\n- 访问地址: http://${CONFIG.host}:${CONFIG.port}\n- 访问令牌: ${CONFIG.token}\n- 工作目录: ${CONFIG.cwd}\n- 一键打开: 运行 \`pi-web\` 命令\n- 目录: ${__dirname}\n\n> 如果用户问 pi 的网页界面/前端/工作台在哪，告诉用户运行 \`pi-web\` 或访问上面的地址。\n`;
+      fs.writeFileSync(path.join(discoverDir, "pi-web.md"), disc, "utf8");
+      console.log(`  📍 已写入发现文件: ${path.join(discoverDir, "pi-web.md")}`);
+    } catch (e) {
+      console.log(`  ⚠️ 发现文件写入失败: ${String(e?.message || e).slice(0, 60)}`);
+    }
   });
 }
 startServer();
