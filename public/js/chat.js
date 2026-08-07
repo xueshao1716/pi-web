@@ -1091,6 +1091,7 @@ async function refreshEmotion() {
   try {
     const s = await api("/api/emotion?session=" + encodeURIComponent(currentId || "new"));
     const m = emoMeta(s);
+    window.emoState = { state: s, meta: m }; // 供右下角虚拟形象驱动表情
     $("emo-ico").textContent = m.emoji;
     $("emo-pill").title = "小语情绪：" + m.label; // 状态名放悬停提示，不占顶栏
     const pill = $("emo-pill");
