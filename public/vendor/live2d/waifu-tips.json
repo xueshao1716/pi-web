@@ -555,25 +555,46 @@
   },
   "models": [
     {
-      "name": "ShizukuTalk/shizuku-pajama",
+      "name": "Potion-Maker/Pio",
       "paths": [
-        "https://fastly.jsdelivr.net/gh/fghrsh/live2d_api/model/ShizukuTalk/shizuku-pajama/index.json"
-      ],
-      "message": "Shizuku 酱，今天也陪着你哦~"
+        "https://fastly.jsdelivr.net/gh/fghrsh/live2d_api/model/Potion-Maker/Pio/index.json"
+      ]
+    },
+    {
+      "name": "Potion-Maker/Tia",
+      "paths": [
+        "https://fastly.jsdelivr.net/gh/fghrsh/live2d_api/model/Potion-Maker/Tia/index.json"
+      ]
+    },
+    {
+      "name": "bilibili-live/22",
+      "paths": [
+        "https://fastly.jsdelivr.net/gh/fghrsh/live2d_api/model/bilibili-live/22/index.json"
+      ]
+    },
+    {
+      "name": "bilibili-live/33",
+      "paths": [
+        "https://fastly.jsdelivr.net/gh/fghrsh/live2d_api/model/bilibili-live/33/index.json"
+      ]
+    },
+    {
+      "name": "KantaiCollection/murakumo",
+      "paths": [
+        "https://fastly.jsdelivr.net/gh/fghrsh/live2d_api/model/KantaiCollection/murakumo/index.json"
+      ]
     },
     {
       "name": "ShizukuTalk/shizuku-48",
       "paths": [
         "https://fastly.jsdelivr.net/gh/fghrsh/live2d_api/model/ShizukuTalk/shizuku-48/index.json"
-      ],
-      "message": "换个造型的 Shizuku~"
+      ]
     },
     {
-      "name": "HyperdimensionNeptunia/noir",
+      "name": "ShizukuTalk/shizuku-pajama",
       "paths": [
-        "https://fastly.jsdelivr.net/gh/fghrsh/live2d_api/model/HyperdimensionNeptunia/noir/index.json"
-      ],
-      "message": "Noir 登场，成熟稳重系~"
+        "https://fastly.jsdelivr.net/gh/fghrsh/live2d_api/model/ShizukuTalk/shizuku-pajama/index.json"
+      ]
     }
   ]
 }
