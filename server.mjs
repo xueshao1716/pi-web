@@ -985,12 +985,73 @@ async function handleImage(res, body) {
     if (!accountId) return json(res, 400, { error: "cloudflare-ai 未配置 account_id（模型管理中添加）" });
     const sizeMap = { "1024x1024": [512, 512], "832x1472": [512, 896], "736x1312": [512, 896], "720x1280": [512, 896], "1920x1920": [768, 768] };
     const [w, h] = sizeMap[size] || [512, 512];
+    // 原始二进制返回的模型（phoenix 等）：响应直接是图片字节，不是 JSON base64
+    const rawBinary = /leonardo\/phoenix/.test(modelId || "");
+    // FLUX.2 系列：要求 multipart/form-data 输入（prompt 字段），不是纯 JSON；且 multipart 需精确字节 → 也走二进制通道
+    const useMultipart = /flux-2/.test(modelId || "");
+    const rawChannel = rawBinary || useMultipart;
     try {
       const url = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/ai/run/${modelId}`;
+      const jsonBody = JSON.stringify({ prompt, width: w, height: h, steps: 4 });
+      let body = jsonBody;
+      let headers = { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
+      if (useMultipart) {
+        const boundary = "----piwebcf" + Math.floor(Math.random() * 1e9);
+        body = `--${boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\n${prompt}\r\n--${boundary}--\r\n`;
+        headers = { "Content-Type": `multipart/form-data; boundary=${boundary}`, Authorization: `Bearer ${key}` };
+      }
+      if (rawChannel) {
+        // 二进制模型：绕过 httpJsonFetch（python decode 会损坏字节），直接拿原始 buffer
+        const tmpFile = path.join(os.tmpdir(), "piweb-cf-bin-" + Date.now() + "-" + Math.floor(Math.random() * 1e6));
+        try { fs.writeFileSync(tmpFile, body, "utf8"); } catch { return json(res, 500, { error: "临时文件写入失败" }); }
+        const pyCode = [
+          "import urllib.request, json, sys, urllib.error, base64",
+          "url=sys.argv[1]; headers=json.loads(sys.argv[2]); body_file=sys.argv[3]",
+          "body=open(body_file,'rb').read()",
+          "req=urllib.request.Request(url, data=body, method='POST', headers=headers)",
+          "try:",
+          "  r=urllib.request.urlopen(req, timeout=180)",
+          "  data=r.read()",
+          "  sys.stdout.write(str(r.status)+chr(10)+base64.b64encode(data).decode())",
+          "except urllib.error.HTTPError as e:",
+          "  data=e.read()",
+          "  sys.stdout.write(str(e.code)+chr(10)+base64.b64encode(data).decode())",
+        ].join("\n");
+        const raw = await new Promise((resolve, reject) => {
+          const child = spawn("python", ["-", url, JSON.stringify(headers), tmpFile],
+            { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+          let stdout = "", stderr = "";
+          const timer = setTimeout(() => { try { child.kill(); } catch {} reject(new Error("timeout")); }, 190000);
+          child.stdout.on("data", d => { stdout += d; });
+          child.stderr.on("data", d => { stderr += d; });
+          child.on("error", err => { clearTimeout(timer); reject(new Error(String(err.message).slice(0, 120))); });
+          child.on("close", code => {
+            clearTimeout(timer);
+            try { fs.unlinkSync(tmpFile); } catch {}
+            if (code !== 0) return reject(new Error(String(stderr || `exit ${code}`).slice(0, 150)));
+            resolve(stdout);
+          });
+          try { child.stdin.write(pyCode + "\n"); } catch {}
+          try { child.stdin.end(); } catch {}
+        });
+        const nl = raw.indexOf("\n");
+        const status = parseInt(raw.slice(0, nl), 10) || 200;
+        const b64 = raw.slice(nl + 1);
+        if (status >= 300) return json(res, 502, { error: `cloudflare 绘图失败 ${status}` });
+        if (!b64) return json(res, 500, { error: "cloudflare 未返回图片数据" });
+        // 部分模型（FLUX.2）响应是 JSON {result:{image: b64}}，需要解包；纯二进制模型（phoenix）直接用
+        try {
+          const decoded = Buffer.from(b64, "base64").toString("utf8");
+          const parsed = JSON.parse(decoded);
+          const inner = parsed?.result?.image;
+          if (typeof inner === "string") return json(res, 200, { image: `data:image/jpeg;base64,${inner}` });
+        } catch {}
+        return json(res, 200, { image: `data:image/jpeg;base64,${b64}` });
+      }
       const r = await httpJsonFetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-        body: JSON.stringify({ prompt, width: w, height: h, steps: 4 }),
+        headers,
+        body,
         timeout: 180000,
       });
       if (!r.ok) {
