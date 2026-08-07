@@ -1251,6 +1251,10 @@ async function send() {
         if (!data) continue;
         lastEvent = Date.now();
         let obj; try { obj = JSON.parse(data); } catch { continue; }
+        // 注册表优先：自定义消息类型走渲染器（插件式扩展，不用改核心 switch）
+        if (typeof dispatchRenderer === "function" && dispatchRenderer(ev, { ev, obj, key, sid: key })) {
+          continue;
+        }
         switch (ev) {
           case "delta":
             endThinking();
@@ -1428,3 +1432,37 @@ function updateSendBtn() {
   }
 }
 
+
+// ══ 消息渲染注册表（借鉴官方 pi-web-ui 插件式渲染）══
+// 新消息类型：registerMessageRenderer(type, handler) 一行注册，不用改核心 switch
+// 已注册类型优先于 switch；核心 switch 保留为默认兜底
+if (typeof registerMessageRenderer === "function") {
+  // file：模型产出的文件附件 → 文件卡片
+  registerMessageRenderer("file", ({ obj }) => {
+    if (obj && obj.path) addFileMsg(obj, "assistant");
+    return true;
+  });
+  // media：媒体路由结果 → 图片/音频渲染
+  registerMessageRenderer("media", ({ obj, key }) => {
+    if (currentKey() === key) {
+      if (obj.type === "image") renderImageMsg(obj.url);
+      else if (obj.type === "audio") renderAudioMsg(obj.url);
+      else if (obj.type === "video") renderVideoMsg(obj.url);
+    }
+    return true;
+  });
+  // note：过程提示
+  registerMessageRenderer("note", ({ obj, key }) => {
+    onNote(key, obj.text || "");
+    return true;
+  });
+  // error：错误提示
+  registerMessageRenderer("error", ({ obj, key }) => {
+    if (currentKey() === key) {
+      appendDelta("\n\n[错误] " + (obj.message || "未知错误"));
+      flushNow();
+    }
+    return true;
+  });
+  console.log("[registry] 已注册消息渲染器:", listRenderers().join(", "));
+}
