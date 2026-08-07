@@ -56,11 +56,31 @@
     font-size:12px; color:var(--dim); cursor:pointer; transition:all .18s; font-family:'Noto Sans SC',sans-serif; }
   .taglist button.on { background:#3a3f52; color:var(--text); border-color:var(--ink); }
 
-  .gen-btn { width:100%; margin-top:18px; padding:14px; background:var(--accent, #8b7cf6); color:#0b0c0f; border:none;
-    border-radius:8px; font-size:15px; letter-spacing:4px; cursor:pointer; font-family:'Noto Serif SC',serif;
-    font-weight:900; transition:all .2s; }
-  .gen-btn:hover { background:#9a8bf7; transform:translateY(-1px); box-shadow:0 6px 20px rgba(139,124,246,.35); }
+  .gen-btn { width:100%; margin-top:18px; padding:14px; background:linear-gradient(135deg, var(--gold), #c8a44a 55%, #a8822f); color:#1a1405; border:none;
+    border-radius:10px; font-size:15px; letter-spacing:4px; cursor:pointer; font-family:'Noto Serif SC',serif;
+    font-weight:900; transition:all .2s; box-shadow:0 4px 18px rgba(200,164,74,.25); }
+  .gen-btn:hover { filter:brightness(1.08); transform:translateY(-1px); box-shadow:0 8px 26px rgba(200,164,74,.4); }
   .gen-btn:active { transform:translateY(0); }
+  .gen-btn:disabled { opacity:.6; cursor:not-allowed; transform:none; }
+  .img-area { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 16px; }
+  .img-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .img-controls select { flex: 1; min-width: 130px; }
+  .img-go { padding: 9px 20px; margin: 0; width: auto; background:linear-gradient(135deg, var(--teal), #2a9d6e); color:#06211a; letter-spacing:1px; box-shadow:0 3px 12px rgba(62,207,142,.25); }
+  .img-go:hover { filter:brightness(1.1); }
+  .img-status { margin-top: 10px; font-size: 12.5px; color: var(--dim); display:flex; align-items:center; gap:6px; }
+  .img-status.err { color: #ff7b7b; }
+  .img-status .spin { width:14px; height:14px; border:2px solid rgba(200,164,74,.3); border-top-color:var(--gold); border-radius:50%; animation:imgspin .8s linear infinite; flex-shrink:0; }
+  @keyframes imgspin { to { transform:rotate(360deg); } }
+  .img-result { margin-top: 14px; position:relative; }
+  .img-frame { position:relative; border-radius: 12px; overflow:hidden; border:1px solid rgba(200,164,74,.35);
+    box-shadow: 0 10px 40px rgba(0,0,0,.45); background:#000; }
+  .img-frame img { display:block; width:100%; max-height: 520px; object-fit:contain; }
+  .img-frame::after { content:""; position:absolute; inset:0; pointer-events:none;
+    box-shadow: inset 0 0 60px rgba(0,0,0,.35); }
+  .img-actions { margin-top: 10px; display:flex; gap:10px; }
+  .img-actions a, .img-actions button { color: var(--gold); font-size: 12.5px; text-decoration: none; cursor:pointer;
+    background:none; border:1px solid rgba(200,164,74,.4); border-radius:6px; padding:4px 12px; font-family:'Noto Sans SC',sans-serif; transition:all .18s; }
+  .img-actions a:hover, .img-actions button:hover { background:rgba(200,164,74,.12); }
 
   #output { font-family:'Noto Sans SC',sans-serif; font-size:13.5px; line-height:1.85; white-space:pre-wrap;
     word-break:break-word; }
@@ -84,11 +104,24 @@
   .w-top .status { font-size: 11.5px; color: var(--dim-2); font-family: var(--mono); }
   .w-scroll { flex: 1; overflow-y: auto; min-height: 0; }
   .wrap { max-width: 1080px; margin: 0 auto; padding: 20px 20px 40px; }
-  header { text-align:center; padding: 10px 0 18px; border-bottom:1px solid var(--line); margin-bottom: 22px; }
-  header h1 { font-family:'Noto Serif SC',serif; font-weight:900; font-size: clamp(26px,4vw,38px); letter-spacing:10px; }
-  header h1 .red { color: var(--red); }
+  header { text-align:center; padding: 10px 0 18px; border-bottom:1px solid var(--line); margin-bottom: 22px; position:relative; }
+  header::after { content:""; position:absolute; bottom:-1px; left:50%; transform:translateX(-50%); width:120px; height:2px;
+    background:linear-gradient(90deg, transparent, var(--gold), transparent); }
+  header h1 { font-family:'Noto Serif SC',serif; font-weight:900; font-size: clamp(26px,4vw,38px); letter-spacing:10px;
+    background:linear-gradient(135deg, #fff 30%, #e8c56e 60%, var(--gold)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  header h1 .red { color: var(--red); -webkit-text-fill-color: var(--red); }
   header .sub { color: var(--dim); font-size:12px; letter-spacing:5px; margin-top:6px; }
   footer { text-align:center; color:var(--dim); font-size:11px; letter-spacing:3px; margin-top:30px; }
+
+  /* 卡片统一：圆角 + 阴影 + 编号金色胶囊 */
+  .card { background: linear-gradient(180deg, rgba(255,255,255,.02), transparent 40%), var(--card);
+    border:1px solid var(--line); border-radius: 14px; padding: 20px;
+    box-shadow: 0 4px 24px rgba(0,0,0,.25); transition: border-color .2s; }
+  .card:hover { border-color: color-mix(in srgb, var(--gold) 35%, var(--line)); }
+  .card h2 { font-family:'Noto Serif SC',serif; font-size:17px; letter-spacing:2px; margin-bottom:14px;
+    display:flex; align-items:center; gap:8px; }
+  .card h2 .num { background:linear-gradient(135deg, var(--gold), #8a6b2f); color:#1a1405; width:24px; height:24px; border-radius:50%;
+    display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:900; }
   .w-login { flex: 1; display: none; align-items: center; justify-content: center; }
   .w-login .card { width: 380px; background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 36px 30px; }
   .w-login .card h2 { font-size: 16px; margin-bottom: 8px; color: var(--text); }
@@ -281,6 +314,26 @@
         <h2><span class="num">5</span> 生成结果</h2>
         <button class="copy-btn" id="copyBtn">复制</button>
         <div id="output" class="empty">选择场景 → 填写信息 → 点击下方按钮生成</div>
+        <!-- 直出图像区：模型选择 + 一键出图 -->
+        <div class="img-area">
+          <div class="img-controls">
+            <select id="imgModel" title="选择出图模型"><option value="">加载模型…</option></select>
+            <select id="imgSize" title="画幅">
+              <option value="1024x1024">1:1 方图</option>
+              <option value="832x1472">9:16 竖图</option>
+              <option value="1472x832">16:9 横图</option>
+            </select>
+            <button class="gen-btn img-go" id="imgGo">🎨 直出图像</button>
+          </div>
+          <div id="imgStatus" class="img-status" hidden></div>
+          <div id="imgResult" class="img-result" hidden>
+            <div class="img-frame"><img id="imgShow" alt="生成图像"></div>
+            <div class="img-actions">
+              <a id="imgOpen" target="_blank" rel="noopener" hidden>⬇ 打开原图</a>
+              <button id="imgSave" hidden>💾 保存到本地</button>
+            </div>
+          </div>
+        </div>
       </div>
       <button class="gen-btn" id="genBtn">生 成 提 示 词</button>
       <div class="hint">
@@ -682,6 +735,111 @@ function generate(){
   $('output').textContent = final;
   $('output').classList.remove('empty');
 }
+
+// ══ 直出图像：模型选择 + 一键出图 + 页面展示 ══
+const $imgModel = $('imgModel'), $imgSize = $('imgSize'), $imgGo = $('imgGo');
+const $imgStatus = $('imgStatus'), $imgResult = $('imgResult'), $imgShow = $('imgShow'), $imgOpen = $('imgOpen'), $imgSave = $('imgSave');
+let imgModelList = [];
+
+// 加载可选图像模型（capabilities.image === true，排除视频/聊天）
+async function loadImgModels() {
+  try {
+    const d = await api("/api/models");
+    const imgs = (d.models || []).filter(m => m.capabilities?.image && !/video/i.test(m.id) && !m.id.includes("/video"));
+    imgModelList = imgs;
+    $imgModel.innerHTML = imgs.length ? "" : '<option value="">（无可用图像模型）</option>';
+    if (!imgs.length) return;
+    // 按 provider 分组展示
+    const groups = {};
+    for (const m of imgs) (groups[m.provider] = groups[m.provider] || []).push(m);
+    for (const [provider, list] of Object.entries(groups)) {
+      const og = document.createElement('optgroup');
+      og.label = provider;
+      for (const m of list) {
+        const op = document.createElement('option');
+        op.value = JSON.stringify({ provider: m.provider, modelId: m.id });
+        op.textContent = (m.name || m.id).slice(0, 32);
+        og.appendChild(op);
+      }
+      $imgModel.appendChild(og);
+    }
+    // 默认选第一个非 CF 的模型（CF 免费额度小，优先用主力通道）
+    const defaultIdx = [...$imgModel.options].findIndex(o => o.value && !o.value.includes('cloudflare-ai'));
+    if (defaultIdx > 0) $imgModel.selectedIndex = defaultIdx;
+  } catch (e) {
+    $imgModel.innerHTML = '<option value="">模型加载失败</option>';
+  }
+}
+
+// 直出图像：用当前提示词直接调 /api/image 生成并展示
+async function generateImageNow() {
+  const sel = $imgModel.value;
+  if (!sel) { setImgStatus('请先选择出图模型', true); return; }
+  const { provider, modelId } = JSON.parse(sel);
+  const prompt = $('output').textContent;
+  if (!prompt || prompt.includes('选择场景')) { setImgStatus('请先点击「生成提示词」', true); return; }
+  // 提取纯净提示词（去掉【】标记行、平台命令、负面词部分）
+  let clean = prompt.split(/\n{2,}/)[0] || prompt;          // 取第一段（画面描述）
+  clean = clean.replace(/^【[^】]*】\s*/gm, '').trim();      // 去掉所有【标记】行
+  if (!clean) {
+    // 标记独占一行时上面会被清空 → 取所有非标记行拼接
+    clean = prompt.split('\n').filter(l => { const t = l.trim(); return t && !/^【/.test(t) && !/^--/.test(t); }).join('，').trim();
+  }
+  clean = clean.split(/\n{2,}/)[0].trim().slice(0, 1000);
+  setImgStatus('⏳ 生成中…（约 10-30 秒）', false, true);
+  $imgGo.disabled = true; $imgGo.textContent = '⏳ 生成中…';
+  $imgResult.hidden = true;
+  try {
+    const r = await api('/api/image', {
+      method: 'POST',
+      body: { provider, modelId, prompt: clean, size: $imgSize.value },
+    });
+    if (r.image) {
+      $imgShow.src = r.image;
+      $imgResult.hidden = false;
+      const isUrl = r.image.startsWith('http');
+      $imgOpen.hidden = !isUrl;
+      if (isUrl) $imgOpen.href = r.image;
+      // 保存到本地：data: 直接触发下载；URL 先 fetch 转 blob
+      $imgSave.hidden = false;
+      setImgStatus('✓ 已生成');
+    } else {
+      setImgStatus('生成失败：未返回图片', true);
+    }
+  } catch (e) {
+    setImgStatus('生成失败：' + (e.message || e), true);
+  } finally {
+    $imgGo.disabled = false; $imgGo.textContent = '🎨 直出图像';
+  }
+}
+function setImgStatus(t, isErr, spinning) {
+  $imgStatus.textContent = t; $imgStatus.hidden = false;
+  $imgStatus.className = 'img-status' + (isErr ? ' err' : '');
+  const sp = $imgStatus.querySelector('.spin');
+  if (spinning && !sp) { $imgStatus.insertAdjacentHTML('afterbegin', '<span class="spin"></span>'); }
+  if (!spinning) { const s2 = $imgStatus.querySelector('.spin'); if (s2) s2.remove(); }
+}
+// 保存图像到本地
+$imgSave.addEventListener('click', async () => {
+  const src = $imgShow.src;
+  if (!src) return;
+  try {
+    if (src.startsWith('data:')) {
+      const a = document.createElement('a');
+      a.href = src; a.download = 'wanxiang-' + Date.now() + '.png';
+      document.body.appendChild(a); a.click(); a.remove();
+    } else {
+      const blob = await (await fetch(src)).blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'wanxiang-' + Date.now() + '.jpg';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+    }
+  } catch { setImgStatus('保存失败（跨域限制，可点「打开原图」）', true); }
+});
+$imgGo.addEventListener('click', generateImageNow);
+loadImgModels();
 })();
 </script>
 </body>
