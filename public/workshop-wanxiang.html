@@ -325,48 +325,48 @@
           <div class="switch"><input type="checkbox" id="sw-underdog" checked><span class="box"></span><span class="txt">冷门保底（连续不出则强制出现）</span></div>
         </div>
       </div>
+    </div>
+  </div>
 
-      <div class="card out-area" style="margin-top:16px">
-        <h2><span class="num">5</span> 生成结果</h2>
-        <div class="gen-row">
-          <button class="gen-btn" id="genBtn" style="margin:0">生 成 提 示 词</button>
-          <button class="copy-btn" id="copyBtn">复制</button>
-        </div>
-        <div id="output" class="empty">选择场景 → 填写信息 → 点击上方按钮生成</div>
-        <!-- 直出图像区：模型选择 + 批量出图 + 网格展示 + 点击选图 -->
-        <div class="img-area">
-          <div class="img-controls">
-            <select id="imgModel" title="选择出图模型"><option value="">加载模型…</option></select>
-            <select id="imgSize" title="画幅">
-              <option value="1024x1024">1:1 方图</option>
-              <option value="832x1472">9:16 竖图</option>
-              <option value="1472x832">16:9 横图</option>
-            </select>
-            <select id="imgCount" title="一次出几张">
-              <option value="1">1 张</option>
-              <option value="2">2 张</option>
-              <option value="4" selected>4 张</option>
-            </select>
-            <button class="gen-btn img-go" id="imgGo">🎨 直出图像</button>
-          </div>
-          <div id="imgStatus" class="img-status" hidden></div>
-          <div id="imgGrid" class="img-grid" hidden></div>
-          <div id="imgSingle" class="img-result" hidden>
-            <div class="img-frame"><img id="imgShow" alt="生成图像"></div>
-            <div class="img-actions">
-              <a id="imgOpen" target="_blank" rel="noopener" hidden>⬇ 打开原图</a>
-              <button id="imgSave" hidden>💾 保存到本地</button>
-            </div>
-          </div>
-        </div>
+  <!-- 生成结果：通栏展示（提示词 + 直出图），避免两栏高度差过大 -->
+  <div class="card out-area" style="margin-top:16px">
+    <h2><span class="num">5</span> 生成结果</h2>
+    <div class="gen-row">
+      <button class="gen-btn" id="genBtn" style="margin:0">生 成 提 示 词</button>
+      <button class="copy-btn" id="copyBtn">复制</button>
+    </div>
+    <div id="output" class="empty">选择场景 → 填写信息 → 点击上方按钮生成</div>
+    <!-- 直出图像区：模型选择 + 批量出图 + 网格展示 + 点击选图 -->
+    <div class="img-area">
+      <div class="img-controls">
+        <select id="imgModel" title="选择出图模型"><option value="">加载模型…</option></select>
+        <select id="imgSize" title="画幅">
+          <option value="1024x1024">1:1 方图</option>
+          <option value="832x1472">9:16 竖图</option>
+          <option value="1472x832">16:9 横图</option>
+        </select>
+        <select id="imgCount" title="一次出几张">
+          <option value="1">1 张</option>
+          <option value="2">2 张</option>
+          <option value="4" selected>4 张</option>
+        </select>
+        <button class="gen-btn img-go" id="imgGo">🎨 直出图像</button>
       </div>
-      <button class="gen-btn" id="genBtn">生 成 提 示 词</button>
-      <div class="hint">
-        · 输出为纯净自然语言，可直接粘贴到即梦 / MJ / SD<br>
-        · 即梦模式自动附「描述 + 权重」双栏格式<br>
-        · 负面词按平台规则转写（即梦=反面+权重稀释）
+      <div id="imgStatus" class="img-status" hidden></div>
+      <div id="imgGrid" class="img-grid" hidden></div>
+      <div id="imgSingle" class="img-result" hidden>
+        <div class="img-frame"><img id="imgShow" alt="生成图像"></div>
+        <div class="img-actions">
+          <a id="imgOpen" target="_blank" rel="noopener" hidden>⬇ 打开原图</a>
+          <button id="imgSave" hidden>💾 保存到本地</button>
+        </div>
       </div>
     </div>
+  </div>
+  <div class="hint">
+    · 输出为纯净自然语言，可直接粘贴到即梦 / MJ / SD<br>
+    · 即梦模式自动附「描述 + 权重」双栏格式<br>
+    · 负面词按平台规则转写（即梦=反面+权重稀释）
   </div>
 
   <footer>万像人物 · 写真提示词生成系统 v1.0</footer>

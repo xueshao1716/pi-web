@@ -1069,10 +1069,16 @@ async function handleImage(res, body) {
     return;
   }
   try {
+    // 火山方舟 seedream 5.0：最小尺寸 3686400 像素（≥1920×1920），小尺寸会被拒
+    let effSize = size || "1024x1024";
+    if (provider === "volces-ark" && /seedream/i.test(modelId || "")) {
+      const minMap = { "1024x1024": "1920x1920", "832x1472": "1920x1920", "736x1312": "1920x1920", "720x1280": "1920x1920" };
+      effSize = minMap[effSize] || "1920x1920";
+    }
     const mkReq = (u) => httpJsonFetch(u, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify({ model: modelId, prompt, n: 1, size: size || "1024x1024" }),
+      body: JSON.stringify({ model: modelId, prompt, n: 1, size: effSize }),
       timeout: 180000,
     });
     let r = await mkReq(`${baseNoV1}/v1/images/generations`);
