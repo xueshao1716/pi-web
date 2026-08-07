@@ -315,6 +315,30 @@ $("nt-close").addEventListener("click", () => $("notices-modal").classList.remov
 $("notices-modal").addEventListener("click", (e) => { if (e.target === e.currentTarget) $("notices-modal").classList.remove("show"); });
 const escMd = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+// ⬆ 在线更新（检查 + 一键拉取重启）
+$("update-btn").addEventListener("click", async () => {
+  const btn = $("update-btn");
+  btn.textContent = "⏳";
+  try {
+    const d = await api("/api/update/check");
+    if (d.upToDate) {
+      await appConfirm(`✅ 已是最新版本（本地 ${d.local}）\n\n远程：${d.remote}`, "检查更新");
+    } else if (d.behind > 0) {
+      const ok = await appConfirm(`⬆ 发现新版本！\n\n本地：${d.local}\n远程：${d.remote}\n落后：${d.behind} 个提交\n\n点击确定拉取更新并重启服务。`, "检查更新");
+      if (!ok) return;
+      const r = await api("/api/update/apply", { method: "POST" });
+      await appConfirm(r.message || "更新完成", "更新");
+      setTimeout(() => location.reload(), 8000);
+    } else {
+      await appConfirm(`远程信息：${d.remote || "无法获取"}（${d.hasRemote ? "有差异" : "一致"}）`, "检查更新");
+    }
+  } catch (e) {
+    await appConfirm("检查更新失败：" + (e.message || e), "检查更新");
+  } finally {
+    btn.textContent = "⬆";
+  }
+});
+
 // 🛠 自愈修复（SSE 日志 → 自动重启 → 恢复）
 $("repair-btn").addEventListener("click", async () => {
   const issue = await appPrompt("描述遇到的问题（小语会分析并自动修复代码）：\n\n例：发送消息时工具调用不生效", "", "自愈修复");

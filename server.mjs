@@ -2048,6 +2048,61 @@ except Exception as e:
 
 // ══ 自愈修复 ══
 let repairBusy = false;
+
+// ══ 在线更新（git pull + 重启）══
+// 检查更新：对比本地 HEAD 和远程 origin/main
+async function handleUpdateCheck(res) {
+  try {
+    const { execFile } = await import("node:child_process");
+    const run = (args) => new Promise((resolve) => {
+      execFile("git", ["-C", __dirname, ...args], { encoding: "utf8", timeout: 20000 }, (err, stdout) => resolve({ ok: !err, out: String(stdout || "").trim() }));
+    });
+    const [localR, remoteR, behindR] = await Promise.all([
+      run(["rev-parse", "HEAD"]),
+      run(["ls-remote", "origin", "refs/heads/main"]),
+      run(["rev-list", "--count", "HEAD..origin/main"]),
+    ]);
+    const local = localR.ok ? localR.out : "";
+    const remote = remoteR.ok ? remoteR.out.split(/\s+/)[0] : "";
+    const behind = behindR.ok ? parseInt(behindR.out, 10) || 0 : 0;
+    json(res, 200, {
+      ok: true,
+      local: local.slice(0, 8),
+      remote: remote.slice(0, 8),
+      behind,
+      upToDate: behind === 0,
+      hasRemote: !!remote && remote !== local,
+    });
+  } catch (e) {
+    json(res, 500, { error: String(e?.message || e).slice(0, 100) });
+  }
+}
+
+// 执行更新：git fetch + pull，然后提示重启
+async function handleUpdateApply(res) {
+  try {
+    const { execFile, spawn } = await import("node:child_process");
+    const run = (args) => new Promise((resolve) => {
+      execFile("git", ["-C", __dirname, ...args], { encoding: "utf8", timeout: 60000 }, (err, stdout) => resolve({ ok: !err, out: String(stdout || "").trim(), err: String(err?.message || "").slice(0, 200) }));
+    });
+    // 拉取（只拉不合并，避免本地改动冲突；若干净直接 pull）
+    const fetchR = await run(["fetch", "origin"]);
+    if (!fetchR.ok) return json(res, 500, { error: "fetch 失败: " + fetchR.err });
+    const pullR = await run(["pull", "--ff-only", "origin", "main"]);
+    if (!pullR.ok) {
+      return json(res, 409, { error: "拉取冲突: " + pullR.err + "（本地有未提交改动，请先处理）" });
+    }
+    // 更新成功 → 后台重启服务（detached，当前进程退出由 watchdog 接管）
+    const { execSync } = await import("node:child_process");
+    try { execSync(`taskkill /F /PID ${process.pid}`, { windowsHide: true }); } catch {}
+    json(res, 200, { ok: true, message: "更新成功，服务重启中…（约 10 秒）" });
+    // 延迟触发重启：由 watchdog 检测到服务挂了自动拉起新代码
+    setTimeout(() => { try { process.exit(0); } catch {} }, 1500);
+  } catch (e) {
+    json(res, 500, { error: String(e?.message || e).slice(0, 100) });
+  }
+}
+
 async function handleRepair(res, body) {
   const issue = String(body?.issue || "").trim();
   if (!issue) return json(res, 400, { error: "缺少问题描述" });
@@ -3277,6 +3332,8 @@ const API_ROUTES = [
   ["GET", "/api/notices", (res) => handleNotices(res)],
   ["GET", "/api/health", (res) => json(res, 200, { ok: true })],
   ["POST", "/api/repair", async (res, req) => handleRepair(res, await readBody(req))],
+  ["GET", "/api/update/check", (res) => handleUpdateCheck(res)],
+  ["POST", "/api/update/apply", async (res) => handleUpdateApply(res)],
   // ── 设计器 ──
   ["POST", "/api/designer/generate", async (res, req) => handleDesignerGenerate(res, await readBody(req))],
   ["POST", "/api/designer/save", async (res, req) => handleDesignerSave(res, await readBody(req))],
