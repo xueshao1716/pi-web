@@ -89,9 +89,10 @@
   .out-area { position:relative; }
   .gen-row { display:flex; gap:10px; align-items:center; margin-bottom:12px; }
   .gen-row .gen-btn { flex:1; margin:0; }
-  .copy-btn { position:absolute; top:16px; right:10px; padding:5px 14px; background:var(--gold); color:#fff;
-    border:none; border-radius:5px; font-size:12px; cursor:pointer; transition:opacity .2s; }
-  .copy-btn:hover { opacity:.85; }
+  .gen-row .copy-btn { position:static; padding:9px 16px; background:var(--gold); color:#fff;
+    border:none; border-radius:8px; font-size:13px; cursor:pointer; transition:opacity .2s; flex-shrink:0; }
+  .gen-row .copy-btn:hover { opacity:.85; }
+  .gen-row .copy-btn#transBtn { background:#3a3f52; color:var(--ink); }
   .hint { font-size:12px; color:var(--dim); margin-top:10px; line-height:1.7; }
 
   /* 多图网格：一次多张 + 点击选图 */
@@ -648,34 +649,40 @@ $('copyBtn').addEventListener('click', async () => {
 $('copyBtn').addEventListener('mousedown', e=>e.preventDefault());
 
 // 翻译成英文（部分生图模型不认中文）——用 deepseek 翻译
+async function translatePrompt(txt) {
+  const r = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+    body: JSON.stringify({ message: '把下面这段中文图像生成提示词翻译成英文（保持专业摄影/写真术语，逗号分隔，不要加解释，只输出翻译结果）：\n\n' + txt, fresh: true }),
+  });
+  if (!r.ok || !r.body) throw new Error('HTTP ' + r.status);
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '', out = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf('\n\n')) !== -1) {
+      const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2);
+      if (chunk.includes('event: delta')) {
+        const m2 = chunk.match(/data: (.*)/);
+        if (m2) { try { out += JSON.parse(m2[1]).text || ''; } catch {} }
+      }
+    }
+  }
+  return out.trim();
+}
+
 $('transBtn').addEventListener('click', async () => {
   const txt = $('output').value;
   if (!txt || txt.includes('选择场景')) { $('output').value = '（请先生成提示词再翻译）'; $('output').classList.remove('empty'); return; }
   $('transBtn').textContent = '⏳ 翻译中…';
   $('transBtn').disabled = true;
   try {
-    const r = await api('/api/chat', {
-      method: 'POST',
-      body: { message: '把下面这段中文图像生成提示词翻译成英文（保持专业摄影/写真术语，逗号分隔，不要加解释）：\n\n' + txt, fresh: true },
-    });
-    // SSE 流式，收集 delta
-    const reader = r.body.getReader();
-    const dec = new TextDecoder();
-    let buf = '', out = '';
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      let idx;
-      while ((idx = buf.indexOf('\n\n')) !== -1) {
-        const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2);
-        if (chunk.includes('event: delta')) {
-          const m2 = chunk.match(/data: (.*)/);
-          if (m2) { try { out += JSON.parse(m2[1]).text || ''; } catch {} }
-        }
-      }
-    }
-    if (out.trim()) { $('output').value = out.trim(); $('output').classList.remove('empty'); $('transBtn').textContent = '🌐 翻译 EN'; }
+    const out = await translatePrompt(txt);
+    if (out) { $('output').value = out; $('output').classList.remove('empty'); $('transBtn').textContent = '🌐 翻译 EN'; }
     else { $('transBtn').textContent = '🌐 翻译失败，重试'; }
   } catch (e) {
     $('transBtn').textContent = '🌐 翻译失败，重试';
@@ -883,8 +890,16 @@ async function generateImageNow() {
   const sel = $imgModel.value;
   if (!sel) { setImgStatus('请先选择出图模型', true); return; }
   const { provider, modelId } = JSON.parse(sel);
-  const clean = extractCleanPrompt($('output').value);
+  let clean = extractCleanPrompt($('output').value);
   if (!clean) { setImgStatus('请先点击「生成提示词」', true); return; }
+  // 自动翻译：提示词含中文 + 模型是国外系（万相/FLUX/Agnes 等）→ 自动转英文提升控制力
+  if (/[\u4e00-\u9fa5]/.test(clean) && /^(aliyun-bailian|cloudflare-ai|volces-ark|nvidia|modelscope|agnes)/.test(provider)) {
+    setImgStatus('⏳ 检测到中文提示词，自动翻译成英文…', false, true);
+    try {
+      const t = await translatePrompt(clean);
+      if (t) clean = t;
+    } catch {}
+  }
   const count = +$imgCount.value || 1;
   const size = $imgSize.value;
   setImgStatus(`⏳ 生成 ${count} 张中…（约 ${count * 10}-${count * 30} 秒）`, false, true);
