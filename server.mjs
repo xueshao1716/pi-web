@@ -954,20 +954,20 @@ async function handleImage(res, body) {
       }
       const { task_id } = await r.json();
       if (!task_id) return json(res, 500, { error: "modelscope 未返回 task_id" });
-      // 轮询任务状态（约 14s 成功，最多 90s）
-      for (let i = 0; i < 30; i++) {
-        await new Promise(res => setTimeout(res, 3000));
+      // 轮询任务状态（约 14s 成功，最多 90s；官方示例 5s 间隔）
+      for (let i = 0; i < 18; i++) {
+        await new Promise(res => setTimeout(res, 5000));
         const q = await httpJsonFetch(`${baseNoV1}/v1/tasks/${encodeURIComponent(task_id)}`, {
-          headers: { Authorization: `Bearer ${key}` }, timeout: 30000,
+          headers: { Authorization: `Bearer ${key}`, "X-ModelScope-Task-Type": "image_generation" }, timeout: 30000,
         });
         if (!q.ok) continue;
         const t = await q.json();
-        if (t.status === "SUCCEED") {
-          const img = t.output_images?.[0];
-          if (img) return json(res, 200, { image: img });
+        if (t.task_status === "SUCCEED") {
+          const imgUrl = t.output_images?.[0];
+          if (imgUrl) return json(res, 200, { image: imgUrl }); // output_images 是可直接访问的图片 URL（前端 <img> 直接加载）
           return json(res, 500, { error: "modelscope 任务成功但无图片" });
         }
-        if (t.status === "FAILED") {
+        if (t.task_status === "FAILED") {
           return json(res, 500, { error: "modelscope 任务失败: " + String(t.message || "未知").slice(0, 120) });
         }
       }
