@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e8c56e"/>
+      <stop offset="50%" stop-color="#c8a44a"/>
+      <stop offset="100%" stop-color="#a8822f"/>
+    </linearGradient>
+    <radialGradient id="bg" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#1c1f2b"/>
+      <stop offset="100%" stop-color="#0d0e13"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <!-- 外环 -->
+  <circle cx="256" cy="256" r="240" fill="none" stroke="url(#gold)" stroke-width="10"/>
+  <circle cx="256" cy="256" r="222" fill="none" stroke="url(#gold)" stroke-width="2" opacity="0.5"/>
+  <!-- 语 字 -->
+  <text x="256" y="300" font-family="'SimSun','Songti SC','Noto Serif SC',serif" font-size="280"
+        fill="#e8eaf2" text-anchor="middle" font-weight="bold">语</text>
+  <!-- 小字 -->
+  <text x="256" y="470" font-family="'Arial',sans-serif" font-size="24" fill="#c8a44a" text-anchor="middle" letter-spacing="8">XIAO YU AI</text>
+</svg>

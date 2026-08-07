@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo-xiaoyu-hd.png" width="96" alt="小语 AI logo">
+</p>
+
 # 小语 · AI 工作台（pi-web）
 
 <p align="center">
