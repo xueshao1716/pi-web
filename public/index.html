@@ -43,7 +43,7 @@
         <div class="view-menu" id="view-menu" hidden>
           <div class="view-item" data-view="sessions">☰ 会话历史</div>
           <div class="view-item" data-view="skills">⚡ 技能</div>
-          <div class="view-item" data-view="workspace">📦 工作空间</div>
+          <div class="view-item" data-view="workspace" data-nav="/workspace">📦 工作空间</div>
         </div>
       </div>
       <div class="side-body">
@@ -99,9 +99,14 @@
         <button class="tool-btn" id="export-btn" title="导出当前会话">⬇</button>
         <button class="tool-btn" id="workshop-btn" title="专项工作台：PPT/文章/视频">🧰</button>
         <button class="tool-btn" id="notices-btn" title="更新与能力看板">🔔</button>
-        <button class="tool-btn" id="update-btn" title="检查更新">⬆</button>
-        <button class="tool-btn" id="repair-btn" title="自愈修复">🛠</button>
-        <button class="tool-btn" id="sys-info-btn" title="系统说明">ⓘ</button>
+        <div class="tool-more">
+          <button class="tool-btn" id="more-btn" title="更多">⋯</button>
+          <div class="tool-more-menu" id="more-menu" hidden>
+            <div class="tool-more-item" id="mm-update">⬆ 检查更新</div>
+            <div class="tool-more-item" id="mm-repair">🛠 自愈修复</div>
+            <div class="tool-more-item" id="mm-sysinfo">ⓘ 系统说明</div>
+          </div>
+        </div>
         <div class="emo-pill" id="emo-pill" title="小语情绪状态"><span class="emo-ico" id="emo-ico">🧘</span></div>
         <div class="status-pill idle" id="status"><span class="dot"></span><span id="status-text">就绪</span></div>
       </div>

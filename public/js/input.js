@@ -587,8 +587,21 @@ document.addEventListener("click", (e) => {
 });
 
 $("w-new").addEventListener("click", newSession);
-$("w-file").addEventListener("click", openFilePicker);
-$("w-cmd").addEventListener("click", showSlashMenu);
+// 欢迎屏按钮：点击直接向输入框插入触发符并聚焦（复用 input 事件链打开对应菜单）
+function welcomeAt() {
+  const t = $("input");
+  t.value = (t.value ? t.value + " " : "") + "@";
+  t.focus(); t.setSelectionRange(t.value.length, t.value.length);
+  openFilePicker();
+}
+function welcomeSlash() {
+  const t = $("input");
+  t.value = "/";
+  t.focus(); t.setSelectionRange(1, 1);
+  showSlashMenu();
+}
+$("w-file").addEventListener("click", welcomeAt);
+$("w-cmd").addEventListener("click", welcomeSlash);
 $("logout").addEventListener("click", () => { localStorage.removeItem("pi_web_token"); location.reload(); });
 $("status").addEventListener("click", openStats);
 $("status").style.cursor = "pointer";

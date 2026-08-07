@@ -6,6 +6,7 @@ import fs from "node:fs";
 
 // 工作台独立页映射（可直达 URL）
 export const WORKSHOP_PAGES = {
+  "/workspace": "workspace.html",
   "/workshop": "workshop.html",
   "/workshop/ppt": "workshop-ppt.html",
   "/workshop/designer": "workshop-designer.html",

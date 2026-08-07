@@ -161,22 +161,40 @@ function makeLoader(agentDir) {
   });
 }
 
-// ── 经验库：新任务自动加载最近经验（自动进化）──
-// 经验库路径：工作空间/工程/经验库/experience.md；每次加载最近 N 个条目注入上下文
+// ── 经验库：新任务自动加载经验（自动进化）──
+// 经验库路径：工作空间/工程/经验库/experience.md
+// 加载策略：日期倒序，最近 3 条必进；历史踩坑（⚠️）优先于成功经验（✅）——避免再犯 > 复制成功
 let expCache = null, expMtime = 0;
-function loadExperience(maxEntries = 6) {
+function loadExperience(maxEntries = 8) {
   try {
     const f = path.join(CONFIG.cwd, "工程", "经验库", "experience.md");
     const st = fs.statSync(f);
     if (st.mtimeMs !== expMtime || !expCache) {
       expMtime = st.mtimeMs;
       const raw = fs.readFileSync(f, "utf8");
-      const blocks = raw.split(/\n### /).filter(b => b.includes("✅") || b.includes("⚠️") || b.includes("📌"));
-      const recent = blocks.slice(-maxEntries).map(b => "### " + b.trim());
-      expCache = recent;
+      // 只取带日期的经验条目，跳过开头说明区（进化准则/学习协议）
+      const blocks = raw.split(/\n### /).filter(b => /^\d{4}-\d{2}-\d{2}/.test(b.trim()) && (b.includes("✅") || b.includes("⚠️") || b.includes("📌")));
+      if (!blocks.length) { expCache = []; return []; }
+      const entries = blocks.map(b => {
+        const t = b.trim();
+        const title = t.split("\n")[0] || "";
+        const date = (title.match(/^\d{4}-\d{2}-\d{2}/) || [""])[0];
+        return { date, title, body: "### " + t, warn: t.includes("⚠️") };
+      });
+      // 日期倒序（新→旧）
+      entries.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+      const picked = [];
+      const push = e => { if (!picked.includes(e)) picked.push(e); };
+      // 1) 最近 3 条必进（时效性）
+      entries.slice(0, 3).forEach(push);
+      // 2) 历史踩坑优先补（防再犯）
+      entries.filter(e => e.warn).forEach(e => { if (picked.length < maxEntries) push(e); });
+      // 3) 其余按新旧补满
+      entries.forEach(e => { if (picked.length < maxEntries) push(e); });
+      expCache = picked.slice(0, maxEntries).map(e => e.body);
     }
     if (!expCache.length) return [];
-    return [`【经验库·最近 ${expCache.length} 条】遇到同类任务时参考，避免重复踩坑：\n${expCache.join("\n\n")}`];
+    return [`【经验库·最近 ${expCache.length} 条（踩坑优先）】遇到同类任务时参考，避免重复踩坑：\n${expCache.join("\n\n")}`];
   } catch { return []; }
 }
 
@@ -861,6 +879,63 @@ async function handleImage(res, body) {
   const key = resolved.key;
   const base = (baseUrl || "").replace(/\/+$/, "");
   const baseNoV1 = base.endsWith("/v1") ? base.slice(0, -3) : base;
+  // 阿里云百炼 wan 系列图像：/api/v1/services/aigc/multimodal-generation/generation
+  if (provider === "aliyun-bailian" && /^wan\d/.test(modelId || "")) {
+    const sizeMap = { "1024x1024": "1024*1024", "832x1472": "720*1280", "736x1312": "720*1280", "720x1280": "720*1280", "1920x1920": "1024*1024" };
+    const sz = sizeMap[size] || "1024*1024";
+    try {
+      const host = (baseUrl || "").includes("maas.aliyuncs.com") ? baseUrl.replace(/\/compatible-mode\/v1.*$/, "") : "";
+      const apiBase = host || "https://token-plan.cn-beijing.maas.aliyuncs.com";
+      const mkReq = (u) => httpJsonFetch(u, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+        body: JSON.stringify({
+          model: modelId,
+          input: { messages: [{ role: "user", content: [{ text: prompt }] }] },
+          parameters: { size: sz, n: 1 },
+        }),
+        timeout: 180000,
+      });
+      let r = await mkReq(`${apiBase}/api/v1/services/aigc/multimodal-generation/generation`);
+      if (!r.ok) {
+        const txt = await r.text().catch(() => "");
+        return json(res, 502, { error: `aliyun 绘图失败 ${r.status}: ${txt.slice(0, 150)}` });
+      }
+      const data = await r.json();
+      const img = data?.output?.choices?.[0]?.message?.content?.find?.((c) => c?.image)?.image;
+      if (!img) return json(res, 500, { error: "aliyun 绘图接口未返回图片" });
+      return json(res, 200, { image: img });
+    } catch (e) {
+      json(res, 500, { error: String(e?.message || e).slice(0, 200) });
+    }
+    return;
+  }
+  // minimax 专属：/v1/image_generation + aspect_ratio + image_urls 响应
+  if (provider === "minimax") {
+    const ratioMap = { "1024x1024": "1:1", "832x1472": "9:16", "1472x832": "16:9", "1024x1792": "9:16", "1792x1024": "16:9" };
+    const aspect_ratio = ratioMap[size] || (size === "1024x1024" ? "1:1" : "9:16");
+    try {
+      const mkReq = (u) => httpJsonFetch(u, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+        body: JSON.stringify({ model: modelId, prompt, aspect_ratio, response_format: "url" }),
+        timeout: 180000,
+      });
+      let r = await mkReq(`${baseNoV1}/v1/image_generation`);
+      if (!r.ok) r = await mkReq(`${baseNoV1}/image_generation`);
+      if (!r.ok) {
+        const txt = await r.text().catch(() => "");
+        return json(res, 502, { error: `minimax 绘图失败 ${r.status}: ${txt.slice(0, 150)}` });
+      }
+      const data = await r.json();
+      const urls = data?.data?.image_urls;
+      if (Array.isArray(urls) && urls.length) return json(res, 200, { image: urls[0] });
+      return json(res, 500, { error: "minimax 绘图接口未返回图片" });
+    } catch (e) {
+      json(res, 500, { error: String(e?.message || e).slice(0, 200) });
+    }
+    return;
+  }
   try {
     const mkReq = (u) => httpJsonFetch(u, {
       method: "POST",
@@ -882,7 +957,7 @@ async function handleImage(res, body) {
     if (item.url) return json(res, 200, { image: item.url });
     return json(res, 500, { error: "绘图接口未返回可用图片数据" });
   } catch (e) {
-    json(res, 500, { error: String(e?.message || e).slice(0, 200) });
+    json(res, 500, { error: String(e?.message || e).slice(0, 800) });
   }
 }
 
@@ -2870,19 +2945,23 @@ async function handleChat(req, res, body) {
         return "";
       })();
       mem.autoMemorize(CONFIG.cwd, { userMsg: message, assistantMsg: assistLatest });
-      // 纠正记忆：用户纠正语气/做法时自动记录（防再犯）
-      const correctMatch = message.match(/(?:别|不要|别再|别老|别总)([^，。,!！]{2,40})/);
+      // 纠正记忆：用户纠正语气/做法时自动记录（防再犯）——只认明确纠正句式，排除口头语
+      const correctMatch = message.match(/(?:别再|不要再|别总是|不要总是|不要这样|别这样|以后别|以后不要|记住(?:别|不要|要)|不要再用|别老用)([^，。,!！?？]{2,40})/);
       if (correctMatch) {
         const correction = String(correctMatch[1] || "").trim();
-        if (correction.length > 1 && !/再犯|纠正/.test(message)) {
+        // 排除寒暄/情绪口头语：别闹了、别客气、别急、别担心……不是纠正，不记录
+        const ban = /闹|客气|急|慌|谢|担心|怕|想太多|介意|不好意思/;
+        if (correction.length > 1 && !ban.test(correction) && !/再犯|纠正/.test(message)) {
           mem.saveCorrection(CONFIG.cwd, { trigger: message.slice(0, 40), correction: `不要再${correction}` });
         }
       }
-      // 关系记忆：用户透露偏好/习惯时自动记录
-      const relMatch = message.match(/(?:我喜欢|我习惯|我偏好|我平时|我更爱|我一直)(.{2,30}?)(?:，|,|。|$)/);
+      // 关系记忆：用户透露偏好/习惯时自动记录——去掉"我一直"（多引出观点陈述非偏好），排除观点句式
+      const relMatch = message.match(/(?:我喜欢|我习惯|我偏好|我平时|我更爱|我偏爱)(.{2,30}?)(?:，|,|。|$)/);
       if (relMatch) {
         const detail = String(relMatch[1] || "").trim();
-        if (detail.length > 1) mem.saveRelation(CONFIG.cwd, { aspect: "用户透露", detail });
+        // 排除观点陈述（我觉得/我认为/感觉…是想法不是偏好），避免"我一直觉得"类误抓
+        const skip = /^(觉得|认为|感觉|想|希望|想要|打算)/;
+        if (detail.length > 1 && !skip.test(detail)) mem.saveRelation(CONFIG.cwd, { aspect: "用户透露", detail });
       }
       // 进化快照：每 20 次对话自动存一份（可回退）
       const snapCount = mem.listSnapshots(CONFIG.cwd).length;

@@ -398,14 +398,15 @@ let activeTab = "sessions";
 const VIEW_LABELS = { sessions: "会话", skills: "技能", workspace: "工作空间" };
 function switchView(v) {
   activeTab = v;
+  // 工作空间已独立成页（workspace.html），侧栏不再内嵌面板
+  if (v === "workspace") { location.href = "/workspace"; return; }
   $("view-current").textContent = VIEW_LABELS[v];
   $("panel-sessions").hidden = v !== "sessions";
   $("panel-skills").hidden = v !== "skills";
-  $("panel-workspace").hidden = v !== "workspace";
+  $("panel-workspace").hidden = true;
   $("view-menu").hidden = true;
   $("view-btn").classList.remove("open");
   if (v === "skills") loadSkills();
-  if (v === "workspace") { loadWsTree(); loadWsDeliveries(); }
 }
 $("view-btn").addEventListener("click", (e) => {
   e.stopPropagation();

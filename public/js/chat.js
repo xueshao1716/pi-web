@@ -522,8 +522,8 @@ function renderWelcome() {
     </div>
   </div>`;
   $("w-new").addEventListener("click", newSession);
-  $("w-file").addEventListener("click", openFilePicker);
-  $("w-cmd").addEventListener("click", showSlashMenu);
+  $("w-file").addEventListener("click", welcomeAt);
+  $("w-cmd").addEventListener("click", welcomeSlash);
 }
 // 渲染最新的未命名流式会话（存在多个新会话并发时取最新）
 function renderLatestNewStream() {
