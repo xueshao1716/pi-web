@@ -286,6 +286,7 @@
         <div class="switch"><input type="checkbox" id="sw-cg"><span class="box"></span><span class="txt">构图系统（黄金分割/引导线）</span></div>
         <div class="switch"><input type="checkbox" id="sw-emotion"><span class="box"></span><span class="txt">情绪光晕（情感氛围光效）</span></div>
         <div class="switch"><input type="checkbox" id="sw-consist"><span class="box"></span><span class="txt">角色一致性（多图/系列）</span></div>
+        <div class="switch"><input type="checkbox" id="sw-deep"><span class="box"></span><span class="txt">深度模式（人体分形/光影雕刻/去AI化材质）</span></div>
         <hr class="divider">
         <label>输出平台</label>
         <div class="taglist" id="platTags">
@@ -756,6 +757,17 @@ function generate(){
   if($('sw-deai').checked) tech.push('真实皮肤纹理，毛孔清晰可见，皮肤有自然的毛细血管和细微瑕疵，照片级真实感');
   if($('sw-cg').checked) tech.push('黄金分割构图，引导线引导视线，画面平衡有张力');
   if($('sw-emotion').checked) tech.push('情绪光晕，光晕自然扩散，氛围感强');
+  // 深度模式：人体分形 + 三层光影雕刻 + 去AI化材质（源自 37 章完整文档）
+  if($('sw-deep').checked) {
+    if(gender==='女性') {
+      tech.push('人体分形：sphere_breast半球度指数0.88-0.92，heart_hip上臀弧:下臀弧=1:0.78臀窝深陷，s-curve_spine颈胸腰三段自然生理弯曲12-18度');
+    } else {
+      tech.push('人体分形：broad_straight肩锁角<5度肩宽指数1.15，developed_pectoral胸肌厚度>15mm肌束分明，倒三角背阔肌线条');
+    }
+    tech.push('三层光影雕刻：亮部-中间调-暗部分离，侧光+逆光组合，臀峰肩峰膝盖保留高光增强立体感，腰窝肩胛沟凹陷处加深阴影强化凹凸对比');
+    tech.push('真实感材质光学：皮肤sss强度0.68-0.72，毛孔密度150/㎟鼻翼区域倍增，角膜折射率1.376模拟泪膜反光，生理血丝0.15');
+    tech.push('肢体保护：limb_detection_protection防止肢体缺失，面部一致性face_consistency=1');
+  }
   if($('sw-consist').checked) tech.push('角色一致性锁定，人物面部特征ID统一');
   const quality = tech.join('，');
 
