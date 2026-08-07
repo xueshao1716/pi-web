@@ -3351,6 +3351,7 @@ const API_ROUTES = [
   ["POST", "/api/parse-file", async (res, req) => handleParseFile(res, await readBody(req, 12))],
   // ── 专项工作台 ──
   ["POST", "/api/workshop/ppt", async (res, req) => workshop.handleWorkshopPpt(wsCtx(), res, await readBody(req))],
+  ["POST", "/api/workshop/novel", async (res, req) => workshop.handleWorkshopNovel(wsCtx(), res, await readBody(req))],
 ];
 
 const server = http.createServer(async (req, res) => {
