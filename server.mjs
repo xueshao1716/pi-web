@@ -871,7 +871,7 @@ async function generateImage(provider, modelId, prompt, size) {
 }
 
 async function handleImage(res, body) {
-  const { provider, modelId, prompt, size } = body || {};
+  const { provider, modelId, prompt, size, image } = body || {};
   if (!provider || !modelId || !prompt) return json(res, 400, { error: "缺少 provider / modelId / prompt" });
   const resolved = resolveAuth(provider);
   if (!resolved) return json(res, 400, { error: `${provider} 未配置 API Key（模型管理中添加）` });
@@ -1085,7 +1085,7 @@ async function handleImage(res, body) {
     const mkReq = (u) => httpJsonFetch(u, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify({ model: modelId, prompt, n: 1, size: effSize }),
+      body: JSON.stringify({ model: modelId, prompt, n: 1, size: effSize, ...(image ? { image } : {}) }),
       timeout: 180000,
     });
     let r = await mkReq(`${baseNoV1}/v1/images/generations`);

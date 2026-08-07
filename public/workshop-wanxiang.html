@@ -63,6 +63,20 @@
   .gen-btn:active { transform:translateY(0); }
   .gen-btn:disabled { opacity:.6; cursor:not-allowed; transform:none; }
   .img-area { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 16px; }
+  /* 图生图区 */
+  .i2i-area { margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 14px; }
+  .i2i-mode { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .upload-area { margin-top: 12px; }
+  .upload-drop { border: 2px dashed var(--line); border-radius: 12px; padding: 24px; text-align: center;
+    cursor: pointer; transition: all .2s; }
+  .upload-drop:hover, .upload-drop.drag { border-color: var(--gold); background: rgba(200,164,74,.06); }
+  .ud-icon { font-size: 30px; margin-bottom: 6px; }
+  .ud-text { font-size: 13px; color: var(--dim); }
+  .upload-preview { position: relative; display: inline-block; margin-top: 10px; }
+  .upload-preview img { max-width: 220px; max-height: 220px; border-radius: 10px; border: 1px solid var(--line); }
+  .up-remove { position: absolute; top: -8px; right: -8px; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--red); color: #fff; border: none; cursor: pointer; font-size: 12px; }
+  .i2i-prompt { width: 100%; margin-top: 10px; min-height: 50px; }
   .img-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .img-controls select { flex: 1; min-width: 130px; }
   .img-go { padding: 9px 20px; margin: 0; width: auto; background:linear-gradient(135deg, var(--teal), #2a9d6e); color:#06211a; letter-spacing:1px; box-shadow:0 3px 12px rgba(62,207,142,.25); }
@@ -349,6 +363,29 @@
       <button class="copy-btn" id="transBtn" title="翻译成英文（部分生图模型不认中文）" style="background:#3a3f52">🌐 翻译 EN</button>
     </div>
     <textarea id="output" class="empty" spellcheck="false" placeholder="选择场景 → 填写信息 → 点击上方按钮生成"></textarea>
+    <!-- 图生图：上传照片拉入场景 / 图片修改 -->
+    <div class="i2i-area">
+      <div class="i2i-mode">
+        <label style="margin:0">生成模式</label>
+        <div class="taglist" id="modeTags" style="margin:0">
+          <button data-mode="t2i" class="on">文生图</button>
+          <button data-mode="i2i">图生图（拉入场景）</button>
+          <button data-mode="inpaint">图片修改</button>
+        </div>
+      </div>
+      <div id="uploadArea" class="upload-area" hidden>
+        <input type="file" id="uploadFile" accept="image/*" hidden>
+        <div class="upload-drop" id="uploadDrop">
+          <div class="ud-icon">📷</div>
+          <div class="ud-text">点击选择或拖拽照片到这里<br><span style="font-size:11px;color:var(--dim)">用于拉入场景 / 局部修改</span></div>
+        </div>
+        <div class="upload-preview" id="uploadPreview" hidden>
+          <img id="uploadImg" alt="待处理照片">
+          <button class="up-remove" id="uploadRemove" title="移除">✕</button>
+        </div>
+        <textarea id="i2iPrompt" class="i2i-prompt" spellcheck="false" placeholder="输入场景描述，如：把人物放进古风宫殿，凤凰背景，金色光线（留空则用上方生成提示词）"></textarea>
+      </div>
+    </div>
     <!-- 直出图像区：模型选择 + 批量出图 + 网格展示 + 点击选图 -->
     <div class="img-area">
       <div class="img-controls">
@@ -903,9 +940,11 @@ function extractCleanPrompt(prompt) {
   return clean.split(/\n{2,}/)[0].trim().slice(0, 1000);
 }
 
-// 生成单张图（内部方法，供批量调用）
-async function genOne(provider, modelId, clean, size) {
-  const r = await api('/api/image', { method: 'POST', body: { provider, modelId, prompt: clean, size } });
+// 生成单张图（内部方法，供批量调用；image=图生图输入 base64）
+async function genOne(provider, modelId, clean, size, image) {
+  const body = { provider, modelId, prompt: clean, size };
+  if (image) body.image = image;
+  const r = await api('/api/image', { method: 'POST', body });
   if (!r.image) throw new Error('未返回图片');
   return r.image;
 }
@@ -915,8 +954,19 @@ async function generateImageNow() {
   const sel = $imgModel.value;
   if (!sel) { setImgStatus('请先选择出图模型', true); return; }
   const { provider, modelId } = JSON.parse(sel);
-  let clean = extractCleanPrompt($('output').value);
-  if (!clean) { setImgStatus('请先点击「生成提示词」', true); return; }
+  const mode = currentMode;
+  // 图生图/修改：必须上传图片；提示词优先用图生图专用框
+  let imageB64 = null;
+  let clean = '';
+  if (mode !== 't2i') {
+    if (!uploadedImage) { setImgStatus('请先上传照片（图生图/修改模式）', true); return; }
+    imageB64 = uploadedImage;
+    clean = ($('i2iPrompt').value || '').trim();
+    if (!clean) clean = extractCleanPrompt($('output').value);
+  } else {
+    clean = extractCleanPrompt($('output').value);
+  }
+  if (!clean) { setImgStatus('请先输入提示词', true); return; }
   // 自动翻译：提示词含中文 + 模型是国外系（万相/FLUX/Agnes 等）→ 自动转英文提升控制力
   if (/[\u4e00-\u9fa5]/.test(clean) && /^(aliyun-bailian|cloudflare-ai|volces-ark|nvidia|modelscope|agnes)/.test(provider)) {
     setImgStatus('⏳ 检测到中文提示词，自动翻译成英文…', false, true);
@@ -927,13 +977,13 @@ async function generateImageNow() {
   }
   const count = +$imgCount.value || 1;
   const size = $imgSize.value;
-  setImgStatus(`⏳ 生成 ${count} 张中…（约 ${count * 10}-${count * 30} 秒）`, false, true);
+  setImgStatus(`⏳ ${mode === 't2i' ? '生成' : '处理'} ${count} 张中…（约 ${count * 10}-${count * 30} 秒）`, false, true);
   $imgGo.disabled = true; $imgGo.textContent = `⏳ ${count} 张生成中…`;
   $imgGrid.hidden = true; $imgSingle.hidden = true; selectedImg = null;
   try {
-    // 并行发起 count 个请求（CF/魔塔支持并发，Agnes 也支持）
+    // 并行发起 count 个请求
     const results = await Promise.allSettled(
-      Array.from({ length: count }, () => genOne(provider, modelId, clean, size))
+      Array.from({ length: count }, () => genOne(provider, modelId, clean, size, imageB64))
     );
     const ok = results.filter(r => r.status === 'fulfilled').map(r => r.value);
     const failN = count - ok.length;
@@ -1013,6 +1063,46 @@ $imgSave.addEventListener('click', async () => {
   } catch { setImgStatus('保存失败（跨域限制，可点「打开原图」）', true); }
 });
 $imgGo.addEventListener('click', generateImageNow);
+
+// ══ 图生图：模式切换 + 上传 + 拖拽 ══
+let currentMode = 't2i';
+let uploadedImage = null; // base64（去前缀）
+const $modeTags = document.querySelectorAll('#modeTags button');
+const $uploadArea = $('uploadArea'), $uploadDrop = $('uploadDrop'), $uploadPreview = $('uploadPreview'), $uploadImg = $('uploadImg');
+
+function setMode(mode) {
+  currentMode = mode;
+  $modeTags.forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+  $uploadArea.hidden = mode === 't2i';
+  if (mode === 't2i') { $imgGo.textContent = '🎨 直出图像'; $imgGo.disabled = false; }
+  else { $imgGo.textContent = mode === 'inpaint' ? '🖌 图片修改' : '🎨 拉入场景生成'; }
+}
+$modeTags.forEach(btn => btn.addEventListener('click', () => setMode(btn.dataset.mode)));
+
+// 读取文件 → base64（去 data: 前缀，后端按模型适配）
+function readImageFile(file) {
+  if (!file || !/^image\//.test(file.type)) { setImgStatus('请选择图片文件', true); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const full = String(reader.result);
+    uploadedImage = full.split(',')[1] || full; // 去 data:image/png;base64, 前缀
+    $uploadImg.src = full;
+    $uploadPreview.hidden = false;
+    $uploadDrop.style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+// 点击选择 / 拖拽
+$uploadDrop.addEventListener('click', () => $('uploadFile').click());
+$('uploadFile').addEventListener('change', e => readImageFile(e.target.files[0]));
+$uploadDrop.addEventListener('dragover', e => { e.preventDefault(); $uploadDrop.classList.add('drag'); });
+$uploadDrop.addEventListener('dragleave', () => $uploadDrop.classList.remove('drag'));
+$uploadDrop.addEventListener('drop', e => { e.preventDefault(); $uploadDrop.classList.remove('drag'); readImageFile(e.dataTransfer.files[0]); });
+$('uploadRemove').addEventListener('click', () => {
+  uploadedImage = null; $uploadPreview.hidden = true; $uploadDrop.style.display = ''; $('uploadFile').value = '';
+});
+
 loadImgModels();
 })();
 </script>
