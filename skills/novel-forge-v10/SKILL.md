@@ -5,7 +5,7 @@ description: 小说锻造炉 v10——融合 v1-v9 全部精华的 AI 中文网�
 
 # 小说锻造炉 v10
 
-> 融合 v1（基础管道）× v2（四源融合）× v3（零成本审计）× v4（产品思维）× v8（clean-arch）× v9（智能子系统）
+> 融合 v1（基础管道）× v2（四源融合）× v3（零成本审计）× v4（产品思维）× v8（clean-arch）× v9（智能子系统：编辑部 COORD / 灵魂系统 / 元认知 FixHint / SQLite 知识层）
 > 核心哲学：**先想清楚卖给谁，再动笔；写得好不如卖得对。**
 
 ## 产品化初始化（动笔前必做，来自 v4）
@@ -51,18 +51,63 @@ Phase 4: 导出 → 整合 + 发布
 
 **写前读，写后更新。** 这是长篇防跑偏的根本。
 
-## 编辑部 7 角色协作（来自 v9）
+## 编辑部 8 角色协作（来自 v9 实现，含 COORD 调度）
 
-写每章时，7 个角色分工（可 LLM 依次调用或一次多角色提示）：
-| 角色 | 职责 |
-|---|---|
-| IDEA | 出创意（×3 备选） |
-| EXEC | 执行写作（出初稿） |
-| CHALLENGE | 挑战设定（找漏洞） |
-| FACT | 事实核查（对真相文件） |
-| LOGIC | 逻辑审计（因果/战力/时间线） |
-| ORCHE | 统筹协调（定稿） |
-| HUMAN | 读者视角（像读者一样读） |
+写每章时 8 个角色分工（v9 已真 LLM 验收：standard 预设 9 次调用/2468 字/LOGIC 真捕获时间线 bug）：
+
+| 角色 | 阶段 | 职责 |
+|---|---|---|
+| **COORD** | S0 | 调度者：分解章节意图 → 选协作模式 → 装配角色 |
+| IDEA | S1 | 出创意（×3 备选并行） |
+| EXEC | S2 | 执行写作（出初稿） |
+| CHALLENGE | S3 | 攻击性质疑（≥5 条，并行） |
+| FACT | S3 | 事实核查（对真相文件/知识库，并行） |
+| LOGIC | S3 | 逻辑审计（时间线/因果链，并行） |
+| ORCHE | S4 | 统筹定稿（串行） |
+| HUMAN | S5 | 人性化终稿（去 AI 味+风格锁定，串行） |
+
+**并行**：IDEA 3 版并行；CHALLENGE + FACT + LOGIC 并行。ORCHE/HUMAN 串行。
+
+### 三维决策矩阵（preset：fast / standard / deep）
+
+| 维度 | 快 fast | 标准 standard | 深 deep |
+|---|---|---|---|
+| 协作模式 | S 简化（只 EXEC+HUMAN） | B 直接（8 角色标准链） | A 中心化（COORD 逐轮仲裁） |
+| 验证级别 | Lite（跳过 FACT/LOGIC） | Standard（3 review 齐上） | Pro（+ reader_panel + 二轮 CHALLENGE） |
+| 能力增强 | Lite（不注 soul） | Standard（注主角 soul） | Pro（全角色 soul + genre 特化） |
+
+**元认知失衡时 COORD 可换 preset（见元认知 FixHint）。**
+
+## 灵魂系统（SoulSymbiont，来自 v9 实现）
+
+每个重要角色建灵魂档案 `souls/<char_name>.json`，四件套：
+
+```json
+{
+  "wound_core": {"event": "父亲车祸时他在游戏机厅", "age": 12, "body_memory": "游戏机音效引发心悸", "repeat_pattern": "回避冲突"},
+  "yearning_engine": {"surface": "变强", "deep": "被承认存在", "fear_admit": "承认自己脆弱"},
+  "mask_construction": {"outer": "冷酷学霸", "behavior": "少说话多观察", "language_fingerprint": "用问句反弹"},
+  "evolution_drive": {"stage": "试探", "next_stage": "连接", "trigger_needed": "遇到能看穿面具的人"}
+}
+```
+
+**注入方式**：在 IDEA/EXEC 的 prompt 里追加 `{soul_context}`，用自然语言描述角色灵魂（不暴露 JSON）。
+
+### 三大基因库（写人物/世界时的灵感引擎）
+
+**情绪基因 EMOTION_GENES（5 类）**：
+- `physical_resonance` 身体先于认知——恐惧先到胃里、愤怒先到下颌；身体反应比心理描写早半拍
+- `trauma_echo` 旧伤在新情境回响——同样的气味/语气/光线瞬间拉回当年；瞬间失焦/身体僵直/过度反应
+- `shadow_emergence` 阴影浮现——被压抑的自我（贪婪/嫉妒/暴力欲）在压力下浮出，做出连自己都吓到的事
+- `relational_bonding` 关系五阶段——封闭→试探→连接→依赖→共生；倒退和跳跃都会出问题
+- `existential_crisis` 存在危机五阶段——否认→愤怒→讨价还价→抑郁→接受；跳过任何一段都假
+
+**灵魂基因 SOUL_GENES（4 件套）**——对应四件套的触发器/表达形态：创伤内核（回避/过度警觉）、渴望驱动（口头目标与行为对不上）、面具构建（标准化开场白+语言指纹）、演化驱动（行为模式松动/新词混入语言指纹）。
+
+**世界基因 WORLD_GENES（3 类）**：
+- `fate_structure` 命运骨架（高刚性）——出身/时代/体制像铁轨，提供不可协商的压力
+- `chaos_field` 混沌域（高柔性）——偶然/意外/他人选择，防叙事变宿命论
+- `collective_unconscious` 集体潜意识——群体共享的恐惧/渴望/道德直觉，"大家都这么选"的羞耻感
 
 ## 26 维审计（来自 v2/v3，零 LLM 成本优先）
 
@@ -119,12 +164,30 @@ Phase 4: 导出 → 整合 + 发布
 
 **关键洞察**：读者之间的**分歧点 = 编辑决策所在**——分歧处就是最需要作者判断的地方。
 
-## 元认知检查（来自 v9）
+## 元认知检查（来自 v9 实现：4 类失衡 + FixHint）
 
-- **过审**：审计走过场（每章都满分=没认真审）
-- **欠审**：关键维度没查
-- **视角失衡**：全是主角视角，缺对手/世界
-- **修订耗尽**：改了三轮还在改同一处=该换策略
+**输入**：26 维审计结果 → 检测失衡 → 输出修复指令 `{role_to_recall, prompt_variant, extra_context}`
+
+| 失衡类型 | 症状 | FixHint |
+|---|---|---|
+| `OUTPUT_VOLUME_LOW` 字数不足 | 章节远低于目标 | 召回 **EXEC**，变体 `expand_scenes`（目标 ×1.3） |
+| `CHARACTER_DEPTH_SHALLOW` 角色浅表 | 行为公式化 | 召回 **IDEA**，变体 `deepen_character`（soul_depth=pro） |
+| `INTEGRATION_LOW` 情节人物脱节 | 剧情与人设两条线 | 召回 **ORCHE**，变体 `resync_plot_character` |
+| `RUMINATION_STUCK` 反复无进展 | 同一处改三轮 | 召回 **COORD**，变体 `mutate_preset`（换 deep 预设） |
+
+**防走过场**：过审（每章满分=没认真审）/ 欠审（关键维度没查）/ 视角失衡（全主角视角）/ 修订耗尽（改三轮同一处=该换策略）。
+
+## SQLite 知识层（来自 v9 实现）
+
+真相文件的机器可查版本，4 张表：
+
+- `characters` — 角色（first/last chapter、soul_json、存活状态）
+- `foreshadowings` — 伏笔账本（planted/paid_off 章节、open/paid/abandoned）
+- `timeline` — 时间线（章节、事件、故事内时间、地点、涉及角色）
+- `relationships` — 关系网（a-b-kind：enemy/lover/ally/mentor，since_chapter）
+
+**填充**：每章后从观察结果 ingest 到 4 表（角色/伏笔/时间线/关系）
+**查询**：`who_alive_at(chapter)` / `open_foreshadowings_before(chapter)` / `relationships_of(name)`——给 IDEA/EXEC/FACT/LOGIC 用，防伏笔丢失/时间线矛盾/关系遗忘
 
 ## 题材规则（4 套内置 + 可扩展）
 
@@ -216,14 +279,14 @@ Phase 4: 导出 → 整合 + 发布
 
 ## 每章流程（合并所有版本）
 
-1. 读真相文件 → 读大纲 → 读角色卡
-2. 编辑部角色：IDEA 出方案 → EXEC 写 → CHALLENGE/FACT/LOGIC 审 → HUMAN 读
+1. 读真相文件 → 读大纲 → 读角色卡 → 查 SQLite 知识层（活着谁/悬伏笔/关系网）
+2. COORD 定 preset（fast/standard/deep）→ 编辑部 8 角色：IDEA 出方案 → EXEC 写 → CHALLENGE/FACT/LOGIC 并行审 → ORCHE 定稿 → HUMAN 去 AI 味
 3. 写前快照（可回滚）
 4. 正则免疫（零成本）
-5. 26 维审计 → 元认知检查（防走过场）
+5. 26 维审计 → 元认知失衡检测 → 按 FixHint 召回对应角色（不是全盘重写）
 6. 针对性修改（只改问题维度）
-7. 读者仿真（关键章节）
-8. 更新真相文件（状态/伏笔/资源/摘要）
+7. 读者仿真（关键章节 / deep preset）
+8. 更新真相文件（状态/伏笔/资源/摘要）+ ingest 到 SQLite 知识层
 9. 章末钩（网文必须）
 
 ## 网文写作铁律
@@ -260,7 +323,7 @@ Phase 4: 导出 → 整合 + 发布
 
 ## 参考源码
 
-- 本技能 = v1-v9 融合蒸馏
-- 完整实现：`D:\xinyu-zool\novel-forge-v9`（371 测试）
+- 本技能 = v1-v9 融合蒸馏（v9 智能子系统已并入：编辑部 COORD / 灵魂系统 / 元认知 FixHint / SQLite 知识层）
+- v9 完整实现：`D:\xinyu-zool\novel-forge-v9`（371 测试：v8 311 零回归 + v9 60；真 LLM 验收 tomato-demo 跑通）
 - 实际产出：`D:\xinyu-zool\novel-projects\`
 - 开源：InkOS（github.com/Narcooo/inkos）、Autonovel（github.com/NousResearch/autonovel）
