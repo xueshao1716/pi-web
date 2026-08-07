@@ -984,6 +984,7 @@ async function handleImage(res, body) {
     const accountId = auth["cloudflare-ai"]?.account_id || process.env.CLOUDFLARE_ACCOUNT_ID || "";
     if (!accountId) return json(res, 400, { error: "cloudflare-ai 未配置 account_id（模型管理中添加）" });
     const sizeMap = { "1024x1024": [512, 512], "832x1472": [512, 896], "736x1312": [512, 896], "720x1280": [512, 896], "1920x1920": [768, 768] };
+    // 默认 512x512 省免费额度（10k Neurons/天，1024 大图一张就顶一天）
     const [w, h] = sizeMap[size] || [512, 512];
     // 原始二进制返回的模型（phoenix 等）：响应直接是图片字节，不是 JSON base64
     const rawBinary = /leonardo\/phoenix/.test(modelId || "");
