@@ -308,27 +308,28 @@
           <button data-filter="bg">纯净背景</button>
         </div>
       </div>
+    </div>
+  </div>
 
-      <div class="card" style="margin-top:16px">
-        <h2><span class="num">★</span> 赌图模式（可控随机）</h2>
-        <div class="switch"><input type="checkbox" id="sw-gamble"><span class="box"></span><span class="txt">开启赌图模式</span></div>
-        <div id="gamblePanel" style="display:none; opacity:0; transition:opacity .3s">
-          <label>随机强度（盲盒深度，0=基本可控 10=全盲盒）</label>
-          <input type="range" id="gambleLevel" min="0" max="10" value="5" style="width:100%">
-          <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--dim)">
-            <span>0 保守</span><span id="gambleLevelVal" style="color:var(--gold);font-weight:700">5 · 均衡</span><span>10 盲盒</span>
-          </div>
-          <label>锁定维度（勾选后不随机）</label>
-          <div class="taglist" id="lockTags">
-            <button data-lock="gender" class="on">性别</button>
-            <button data-lock="scene">场景</button>
-            <button data-lock="style">风格</button>
-            <button data-lock="body">身材</button>
-            <button data-lock="platform">平台</button>
-          </div>
-          <div class="switch"><input type="checkbox" id="sw-underdog" checked><span class="box"></span><span class="txt">冷门保底（连续不出则强制出现）</span></div>
-        </div>
+  <!-- 赌图模式：通栏（开启后展开面板，避免右栏变长） -->
+  <div class="card" style="margin-top:16px">
+    <h2><span class="num">★</span> 赌图模式（可控随机）</h2>
+    <div class="switch"><input type="checkbox" id="sw-gamble"><span class="box"></span><span class="txt">开启赌图模式</span></div>
+    <div id="gamblePanel" style="display:none; opacity:0; transition:opacity .3s">
+      <label>随机强度（盲盒深度，0=基本可控 10=全盲盒）</label>
+      <input type="range" id="gambleLevel" min="0" max="10" value="5" style="width:100%">
+      <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--dim)">
+        <span>0 保守</span><span id="gambleLevelVal" style="color:var(--gold);font-weight:700">5 · 均衡</span><span>10 盲盒</span>
       </div>
+      <label>锁定维度（勾选后不随机）</label>
+      <div class="taglist" id="lockTags">
+        <button data-lock="gender" class="on">性别</button>
+        <button data-lock="scene">场景</button>
+        <button data-lock="style">风格</button>
+        <button data-lock="body">身材</button>
+        <button data-lock="platform">平台</button>
+      </div>
+      <div class="switch"><input type="checkbox" id="sw-underdog" checked><span class="box"></span><span class="txt">冷门保底（连续不出则强制出现）</span></div>
     </div>
   </div>
 

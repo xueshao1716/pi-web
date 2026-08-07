@@ -1069,11 +1069,18 @@ async function handleImage(res, body) {
     return;
   }
   try {
-    // 火山方舟 seedream 5.0：最小尺寸 3686400 像素（≥1920×1920），小尺寸会被拒
+    // 火山方舟 seedream 5.0：最小 3686400 像素，但保留宽高比（1:1/9:16/16:9）
     let effSize = size || "1024x1024";
     if (provider === "volces-ark" && /seedream/i.test(modelId || "")) {
-      const minMap = { "1024x1024": "1920x1920", "832x1472": "1920x1920", "736x1312": "1920x1920", "720x1280": "1920x1920" };
-      effSize = minMap[effSize] || "1920x1920";
+      // 按比例映射且面积 ≥3686400：1:1→1920x1920；9:16→1440x2560(面积3686400)；16:9→2560x1440
+      const ratioMap = {
+        "1024x1024": "1920x1920",   // 1:1
+        "832x1472": "1440x2560",    // 9:16 竖图
+        "736x1312": "1440x2560",    // 9:16
+        "720x1280": "1440x2560",    // 9:16
+        "1472x832": "2560x1440",    // 16:9 横图
+      };
+      effSize = ratioMap[effSize] || (effSize.includes("x") ? effSize : "1920x1920");
     }
     const mkReq = (u) => httpJsonFetch(u, {
       method: "POST",
