@@ -84,3 +84,131 @@ export function appendState(wsRoot, line) {
     return true;
   } catch { return false; }
 }
+
+// ══ 纠正记忆（被纠正的行为，防再犯）——借鉴 xinyu-core memory_engine ══
+// 用户纠正过的 → 记录触发场景+正确做法 → 注入上下文防止再犯
+const CORRECTION_FILE = "纠正记忆.md";
+
+export function correctionPaths(wsRoot) {
+  return { file: path.join(wsRoot, "记忆", CORRECTION_FILE) };
+}
+
+// 记录一条纠正（用户说"别这样/应该这样/记住不要"时）
+export function saveCorrection(wsRoot, { trigger = "", correction = "" } = {}) {
+  try {
+    if (!correction) return { ok: false, reason: "无纠正内容" };
+    const p = correctionPaths(wsRoot);
+    fs.mkdirSync(path.dirname(p.file), { recursive: true });
+    const now = new Date();
+    const stamp = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+    const entry = `### ${stamp}\n- 触发: ${trigger || "（未指明场景）"}\n- 纠正: ${correction}\n`;
+    let content = "";
+    try { content = fs.readFileSync(p.file, "utf8"); } catch {}
+    fs.writeFileSync(p.file, content + entry + "\n", "utf8");
+    try { syncMemoryToTui(); } catch {}
+    return { ok: true, entry };
+  } catch (e) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
+}
+
+// 加载最近纠正（注入上下文，防再犯）
+export function loadCorrections(wsRoot, max = 10) {
+  try {
+    const p = correctionPaths(wsRoot);
+    if (!fs.existsSync(p.file)) return [];
+    const raw = fs.readFileSync(p.file, "utf8");
+    const blocks = raw.split(/\n### /).filter(b => b.trim());
+    return blocks.slice(-max).map(b => "### " + b.trim());
+  } catch { return []; }
+}
+
+// ══ 关系记忆（对用户的了解：偏好/习惯/性格）——借鉴 xinyu-core ══
+const RELATION_FILE = "关系记忆.md";
+
+export function relationPaths(wsRoot) {
+  return { file: path.join(wsRoot, "记忆", RELATION_FILE) };
+}
+
+// 记录一条对用户的了解（用户透露偏好/习惯/性格时）
+export function saveRelation(wsRoot, { aspect = "", detail = "" } = {}) {
+  try {
+    if (!detail) return { ok: false, reason: "无内容" };
+    const p = relationPaths(wsRoot);
+    fs.mkdirSync(path.dirname(p.file), { recursive: true });
+    const now = new Date();
+    const stamp = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+    let content = "";
+    try { content = fs.readFileSync(p.file, "utf8"); } catch {}
+    // 按 aspect 分类，去重（同 aspect 同 detail 不重复）
+    const key = `${aspect}·${detail}`;
+    if (content.includes(detail.slice(0, 20))) return { ok: false, reason: "已存在" };
+    const entry = `## ${aspect}\n- ${detail}（${stamp}）\n`;
+    fs.writeFileSync(p.file, content + entry + "\n", "utf8");
+    try { syncMemoryToTui(); } catch {}
+    return { ok: true };
+  } catch (e) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
+}
+
+// 加载关系记忆（注入上下文，了解用户）
+export function loadRelations(wsRoot, max = 15) {
+  try {
+    const p = relationPaths(wsRoot);
+    if (!fs.existsSync(p.file)) return [];
+    const raw = fs.readFileSync(p.file, "utf8");
+    const blocks = raw.split(/\n## /).filter(b => b.trim());
+    return blocks.slice(-max).map(b => "## " + b.trim());
+  } catch { return []; }
+}
+
+// ══ 进化快照（记忆改动前自动备份，可回退）——借鉴 xinyu-core SnapshotManager ══
+const SNAPSHOT_DIR = "快照";
+
+export function snapshotPaths(wsRoot) {
+  return { dir: path.join(wsRoot, "记忆", SNAPSHOT_DIR) };
+}
+
+// 保存记忆快照（固定记忆+日志+纠正+关系）
+export function saveSnapshot(wsRoot, reason = "manual") {
+  try {
+    const p = snapshotPaths(wsRoot);
+    fs.mkdirSync(p.dir, { recursive: true });
+    const now = new Date();
+    const id = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,"0")}${String(now.getDate()).padStart(2,"0")}_${String(now.getHours()).padStart(2,"0")}${String(now.getMinutes()).padStart(2,"0")}`;
+    const snap = { id, reason, timestamp: now.toISOString(), files: {} };
+    const targets = [memoryPaths(wsRoot).fixed, memoryPaths(wsRoot).log, correctionPaths(wsRoot).file, relationPaths(wsRoot).file];
+    for (const f of targets) {
+      try {
+        if (fs.existsSync(f)) snap.files[path.basename(f)] = fs.readFileSync(f, "utf8");
+      } catch {}
+    }
+    fs.writeFileSync(path.join(p.dir, `${id}.json`), JSON.stringify(snap, null, 2), "utf8");
+    return { ok: true, id };
+  } catch (e) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
+}
+
+// 列出快照
+export function listSnapshots(wsRoot) {
+  try {
+    const p = snapshotPaths(wsRoot);
+    if (!fs.existsSync(p.dir)) return [];
+    return fs.readdirSync(p.dir).filter(f => f.endsWith(".json")).sort().reverse();
+  } catch { return []; }
+}
+
+// 回退到某快照
+export function restoreSnapshot(wsRoot, id) {
+  try {
+    const p = snapshotPaths(wsRoot);
+    const f = path.join(p.dir, id.endsWith(".json") ? id : id + ".json");
+    if (!fs.existsSync(f)) return { ok: false, reason: "快照不存在" };
+    const snap = JSON.parse(fs.readFileSync(f, "utf8"));
+    for (const [name, content] of Object.entries(snap.files || {})) {
+      const target = name === "记忆.md" ? memoryPaths(wsRoot).fixed
+        : name === "记忆日志.md" ? memoryPaths(wsRoot).log
+        : name === CORRECTION_FILE ? correctionPaths(wsRoot).file
+        : relationPaths(wsRoot).file;
+      if (target) { fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, content, "utf8"); }
+    }
+    try { syncMemoryToTui(); } catch {}
+    return { ok: true, id: snap.id, reason: snap.reason };
+  } catch (e) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
+}

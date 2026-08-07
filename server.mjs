@@ -11,6 +11,7 @@ import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 
 import { CONFIG } from "./config.mjs";
+const memoryApi = await import("./memory.mjs");
 const emotion = await import("./emotion.mjs");
 const workshop = await import("./workshop.mjs");
 const { WORKSHOP_PAGES } = workshop;
@@ -223,6 +224,13 @@ function loadMemory() {
       memoryLogMtime = lst.mtimeMs;
     }
     if (memoryLogCache) out.push(memoryLogCache);
+  } catch {}
+    // 纠正记忆（防再犯）+ 关系记忆（了解用户）
+  try {
+    const corrections = memoryApi.loadCorrections(CONFIG.cwd, 8);
+    if (corrections.length) out.push(`以下为最近纠正记忆（用户纠正过的事，务必不要再犯）：\n${corrections.join("\n")}`);
+    const relations = memoryApi.loadRelations(CONFIG.cwd, 10);
+    if (relations.length) out.push(`以下为对用户的了解（关系记忆，据此调整相处方式）：\n${relations.join("\n")}`);
   } catch {}
   return out;
 }
@@ -2862,6 +2870,25 @@ async function handleChat(req, res, body) {
         return "";
       })();
       mem.autoMemorize(CONFIG.cwd, { userMsg: message, assistantMsg: assistLatest });
+      // 纠正记忆：用户纠正语气/做法时自动记录（防再犯）
+      const correctMatch = message.match(/(?:别|不要|别再|别老|别总)([^，。,!！]{2,40})/);
+      if (correctMatch) {
+        const correction = String(correctMatch[1] || "").trim();
+        if (correction.length > 1 && !/再犯|纠正/.test(message)) {
+          mem.saveCorrection(CONFIG.cwd, { trigger: message.slice(0, 40), correction: `不要再${correction}` });
+        }
+      }
+      // 关系记忆：用户透露偏好/习惯时自动记录
+      const relMatch = message.match(/(?:我喜欢|我习惯|我偏好|我平时|我更爱|我一直)(.{2,30}?)(?:，|,|。|$)/);
+      if (relMatch) {
+        const detail = String(relMatch[1] || "").trim();
+        if (detail.length > 1) mem.saveRelation(CONFIG.cwd, { aspect: "用户透露", detail });
+      }
+      // 进化快照：每 20 次对话自动存一份（可回退）
+      const snapCount = mem.listSnapshots(CONFIG.cwd).length;
+      if (snapCount === 0 || snapCount % 20 === 0) {
+        mem.saveSnapshot(CONFIG.cwd, "auto");
+      }
     } catch {}
     sseWrite(res, "done", { sessionId: sessionId || findKeyByEntry(entry) });
   } catch (e) {
