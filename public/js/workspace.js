@@ -315,22 +315,24 @@ $("nt-close").addEventListener("click", () => $("notices-modal").classList.remov
 $("notices-modal").addEventListener("click", (e) => { if (e.target === e.currentTarget) $("notices-modal").classList.remove("show"); });
 const escMd = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-// ⬆ 在线更新（检查 + 一键拉取重启）
+// ⬆ 在线更新（前端 git + 后端引擎 一起检测，一键拉取重启）
 $("update-btn").addEventListener("click", async () => {
   const btn = $("update-btn");
   btn.textContent = "⏳";
   try {
     const d = await api("/api/update/check");
-    if (d.upToDate) {
-      await appConfirm(`✅ 已是最新版本（本地 ${d.local}）\n\n远程：${d.remote}`, "检查更新");
-    } else if (d.behind > 0) {
-      const ok = await appConfirm(`⬆ 发现新版本！\n\n本地：${d.local}\n远程：${d.remote}\n落后：${d.behind} 个提交\n\n点击确定拉取更新并重启服务。`, "检查更新");
-      if (!ok) return;
-      const r = await api("/api/update/apply", { method: "POST" });
-      await appConfirm(r.message || "更新完成", "更新");
-      setTimeout(() => location.reload(), 8000);
+    const fePart = d.upToDate ? `✅ 前端最新（${d.local}）` : `⬆ 前端落后 ${d.behind} 提交（${d.local} → ${d.remote}）`;
+    const engPart = d.engineOutdated
+      ? `⬆ 引擎有新版：${d.engineLocal} → ${d.engineLatest}`
+      : `✅ 引擎最新（${d.engineLocal || "?"}）`;
+    if (d.upToDate && !d.engineOutdated) {
+      await appConfirm(`✅ 全部最新\n\n${fePart}\n${engPart}`, "检查更新");
     } else {
-      await appConfirm(`远程信息：${d.remote || "无法获取"}（${d.hasRemote ? "有差异" : "一致"}）`, "检查更新");
+      const ok = await appConfirm(`⬆ 检测到更新！\n\n${fePart}\n${engPart}\n\n确定执行更新？（前端 git pull + 引擎升级 + 重启）`, "检查更新");
+      if (!ok) return;
+      const r = await api("/api/update/apply", { method: "POST", body: { engine: d.engineOutdated } });
+      await appConfirm(r.message || "更新完成", "更新");
+      setTimeout(() => location.reload(), 10000);
     }
   } catch (e) {
     await appConfirm("检查更新失败：" + (e.message || e), "检查更新");
