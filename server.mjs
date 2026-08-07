@@ -1099,6 +1099,32 @@ async function handleImage(res, body) {
   }
 }
 
+// 出图后自动落盘到本地（生成物/图片/日期），返回本地 URL——稳定展示 + 留档
+// 避免第三方 OSS 链接不稳定导致页面图不展示
+async function handleImageWithSave(res, body) {
+  let payload = null;
+  const origJson = json;
+  // 拦截 handleImage 内部的 json(res, ...)，吞掉输出，捕获结果
+  json = (r, code, obj) => {
+    if (r === res) { payload = { code, obj }; return; } // 吞掉，统一在最后发
+    return origJson(r, code, obj);
+  };
+  try {
+    await handleImage(res, body);
+  } catch (e) {
+    payload = { code: 500, obj: { error: String(e?.message || e).slice(0, 200) } };
+  } finally {
+    json = origJson;
+  }
+  // 成功出图 → 落盘本地，覆盖返回
+  if (payload && payload.code === 200 && payload.obj?.image) {
+    const saved = await saveArtifact({ type: "image", url: payload.obj.image }).catch(() => null);
+    if (saved) payload.obj.image = saved;
+  }
+  // 统一输出（只发一次）
+  try { json(res, payload?.code || 500, payload?.obj || { error: "未知错误" }); } catch {}
+}
+
 // POST /api/models/remove {provider}
 // 内置 provider（走 pi agent）；其余自定义 provider 走直调通道
 const KNOWN_PROVIDERS = new Set(["deepseek", "openai", "openrouter", "anthropic", "google", "qwen", "xai", "moonshotai", "zai", "together", "mistral"]);
@@ -1656,7 +1682,14 @@ async function saveArtifact(artifact) {
       return artifact.url;
     }
     console.log(`[pi-web] 产物已落盘: ${file}`);
-    return `/api/ws/file?path=${encodeURIComponent(file)}`;
+    // 用签名 URL（免鉴权，24h 有效）——img 标签可直接加载，无需带 token
+    try {
+      const fb = await import("./filebox.mjs");
+      const rel = path.relative(WS_ROOT, file);
+      return fb.signedUrl(rel);
+    } catch {
+      return `/api/ws/file?path=${encodeURIComponent(file)}`;
+    }
   } catch (e) {
     console.log(`[pi-web] 落盘失败: ${String(e?.message || e).slice(0, 60)}`);
     return artifact.url;
@@ -3745,7 +3778,7 @@ const API_ROUTES = [
   ["POST", "/api/model", async (res, req) => handleSwitchModel(req, res, await readBody(req))],
   // ── 媒体/对话 ──
   ["POST", "/api/think", async (res, req) => handleThink(res, await readBody(req))],
-  ["POST", "/api/image", async (res, req) => handleImage(res, await readBody(req))],
+  ["POST", "/api/image", async (res, req) => handleImageWithSave(res, await readBody(req))],
   ["POST", "/api/media", async (res, req) => handleMedia(res, await readBody(req))],
   ["POST", "/api/chat", async (res, req) => handleChat(req, res, await readBody(req, 12))],
   ["POST", "/api/compare", async (res, req) => handleCompare(res, await readBody(req))],
