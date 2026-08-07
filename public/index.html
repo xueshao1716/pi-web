@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="小语">
 <link rel="stylesheet" href="/static/vendor/github-dark.min.css" integrity="sha384-wH75j6z1lH97ZOpMOInqhgKzFkAInZPPSPlZpYKYTOqsaizPvhQZmAtLcPKXpLyH" crossorigin="anonymous">
-<link rel="stylesheet" href="/static/app.css?v=188">
-<link rel="stylesheet" href="/static/css/quantum.css?v=188">
+<link rel="stylesheet" href="/static/app.css?v=189">
+<link rel="stylesheet" href="/static/css/quantum.css?v=189">
 </head>
 <body>
 
@@ -267,6 +267,9 @@
       <div class="mm-add mm-add-url">
         <input id="mm-baseurl" type="text" placeholder="Base URL（可选，留空=官方地址，如 https://api.xxx.com/v1）" autocomplete="off">
       </div>
+      <div class="mm-add mm-add-url" id="mm-cf-row" hidden>
+        <input id="mm-account" type="text" placeholder="Cloudflare Account ID（控制台 → Workers AI → REST API）" autocomplete="off">
+      </div>
       <div class="mm-result" id="mm-result"></div>
       <div class="te-hint">💡 选服务商（或用「✏️ 自定义…」输入任意名称）→ 粘贴 API Key →（可选）填 Base URL（中转站地址填这里）→ 点「测试并添加」，自动验证并识别模型。</div>
     </div>
@@ -436,16 +439,16 @@
   </div>
 </div>
 
-<script src="/static/js/core.js?v=188"></script>
-<script src="/static/js/registry.js?v=188"></script>
-<script src="/static/js/theme.js?v=188"></script>
-<script src="/static/js/chat.js?v=188"></script>
-<script src="/static/js/wallpaper.js?v=188"></script>
-<script src="/static/js/model.js?v=188"></script>
-<script src="/static/js/ui.js?v=188"></script>
-<script src="/static/js/workspace.js?v=188"></script>
-<script src="/static/js/designer.js?v=188"></script>
-<script src="/static/js/input.js?v=188"></script>
+<script src="/static/js/core.js?v=189"></script>
+<script src="/static/js/registry.js?v=189"></script>
+<script src="/static/js/theme.js?v=189"></script>
+<script src="/static/js/chat.js?v=189"></script>
+<script src="/static/js/wallpaper.js?v=189"></script>
+<script src="/static/js/model.js?v=189"></script>
+<script src="/static/js/ui.js?v=189"></script>
+<script src="/static/js/workspace.js?v=189"></script>
+<script src="/static/js/designer.js?v=189"></script>
+<script src="/static/js/input.js?v=189"></script>
 <script src="/static/js/workshop.js"></script>
 <!-- 虚拟形象：canvas 自绘小语，表情随聊天情绪实时变化（零外部依赖） -->
 <script src="/static/js/avatar.js?v=189"></script>

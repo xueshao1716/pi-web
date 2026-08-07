@@ -696,7 +696,7 @@ if (!defaultModel) {
   defaultModel = modelList.find(m => m.provider === "deepseek") || modelList[0];
 }
 console.log(`[pi-web] 可用模型: ${modelList.length} 个（含 ${Object.keys(readJsonFile(MODELS_PATH)).join(", ")}）`);
-const SUPPORTED_PROVIDERS = ["deepseek", "openai", "openrouter", "anthropic", "google", "qwen", "xai", "moonshotai", "zai", "together", "mistral"];
+const SUPPORTED_PROVIDERS = ["deepseek", "openai", "openrouter", "anthropic", "google", "qwen", "xai", "moonshotai", "zai", "together", "mistral", "modelscope", "cloudflare-ai"];
 
 function readJsonFile(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return {}; } }
 function writeJsonFile(p, obj) { try { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(obj, null, 2), "utf8"); return true; } catch { return false; } }
@@ -936,6 +936,76 @@ async function handleImage(res, body) {
     }
     return;
   }
+  // ModelScope 专属：异步任务模式（提交 → 轮询 /v1/tasks/{id} → 取 output_images）
+  if (provider === "modelscope") {
+    const sizeMap = { "1024x1024": "1024x1024", "832x1472": "720x1280", "736x1312": "720x1280", "720x1280": "720x1280", "1920x1920": "1024x1024" };
+    const sz = sizeMap[size] || "1024x1024";
+    try {
+      const mkReq = (u, body) => httpJsonFetch(u, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}`, "X-ModelScope-Async-Mode": "true" },
+        body: JSON.stringify(body || {}),
+        timeout: 60000,
+      });
+      let r = await mkReq(`${baseNoV1}/v1/images/generations`, { model: modelId, prompt, n: 1, size: sz });
+      if (!r.ok) {
+        const txt = await r.text().catch(() => "");
+        return json(res, 502, { error: `modelscope 提交失败 ${r.status}: ${txt.slice(0, 150)}` });
+      }
+      const { task_id } = await r.json();
+      if (!task_id) return json(res, 500, { error: "modelscope 未返回 task_id" });
+      // 轮询任务状态（约 14s 成功，最多 90s）
+      for (let i = 0; i < 30; i++) {
+        await new Promise(res => setTimeout(res, 3000));
+        const q = await httpJsonFetch(`${baseNoV1}/v1/tasks/${encodeURIComponent(task_id)}`, {
+          headers: { Authorization: `Bearer ${key}` }, timeout: 30000,
+        });
+        if (!q.ok) continue;
+        const t = await q.json();
+        if (t.status === "SUCCEED") {
+          const img = t.output_images?.[0];
+          if (img) return json(res, 200, { image: img });
+          return json(res, 500, { error: "modelscope 任务成功但无图片" });
+        }
+        if (t.status === "FAILED") {
+          return json(res, 500, { error: "modelscope 任务失败: " + String(t.message || "未知").slice(0, 120) });
+        }
+      }
+      return json(res, 504, { error: "modelscope 任务超时（90s）" });
+    } catch (e) {
+      json(res, 500, { error: String(e?.message || e).slice(0, 200) });
+    }
+    return;
+  }
+  // Cloudflare Workers AI 专属：POST /accounts/{id}/ai/run/@cf/... 返回 { result.image } base64
+  if (provider === "cloudflare-ai") {
+    // account_id 从 auth.json 的额外字段取（同 provider 配置里 account_id）
+    const auth = readJsonFile(AUTH_PATH);
+    const accountId = auth["cloudflare-ai"]?.account_id || process.env.CLOUDFLARE_ACCOUNT_ID || "";
+    if (!accountId) return json(res, 400, { error: "cloudflare-ai 未配置 account_id（模型管理中添加）" });
+    const sizeMap = { "1024x1024": [512, 512], "832x1472": [512, 896], "736x1312": [512, 896], "720x1280": [512, 896], "1920x1920": [768, 768] };
+    const [w, h] = sizeMap[size] || [512, 512];
+    try {
+      const url = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/ai/run/${modelId}`;
+      const r = await httpJsonFetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+        body: JSON.stringify({ prompt, width: w, height: h, steps: 4 }),
+        timeout: 180000,
+      });
+      if (!r.ok) {
+        const txt = await r.text().catch(() => "");
+        return json(res, 502, { error: `cloudflare 绘图失败 ${r.status}: ${txt.slice(0, 150)}` });
+      }
+      const data = await r.json();
+      const b64 = data?.result?.image;
+      if (!b64) return json(res, 500, { error: "cloudflare 未返回图片数据" });
+      return json(res, 200, { image: `data:image/jpeg;base64,${b64}` });
+    } catch (e) {
+      json(res, 500, { error: String(e?.message || e).slice(0, 200) });
+    }
+    return;
+  }
   try {
     const mkReq = (u) => httpJsonFetch(u, {
       method: "POST",
@@ -1090,12 +1160,30 @@ async function discoverCustomModels(base, apiKey) {
 
 // POST /api/models/add —— 添加（内置 provider 用 pi runtime；自定义 provider 直调探测）
 async function handleModelsAdd(res, body) {
-  const { provider, apiKey, baseUrl } = body || {};
+  const { provider, apiKey, baseUrl, account_id } = body || {};
   if (!provider || !apiKey) return json(res, 400, { error: "缺少 provider 或 API Key" });
   if (!/^[a-zA-Z0-9_-]+$/.test(provider)) return json(res, 400, { error: "provider 名称只能包含字母、数字、横线" });
   const auth = readJsonFile(AUTH_PATH);
-  auth[provider] = { type: "api_key", key: apiKey, ...(baseUrl ? { baseUrl } : {}) };
+  auth[provider] = { type: "api_key", key: apiKey, ...(baseUrl ? { baseUrl } : {}), ...(account_id ? { account_id } : {}) };
   writeJsonFile(AUTH_PATH, auth);
+  // Cloudflare Workers AI：非 OpenAI 风格，手动注册已知模型
+  if (provider === "cloudflare-ai") {
+    if (!account_id) {
+      delete auth[provider]; writeJsonFile(AUTH_PATH, auth);
+      return json(res, 400, { error: "cloudflare-ai 需要填写 Account ID（Cloudflare 控制台 → Workers AI → REST API）" });
+    }
+    const store = readJsonFile(MODELS_PATH);
+    store[provider] = {
+      models: [
+        { id: "@cf/black-forest-labs/flux-1-schnell", name: "FLUX.1 Schnell", api: "openai-completions", baseUrl: "", provider: "", reasoning: false, input: ["text"], contextWindow: 8192, maxTokens: 8192, capabilities: { chat: false, image: true, video: false, tts: false, asr: false } },
+      ],
+      checkedAt: new Date().toISOString(),
+    };
+    writeJsonFile(MODELS_PATH, store);
+    console.log(`[pi-web] 模型添加成功: ${provider} 1 个（手动注册）`);
+    await refreshModelList();
+    return json(res, 200, { ok: true, provider, models: store[provider].models, manual: true });
+  }
   try {
     let models = null;
     if (KNOWN_PROVIDERS.has(provider)) {

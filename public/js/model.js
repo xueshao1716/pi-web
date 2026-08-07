@@ -59,6 +59,8 @@ $("mm-close").addEventListener("click", () => $("model-modal").classList.remove(
 $("model-modal").addEventListener("click", (e) => { if (e.target === $("model-modal")) $("model-modal").classList.remove("show"); });
 $("mm-type").addEventListener("change", () => {
   $("mm-custom-row").hidden = $("mm-type").value !== "__custom__";
+  // Cloudflare Workers AI 需要 Account ID
+  $("mm-cf-row").hidden = $("mm-type").value !== "cloudflare-ai";
   if ($("mm-type").value === "__custom__") $("mm-custom-provider").focus();
 });
 $("mm-custom-provider").addEventListener("keydown", e => { if (e.key === "Enter") $("mm-test").click(); });
@@ -71,6 +73,9 @@ $("mm-test").addEventListener("click", async () => {
   const apiKey = $("mm-key").value.trim();
   if (!apiKey) return toast("请输入 API Key");
   const baseUrl = $("mm-baseurl").value.trim();
+  const account_id = $("mm-account")?.value.trim() || undefined;
+  // Cloudflare 必须有 Account ID
+  if (provider === "cloudflare-ai" && !account_id) return toast("cloudflare-ai 需要填写 Account ID");
   const btn = $("mm-test");
   btn.disabled = true;
   btn.textContent = "验证中…";
@@ -78,9 +83,9 @@ $("mm-test").addEventListener("click", async () => {
   r.className = "mm-result";
   r.textContent = "正在验证 API Key 并识别可用模型…";
   try {
-    const res = await api("/api/models/add", { method: "POST", body: { provider, apiKey, baseUrl: baseUrl || undefined } });
+    const res = await api("/api/models/add", { method: "POST", body: { provider, apiKey, baseUrl: baseUrl || undefined, account_id } });
     r.className = "mm-result ok";
-    r.textContent = `✓ 添加成功！识别到 ${res.modelCount} 个可用模型：\n${res.models.slice(0, 12).join("、")}${res.modelCount > 12 ? "…" : ""}`;
+    r.textContent = `✓ 添加成功！${res.manual ? "已注册 " + res.models.length + " 个模型（" + res.models.map(m => m.name || m.id).join("、") + "）" : `识别到 ${res.modelCount} 个可用模型：\n${res.models.slice(0, 12).join("、")}${res.modelCount > 12 ? "…" : ""}`}`;
     $("mm-key").value = "";
     $("mm-baseurl").value = "";
     // 刷新模型下拉
