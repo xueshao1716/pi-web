@@ -85,10 +85,26 @@
   #output { font-family:'Noto Sans SC',sans-serif; font-size:13.5px; line-height:1.85; white-space:pre-wrap;
     word-break:break-word; }
   .out-area { position:relative; }
-  .copy-btn { position:absolute; top:10px; right:10px; padding:5px 14px; background:var(--gold); color:#fff;
+  .gen-row { display:flex; gap:10px; align-items:center; margin-bottom:12px; }
+  .gen-row .gen-btn { flex:1; margin:0; }
+  .copy-btn { position:absolute; top:16px; right:10px; padding:5px 14px; background:var(--gold); color:#fff;
     border:none; border-radius:5px; font-size:12px; cursor:pointer; transition:opacity .2s; }
   .copy-btn:hover { opacity:.85; }
   .hint { font-size:12px; color:var(--dim); margin-top:10px; line-height:1.7; }
+
+  /* 多图网格：一次多张 + 点击选图 */
+  .img-grid { margin-top: 14px; display:grid; grid-template-columns:repeat(2, 1fr); gap:12px; }
+  .img-grid .g-item { position:relative; border-radius:10px; overflow:hidden; cursor:pointer;
+    border:2px solid var(--line); transition:all .2s; background:#000; }
+  .img-grid .g-item:hover { border-color: rgba(200,164,74,.6); }
+  .img-grid .g-item.selected { border-color: var(--gold); box-shadow:0 0 0 2px rgba(200,164,74,.35); }
+  .img-grid .g-item img { display:block; width:100%; height:auto; }
+  .img-grid .g-item .g-tag { position:absolute; top:6px; left:6px; font-size:10.5px; padding:2px 8px;
+    border-radius:10px; background:rgba(0,0,0,.65); color:#fff; }
+  .img-grid .g-item .g-check { position:absolute; top:6px; right:6px; width:22px; height:22px; border-radius:50%;
+    background:rgba(0,0,0,.55); border:2px solid #fff; display:flex; align-items:center; justify-content:center;
+    font-size:12px; color:transparent; transition:all .15s; }
+  .img-grid .g-item.selected .g-check { background:var(--gold); border-color:var(--gold); color:#1a1405; }
   .divider { border:none; border-top:1px dashed var(--line); margin:18px 0; }
   .tag { display:inline-block; padding:2px 10px; border:1px solid var(--gold); border-radius:20px;
     color:var(--gold); font-size:11px; margin-right:6px; margin-bottom:4px; letter-spacing:1px; }
@@ -312,9 +328,12 @@
 
       <div class="card out-area" style="margin-top:16px">
         <h2><span class="num">5</span> 生成结果</h2>
-        <button class="copy-btn" id="copyBtn">复制</button>
-        <div id="output" class="empty">选择场景 → 填写信息 → 点击下方按钮生成</div>
-        <!-- 直出图像区：模型选择 + 一键出图 -->
+        <div class="gen-row">
+          <button class="gen-btn" id="genBtn" style="margin:0">生 成 提 示 词</button>
+          <button class="copy-btn" id="copyBtn">复制</button>
+        </div>
+        <div id="output" class="empty">选择场景 → 填写信息 → 点击上方按钮生成</div>
+        <!-- 直出图像区：模型选择 + 批量出图 + 网格展示 + 点击选图 -->
         <div class="img-area">
           <div class="img-controls">
             <select id="imgModel" title="选择出图模型"><option value="">加载模型…</option></select>
@@ -323,10 +342,16 @@
               <option value="832x1472">9:16 竖图</option>
               <option value="1472x832">16:9 横图</option>
             </select>
+            <select id="imgCount" title="一次出几张">
+              <option value="1">1 张</option>
+              <option value="2">2 张</option>
+              <option value="4" selected>4 张</option>
+            </select>
             <button class="gen-btn img-go" id="imgGo">🎨 直出图像</button>
           </div>
           <div id="imgStatus" class="img-status" hidden></div>
-          <div id="imgResult" class="img-result" hidden>
+          <div id="imgGrid" class="img-grid" hidden></div>
+          <div id="imgSingle" class="img-result" hidden>
             <div class="img-frame"><img id="imgShow" alt="生成图像"></div>
             <div class="img-actions">
               <a id="imgOpen" target="_blank" rel="noopener" hidden>⬇ 打开原图</a>
@@ -738,14 +763,22 @@ function generate(){
 
 // ══ 直出图像：模型选择 + 一键出图 + 页面展示 ══
 const $imgModel = $('imgModel'), $imgSize = $('imgSize'), $imgGo = $('imgGo');
-const $imgStatus = $('imgStatus'), $imgResult = $('imgResult'), $imgShow = $('imgShow'), $imgOpen = $('imgOpen'), $imgSave = $('imgSave');
+const $imgStatus = $('imgStatus'), $imgSingle = $('imgSingle'), $imgShow = $('imgShow'), $imgOpen = $('imgOpen'), $imgSave = $('imgSave');
 let imgModelList = [];
 
-// 加载可选图像模型（capabilities.image === true，排除视频/聊天）
+// 兼容两种 capabilities 格式：{image:true} 对象 或 ["image"] 数组
+function hasCap(m, cap) {
+  const c = m.capabilities;
+  if (!c) return false;
+  if (Array.isArray(c)) return c.includes(cap);
+  if (typeof c === 'object') return !!c[cap];
+  return false;
+}
+// 加载可选图像模型（兼容两种 capabilities 格式，排除视频/聊天）
 async function loadImgModels() {
   try {
     const d = await api("/api/models");
-    const imgs = (d.models || []).filter(m => m.capabilities?.image && !/video/i.test(m.id) && !m.id.includes("/video"));
+    const imgs = (d.models || []).filter(m => hasCap(m, 'image') && !/video/i.test(m.id) && !m.id.includes("/video"));
     imgModelList = imgs;
     $imgModel.innerHTML = imgs.length ? "" : '<option value="">（无可用图像模型）</option>';
     if (!imgs.length) return;
@@ -771,46 +804,95 @@ async function loadImgModels() {
   }
 }
 
-// 直出图像：用当前提示词直接调 /api/image 生成并展示
+// ══ 直出图像：批量生成 + 网格展示 + 点击选图 ══
+const $imgGrid = $('imgGrid'), $imgCount = $('imgCount');
+let selectedImg = null; // 当前选中的图（单图/网格选中）
+
+// 提取纯净提示词（去掉【】标记行、平台命令、负面词部分）
+function extractCleanPrompt(prompt) {
+  if (!prompt || prompt.includes('选择场景')) return '';
+  let clean = prompt.split(/\n{2,}/)[0] || prompt;
+  clean = clean.replace(/^【[^】]*】\s*/gm, '').trim();
+  if (!clean) {
+    clean = prompt.split('\n').filter(l => { const t = l.trim(); return t && !/^【/.test(t) && !/^--/.test(t); }).join('，').trim();
+  }
+  return clean.split(/\n{2,}/)[0].trim().slice(0, 1000);
+}
+
+// 生成单张图（内部方法，供批量调用）
+async function genOne(provider, modelId, clean, size) {
+  const r = await api('/api/image', { method: 'POST', body: { provider, modelId, prompt: clean, size } });
+  if (!r.image) throw new Error('未返回图片');
+  return r.image;
+}
+
+// 直出图像（支持一次多张，并行生成）
 async function generateImageNow() {
   const sel = $imgModel.value;
   if (!sel) { setImgStatus('请先选择出图模型', true); return; }
   const { provider, modelId } = JSON.parse(sel);
-  const prompt = $('output').textContent;
-  if (!prompt || prompt.includes('选择场景')) { setImgStatus('请先点击「生成提示词」', true); return; }
-  // 提取纯净提示词（去掉【】标记行、平台命令、负面词部分）
-  let clean = prompt.split(/\n{2,}/)[0] || prompt;          // 取第一段（画面描述）
-  clean = clean.replace(/^【[^】]*】\s*/gm, '').trim();      // 去掉所有【标记】行
-  if (!clean) {
-    // 标记独占一行时上面会被清空 → 取所有非标记行拼接
-    clean = prompt.split('\n').filter(l => { const t = l.trim(); return t && !/^【/.test(t) && !/^--/.test(t); }).join('，').trim();
-  }
-  clean = clean.split(/\n{2,}/)[0].trim().slice(0, 1000);
-  setImgStatus('⏳ 生成中…（约 10-30 秒）', false, true);
-  $imgGo.disabled = true; $imgGo.textContent = '⏳ 生成中…';
-  $imgResult.hidden = true;
+  const clean = extractCleanPrompt($('output').textContent);
+  if (!clean) { setImgStatus('请先点击「生成提示词」', true); return; }
+  const count = +$imgCount.value || 1;
+  const size = $imgSize.value;
+  setImgStatus(`⏳ 生成 ${count} 张中…（约 ${count * 10}-${count * 30} 秒）`, false, true);
+  $imgGo.disabled = true; $imgGo.textContent = `⏳ ${count} 张生成中…`;
+  $imgGrid.hidden = true; $imgSingle.hidden = true; selectedImg = null;
   try {
-    const r = await api('/api/image', {
-      method: 'POST',
-      body: { provider, modelId, prompt: clean, size: $imgSize.value },
-    });
-    if (r.image) {
-      $imgShow.src = r.image;
-      $imgResult.hidden = false;
-      const isUrl = r.image.startsWith('http');
-      $imgOpen.hidden = !isUrl;
-      if (isUrl) $imgOpen.href = r.image;
-      // 保存到本地：data: 直接触发下载；URL 先 fetch 转 blob
-      $imgSave.hidden = false;
-      setImgStatus('✓ 已生成');
+    // 并行发起 count 个请求（CF/魔塔支持并发，Agnes 也支持）
+    const results = await Promise.allSettled(
+      Array.from({ length: count }, () => genOne(provider, modelId, clean, size))
+    );
+    const ok = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+    const failN = count - ok.length;
+    if (!ok.length) {
+      const err = results[0]?.reason?.message || '生成失败';
+      setImgStatus('生成失败：' + err, true);
+    } else if (ok.length === 1) {
+      // 单张 → 直接大图展示
+      showSingle(ok[0]);
+      setImgStatus(`✓ 已生成${failN ? `（${failN} 张失败）` : ''}`);
     } else {
-      setImgStatus('生成失败：未返回图片', true);
+      // 多张 → 网格展示，点击选图
+      renderGrid(ok);
+      setImgStatus(`✓ 已生成 ${ok.length} 张${failN ? `（${failN} 张失败）` : ''}，点击选择`);
     }
   } catch (e) {
     setImgStatus('生成失败：' + (e.message || e), true);
   } finally {
     $imgGo.disabled = false; $imgGo.textContent = '🎨 直出图像';
   }
+}
+
+// 单张大图展示
+function showSingle(src) {
+  $imgShow.src = src;
+  $imgSingle.hidden = false;
+  const isUrl = src.startsWith('http');
+  $imgOpen.hidden = !isUrl;
+  if (isUrl) $imgOpen.href = src;
+  $imgSave.hidden = false;
+  selectedImg = src;
+}
+
+// 多图网格渲染 + 选中态
+function renderGrid(imgs) {
+  $imgGrid.innerHTML = '';
+  $imgGrid.hidden = false;
+  imgs.forEach((src, idx) => {
+    const item = document.createElement('div');
+    item.className = 'g-item' + (idx === 0 ? ' selected' : '');
+    item.innerHTML = `<img src="${src}" alt="图 ${idx + 1}"><span class="g-tag">图 ${idx + 1}</span><span class="g-check">✓</span>`;
+    if (idx === 0) selectedImg = src;
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.g-item').forEach(x => x.classList.remove('selected'));
+      item.classList.add('selected');
+      selectedImg = src;
+      // 点击选中 → 下方同步显示大图
+      showSingle(src);
+    });
+    $imgGrid.appendChild(item);
+  });
 }
 function setImgStatus(t, isErr, spinning) {
   $imgStatus.textContent = t; $imgStatus.hidden = false;
@@ -819,9 +901,9 @@ function setImgStatus(t, isErr, spinning) {
   if (spinning && !sp) { $imgStatus.insertAdjacentHTML('afterbegin', '<span class="spin"></span>'); }
   if (!spinning) { const s2 = $imgStatus.querySelector('.spin'); if (s2) s2.remove(); }
 }
-// 保存图像到本地
+// 保存图像到本地（保存当前选中图）
 $imgSave.addEventListener('click', async () => {
-  const src = $imgShow.src;
+  const src = selectedImg || $imgShow.src;
   if (!src) return;
   try {
     if (src.startsWith('data:')) {
