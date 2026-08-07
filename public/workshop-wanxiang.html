@@ -265,6 +265,13 @@
           <option value="赛博霓虹">赛博霓虹</option>
           <option value="水墨意境">水墨意境</option>
         </select>
+        <label>色彩方案（源自 37 章色彩体系）</label>
+        <select id="colorScheme">
+          <option value="auto">🔄 自动（按场景推荐）</option>
+          <option value="triadic">🔺 三色法（三角色 60:30:10）</option>
+          <option value="extreme">🎨 极致色彩（单色/互补/三元）</option>
+          <option value="east">🀄 东方色（远山蓝紫/点睛朱红）</option>
+        </select>
         <label>艺术风格</label>
         <select id="style">
           <option value="自然光写实主义">自然光写实主义</option>
@@ -758,6 +765,23 @@ function generate(){
   if($('sw-zero').checked) light += '（零器材模式：自然天幕光，无电线，无灯架，无器材入镜）';
   const amb = `${light}，${mood}氛围`;
 
+  // ---- 色彩方案（源自 37 章：第八章全域色彩 / 第十一章三位一体 / 第三十五章东方美学）----
+  let colorPart = '';
+  let scheme = $('colorScheme').value;
+  // 自动模式：按场景推荐（古风/水墨→东方色；证件照/商务→三色法；创意→极致色彩）
+  if (scheme === 'auto') {
+    if (/古风|工笔|水墨|汉服|国风|青花/.test(style + scene)) scheme = 'east';
+    else if (/证件照|商务|专业|深色/.test(scene)) scheme = 'triadic';
+    else scheme = 'extreme';
+  }
+  if (scheme === 'triadic') {
+    colorPart = '三角色协调：色相120°等边三角分布（主色60%+次色30%+点缀色10%），饱和度主>次>点缀，色相容差ΔH≤5°';
+  } else if (scheme === 'extreme') {
+    colorPart = '极致色彩：全域色彩引擎，色彩架构模型（单色极致明度控制/互补色180°±10°对决/三元色120°平衡），严格锁定色值，彩色光效符合光学物理';
+  } else if (scheme === 'east') {
+    colorPart = '东方诗意色彩：远山蓝紫（H250-280 S60-80 L40-60）与流云白青（H200-220 S20-40 L70-90）铺底，点睛朱红（H0-15 S80-95 L50-70）聚焦，水墨浓淡五色墨韵，留白30%-50%营造空灵意境';
+  }
+
   // ---- 风格画质 ----
   let stylePart = style;
   const tech = [];
@@ -781,7 +805,7 @@ function generate(){
 
   // ---- 输出 ----
   const bgDesc = bg;
-  let parts = [main, dress, comp, amb, stylePart, bgDesc, quality].filter(x=>x);
+  let parts = [main, dress, comp, amb, colorPart, stylePart, bgDesc, quality].filter(x=>x);
 
   let result = '';
   if(platform === 'dreamina'){
