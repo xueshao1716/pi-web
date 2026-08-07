@@ -1278,6 +1278,54 @@ function sseWrite(res, event, data) {
   res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
+// SSE 写入器（带背压控制，对标 pi EventStream queue 思想）
+// 问题：res.write 在内核缓冲满时返回 false，直接硬写会堆积内存（公网慢网络长回复）
+// 方案：检测返回值 → 进入 draining 模式，后续事件入队，等 drain 事件再按序 flush
+// 与 EventStream 一致：生产者 push 永不阻塞、事件不丢，消费速度由内核 drain 节流
+function createSseWriter(res) {
+  const pending = [];
+  let draining = false;
+  let closed = false;
+  let waitResolve = null;
+
+  function drain() {
+    draining = false;
+    while (pending.length && !closed) {
+      const chunk = pending.shift(); // 先出队：write 返回 false 时数据也已进入内核缓冲（Node 语义，不丢）
+      let ok = true;
+      try { ok = res.write(chunk); } catch { closed = true; break; }
+      if (!ok) {
+        // 内核缓冲已满 → 暂停写，等 drain 事件再继续（防止内存堆积）
+        draining = true;
+        res.once("drain", drain);
+        break;
+      }
+    }
+    if (waitResolve && !pending.length && !draining) {
+      const r = waitResolve; waitResolve = null; r();
+    }
+  }
+
+  return {
+    push(event, data) {
+      if (closed) return;
+      const chunk = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+      if (draining) { pending.push(chunk); return; }
+      let ok = true;
+      try { ok = res.write(chunk); } catch { closed = true; return; }
+      if (!ok) { draining = true; res.once("drain", drain); }
+    },
+    // 等待所有已入队事件写完（供 finally 收尾时确保 flush 完再 res.end）
+    async flush() {
+      if (!pending.length && !draining) return;
+      if (pending.length && draining) {
+        await new Promise(r => { waitResolve = r; });
+      }
+    },
+    close() { closed = true; pending.length = 0; },
+  };
+}
+
 // ── 路由 ───────────────────────────────────────────────────────────
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -2467,7 +2515,8 @@ async function handleMedia(res, body) {
 }
 
 // 直调通道：绕开 pi agent，直接调接口并维护会话历史
-async function handleDirectChat(res, entry, message, sessionId) {
+async function handleDirectChat(res, entry, message, sessionId, writer) {
+  writer = writer || createSseWriter(res);
   let hist = [];
   try {
     const file = entry.sm.sessionFile;
@@ -2479,26 +2528,26 @@ async function handleDirectChat(res, entry, message, sessionId) {
     : Promise.resolve([]);
   const result = await directChat(defaultModel, message, hist.map(h => ({ role: h.role, content: h.text })));
   if (!result || result.timeout) {
-    sseWrite(res, "error", { message: result?.timeout ? "模型响应超时（60s），请稍后重试" : "模型未返回内容，请稍后重试" });
+    writer.push("error", { message: result?.timeout ? "模型响应超时（60s），请稍后重试" : "模型未返回内容，请稍后重试" });
     return;
   }
   const text = result.text;
-  if (!text) { sseWrite(res, "error", { message: "模型未返回内容，请稍后重试" }); return; }
+  if (!text) { writer.push("error", { message: "模型未返回内容，请稍后重试" }); return; }
   try {
     entry.sm.appendMessage({ role: "user", content: [{ type: "text", text: message }] });
     entry.sm.appendMessage({ role: "assistant", content: [{ type: "text", text }] });
   } catch {}
   if (entry.agent) { try { entry.agent.dispose(); } catch {} entry.agent = null; }
   if (!entry.sm.getSessionName()) { try { entry.sm.appendSessionInfo(message.slice(0, 24)); } catch {} }
-  if (result.think) { sseWrite(res, "think", { text: result.think }); sseWrite(res, "think_end", {}); }
-  sseWrite(res, "delta", { text });
+  if (result.think) { writer.push("think", { text: result.think }); writer.push("think_end", {}); }
+  writer.push("delta", { text });
   const mediaResults = await mediaPromise;
   for (const mr of mediaResults) {
     if (!mr) continue;
     if (mr.url) mr.url = await saveArtifact(mr);  // 产物落盘 → 本地路径
-    sseWrite(res, "media", mr);
+    writer.push("media", mr);
   }
-  sseWrite(res, "done", { sessionId });
+  writer.push("done", { sessionId });
   console.log(`[pi-web] 直调通道: ${defaultModel.provider}/${defaultModel.id}`);
 }
 
@@ -2521,7 +2570,8 @@ ${oldText.slice(0, 40000)}`, { tools: false });
 }
 
 // 统一通道：所有模型走 unifiedChat（对话 + 工具 + 思考 + 媒体 + 压缩 + 重试）
-async function handleUnifiedChat(res, entry, message, sessionId, params, signal) {
+async function handleUnifiedChat(res, entry, message, sessionId, params, signal, writer) {
+  writer = writer || createSseWriter(res);
   let hist = [];
   try {
     const file = entry.sm.sessionFile;
@@ -2531,10 +2581,10 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal)
   const mediaPromise = mediaIntents.length
     ? Promise.all(mediaIntents.map(it => generateMediaAsync(it, extractMediaPrompt(message))))
     : Promise.resolve([]);
-  const onToolStart = (id, name, args) => sseWrite(res, "tool", { name, args, id });
+  const onToolStart = (id, name, args) => writer.push("tool", { name, args, id });
   const onToolEnd = (id, name, args, out) => {
     const text = out?.text || "";
-    sseWrite(res, "tool_end", { name, id, isError: out?.isError === true, output: text.slice(0, 2000) });
+    writer.push("tool_end", { name, id, isError: out?.isError === true, output: text.slice(0, 2000) });
   };
   let history = [...hist.map(h => ({ role: h.role, content: h.text })), { role: "user", content: message }];
   // 注入项目规则（.pi-rules.md，借鉴 Windsurf rules），确保不挤占历史上下文
@@ -2543,28 +2593,28 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal)
   history = await maybeCompactHistory(history, defaultModel);
   const result = await unifiedChat(defaultModel, history, { onTool: onToolStart, onToolEnd, params, signal });
   if (!result || result.error) {
-    sseWrite(res, "error", { message: result?.error || "模型未返回内容，请稍后重试" });
+    writer.push("error", { message: result?.error || "模型未返回内容，请稍后重试" });
     return;
   }
   // 客户端已断开 → 不写会话、不发 SSE（避免半截结果污染会话文件）
   if (result.aborted || signal?.aborted) return;
   const text = result.text;
-  if (!text) { sseWrite(res, "error", { message: "模型未返回内容，请稍后重试" }); return; }
+  if (!text) { writer.push("error", { message: "模型未返回内容，请稍后重试" }); return; }
   try {
     entry.sm.appendMessage({ role: "user", content: [{ type: "text", text: message }] });
     entry.sm.appendMessage({ role: "assistant", content: [{ type: "text", text }] });
   } catch {}
   if (entry.agent) { try { entry.agent.dispose(); } catch {} entry.agent = null; }
   if (!entry.sm.getSessionName()) { try { entry.sm.appendSessionInfo(message.slice(0, 24)); } catch {} }
-  if (result.think) { sseWrite(res, "think", { text: result.think }); sseWrite(res, "think_end", {}); }
-  sseWrite(res, "delta", { text });
+  if (result.think) { writer.push("think", { text: result.think }); writer.push("think_end", {}); }
+  writer.push("delta", { text });
   const mediaResults = await mediaPromise;
   for (const mr of mediaResults) {
     if (!mr) continue;
     if (mr.url) mr.url = await saveArtifact(mr);
-    sseWrite(res, "media", mr);
+    writer.push("media", mr);
   }
-  sseWrite(res, "done", { sessionId });
+  writer.push("done", { sessionId });
   console.log(`[pi-web] 统一通道: ${defaultModel.provider}/${defaultModel.id}`);
 }
 
@@ -2702,10 +2752,10 @@ async function handleChat(req, res, body) {
     }
     return;
   }
-
   const agent = await ensureAgent(entry, defaultModel);
   const sm = entry.sm;
   const hbTimer = startSseHeartbeat(res); // 心跳保活（公网隧道不因 idle 断开）
+  const writer = createSseWriter(res); // 背压控制：慢网络时事件排队等 drain，不丢不堆
   let sawDelta = false; // 是否产生过文本输出（用于空回复兜底）
   let collected = "";   // 收集主模型输出（用于媒体路由的配图/配音内容）
   const mediaIntents = detectMediaIntents(message);
@@ -2721,24 +2771,24 @@ async function handleChat(req, res, body) {
         collected += delta;
         // 过滤模型复述/泄漏的内部指令（情绪语境等），避免显示给用户
         const cleaned = delta.replace(/【内部指令·情绪语境】[\s\S]*?(?=【|\n\n|$)/, "").replace(/【当前情绪语境】[\s\S]*?(?=【|\n\n|$)/, "");
-        if (cleaned) sseWrite(res, "delta", { text: cleaned });
+        if (cleaned) writer.push("delta", { text: cleaned });
       } else if (event.type === "message_update" && event.assistantMessageEvent?.type === "thinking_delta") {
-        sseWrite(res, "think", { text: event.assistantMessageEvent.delta });
+        writer.push("think", { text: event.assistantMessageEvent.delta });
       } else if (event.type === "message_update" && event.assistantMessageEvent?.type === "thinking_end") {
-        sseWrite(res, "think_end", {});
+        writer.push("think_end", {});
       } else if (event.type === "tool_execution_start") {
-        sseWrite(res, "tool", { name: event.toolName, args: event.args, id: event.toolCallId });
+        writer.push("tool", { name: event.toolName, args: event.args, id: event.toolCallId });
       } else if (event.type === "tool_execution_end") {
         const text = Array.isArray(event.result?.content)
           ? event.result.content.map(c => c.text || "").join("")
           : "";
-        sseWrite(res, "tool_end", { name: event.toolName, id: event.toolCallId, isError: !!event.isError, output: text });
+        writer.push("tool_end", { name: event.toolName, id: event.toolCallId, isError: !!event.isError, output: text });
       } else if (event.type === "turn_end") {
-        sseWrite(res, "turn_end", {});
+        writer.push("turn_end", {});
       } else if (event.type === "auto_retry_start") {
-        sseWrite(res, "note", { text: `⚠️ 自动重试中（第 ${event.attempt} 次）：${event.errorMessage}` });
+        writer.push("note", { text: `⚠️ 自动重试中（第 ${event.attempt} 次）：${event.errorMessage}` });
       } else if (event.type === "compaction_start") {
-        sseWrite(res, "note", { text: "🧹 上下文压缩中…" });
+        writer.push("note", { text: "🧹 上下文压缩中…" });
       }
     } catch {}
   });
@@ -2797,18 +2847,18 @@ async function handleChat(req, res, body) {
     for (const mr of mediaResults) {
       if (!mr) continue;
       if (mr.url) mr.url = await saveArtifact(mr);  // 产物落盘 → 本地路径
-      sseWrite(res, "media", mr);
+      writer.push("media", mr);
     }
     // 空回复兜底：agent 完成但无任何文本输出（部分推理模型偶发把回答全放 <think>）→ 直调模型接口补一次
     if (!sawDelta && defaultModel) {
       const fallback = await directChat(defaultModel, message);
       if (fallback?.text) {
-        sseWrite(res, "delta", { text: fallback.text });
+        writer.push("delta", { text: fallback.text });
         console.log(`[pi-web] 空回复兜底成功: ${defaultModel.provider}/${defaultModel.id}`);
       } else {
         console.log(`[pi-web] 空回复兜底失败: ${defaultModel.provider}/${defaultModel.id}`);
         // 明确提示（API Key 失效 / 模型异常），避免用户以为卡死
-        try { sseWrite(res, "error", { message: `模型 ${defaultModel.provider}/${defaultModel.id} 无回复——API Key 可能失效或额度不足，请到模型管理中重新配置` }); } catch {}
+        try { writer.push("error", { message: `模型 ${defaultModel.provider}/${defaultModel.id} 无回复——API Key 可能失效或额度不足，请到模型管理中重新配置` }); } catch {}
       }
     }
     // 自动命名：尚无名称时用首条消息
@@ -2921,12 +2971,12 @@ async function handleChat(req, res, body) {
           }
         }
       }
-      for (const f of files.slice(0, 5)) sseWrite(res, "file", f);
+      for (const f of files.slice(0, 5)) writer.push("file", f);
     } catch {}
     try {
       // 图片附件：会话里 read 的图直接推给前端渲染（窗口内直接显示）
       const imgs = extractMessageImages(entry.sm);
-      for (const img of imgs.slice(0, 3)) sseWrite(res, "image", img);
+      for (const img of imgs.slice(0, 3)) writer.push("image", img);
     } catch {}
     // 自动记忆：对话结束，把本轮重要信息沉淀到记忆日志
     try {
@@ -2969,7 +3019,7 @@ async function handleChat(req, res, body) {
         mem.saveSnapshot(CONFIG.cwd, "auto");
       }
     } catch {}
-    sseWrite(res, "done", { sessionId: sessionId || findKeyByEntry(entry) });
+    writer.push("done", { sessionId: sessionId || findKeyByEntry(entry) });
   } catch (e) {
     // 官方 agent 管线异常 → 降级到自制 unifiedChat 兑底（避免任务静默失败）
     const agentErr = String(e?.message || e);
@@ -2981,16 +3031,18 @@ async function handleChat(req, res, body) {
       const abortCtrl2 = new AbortController();
       const onClose2 = () => { try { abortCtrl2.abort(); } catch {} };
       req.on("close", onClose2);
-      await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl2.signal);
+      await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl2.signal, writer);
       req.removeListener("close", onClose2);
     } catch (e2) {
-      try { sseWrite(res, "error", { message: `降级通道也失败: ${String(e2?.message || e2)}` }); } catch {}
+      try { writer.push("error", { message: `降级通道也失败: ${String(e2?.message || e2)}` }); } catch {}
     }
   } finally {
     clearInterval(hbTimer);
     try { unsubscribe(); } catch {}
     // 代次匹配才释放（快速重发时新请求已占 busy，旧请求不得干扰）
     if (entry.gen === thisGen) entry.busy = false;
+    try { await writer.flush(); } catch {} // 背压：确保排队事件写完再关连接，不丢尾事件
+    try { writer.close(); } catch {}
     try { res.end(); } catch {}
     if (entry.gen === thisGen) invalidateSessionCache(); // 消息写入会话文件 → 列表缓存失效
   }
