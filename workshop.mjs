@@ -9,6 +9,7 @@ export const WORKSHOP_PAGES = {
   "/workshop": "workshop.html",
   "/workshop/ppt": "workshop-ppt.html",
   "/workshop/designer": "workshop-designer.html",
+  "/workshop/wanxiang": "workshop-wanxiang.html",
   "/workshop/article": "workshop-article.html",
   "/workshop/video": "workshop-video.html",
 };
