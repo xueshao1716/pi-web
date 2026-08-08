@@ -30,3 +30,5 @@ yangpifazi/
 think_check.py
 _install_test.ps1
 _install*.ps1
+_gen.*
+_search_tmp*
