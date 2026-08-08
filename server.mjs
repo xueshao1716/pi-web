@@ -2376,6 +2376,33 @@ except Exception as e:
 // ══ 自愈修复 ══
 let repairBusy = false;
 
+// 修复前检查点：把修复可能触碰的源码备份到 backups/repair-<ts>/，改坏可回滚（对标 /refine 的回滚能力）
+const REPAIR_BACKUP_FILES = ["server.mjs", "config.mjs", "workshop.mjs", "memory.mjs", "emotion.mjs", "sanitize.mjs", "filebox.mjs", "browser.mjs", "search-web.mjs", "public/index.html"];
+function createRepairCheckpoint() {
+  try {
+    const ts = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
+    const dir = path.join(__dirname, "backups", "repair-" + ts);
+    fs.mkdirSync(dir, { recursive: true });
+    for (const rel of REPAIR_BACKUP_FILES) {
+      const src = path.join(__dirname, rel);
+      if (!fs.existsSync(src)) continue;
+      fs.copyFileSync(src, path.join(dir, rel.replace(/[\\/]/g, "__")));
+    }
+    for (const sub of ["js", "css"]) {
+      const srcDir = path.join(__dirname, "public", sub);
+      if (!fs.existsSync(srcDir)) continue;
+      const dstDir = path.join(dir, "public-" + sub);
+      fs.mkdirSync(dstDir, { recursive: true });
+      for (const f of fs.readdirSync(srcDir)) {
+        try { fs.copyFileSync(path.join(srcDir, f), path.join(dstDir, f)); } catch {}
+      }
+    }
+    return { dir };
+  } catch (e) {
+    return { error: String(e?.message || e).slice(0, 120) };
+  }
+}
+
 // ══ 在线更新（git pull + 重启）══
 // 检查更新：对比本地 HEAD 和远程 origin/main
 async function handleUpdateCheck(res) {
@@ -2469,15 +2496,30 @@ async function handleRepair(res, body) {
   res.write(":\n\n");
   const write = (event, data) => { try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch {} };
   try {
-    write("delta", { text: "🔧 小语开始修复…\n" });
+    // 修复前检查点：先留底，改坏可回滚（对标 /refine 的回滚能力）
+    const cp = createRepairCheckpoint();
+    const cpMsg = cp.error ? `⚠️ 检查点创建失败: ${cp.error}` : `修复前检查点已保存：${cp.dir}`;
+    write("delta", { text: `🛡 ${cpMsg}\n` });
     const sm = SessionManager.create(CONFIG.cwd, SESSIONS_DIR);
     const agent = await createSessionAgent(sm, defaultModel);
     write("delta", { text: "🧠 正在分析代码并修复…\n" });
-    const reply = await agent.prompt(`你是 pi-web（D:\\pi-web）的修复工程师。用户报告了问题：\n${issue}\n\n请：\n1. 用 read 工具检查 server.mjs / public/index.html 相关代码
-2. 定位并修复问题
-3. 用 bash 运行 node --check server.mjs 验证语法\n4. 完成后回复「修复完成」并简述改了什么\n\n注意：只修改 D:\\pi-web 下的文件，不要动 node_modules。`);
+    const repairPrompt = [
+      "你是 pi-web（D:\\pi-web）的修复工程师。用户报告了问题：",
+      issue,
+      "",
+      "请：",
+      "1. 用 read 工具检查 server.mjs / public/index.html 相关代码",
+      "2. 定位并修复问题",
+      "3. 用 bash 运行 node --check server.mjs 验证语法",
+      "4. 完成后回复「修复完成」并简述改了什么",
+      "",
+      "注意：只修改 D:\\pi-web 下的文件，不要动 node_modules。",
+      `修复前检查点：${cp.dir ? `已保存到 ${cp.dir}（改坏的话把该目录文件复制回 D:\\pi-web 即可回滚，也可用 git 恢复）` : "创建失败（" + (cp.error || "未知") + "），改动用 git 跟踪，改坏可用 git checkout 恢复"}`,
+      "修复前先读 工程/经验库/experience.md 是否有同类踩坑，避免重复犯错；修复完成后按经验库格式沉淀本次问题的根因与解法（1-3 条，每条 3 行内），并在回复末尾注明已沉淀的经验。",
+    ].join("\n");
+    const reply = await agent.prompt(repairPrompt);
     write("delta", { text: "\n" + String(reply || "").slice(0, 800) + "\n" });
-    write("delta", { text: "\n✅ 修复完成，重启服务中…（页面会自动恢复）" });
+    write("delta", { text: `\n✅ 修复完成，重启服务中…（页面会自动恢复）\n🛡 回滚方式：${cp.error ? "检查点创建失败，请用 git 恢复" : `复制 ${cp.dir} 内文件回 D:\\pi-web`}` });
     write("done", { repair: true });
     setTimeout(() => {
       console.log("[pi-web] 自愈重启…");

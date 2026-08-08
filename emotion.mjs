@@ -31,8 +31,8 @@ export function updateEmotion(key, message) {
   let tags = [];
   for (const c of CUES) {
     if (c.re.test(text)) {
-      st.valence = clamp(st.valence + c.delta.valence);
-      st.arousal = clamp(st.arousal + c.delta.arousal);
+      st.valence = clamp(st.valence + (c.delta.valence || 0));
+      st.arousal = clamp(st.arousal + (c.delta.arousal || 0));
       st.dominance = clamp(st.dominance + (c.delta.dominance || 0));
       tags.push(c.tag);
     }
@@ -45,6 +45,10 @@ export function updateEmotion(key, message) {
       st.arousal = lerp(st.arousal, DEFAULT_STATE.arousal, Math.min(1, hours / 4));
     }
   }
+  // 温和回归：每次对话后朝默认值小幅回归（修复"低落粘滞"——极端值不再长期卡住显示）
+  // 仅回归，不回推；单条线索的瞬时刺激仍保留在当次交互内
+  st.valence = lerp(st.valence, DEFAULT_STATE.valence, 0.12);
+  st.arousal = lerp(st.arousal, DEFAULT_STATE.arousal, 0.12);
   st.lastTalk = Date.now();
   st.intensity = Math.max(st.intensity * 0.8, Math.max(Math.abs(st.valence), st.arousal) * 0.6);
   st.tags = tags;

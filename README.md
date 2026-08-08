@@ -11,7 +11,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Node-%3E%3D20-339933" alt="Node">
   <img src="https://img.shields.io/badge/纯原生JS-无框架-4EC9B0" alt="no-framework">
-  <img src="https://img.shields.io/badge/多模型-DeepSeek%20%7C%20Mimo%20%7C%20Agnes-7C5CFF" alt="multi-model">
+  <img src="https://img.shields.io/badge/多模型-10%2B%20通道-7C5CFF" alt="multi-model">
+  <img src="https://img.shields.io/badge/图生图-支持-FF9E43" alt="i2i">
   <img src="https://img.shields.io/badge/开源-MIT-FF6B6B" alt="license">
 </p>
 
@@ -32,6 +33,11 @@
 | 🎨 **工作空间分类视图** | 工程/文档/生成物/交付分类 + 全屏浏览 + 树状连接线 |
 | 🖼 **媒体生成** | 配图/配音/视频自动归档，钉钉式文件卡片展示 |
 | 🌳 **会话管理** | 分支、模板、项目分组、导出、置顶 |
+| 🎨 **万象人物工坊** | 专业写真工坊：场景/五要素/深度模式（人体分形+光影雕刻+去AI化材质）/色彩方案（三色法/极致/东方色） |
+| 🖼 **图生图** | 上传真实照片拉入场景/图片修改，自动翻译英文提升控制力，落盘本地签名URL稳定展示 |
+| 🖨 **批量出图** | 一次多张并行生成，网格展示点击选图，保存到本地，自动存档工作空间 |
+| 🔌 **多出图通道** | minimax / 千问万相 / 火山 seedream / ModelScope / Agnes / Cloudflare FLUX.2 全家桶 |
+| ⚡ **SSE 背压控制** | 对标 pi EventStream：慢网络不丢事件不堆内存，公网长回复稳定 |
 
 > 📸 截图（真实界面）：
 
@@ -88,6 +94,8 @@ node setup.mjs --install
 | `voice-transcribe` | 语音转文字（录音/会议） |
 | `session-export-redacted` | 导出会话自动脱敏 |
 | `wanxiang-portrait` | AI 人物写真提示词（MJ/SD/即梦/Imagen3 通用） |
+| `wanxiang-design` | 平面设计提示词（三维坐标/东方美学/色彩引擎） |
+| `novel-forge-v10` | AI 中文网文写作（产品化/5层共进化/编辑部8角色/灵魂系统/元认知） |
 
 技能面板（左侧 ⚡）直接可用，无需额外安装。
 
@@ -103,6 +111,9 @@ node setup.mjs --install
 | 小米 mimo | `mimo-v2.5` / `mimo-v2.5-pro` / `mimo-v2-pro` | 中文好，v2.5 支持图片 |
 | Agnes | `agnes-2.5-pro` / `agnes-2.5-flash` 等 | 多用途 |
 | 阿里云百炼 | `wan2.7-image` 等 | 图像生成 |
+| **ModelScope** | `Tongyi-MAI/Z-Image-Turbo` | **免费**每天 2000 次文生图 |
+| **Cloudflare** | `FLUX.2 Dev/Klein` / `Leonardo` 等 | **免费**每天 10k Neurons，FLUX.2 高质量 |
+| **NVIDIA** | `DiffusionGemma 26B` | 免费聊天+图文 |
 | openrouter | 全模型（Claude/GPT/Gemini/Kimi 等） | 需 openrouter key |
 | openai | `gpt-4.1` / `gpt-5` 系列 | 需 openai key |
 | 火山方舟 | `volces-ark` 系列 | 需 ark key |
