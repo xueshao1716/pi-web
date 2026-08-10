@@ -2645,6 +2645,31 @@ async function directChat(model, message, history = []) {
     const base = (baseUrl || "").replace(/\/+$/, "");
     const baseNoV1 = base.endsWith("/v1") ? base.slice(0, -3) : base;
     const messages = [...history, { role: "user", content: message }];
+    const apiType = mdef?.api || "openai-completions";
+    // openai-responses 类型（grok/gpt-5.6-luna 等）：用 /responses 端点，input 数组格式
+    if (apiType === "openai-responses") {
+      const mkResp = (u) => httpJsonFetch(u, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+        body: JSON.stringify({ model: model.id, input: message, max_output_tokens: Math.min(mdef?.maxTokens || 8192, 8192) }),
+        timeout: 120000,
+      });
+      let rr = await mkResp(`${baseNoV1}/v1/responses`);
+      if (rr.status === 404) rr = await mkResp(`${baseNoV1}/responses`);
+      if (!rr.ok) return null;
+      const rd = await rr.json();
+      // responses 格式：output[] 里 message 类型取 text
+      const textParts = (rd.output || [])
+        .filter(o => o.type === "message" && Array.isArray(o.content))
+        .flatMap(o => o.content.filter(c => c.type === "output_text").map(c => c.text || ""));
+      const reasoningParts = (rd.output || [])
+        .filter(o => o.type === "reasoning" && Array.isArray(o.summary))
+        .flatMap(o => o.summary.filter(c => c.type === "summary_text").map(c => c.text || ""));
+      let text = textParts.join("").trim();
+      let think = reasoningParts.join("").trim();
+      if (!text && think) { text = think; think = ""; }
+      return { think, text: text || null };
+    }
     const mkReq = (u) => httpJsonFetch(u, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },

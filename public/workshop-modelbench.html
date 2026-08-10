@@ -160,8 +160,8 @@ async function enter() {
 // ══ 模型加载（OpenCode Go 优先）══
 let allModels = [];
 const selected = new Set();
-// 评测预置：OpenCode Go 核心模型（默认选 5 个主力，可自行增删）
-const GO_PRESET = ["kimi-k3", "glm-5.2", "qwen3.8-max", "deepseek-v4-pro", "gpt-5.6-luna"];
+// 评测预置：OpenCode Go 核心模型（默认选 6 个主力，可自行增删）
+const GO_PRESET = ["kimi-k3", "glm-5.2", "qwen3.8-max", "deepseek-v4-pro", "gpt-5.6-luna", "grok-4.5"];
 
 async function loadModels() {
   const d = await api("/api/models");
