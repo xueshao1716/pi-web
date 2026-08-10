@@ -4056,4 +4056,33 @@ function startServer() {
     }
   });
 }
+
+// ══ 订阅到期提醒：每天检查追踪文档，到期前 7 天/3 天/当天打印提醒 ══
+function checkSubscriptions() {
+  try {
+    const f = path.join(CONFIG.cwd, "文档", "平台订阅费用追踪.md");
+    if (!fs.existsSync(f)) return;
+    const raw = fs.readFileSync(f, "utf8");
+    const today = new Date();
+    const rows = raw.split("\n").filter(l => l.includes("|") && l.includes("2026-"));
+    for (const line of rows) {
+      const cols = line.split("|").map(c => c.trim());
+      // 只匹配表格（行首是 | 且含到期日列）；排除说明段（无到期日格式）
+      if (!line.trim().startsWith("|")) continue;
+      // 到期日在第 4 列（平台|key|计费|到期日|...）；余额查询日期在备注列不应匹配
+      const expCell = cols[4] || "";
+      const m = expCell.match(/(\d{4})-(\d{2})-(\d{2})/);
+      if (!m || expCell.includes("待确认")) continue;
+      const name = cols[1].replace(/[★*()]/g, "").trim();
+      const exp = new Date(+m[1], +m[2] - 1, +m[3]);
+      const days = Math.ceil((exp - today) / 86400000);
+      if (days === 0) console.log(`[订阅提醒] ⚠️ ${name} 今天到期！记得处理续费/退订`);
+      else if (days === 3) console.log(`[订阅提醒] ⚠️ ${name} 还有 3 天到期（${m[1]}-${m[2]}-${m[3]}），如需退订请提前操作`);
+      else if (days === 7) console.log(`[订阅提醒] ⚠️ ${name} 还有 7 天到期（${m[1]}-${m[2]}-${m[3]}）`);
+    }
+  } catch {}
+}
+checkSubscriptions();
+setInterval(checkSubscriptions, 6 * 3600 * 1000); // 每 6 小时查一次
+
 startServer();
