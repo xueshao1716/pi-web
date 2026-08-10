@@ -1093,7 +1093,15 @@ async function refreshEmotion() {
     const m = emoMeta(s);
     window.emoState = { state: s, meta: m }; // 供右下角虚拟形象驱动表情
     $("emo-ico").textContent = m.emoji;
-    $("emo-pill").title = "小语情绪：" + m.label; // 状态名放悬停提示，不占顶栏
+    // 悬停提示：情绪 + 人格基因摘要（性格维度）
+    let title = "小语情绪：" + m.label;
+    if (s.genome) {
+      const g = s.genome;
+      const top = Object.entries(g).sort((a, b) => b[1] - a[1]).slice(0, 4);
+      const names = { gentleness: "温柔", initiative: "主动", curiosity: "好奇", attachment: "依恋", learning: "好学", creativity: "创造", caution: "谨慎", humor: "幽默", loyalty: "忠诚", autonomy_bias: "自主", adaptability: "适应" };
+      title += "\n性格：" + top.map(([k, v]) => `${names[k] || k} ${Math.round(v * 100)}%`).join(" · ");
+    }
+    $("emo-pill").title = title;
     const pill = $("emo-pill");
     if (pill.dataset.emo !== m.cls) {
       pill.dataset.emo = m.cls;

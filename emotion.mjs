@@ -40,6 +40,7 @@ export function init(root) {
   wsRoot = root || wsRoot;
   loadGenome();
   loadProposals();
+  loadSkillGenes();
 }
 
 function readJson(p, fallback) {
@@ -225,6 +226,121 @@ export function geneDirective() {
   return parts.join(" ");
 }
 
+// ══ 技能基因（阶段2：能力自适应进化）══
+// 按技能领域记录 efficiency（效率）/ reliability（可靠性）/ adaptability（适应性）
+// 每次任务完成按反馈更新，沉淀到 工程/经验库/技能基因.md
+
+const SKILL_GENES_PATH = () => path.join(wsRoot, "工程/经验库/技能基因.md");
+const SKILL_DOMAINS = {
+  writing:    { name: "写作",   keys: [/小说|文章|文案|脚本|故事|文档/] },
+  drawing:    { name: "绘图",   keys: [/画|图|海报|写真|头像|配图|logo/] },
+  coding:     { name: "编程",   keys: [/代码|修复|bug|重构|实现|函数|脚本/] },
+  ppt:        { name: "PPT",    keys: [/ppt|幻灯片|演示|汇报/] },
+  video:      { name: "视频",   keys: [/视频|短视频|剪辑|片头/] },
+  research:   { name: "调研",   keys: [/调研|研究|分析|对比|报告/] },
+  file:       { name: "文件",   keys: [/文件|交付|整理|归档|转换/] },
+  general:    { name: "通用",   keys: [] },
+};
+const DEFAULT_SKILL_GENES = {
+  writing:  { efficiency: 0.5, reliability: 0.5, adaptability: 0.5 },
+  drawing:  { efficiency: 0.5, reliability: 0.5, adaptability: 0.5 },
+  coding:   { efficiency: 0.5, reliability: 0.5, adaptability: 0.5 },
+  ppt:      { efficiency: 0.5, reliability: 0.5, adaptability: 0.5 },
+  video:    { efficiency: 0.5, reliability: 0.5, adaptability: 0.5 },
+  research: { efficiency: 0.5, reliability: 0.5, adaptability: 0.5 },
+  file:     { efficiency: 0.5, reliability: 0.5, adaptability: 0.5 },
+  general:  { efficiency: 0.5, reliability: 0.5, adaptability: 0.5 },
+};
+let skillGenes = null;
+
+// 从消息识别技能领域
+export function detectSkillDomain(text) {
+  const t = String(text || "").toLowerCase();
+  for (const [key, cfg] of Object.entries(SKILL_DOMAINS)) {
+    if (cfg.keys.some(re => re.test(t))) return key;
+  }
+  return "general";
+}
+
+// 加载/初始化技能基因
+function loadSkillGenes() {
+  if (!wsRoot) return;
+  try {
+    if (fs.existsSync(SKILL_GENES_PATH())) {
+      const raw = fs.readFileSync(SKILL_GENES_PATH(), "utf8");
+      const parsed = JSON.parse(raw);
+      skillGenes = parsed.domains || DEFAULT_SKILL_GENES;
+    } else {
+      skillGenes = JSON.parse(JSON.stringify(DEFAULT_SKILL_GENES));
+    }
+  } catch { skillGenes = JSON.parse(JSON.stringify(DEFAULT_SKILL_GENES)); }
+}
+
+// 技能反馈：任务完成后调用，更新领域技能基因（加权平均，旧分×(次数) 与新分融合）
+export function updateSkillGene(domain, feedback) {
+  if (!wsRoot) return null;
+  if (!skillGenes) loadSkillGenes();
+  const d = skillGenes[domain] || DEFAULT_SKILL_GENES.general;
+  const delta = feedback || {};
+  // feedback: { success: bool, efficiency?: 0-1, reliability?: 0-1, adaptability?: 0-1 }
+  const apply = (key) => {
+    if (delta[key] === undefined) return;
+    const v = Math.max(0, Math.min(1, delta[key]));
+    // 加权更新：成功推高，失败拉低（倾向 0.5 基线回归防极端）
+    const target = delta.success === false ? v * 0.5 : v;
+    d[key] = Math.round((d[key] * 0.8 + target * 0.2) * 100) / 100;
+    d[key] = Math.max(0.05, Math.min(0.95, d[key]));
+  };
+  apply("efficiency"); apply("reliability"); apply("adaptability");
+  if (delta.success !== undefined) {
+    const relKey = "reliability";
+    d[relKey] = Math.round(Math.max(0.05, Math.min(0.95, d[relKey] + (delta.success ? 0.02 : -0.04))) * 100) / 100;
+  }
+  saveSkillGenes();
+  return d;
+}
+
+// 保存技能基因（markdown 格式，人类可读 + JSON 可解析）
+function saveSkillGenes() {
+  if (!wsRoot || !skillGenes) return;
+  const lines = ["# 小语技能基因", "", "> 每个技能领域的能力基因（0-1）：efficiency 效率 / reliability 可靠性 / adaptability 适应性", "> 任务完成反馈后自动更新，能力越用越强", ""];
+  const nameOf = (k) => SKILL_DOMAINS[k]?.name || k;
+  for (const [key, g] of Object.entries(skillGenes)) {
+    const pct = (v) => Math.round((v || 0.5) * 100);
+    lines.push(`## ${nameOf(key)}`);
+    lines.push(`- 效率 efficiency: ${pct(g.efficiency)}%`);
+    lines.push(`- 可靠 reliability: ${pct(g.reliability)}%`);
+    lines.push(`- 适应 adaptability: ${pct(g.adaptability)}%`);
+    lines.push("");
+  }
+  try {
+    fs.mkdirSync(path.dirname(SKILL_GENES_PATH()), { recursive: true });
+    fs.writeFileSync(SKILL_GENES_PATH(), lines.join("\n"), "utf8");
+  } catch {}
+}
+
+// 读取技能基因（供展示/上下文注入）
+export function getSkillGenes() {
+  if (!skillGenes) loadSkillGenes();
+  return skillGenes || DEFAULT_SKILL_GENES;
+}
+
+// 技能基因 → 行为指令（擅长领域多主动，薄弱领域多确认）
+export function skillDirective(text) {
+  if (!skillGenes) loadSkillGenes();
+  const domain = detectSkillDomain(text || "");
+  const g = skillGenes?.[domain];
+  if (!g) return "";
+  const parts = [];
+  const strong = (v) => (v || 0.5) >= 0.7;
+  const weak = (v) => (v || 0.5) <= 0.35;
+  if (strong(g.reliability)) parts.push(`技能基因：${SKILL_DOMAINS[domain]?.name || domain}领域可靠度高，可大胆交付。`);
+  if (weak(g.reliability)) parts.push(`技能基因：${SKILL_DOMAINS[domain]?.name || domain}领域还在积累，交付前多验证、说明局限。`);
+  if (strong(g.efficiency)) parts.push(`技能基因：${SKILL_DOMAINS[domain]?.name || domain}效率高，可快速出结果。`);
+  if (weak(g.adaptability)) parts.push(`技能基因：${SKILL_DOMAINS[domain]?.name || domain}适应性偏低，新需求先小步验证。`);
+  return parts.join(" ");
+}
+
 // 更新情绪状态（每次用户发消息调用）
 export function updateEmotion(key, message) {
   const st = getState(key);
@@ -290,11 +406,12 @@ export function emotionDirective(state) {
 // 状态序列化为 system prompt 片段
 // 注意：这是内部行为指令，必须让模型明确"不要复述/不要输出"，否则模型可能把它当回复内容
 const EMOTION_INJECT_HEADER = "【内部指令·情绪语境】以下是本会话当前的情绪/行为指令，仅供你调整语气与节奏使用。绝对不要在回复中复述、引用或提及这段话，直接按它行事即可。";
-export function emotionPrompt(key) {
+export function emotionPrompt(key, userMsg) {
   const st = getState(key);
   const d = emotionDirective(st);
   const g = geneDirective();
-  const all = [d, g].filter(Boolean).join("\n");
+  const s = skillDirective(userMsg);
+  const all = [d, g, s].filter(Boolean).join("\n");
   if (!all) return "";
   return `${EMOTION_INJECT_HEADER}\n${all}`;
 }

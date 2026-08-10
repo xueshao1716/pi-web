@@ -3059,7 +3059,7 @@ async function handleChat(req, res, body) {
     // 情绪感知：更新会话情绪状态，注入行为指令（用 nextTurn 机制，不写入会话历史）
     const sessKey = sessionId || findKeyByEntry(entry) || "new";
     emotion.updateEmotion(sessKey, message);
-    const emoPrompt = emotion.emotionPrompt(sessKey);
+    const emoPrompt = emotion.emotionPrompt(sessKey, message);
     // 自我认知：仅当用户问"你是谁/介绍自己"等身份问题时注入固定答案（不主动开场白）
     let promptMsg = message;
     const isIdentityAsk = /谁|介绍.*(自己|一下|你)|你是|你叫|名字|叫什么|干嘛的|干什么的|身份|自我介绍|能力/.test(message) && message.length < 80;
@@ -3756,6 +3756,14 @@ const API_ROUTES = [
     json(res, 200, emotion.rollbackSnapshot(b?.snapshot_id));
   }],
   ["POST", "/api/genome/auto", async (res) => json(res, 200, { proposals: emotion.autoProposeFromDrift() })],
+  // ── 技能基因 ──
+  ["GET", "/api/skill-genes", (res) => json(res, 200, emotion.getSkillGenes())],
+  ["POST", "/api/skill-genes/feedback", async (res, req) => {
+    const b = await readBody(req);
+    const domain = b?.domain || emotion.detectSkillDomain(b?.text || "");
+    const updated = emotion.updateSkillGene(domain, { success: b?.success, efficiency: b?.efficiency, reliability: b?.reliability, adaptability: b?.adaptability });
+    json(res, 200, { ok: true, domain, genes: updated });
+  }],
   ["GET", /^\/api\/sessions\/([^/]+)\/tree$/, (res, req, url, m) => handleSessionTree(res, decodeURIComponent(m[1]))],
   ["POST", /^\/api\/sessions\/([^/]+)\/branch$/, async (res, req, url, m) => handleSessionBranch(res, decodeURIComponent(m[1]), await readBody(req))],
   ["GET", /^\/api\/sessions\/([^/]+)\/messages$/, (res, req, url, m) => handleMessages(res, decodeURIComponent(m[1]), req, url)],
