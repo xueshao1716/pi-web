@@ -1802,3 +1802,58 @@ html[data-theme="apple"] .main-top {
 html[data-theme="apple"] .msg.assistant .bubble { color: var(--text); }
 html[data-theme="apple"] .msg .bubble code,
 html[data-theme="apple"] .code-wrap { background: rgba(0, 0, 0, 0.05); }
+
+/* ══ 运维控制台主题（B端深色极简，豆包方案落地）══
+   深黑灰 #0F1118 + 青蓝 #2596BE + 警告橙 #FF7D29，低饱和，8px 栅格，6px 圆角 */
+html[data-theme="ops"] {
+  --radius: 6px;
+}
+html[data-theme="ops"] body::after { opacity: 0.025; } /* 极简，噪点几乎不可见 */
+html[data-theme="ops"] .side-head .logo { -webkit-text-fill-color: #2596be; }
+html[data-theme="ops"] .new-session {
+  background: rgba(37, 150, 190, 0.08);
+  border-color: rgba(37, 150, 190, 0.2);
+}
+html[data-theme="ops"] .new-session:hover { background: rgba(37, 150, 190, 0.15); }
+html[data-theme="ops"] .session-item.active {
+  background: rgba(37, 150, 190, 0.09);
+  border-color: rgba(37, 150, 190, 0.22);
+}
+html[data-theme="ops"] .msg.user .bubble {
+  background: rgba(37, 150, 190, 0.14);
+  border-color: rgba(37, 150, 190, 0.25);
+  color: #cfe8f5;
+}
+html[data-theme="ops"] .msg.assistant .who .avatar {
+  background: linear-gradient(135deg, #2596be, #1a708f);
+  box-shadow: 0 2px 10px rgba(37, 150, 190, 0.25);
+}
+html[data-theme="ops"] .tool-btn, html[data-theme="ops"] .menu-btn {
+  border-radius: 6px;
+}
+html[data-theme="ops"] .status-pill { border-radius: 999px; }
+/* 点击回弹：按钮按下缩小 5%（交互规范） */
+html[data-theme="ops"] .tool-btn:active, html[data-theme="ops"] .menu-btn:active,
+html[data-theme="ops"] .new-session:active, html[data-theme="ops"] .session-item:active,
+html[data-theme="ops"] #send:active, html[data-theme="ops"] .ft-refresh:active {
+  transform: scale(0.95);
+}
+html[data-theme="ops"] #send {
+  background: linear-gradient(135deg, #2596be, #1a708f);
+  border: none;
+  box-shadow: 0 2px 10px rgba(37, 150, 190, 0.3);
+}
+html[data-theme="ops"] #send:hover:not(:disabled) { filter: brightness(1.1); }
+html[data-theme="ops"] .input-shell:focus-within {
+  border-color: rgba(37, 150, 190, 0.45);
+  box-shadow: 0 0 0 3px rgba(37, 150, 190, 0.12);
+}
+/* 运维质感：状态点（Agent 在线绿/离线灰/异常红 参考） */
+html[data-theme="ops"] .session-item::before {
+  content: ""; position: absolute; left: 4px; top: 50%; transform: translateY(-50%);
+  width: 5px; height: 5px; border-radius: 50%;
+  background: #10b981; box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+}
+html[data-theme="ops"] #login {
+  background: radial-gradient(900px 450px at 50% -10%, #1a2530 0%, #0f1118 60%);
+}
