@@ -290,22 +290,19 @@ const SYS_INFO = `## 小语 · AI 工作台 · ${SYS_VERSION}\n\n一个基于 pi
 - ✅ v2.0.0 外网分享根治：share_project 一键分享稳定域名，严禁模型碰隧道
 - ✅ v2.0.0 工作空间分类视图 + 全屏浏览 + 侧边栏拖拽调宽
 - ✅ v1.9.3 主题编辑器手机端布局优化（两列网格/壁纸行换行/编辑区紧凑）\n- ✅ v1.9.2 情绪指示器只留 emoji 圆形胶囊（修手机端顶栏超边）\n- ✅ v1.9.1 修复手机端聊天记录刷不全（缓存对比 bug + 懒加载按钮兜底）\n- ✅ v1.9.0 情绪指示器：顶栏实时显示小语情绪状态（🛡/🔥/😌/🧘），对话自动更新\n- ✅ v1.8.0 量子引擎主题：深空科技风（网格背景/霓虹发光/玻璃面板），主题菜单首个色板一键切换\n- ✅ v1.7.2 主页减负：移除 ✏️ 设计器按钮（手机端拥挤），入口在工作台 🧰 首页卡片\n- ✅ v1.4.5 长代码块折叠：>25 行自动「展开」按钮 + 内部滚动，短块不受影响\n- ✅ v1.4.4 拖放文件：桌面拖文件到窗口即自动引用（文本→@引用、图片→附件、Office→解析）\n- ✅ v1.4.3 工具卡运行时长实时显示 + 超 120s 自动标「可能卡住」；长对话右下角 ↓ 回到底部按钮\n- ✅ v1.4.2 更新看板缓存（GitHub 限流缓解）；工具卡折叠 ▾ 提示；消息间距节奏\n- ✅ v1.4.1 细滚动条 / 键盘焦点可见性 / 消息区氛围光 / 会话选中指示条\n\n### v1.3.0 更新\n- ✅ 系统说明重构：完整能力总览 + 版本号管理（SYS_VERSION）\n- ✅ 新增统一外网分享：项目入分享目录即上线，多项目零配置\n- ✅ 修复历史会话加载中断（思考块渲染 + 占位残留），电脑/手机端同步生效\n- ✅ 会话列表 / 消息实时同步优化\n\n### 由来\npi（个人 AI 终端）的 Web 化前端，目标是让同一引擎的能力在浏览器里也能完整使用。\n\n### 操作说明\n- 输入框发送消息，/** 打开模板菜单，+ 新建会话\n- 拖文件到窗口任意位置松开即引用；点输入框 📎 也可选择文件\n- 长代码块点「展开」查看全部；长对话右下角 ↓ 回到底部\n- 右上角 ⓘ 查看系统说明，🔔 看更新\n- 左侧菜单切换：会话 / 文件 / 技能 / 工作空间\n- 底部切换模型、主题；🎨 打开主题编辑器\n- ✏️ 设计器：工作台 🧰 首页「页面设计器」卡片进入（/workshop/designer 可直达）\n- 侧边栏 ☰ 按钮折叠/展开\n- 壁纸在主题编辑器里设置，全屏展示\n\n### 人格\n我是小语——直接、有条理、有审美、讨厌机器人味。\n代码可重写，人格不可重写。`;
-$("mm-sysinfo").addEventListener("click", () => {
-  $("si-content").innerHTML = renderSimpleMd(SYS_INFO);
-  $("sysinfo-modal").classList.add("show");
-  $("more-menu").hidden = true;
-});
+
 $("si-close").addEventListener("click", () => $("sysinfo-modal").classList.remove("show"));
 $("sysinfo-modal").addEventListener("click", (e) => { if (e.target === e.currentTarget) $("sysinfo-modal").classList.remove("show"); });
 
-// 🔔 消息看板（pi 更新 + 能力看板）
+// 📋 关于 · 能力 · 更新（合并原系统说明 + 更新看板）
 $("mm-notices").addEventListener("click", async () => {
   $("more-menu").hidden = true;
-  $("nt-content").innerHTML = "<p>加载中…</p>";
+  $("nt-content").innerHTML = renderSimpleMd(SYS_INFO);
+  $("notices-modal").querySelector(".modal-head span").textContent = "📋 关于 · 能力 · 更新";
   $("notices-modal").classList.add("show");
   try {
     const d = await api("/api/notices");
-    let html = `### 引擎更新（pi v${d.piVersion}）\n\n`;
+    let html = `\n\n### 引擎更新（pi v${d.piVersion}）\n\n`;
     if (d.releases.length) {
       html += d.releases.map(r => `**${r.tag}**（${r.date}）${r.name ? " " + r.name : ""}\n${escMd(r.body).slice(0, 220)}${r.body.length > 220 ? "…" : ""}\n`).join("\n");
     } else html += "（暂时拉取不到更新信息）\n";
