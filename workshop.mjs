@@ -8,6 +8,7 @@ import fs from "node:fs";
 export const WORKSHOP_PAGES = {
   "/workspace": "workspace.html",
   "/workshop": "workshop.html",
+  "/workshop/modelbench": "workshop-modelbench.html",
   "/workshop/ppt": "workshop-ppt.html",
   "/workshop/designer": "workshop-designer.html",
   "/workshop/wanxiang": "workshop-wanxiang.html",

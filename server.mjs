@@ -728,6 +728,7 @@ async function httpJsonFetch(url, options = {}) {
   const pyCode = [
     "import urllib.request, json, sys, urllib.error",
     "url=sys.argv[1]; method=sys.argv[2]; headers=json.loads(sys.argv[3]); timeout=float(sys.argv[4]); body_file=sys.argv[5]",
+    "headers.setdefault('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0')",
     "try: body=open(body_file, 'r', encoding='utf-8').read()",
     "except: body=''",
     "req=urllib.request.Request(url, data=body.encode() if body else None, method=method or 'GET', headers=headers)",
@@ -743,7 +744,7 @@ async function httpJsonFetch(url, options = {}) {
   ].join("\n");
   return new Promise((resolve, reject) => {
     const child = spawn("python", ["-", url, options.method || "GET", JSON.stringify(options.headers || {}), String(options.timeout || 60000), tmpFile],
-      { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+      { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, env: { ...process.env } });
     let stdout = "", stderr = "";
     const timer = setTimeout(() => { try { child.kill(); } catch {} reject(new Error("timeout")); }, (options.timeout || 60000) + 5000);
     child.stdout.on("data", (d) => { stdout += d; if (stdout.length > 50 * 1024 * 1024) { try { child.kill(); } catch {} } });
@@ -1027,6 +1028,7 @@ async function handleImage(res, body) {
         const pyCode = [
           "import urllib.request, json, sys, urllib.error, base64",
           "url=sys.argv[1]; headers=json.loads(sys.argv[2]); body_file=sys.argv[3]",
+          "headers.setdefault('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0')",
           "body=open(body_file,'rb').read()",
           "req=urllib.request.Request(url, data=body, method='POST', headers=headers)",
           "try:",
@@ -1039,7 +1041,7 @@ async function handleImage(res, body) {
         ].join("\n");
         const raw = await new Promise((resolve, reject) => {
           const child = spawn("python", ["-", url, JSON.stringify(headers), tmpFile],
-            { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+            { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, env: { ...process.env } });
           let stdout = "", stderr = "";
           const timer = setTimeout(() => { try { child.kill(); } catch {} reject(new Error("timeout")); }, 190000);
           child.stdout.on("data", d => { stdout += d; });
@@ -2600,7 +2602,7 @@ async function handleDesignerSave(res, body) {
 // 多模型对比（借鉴 Open WebUI：同一问题同时问多个模型，结果并排展示）
 async function handleCompare(res, body) {
   const message = String(body?.message || "").trim();
-  const models = Array.isArray(body?.models) ? body.models.slice(0, 4) : [];
+  const models = Array.isArray(body?.models) ? body.models.slice(0, 12) : [];
   if (!message) return json(res, 400, { error: "消息不能为空" });
   if (!models.length) return json(res, 400, { error: "至少选择一个模型" });
   const tasks = models.map(async (mk) => {
@@ -2658,6 +2660,11 @@ async function directChat(model, message, history = []) {
     const raw = content.trim();
     let think = (msg.reasoning_content || "").trim();
     let text = raw;
+    if (!text && think) {
+      // 推理模型把回答全放 reasoning_content（如 opencode-go 的 deepseek 风格）——content 为空时回退
+      text = think;
+      think = "";
+    }
     if (/<think>[\s\S]*?<\/think>/.test(raw)) {
       const m = raw.match(/<think>([\s\S]*?)<\/think>/);
       if (!think) think = (m?.[1] || "").trim();
