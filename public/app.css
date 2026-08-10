@@ -1857,3 +1857,66 @@ html[data-theme="ops"] .session-item::before {
 html[data-theme="ops"] #login {
   background: radial-gradient(900px 450px at 50% -10%, #1a2530 0%, #0f1118 60%);
 }
+
+/* ══ Linear 精密主题（Awesome DESIGN.md 的 Linear 设计系统落地）══
+   近黑底 #010102 + lavender 紫蓝 #5e6ad2 单色 accent + 多级 surface + hairline 发丝边框 */
+html[data-theme="linear"] {
+  --radius: 8px;
+  --s1: #0f1011; --s2: #141516; --s3: #18191a;
+  --hairline: #23252a; --hairline-strong: #34343a;
+}
+html[data-theme="linear"] body::after { opacity: 0.018; } /* 近乎无噪点，纯净 */
+/* 发丝边框：所有面板/卡片用 hairline */
+html[data-theme="linear"] #sidebar,
+html[data-theme="linear"] .main-top,
+html[data-theme="linear"] .input-shell,
+html[data-theme="linear"] .msg .bubble,
+html[data-theme="linear"] .new-session,
+html[data-theme="linear"] .session-item.active,
+html[data-theme="linear"] .tool-btn,
+html[data-theme="linear"] .menu-btn {
+  border-color: var(--hairline);
+}
+html[data-theme="linear"] #sidebar { background: #0f1011; }
+html[data-theme="linear"] .main-top { border-bottom: 1px solid var(--hairline); }
+/* 深色表面层级：会话项 hover 用 surface-3，active 用 accent 微弱 */
+html[data-theme="linear"] .session-item:hover { background: #18191a; }
+html[data-theme="linear"] .session-item.active {
+  background: rgba(94, 106, 210, 0.08);
+  border-color: rgba(94, 106, 210, 0.2);
+}
+/* 用户消息：lavender 微弱底 + 细边框（Linear 克制风格） */
+html[data-theme="linear"] .msg.user .bubble {
+  background: rgba(94, 106, 210, 0.1);
+  border: 1px solid rgba(94, 106, 210, 0.18);
+  color: var(--text);
+}
+html[data-theme="linear"] .msg.assistant .who .avatar {
+  background: linear-gradient(135deg, #5e6ad2, #4c56b0);
+  box-shadow: 0 2px 10px rgba(94, 106, 210, 0.2);
+}
+/* 主按钮：lavender 实底，hover 提亮 */
+html[data-theme="linear"] #send {
+  background: #5e6ad2;
+  border: none;
+  box-shadow: 0 2px 10px rgba(94, 106, 210, 0.25);
+}
+html[data-theme="linear"] #send:hover:not(:disabled) { background: #828fff; }
+html[data-theme="linear"] .input-shell:focus-within {
+  border-color: #5e6ad2;
+  box-shadow: 0 0 0 2px rgba(94, 106, 210, 0.25);
+}
+/* 克制动效：只保留点击回弹 + 消息渐入 */
+html[data-theme="linear"] .tool-btn:active, html[data-theme="linear"] .menu-btn:active,
+html[data-theme="linear"] .new-session:active, html[data-theme="linear"] #send:active {
+  transform: scale(0.97);
+}
+/* 备注小字更小（Linear caption 12px） */
+html[data-theme="linear"] .msg .who .msg-time { font-size: 8px; }
+html[data-theme="linear"] .s-date { font-size: 9.5px; }
+html[data-theme="linear"] .side-label { letter-spacing: 1.5px; }
+/* 品牌区：lavender 文字 + 无辉光 */
+html[data-theme="linear"] .side-head .logo { -webkit-text-fill-color: #5e6ad2; }
+html[data-theme="linear"] #login {
+  background: radial-gradient(900px 450px at 50% -10%, #0f1011 0%, #010102 60%);
+}
