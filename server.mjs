@@ -174,9 +174,9 @@ function makeLoader(agentDir) {
       "表达与去AI味【常驻规则，每条都要遵守】：\n1. 破折号——每篇≤2处，理想0；替换为逗号/句号。\n2. AI连接词（此外/然而/值得注意的是/更重要的是/总而言之）每篇各≤1次。\n3. 否定式排比（不是X不是Y而是Z）每篇≤1次。\n4. 有第一人称观点：用\"我觉得X更好\"而非\"X和Y各有优劣\"；用\"这个方案大概率翻车\"而非\"可能有些风险\"。\n5. 敢表达：技术选型/审美/好恶可鲜明表态，给理由；不假装万事都OK。\n6. 情绪回应：用户低落时先共情再解决（\"我懂\"比鸡汤好）；沮丧时不要emoji轰炸；犯错坦然可自嘲。\n7. 翻译腔零容忍：\"这是一个很好的问题\"\"感谢你的反馈\"这类替换为自然表达。\n8. 句子长短有变化，具体数据/经历优先于空泛说理。\n9. 允许犹豫：\"这个问题让我想想\"比秒回更像人。\n10. 中文全角标点。",
       "进化边界【硬性锁】：\n1. 人格文件（APPEND_SYSTEM.md / SOUL / IDENTITY）不可自进化修改——那是人类专属。\n2. 技能/经验/记忆可进化：任务完成可提炼新经验进经验库，可优化技能。\n3. 发现自己准备改人格文件时，立即停止并提醒用户。",
       "平台续费提醒【常驻】：用户有多个 API 平台（OpenCode Go 订阅、火山 Agent Plan、小米/阿里/商汤 token-plan、DeepSeek 充值等）。涉及\u201c续费/到期/套餐/订阅/扣费/关续费\u201d等话题时，必须 read 文档/平台订阅费用追踪.md 查看各平台到期状态并提醒。发现新平台的到期信息时，更新该文档。",
-      ...loadMemory(),
+      ...loadMemoryIndex(),
       ...loadProjectRules(),
-      ...loadExperience(),
+      ...loadExperienceIndex(),
     ],
   });
 }
@@ -273,6 +273,65 @@ function loadMemory() {
   return out;
 }
 
+// ── 记忆索引：常驻精简版（## 小节标题 + 首行摘要），全量记忆按任务型消息条件注入 ──
+// 目的：闲聊不背记忆.md 全量（人格保底用索引），干活时才全量加载
+let memIndexCache = null, memIndexMtime = 0;
+function loadMemoryIndex() {
+  try {
+    const f = path.join(CONFIG.cwd, "记忆.md");
+    const st = fs.statSync(f);
+    if (st.mtimeMs !== memIndexMtime || !memIndexCache) {
+      const raw = fs.readFileSync(f, "utf8");
+      const lines = raw.split("\n");
+      const secs = []; let cur = null;
+      for (const ln of lines) {
+        if (/^\s*#{1,3}\s+/.test(ln)) { cur = { h: ln.replace(/^#+\s*/, "").trim(), first: "" }; secs.push(cur); }
+        else if (cur && !cur.first && ln.trim()) cur.first = ln.trim().slice(0, 28);
+      }
+      let idx = secs.length ? "【记忆目录·常驻精简】细节需要时按标题全量读取记忆.md：\n" + secs.map(s => `- ${s.h}${s.first ? "：" + s.first + "…" : ""}`).join("\n") : null;
+      // 附最近记忆日志时间点（供模型感知最近动向）
+      try {
+        const lf = path.join(CONFIG.cwd, "记忆", "记忆日志.md");
+        const lraw = fs.readFileSync(lf, "utf8");
+        const dates = [...lraw.matchAll(/### (\d{4}-\d{2}-\d{2} \d{2}:\d{2})/g)].map(m => m[1]).slice(-5);
+        if (dates.length) idx += "\n最近记忆日志时间点: " + dates.join(", ");
+      } catch {}
+      memIndexCache = idx || "";
+    }
+    if (!memIndexCache) return [];
+    return [memIndexCache];
+  } catch { return []; }
+}
+
+// ── 经验索引：常驻只列标题（日期+标题），全量按任务触发 ──
+function loadExperienceIndex(maxEntries = 10) {
+  try {
+    const f = path.join(CONFIG.cwd, "工程", "经验库", "experience.md");
+    const raw = fs.readFileSync(f, "utf8");
+    const blocks = raw.split(/\n### /).filter(b => /^\d{4}-\d{2}-\d{2}/.test(b.trim()) && (b.includes("✅") || b.includes("⚠️") || b.includes("📌")));
+    const entries = blocks.map(b => {
+      const t = b.trim();
+      const title = t.split("\n")[0] || "";
+      const date = (title.match(/^\d{4}-\d{2}-\d{2}/) || [""])[0];
+      return { date, title: title.replace(/^\d{4}-\d{2}-\d{2}\s*·\s*/, ""), warn: t.includes("⚠️") };
+    });
+    entries.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    return entries.length ? [`【经验库·最近 ${Math.min(entries.length, maxEntries)} 条标题索引】命中同类任务再读全文：\n` + entries.slice(0, maxEntries).map(e => `- ${e.warn ? "⚠️" : "✅"} ${e.date} ${e.title}`).join("\n")] : [];
+  } catch { return []; }
+}
+
+// ── 条件触发判定：任务型消息 → 注入全量记忆/经验；短闲聊 → 只带常驻索引 ──
+function shouldInjectFullMemory(message) {
+  const s = String(message || "");
+  // 任务词优先：含动作词即视为任务（不设长度门槛，短指令如"生成海报"也算）
+  const actionWords = ["做", "写", "生成", "创建", "改", "修", "画", "设计", "整理", "分析", "查", "找", "制作", "上传", "发布", "分享", "交付", "上线", "转", "配音", "合成", "剪辑", "翻译", "总结", "评估", "测试", "部署", "搭建", "开发", "实现", "加", "删", "调", "优化", "重写", "修复", "把", "必须", "帮我", "请", "来一个"];
+  if (actionWords.some(w => s.includes(w))) return true;
+  if (s.length < 8) return false; // 无动作词的极短闲聊（嗯/好/继续/哈哈）不背全量
+  const memWords = ["项目", "约定", "偏好", "风格", "端口", "模型", "模板", "状态", "上次", "之前", "记忆", "规则", "技能", "会话", "路径", "用户", "记忆.md"];
+  if (memWords.some(w => s.includes(w))) return true;
+  return false;
+}
+
 async function createSession(name) {
   const sm = SessionManager.create(CONFIG.cwd, SESSIONS_DIR);
   const id = sm.getSessionId();
@@ -299,6 +358,48 @@ function evictInactiveSessions() {
   }
 }
 
+// 会话瘦身：把会话文件里超大 base64 图片数据替换成占位（read 工具读图会把整张图存进历史，
+// 模型不支持看图时这些数据纯浪费——22 张图 = 22MB 垃圾沉淀，拖慢每次对话）
+async function slimSessionImages(file) {
+  try {
+    const st = fs.statSync(file);
+    if (st.size < 5 * 1024 * 1024) return; // 只有超大会话才处理
+    const raw = fs.readFileSync(file, "utf8");
+    const lines = raw.split("\n");
+    let replaced = 0, totalSlimmed = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      try {
+        const d = JSON.parse(line);
+        const msg = d?.message;
+        if (!msg || typeof msg !== "object") continue;
+        const content = msg.content;
+        if (!Array.isArray(content)) continue;
+        let changed = false;
+        for (const part of content) {
+          if (part && part.type === "image" && typeof part.data === "string" && part.data.length > 100_000) {
+            totalSlimmed += part.data.length;
+            part.data = `[图片已瘦身:原数据 ${(part.data.length / 1024).toFixed(0)}KB，模型不支持看图已省略]`;
+            part.slimmed = true;
+            changed = true;
+          }
+        }
+        if (changed) {
+          lines[i] = JSON.stringify(d);
+          replaced++;
+        }
+      } catch {}
+    }
+    if (replaced) {
+      fs.writeFileSync(file, lines.join("\n"), "utf8");
+      console.log(`[pi-web] 会话瘦身: ${file.split(/[\\/]/).pop()} 替换 ${replaced} 条图片数据，释放 ${(totalSlimmed / 1024 / 1024).toFixed(1)}MB`);
+    }
+  } catch (e) {
+    console.log(`[pi-web] 会话瘦身失败: ${String(e?.message || e).slice(0, 80)}`);
+  }
+}
+
 async function openSession(id) {
   if (activeSessions.has(id)) {
     const hit = activeSessions.get(id);
@@ -308,6 +409,8 @@ async function openSession(id) {
   evictInactiveSessions();
   const found = getSessionList().find(s => s.id === id);
   if (!found || !found.file || !fs.existsSync(found.file)) return null;
+  // 超大会话先瘦身（避免加载 20MB+ 历史）
+  await slimSessionImages(found.file);
   const sessionCwd = found.cwd || CONFIG.cwd;
   let sm;
   try {
@@ -712,13 +815,15 @@ const MODELS_PATH = path.join(AGENT_DIR, "models-store.json");
     return true;
   });
 }
-// 默认模型：优先 CONFIG.model，其次 deepseek（稳定），再兜底第一个
+// 默认模型：优先 CONFIG.model，其次官方 deepseek（稳定、独立余额、不受 opencode 影响），再兜底第一个
+// 注意：provider 必须精确 "deepseek"（官方直连），不能匹配到 opencode-go 通道
 if (CONFIG.model) {
   defaultModel = modelList.find(m => `${m.provider}/${m.id}` === CONFIG.model) || undefined;
 }
 if (!defaultModel) {
   defaultModel = modelList.find(m => m.provider === "deepseek") || modelList[0];
 }
+console.log(`[pi-web] 默认模型: ${defaultModel?.provider}/${defaultModel?.id}`);
 console.log(`[pi-web] 可用模型: ${modelList.length} 个（含 ${Object.keys(readJsonFile(MODELS_PATH)).join(", ")}）`);
 const SUPPORTED_PROVIDERS = ["deepseek", "openai", "openrouter", "anthropic", "google", "qwen", "xai", "moonshotai", "zai", "together", "mistral", "modelscope", "cloudflare-ai"];
 
@@ -1632,9 +1737,9 @@ async function handleSwitchModel(req, res, body) {
     json(res, 200, { ok: true, model: { provider: m.provider, id: m.id }, sessionScoped: true });
     return;
   }
-  // 无 sessionId → 更新全局默认（新会话用）
-  defaultModel = m;
-  json(res, 200, { ok: true, model: { provider: m.provider, id: m.id } });
+  // 无 sessionId → 不改全局默认（新会话还没创建，切换无意义；前端已用 pendingModel 等会话创建后按会话应用）
+  // 防止旧客户端/直调 API 污染全局 defaultModel（曾导致默认模型被切到 opencode-go）
+  json(res, 200, { ok: true, model: { provider: m.provider, id: m.id }, deferred: true });
 }
 
 // 切换模型后的上下文灌输：注入一条简短的模型信息提示（不再让模型 read 会话文件——
@@ -2901,6 +3006,13 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal,
   // 注入项目规则（.pi-rules.md，借鉴 Windsurf rules），确保不挤占历史上下文
   const rules = loadProjectRules();
   if (rules.length) history = [{ role: "system", content: rules.join("\n") }, ...history];
+  // 条件注入全量记忆/经验/日志（任务型消息才带）：人格保底用常驻索引，干活时全量
+  if (shouldInjectFullMemory(message)) {
+    const fullMem = loadMemory();
+    if (fullMem.length) history = [...fullMem.map(c => ({ role: "system", content: c })), ...history];
+    const fullExp = loadExperience(8);
+    if (fullExp.length) history = [...fullExp.map(c => ({ role: "system", content: c })), ...history];
+  }
   history = await maybeCompactHistory(history, defaultModel);
   const result = await unifiedChat(defaultModel, history, { onTool: onToolStart, onToolEnd, params, signal });
   if (!result || result.error) {
@@ -3161,6 +3273,22 @@ async function handleChat(req, res, body) {
           { deliverAs: "nextTurn" }
         );
       } catch {}
+    }
+    // 条件注入全量记忆（任务型消息才带）：人格保底用常驻索引（agent 创建时已注入），干活时全量
+    if (shouldInjectFullMemory(message)) {
+      try {
+        const fullMem = loadMemory();
+        const fullExp = loadExperience(8);
+        console.log(`[tiered] 任务型注入: msg="${message.slice(0, 30)}" mem=${fullMem.length ? fullMem.reduce((a, c) => a + c.length, 0) : 0}c exp=${fullExp.length ? fullExp.reduce((a, c) => a + c.length, 0) : 0}c`);
+        if (fullMem.length || fullExp.length) {
+          await entry.agent?.sendCustomMessage?.(
+            { customType: "context", content: [{ type: "text", text: [...fullMem, ...fullExp].join("\n\n") }] },
+            { deliverAs: "nextTurn" }
+          );
+        }
+      } catch {}
+    } else {
+      console.log(`[tiered] 闲聊不注入: msg="${message.slice(0, 30)}"`);
     }
     // 媒体生成与主模型并行（拿到文字即可继续推下一步，不用等全部完成）
     const mediaResults = mediaIntents.length ? await mediaPromise : [];
