@@ -461,6 +461,7 @@ async function ensureAgent(entry, model) {
     || model || defaultModel;
   const agent = await createSessionAgent(entry.sm, effModel);
   entry.agent = agent;
+  entry.agentModel = effModel ? { provider: effModel.provider, id: effModel.id } : null;
   console.log(`[pi-web] agent 重建（模型 ${effModel?.provider}/${effModel?.id}）`);
   return agent;
 }
@@ -1614,16 +1615,20 @@ async function handleSwitchModel(req, res, body) {
     const entry2 = activeSessions.get(body.sessionId);
     // 记录会话自己的模型选择（会话重启时恢复）
     try { entry2.modelKey = { provider: m.provider, id: m.id }; } catch {}
-    // 销毁旧 agent 强制新模型生效（setModel 可能因 busy 不生效，重建最稳）
+    // 如果 agent 空闲，立即重建生效；busy 则标记（下次消息 handleChat 对比重建）
     if (entry2.agent && !entry2.busy) {
       try { entry2.agent.dispose(); } catch {}
       entry2.agent = null;
+      try {
+        const ag = await createSessionAgent(entry2.sm, fullModel);
+        entry2.agent = ag;
+        entry2.agentModel = { provider: m.provider, id: m.id };
+        if (switched) { try { await syncContextAfterSwitch(entry2, m); } catch {} }
+      } catch {}
+    } else if (entry2.agent && entry2.busy) {
+      // busy：不改 agentModel（保持旧值），handleChat 下次对比发现不一致会重建
+      console.log(`[pi-web] 会话 busy，模型切换延迟到下次消息生效 → ${m.provider}/${m.id}`);
     }
-    // 重建 agent（ensureAgent 会用 entry.modelKey 的新模型）
-    try {
-      await ensureAgent(entry2, fullModel);
-      if (switched) { try { await syncContextAfterSwitch(entry2, m); } catch {} }
-    } catch {}
     json(res, 200, { ok: true, model: { provider: m.provider, id: m.id }, sessionScoped: true });
     return;
   }
@@ -3058,7 +3063,17 @@ async function handleChat(req, res, body) {
     }
     return;
   }
-  const agent = await ensureAgent(entry, defaultModel);
+  // 会话级模型：切过模型则用会话的，否则默认；agent 模型不一致时重建
+  const effModel = (entry.modelKey && modelList.find(m => m.provider === entry.modelKey.provider && m.id === entry.modelKey.id))
+    || defaultModel;
+  if (entry.agent && entry.modelKey && entry.agentModel &&
+      (entry.agentModel.provider !== entry.modelKey.provider || entry.agentModel.id !== entry.modelKey.id)) {
+    try { entry.agent.dispose(); } catch {}
+    entry.agent = null;
+    console.log(`[pi-web] 会话模型已切换，重建 agent → ${entry.modelKey.provider}/${entry.modelKey.id}`);
+  }
+  const agent = await ensureAgent(entry, effModel);
+  // agentModel 由 ensureAgent/createSessionAgent 设置真实值，这里不覆盖
   const sm = entry.sm;
   const hbTimer = startSseHeartbeat(res); // 心跳保活（公网隧道不因 idle 断开）
   const writer = createSseWriter(res); // 背压控制：慢网络时事件排队等 drain，不丢不堆

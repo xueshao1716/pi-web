@@ -60,10 +60,11 @@ function populateModels(data) {
     }
     sel.appendChild(og);
   }
-  if (data.current) {
-    sel.value = `${data.current.provider}/${data.current.id}`;
-    // 记录当前模型（供模型自动路由提示等使用）
-    window.currentModelKey = `${data.current.provider}/${data.current.id}`;
+  // 会话级模型优先：当前会话自己切过模型则显示它，否则用全局默认
+  const cur = (currentId && sessionModels[currentId]) || (data.current ? `${data.current.provider}/${data.current.id}` : "");
+  if (cur && [...sel.options].some(o => o.value === cur)) {
+    sel.value = cur;
+    window.currentModelKey = cur;
   }
   // 用 onchange 而非 addEventListener：populateModels 会被多次调用，避免监听器重复叠加
   // 关键：程序赋值 sel.value 会触发 change → 必须用标志位跳过，否则刷新页面就自动切模型+注入上下文同步
@@ -87,7 +88,21 @@ async function switchModel(provider, modelId) {
     await new Promise(r => setTimeout(r, 300));
   }
   try {
+    // 新会话（currentId=null）切模型：不更新全局，只记 pending，发送时创建会话并应用
+    if (!currentId) {
+      window.pendingModel = `${provider}/${modelId}`;
+      $("input-model-name").textContent = modelId;
+      const data = await api("/api/models");
+      modelList = data.models; populateModels(data); updateFooter();
+      toast(`新会话将使用 → ${provider}/${modelId}`);
+      return;
+    }
     await api("/api/model", { method: "POST", body: { provider, modelId, sessionId: currentId } });
+    // 记录当前会话的模型（切换会话时恢复各自模型）
+    if (currentId) {
+      sessionModels[currentId] = `${provider}/${modelId}`;
+      try { localStorage.setItem("pi_session_models", JSON.stringify(sessionModels)); } catch {}
+    }
     $("input-model-name").textContent = modelId;
     const data = await api("/api/models");
     modelList = data.models; populateModels(data); updateFooter();
@@ -425,9 +440,29 @@ function renderChunk(list) {
   });
 })();
 
+// 同步模型下拉为指定会话的模型（会话切过则用它，否则用全局默认）
+function syncModelSelectForSession(id) {
+  const sel = $("model-select");
+  if (!sel || !sel.options.length) return;
+  const saved = (id && sessionModels[id]) || window.currentModelKey || (sel.options[0] ? sel.options[0].value : "");
+  if (id && sessionModels[id]) {
+    if ([...sel.options].some(o => o.value === sessionModels[id])) {
+      sel.value = sessionModels[id];
+      window.currentModelKey = sessionModels[id];
+      const opt = sel.selectedOptions[0];
+      if (opt) $("input-model-name").textContent = opt.dataset.modelId || "";
+      // 刷新后第一次打开：确保后端 agent 也用对模型（切过去，幂等）
+      const [provider, modelId] = sessionModels[id].split("/");
+      api("/api/model", { method: "POST", body: { provider, modelId, sessionId: id } }).catch(() => {});
+    }
+  }
+}
+
 async function selectSession(id) {
   currentId = id;
   try { localStorage.setItem("pi_last_session", id); } catch {}
+  // 切换会话：同步模型下拉为该会话自己的模型（避免显示上一个会话的模型）
+  syncModelSelectForSession(id);
   refreshEmotion(); // 切换会话同步情绪指示器
   currentLeafId = null; // 切换会话时重置分叉视图
   closeSidebar();
@@ -1323,6 +1358,16 @@ async function send() {
               }
               currentId = obj.sessionId;
               key = obj.sessionId; // 同步 key，否则 finally 的 currentKey()===key 判断失效
+              // 新会话应用切换时记的 pending 模型
+              if (window.pendingModel) {
+                const [pm, pmid] = window.pendingModel.split("/");
+                sessionModels[obj.sessionId] = window.pendingModel;
+                try { localStorage.setItem("pi_session_models", JSON.stringify(sessionModels)); } catch {}
+                api("/api/model", { method: "POST", body: { provider: pm, modelId: pmid, sessionId: obj.sessionId } }).catch(() => {});
+                window.pendingModel = null;
+                const opt = [...$("model-select").options].find(o => o.value === sessionModels[obj.sessionId]);
+                if (opt) $("input-model-name").textContent = opt.dataset.modelId || "";
+              }
             }
             flushNow();
             done = true;

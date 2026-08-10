@@ -4,6 +4,9 @@ let token = new URLSearchParams(location.search).get("token") || localStorage.ge
 let sessions = [];
 let currentId = null;
 let modelList = [];
+// 会话级模型记忆：sessionId -> "provider/modelId"（切换会话时恢复各自模型，避免串台）
+let sessionModels = {};
+try { sessionModels = JSON.parse(localStorage.getItem("pi_session_models") || "{}"); } catch {}
 
 console.log("pi-web v21");
 // PWA：注册 service worker
