@@ -1092,7 +1092,7 @@
   .msg-fork:hover { color: var(--accent); border-color: var(--accent); }
 
   /* ── 对话式消息布局：用户左 / 助手右，有主次感 ── */
-  .msg { max-width: 940px; margin: 0 auto; padding: 8px 4px 2px; animation: fadeIn .18s ease; display: flex; gap: 12px; align-items: flex-start; position: relative; flex-wrap: wrap; }
+  .msg { max-width: 760px; margin: 0 auto; padding: 8px 4px 2px; animation: fadeIn .18s ease; display: flex; gap: 12px; align-items: flex-start; position: relative; flex-wrap: wrap; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; } }
   .msg .who {
     display: flex; flex-direction: column; align-items: center; gap: 1px;
@@ -1185,13 +1185,13 @@
     border: 1px solid var(--border);
     border-radius: 16px 6px 16px 16px;
     padding: 8px 13px; font-size: 13px;
-    max-width: 72%;
+    max-width: 85%;
     box-shadow: 0 1px 4px rgba(0,0,0,.1);
   }
   /* 助手气泡：右侧主区域（主角） */
   .msg.assistant .bubble {
     flex: 0 1 auto;
-    max-width: 78%;
+    max-width: 88%;
     background: color-mix(in srgb, var(--panel) 55%, transparent);
     border: 1px solid var(--border);
     border-radius: 6px 16px 16px 16px;
@@ -1227,7 +1227,7 @@
 
   /* ── 工具调用卡片（美化版）── */
   .tool {
-    max-width: 940px; margin: 12px auto;
+    max-width: 760px; margin: 12px auto;
     background: linear-gradient(180deg, rgba(255,255,255,.015), transparent);
     border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
     font-size: 12.5px;
@@ -1354,7 +1354,7 @@
   /* ── 输入区 ── */
   #inputbar { flex-shrink: 0; padding: 8px 16px 12px; background: var(--bg); border-top: 1px solid transparent; }
   .input-shell {
-    max-width: 940px; margin: 0 auto; /* 与消息区一致，居中美观 */
+    max-width: 760px; margin: 0 auto; /* 与消息区一致，居中美观 */
     background: var(--panel-2); border: 1px solid var(--border);
     border-radius: 16px; padding: 12px 14px 10px;
     transition: border-color .15s, box-shadow .15s;
