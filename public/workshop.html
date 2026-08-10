@@ -7,7 +7,12 @@
 <link rel="icon" href="/static/icon-192.png">
 <link rel="stylesheet" href="/static/app.css">
 <style>
-  body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+  body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden;
+    background-image:
+      linear-gradient(to right, color-mix(in srgb, var(--border) 10%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, var(--border) 10%, transparent) 1px, transparent 1px);
+    background-size: 56px 56px; background-position: center;
+  }
   .w-top { display: flex; align-items: center; gap: 12px; padding: 10px 18px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(12px); flex-shrink: 0; }
   .w-top .back { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; text-decoration: none; }
   .w-top .back:hover { border-color: var(--accent); color: var(--accent); }
@@ -21,7 +26,7 @@
     transition: transform .15s, border-color .15s, box-shadow .15s;
     display: flex; flex-direction: column; gap: 10px;
   }
-  .w-card:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+  .w-card:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 10px 30px rgba(0,0,0,.35), 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent), 0 0 30px color-mix(in srgb, var(--accent) 10%, transparent); }
   .w-card .c-ico { font-size: 34px; }
   .w-card .c-name { font-size: 16px; font-weight: 700; }
   .w-card .c-desc { font-size: 12.5px; color: var(--dim); line-height: 1.7; flex: 1; }

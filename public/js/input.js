@@ -337,8 +337,9 @@ $("send").addEventListener("click", () => {
   if (c) c.abort();
 });
 $("new-session").addEventListener("click", newSession);
-$("btn-file").addEventListener("click", (e) => {
+$("dd-file").addEventListener("click", (e) => {
   e.stopPropagation();
+  $("attach-drop-menu").hidden = true;
   // 展开菜单：⬆ 上传本地文件 / 📁 浏览工作目录（两个选项都保留）
   const m = $("attach-menu");
   m.hidden = !m.hidden;
@@ -456,7 +457,7 @@ async function handleLocalFiles(files) {
     await handleLocalFiles([...e.dataTransfer.files]);
   });
 })();
-$("btn-cmd").addEventListener("click", () => { showSlashMenu(); $("input").focus(); });
+$("dd-cmd").addEventListener("click", () => { $("attach-drop-menu").hidden = true; showSlashMenu(); $("input").focus(); });
 
 // ══ 输入框模型选择器（快速切换当前会话模型）══
 function showInputModelMenu() {
@@ -710,8 +711,9 @@ function saveParams() {
   window.piParams = { temperature: Number($("pm-temp").value), top_p: Number($("pm-topp").value) };
   try { localStorage.setItem("pi_params", JSON.stringify(window.piParams)); } catch {}
 }
-$("btn-params").addEventListener("click", (e) => {
+$("dd-params").addEventListener("click", (e) => {
   e.stopPropagation();
+  $("attach-drop-menu").hidden = true;
   pm.hidden = !pm.hidden;
   closeFilePicker(); closeSlashMenu(); closeArchMenu?.();
 });
@@ -724,14 +726,15 @@ $("pm-reset").addEventListener("click", () => {
   $("pm-temp-val").textContent = "0.7"; $("pm-topp-val").textContent = "0.95";
   toast("已恢复默认参数");
 });
-document.addEventListener("click", (e) => { if (!e.target.closest("#params-menu") && e.target.id !== "btn-params") pm.hidden = true; });
+document.addEventListener("click", (e) => { if (!e.target.closest("#params-menu") && !e.target.closest("#attach-drop-menu") && e.target.id !== "dd-params") pm.hidden = true; });
 loadParams();
 
 // ══ 语音输入（借鉴 Open WebUI STT：浏览器 Web Speech API 录音转文字，无需 server 改动）══
 const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (SpeechRec) {
   let rec = null, listening = false;
-  $("btn-voice").addEventListener("click", () => {
+  const voiceBtn = () => $("dd-voice");
+  $("dd-voice").addEventListener("click", () => {
     if (listening) { try { rec.stop(); } catch {} return; }
     rec = new SpeechRec();
     rec.lang = "zh-CN";
@@ -749,20 +752,28 @@ if (SpeechRec) {
     };
     rec.onend = () => {
       listening = false;
-      $("btn-voice").textContent = "🎤";
-      $("btn-voice").style.color = "";
+      const b = voiceBtn(); if (b) { b.textContent = "🎤 语音输入"; b.style.color = ""; }
     };
     rec.onerror = (e) => { toast("语音识别: " + e.error); rec?.stop(); };
     listening = true;
-    $("btn-voice").textContent = "🔴";
-    $("btn-voice").style.color = "#ff6b6b";
+    const b = voiceBtn(); if (b) { b.textContent = "🔴 语音输入"; b.style.color = "#ff6b6b"; }
     toast("🎤 正在聆听… 再说一次可停止");
     rec.start();
   });
 } else {
-  $("btn-voice").title = "语音输入（浏览器不支持）";
-  $("btn-voice").style.opacity = "0.35";
+  const vb = $("dd-voice"); if (vb) { vb.title = "语音输入（浏览器不支持）"; vb.style.opacity = "0.35"; }
 }
+
+// ══ 输入区 "+" 更多菜单展开/收起 ══
+$("btn-more-input").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const m = $("attach-drop-menu");
+  m.hidden = !m.hidden;
+  closeFilePicker(); closeSlashMenu(); pm.hidden = true;
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#attach-drop") && !e.target.closest("#attach-menu") && !e.target.closest("#attach-drop-menu")) $("attach-drop-menu").hidden = true;
+});
 
 // ══ # 技能引用（类似 @ 文件引用：输入 # + 关键词 弹出技能列表，选中后作为引用文件附带）══
 let skillCache = null; // 技能列表缓存

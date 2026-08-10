@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="小语">
 <link rel="stylesheet" href="/static/vendor/github-dark.min.css" integrity="sha384-wH75j6z1lH97ZOpMOInqhgKzFkAInZPPSPlZpYKYTOqsaizPvhQZmAtLcPKXpLyH" crossorigin="anonymous">
-<link rel="stylesheet" href="/static/app.css?v=198">
-<link rel="stylesheet" href="/static/css/quantum.css?v=198">
+<link rel="stylesheet" href="/static/app.css?v=199">
+<link rel="stylesheet" href="/static/css/quantum.css?v=199">
 </head>
 <body>
 
@@ -169,10 +169,15 @@
           </div>
           <input type="file" id="local-file" multiple hidden>
           <div class="input-foot">
-            <button class="tool-btn" id="btn-file" title="引用文件">📎</button>
-            <button class="tool-btn" id="btn-cmd" title="斜杠命令">⚡</button>
-            <button class="tool-btn" id="btn-params" title="模型参数">⚙</button>
-            <button class="tool-btn" id="btn-voice" title="语音输入">🎤</button>
+            <div class="attach-drop" id="attach-drop">
+              <button class="tool-btn" id="btn-more-input" title="更多">+</button>
+              <div class="attach-drop-menu" id="attach-drop-menu" hidden>
+                <div class="attach-item" id="dd-file">📎 引用文件</div>
+                <div class="attach-item" id="dd-cmd">⚡ 斜杠命令</div>
+                <div class="attach-item" id="dd-params">⚙ 模型参数</div>
+                <div class="attach-item" id="dd-voice">🎤 语音输入</div>
+              </div>
+            </div>
             <div class="spacer"></div>
             <button class="tool-btn model-btn" id="input-model" title="切换当前模型">◈ <span id="input-model-name">…</span></button>
             <button id="send" title="发送（Enter）" hidden>↩</button>
@@ -439,16 +444,16 @@
   </div>
 </div>
 
-<script src="/static/js/core.js?v=198"></script>
-<script src="/static/js/registry.js?v=198"></script>
-<script src="/static/js/theme.js?v=198"></script>
-<script src="/static/js/chat.js?v=198"></script>
-<script src="/static/js/wallpaper.js?v=198"></script>
-<script src="/static/js/model.js?v=198"></script>
-<script src="/static/js/ui.js?v=198"></script>
-<script src="/static/js/workspace.js?v=198"></script>
-<script src="/static/js/designer.js?v=198"></script>
-<script src="/static/js/input.js?v=198"></script>
+<script src="/static/js/core.js?v=199"></script>
+<script src="/static/js/registry.js?v=199"></script>
+<script src="/static/js/theme.js?v=199"></script>
+<script src="/static/js/chat.js?v=199"></script>
+<script src="/static/js/wallpaper.js?v=199"></script>
+<script src="/static/js/model.js?v=199"></script>
+<script src="/static/js/ui.js?v=199"></script>
+<script src="/static/js/workspace.js?v=199"></script>
+<script src="/static/js/designer.js?v=199"></script>
+<script src="/static/js/input.js?v=199"></script>
 <script src="/static/js/workshop.js"></script>
 </body>
 </html>
