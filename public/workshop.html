@@ -92,6 +92,24 @@
 </div>
 
 <script>
+// ══ 主题同步：读取主工作台的 localStorage 主题，应用 CSS 变量（不引 theme.js，避免依赖主界面 DOM）══
+(() => {
+  try {
+    const key = localStorage.getItem("pi_theme") || "quantum";
+    // 从主界面 theme.js 的色板定义中取（同一份变量组）
+    const MAP = { accent:"--accent", accent2:"--accent-2", deep:"--accent-deep", bg:"--bg", sidebar:"--sidebar", panel:"--panel", panel2:"--panel-2", border:"--border", text:"--text", dim:"--dim", dim2:"--dim-2", green:"--green", red:"--red", yellow:"--yellow" };
+    const VARS = {
+      quantum: { accent:"#23e6ff", accent2:"#6f8bff", deep:"#0d7ff2", bg:"#05070e", sidebar:"#070b16", panel:"#0b1120", panel2:"#0e1628", border:"#1d2b4a", text:"#e8f0ff", dim:"#8ba0c8", dim2:"#47597c" },
+      linear: { accent:"#5e6ad2", accent2:"#828fff", deep:"#4c56b0", bg:"#010102", sidebar:"#0f1011", panel:"#141516", panel2:"#18191a", border:"#23252a", text:"#f7f8f8", dim:"#8a8f98", dim2:"#62666d" },
+      ops: { accent:"#2596be", accent2:"#4fb8dc", deep:"#1a708f", bg:"#0f1118", sidebar:"#12151d", panel:"#171b25", panel2:"#1c2130", border:"#2a3145", text:"#e4e9f2", dim:"#8b93a8", dim2:"#565f75" },
+      apple: { accent:"#0071e3", accent2:"#5aa7f0", deep:"#0055b3", bg:"#f2f5f9", sidebar:"#f8fafc", panel:"#ffffff", panel2:"#eef3f8", border:"#d5dfeb", text:"#1d1d1f", dim:"#6e6e73", dim2:"#a1a1a6" },
+    };
+    const vars = VARS[key] || VARS.quantum;
+    const r = document.documentElement.style;
+    for (const [k, v] of Object.entries(MAP)) { if (vars[k]) r.setProperty(v, vars[k]); }
+    document.documentElement.dataset.theme = VARS[key] ? key : "quantum";
+  } catch {}
+})();
 // ══ 独立页基础：token 读取 + 连接校验 ══
 const token = new URLSearchParams(location.search).get("token") || localStorage.getItem("pi_web_token") || "";
 async function api(path, opts = {}) {

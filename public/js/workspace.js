@@ -310,9 +310,23 @@ $("mm-notices").addEventListener("click", async () => {
         ? `⬆ 引擎有新版：${ud.engineLocal} → ${ud.engineLatest}`
         : `✅ 引擎最新（${ud.engineLocal || "?"}）`;
       updHtml = `\n\n### 更新状态\n${fePart}\n${engPart}`;
-      if (!ud.upToDate || ud.engineOutdated) {
-        updHtml += `\n\n[立即更新 →](${location.pathname}?action=update)`;
-      }
+      window.__checkUpdate = async () => {
+        try {
+          const d2 = await api("/api/update/check");
+          const fe2 = d2.upToDate ? `✅ 前端最新（${d2.local}）` : `⬆ 前端落后 ${d2.behind} 提交（${d2.local} → ${d2.remote}）`;
+          const en2 = d2.engineOutdated ? `⬆ 引擎有新版：${d2.engineLocal} → ${d2.engineLatest}` : `✅ 引擎最新（${d2.engineLocal || "?"}）`;
+          if (d2.upToDate && !d2.engineOutdated) {
+            await appConfirm(`✅ 全部最新\n\n${fe2}\n${en2}`, "检查更新");
+            return;
+          }
+          const ok = await appConfirm(`⬆ 检测到更新！\n\n${fe2}\n${en2}\n\n确定执行更新？（前端 git pull + 引擎升级 + 重启）`, "检查更新");
+          if (!ok) return;
+          const r = await api("/api/update/apply", { method: "POST", body: { engine: d2.engineOutdated } });
+          await appConfirm(r.message || "更新完成", "更新");
+          setTimeout(() => location.reload(), 10000);
+        } catch (e) { await appConfirm("检查更新失败：" + (e.message || e), "检查更新"); }
+      };
+      updHtml += `\n\n<button class="theme-new-btn" style="margin-top:8px" onclick="__checkUpdate()">🔧 检查 / 执行更新</button>`;
     } catch { updHtml = "\n\n### 更新状态\n（检查失败）"; }
     const d = await api("/api/notices");
     let html = `\n\n### 引擎更新（pi v${d.piVersion}）\n\n`;
@@ -320,7 +334,11 @@ $("mm-notices").addEventListener("click", async () => {
       html += d.releases.map(r => `**${r.tag}**（${r.date}）${r.name ? " " + r.name : ""}\n${escMd(r.body).slice(0, 220)}${r.body.length > 220 ? "…" : ""}\n`).join("\n");
     } else html += "（暂时拉取不到更新信息）\n";
     html += `\n### 能力看板（${d.capabilities.length} 项）\n` + d.capabilities.map(c => `- ${c.icon} **${c.name}**：${c.desc}`).join("\n");
-    $("nt-content").innerHTML = renderSimpleMd(SYS_INFO + updHtml + html);
+    $("nt-content").innerHTML = renderSimpleMd(SYS_INFO + updHtml.replace(/<button.*?<\/button>/, "") + html);
+    const btnWrap = document.createElement("div");
+    btnWrap.style.cssText = "text-align:left;margin-top:10px";
+    btnWrap.innerHTML = `<button class="theme-new-btn" onclick="__checkUpdate()">🔧 检查 / 执行更新</button>`;
+    $("nt-content").appendChild(btnWrap);
   } catch { $("nt-content").innerHTML = renderSimpleMd(SYS_INFO); }
 });
 $("nt-close").addEventListener("click", () => $("notices-modal").classList.remove("show"));
