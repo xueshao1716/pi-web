@@ -1092,18 +1092,19 @@
   .msg-fork:hover { color: var(--accent); border-color: var(--accent); }
 
   /* ── 对话式消息布局：用户左 / 助手右，有主次感 ── */
-  .msg { max-width: 940px; margin: 0 auto; padding: 18px 20px 2px; animation: fadeIn .18s ease; display: flex; gap: 10px; align-items: flex-start; position: relative; flex-wrap: wrap; }
+  .msg { max-width: 940px; margin: 0 auto; padding: 8px 4px 2px; animation: fadeIn .18s ease; display: flex; gap: 12px; align-items: flex-start; position: relative; flex-wrap: wrap; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; } }
   .msg .who {
-    display: flex; flex-direction: column; align-items: center; gap: 3px;
-    flex-shrink: 0; width: 38px; margin: 0;
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    flex-shrink: 0; width: 26px; margin: 2px 0 0;
   }
   .msg .who .name {
-    font-size: 10px; color: var(--dim); font-weight: 600; letter-spacing: 0;
+    font-size: 8.5px; color: var(--dim); font-weight: 600; letter-spacing: 0; max-width: 26px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .msg.user .who .name { color: var(--accent); }
   .msg .who .msg-time {
-    font-size: 9px; color: var(--dim-2); letter-spacing: 0; font-family: var(--mono);
+    font-size: 8px; color: var(--dim-2); letter-spacing: 0; font-family: var(--mono);
     text-transform: none;
   }
   /* 用户（你）在右，pi（助手）在左 */
@@ -1168,24 +1169,24 @@
   }
   .pal-hint { font-size: 11px; color: var(--dim-2); padding: 8px 12px 2px; letter-spacing: .5px; }
   .msg .who .avatar {
-    width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
-    font-size: 13px; font-weight: 800; color: #fff;
-    box-shadow: 0 2px 12px rgba(0,0,0,.35);
+    width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 800; color: #fff;
+    box-shadow: 0 1px 6px rgba(0,0,0,.3);
     border: 1px solid rgba(255,255,255,.15);
     transition: transform .2s ease, box-shadow .2s ease;
   }
   .msg:hover .who .avatar { transform: scale(1.08) rotate(-3deg); }
   .msg.user .who .avatar { background: linear-gradient(135deg, var(--accent-2), var(--accent-deep)); }
   .msg.assistant .who .avatar { background: linear-gradient(135deg, #5eead4, #2dd4bf); box-shadow: 0 2px 12px rgba(45,212,191,.3); }
-  .msg .bubble { line-height: 1.75; white-space: pre-wrap; word-wrap: break-word; font-size: 14px; min-width: 0; }
+  .msg .bubble { line-height: 1.65; white-space: pre-wrap; word-wrap: break-word; font-size: 13.5px; min-width: 0; }
   /* 用户气泡：左侧小气泡（次要） */
   .msg.user .bubble {
     background: var(--panel-2);
     border: 1px solid var(--border);
-    border-radius: 14px 4px 14px 14px;
-    padding: 10px 14px; font-size: 13.5px;
+    border-radius: 16px 6px 16px 16px;
+    padding: 8px 13px; font-size: 13px;
     max-width: 72%;
-    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+    box-shadow: 0 1px 4px rgba(0,0,0,.1);
   }
   /* 助手气泡：右侧主区域（主角） */
   .msg.assistant .bubble {
@@ -1193,10 +1194,10 @@
     max-width: 78%;
     background: color-mix(in srgb, var(--panel) 55%, transparent);
     border: 1px solid var(--border);
-    border-radius: 4px 14px 14px 14px;
-    padding: 14px 18px;
+    border-radius: 6px 16px 16px 16px;
+    padding: 11px 15px;
   }
-  .msg .bubble p { margin: 0 0 10px; }
+  .msg .bubble p { margin: 0 0 8px; }
   .msg .bubble p:last-child { margin-bottom: 0; }
   .msg .bubble pre {
     background: #0a0c12; border: 1px solid var(--border); border-radius: 10px;
@@ -1213,8 +1214,11 @@
   }
   .msg .bubble code { font-family: var(--mono); font-size: 12.5px; background: #0a0c12; padding: 1px 5px; border-radius: 4px; }
   .msg .bubble pre code { background: none; padding: 0; }
-  .msg .bubble h1,.msg .bubble h2,.msg .bubble h3 { margin: 14px 0 8px; color: var(--accent-2); }
-  .msg .bubble ul,.msg .bubble ol { padding-left: 22px; margin: 6px 0; }
+  .msg .bubble h1,.msg .bubble h2,.msg .bubble h3 { margin: 10px 0 6px; color: var(--accent-2); }
+  .msg .bubble h1 { font-size: 17px; }
+  .msg .bubble h2 { font-size: 15.5px; }
+  .msg .bubble h3 { font-size: 14px; }
+  .msg .bubble ul,.msg .bubble ol { padding-left: 22px; margin: 5px 0; }
   .msg .bubble a { color: var(--accent-2); }
   .msg .bubble blockquote { border-left: 3px solid var(--accent); padding-left: 12px; color: var(--dim); margin: 8px 0; }
   .msg .bubble table { border-collapse: collapse; margin: 8px 0; }
@@ -1448,7 +1452,7 @@
     .main-top { gap: 8px; padding: 10px 16px; }
     .main-top .session-name { max-width: 200px; }
     #notices-btn, #repair-btn, #sys-info-btn { display: inline-flex; } /* 小屏保留说明/看板入口 */
-    #messages .msg { padding: 16px 14px 2px; }
+    #messages .msg { padding: 10px 8px 2px; }
     #inputbar { padding: 10px 16px 14px; }
     .tool, .think-block { max-width: 100%; }
   }
@@ -1471,7 +1475,7 @@
     .status-pill { padding: 4px 7px; }
     .status-pill #status-text { display: none; } /* 手机端只留状态圆点 */
     .status-pill { padding: 5px 10px; font-size: 11px; }
-    #messages .msg { padding: 14px 14px 4px; max-width: 100%; }
+    #messages .msg { padding: 10px 8px 4px; max-width: 100%; }
     .msg .bubble { font-size: 13.5px; line-height: 1.65; }
     .msg.user .bubble { font-size: 13px; }
     #inputbar { padding: 8px 10px calc(10px + env(safe-area-inset-bottom)); }
@@ -1540,8 +1544,8 @@
   .tool:not(.expanded):not(.running) { opacity: .82; }
   .tool:not(.expanded):not(.running):hover { opacity: 1; }
   /* 消息间距节奏：相邻消息紧凑，用户/助手角色切换时留白呼吸 */
-  #messages .msg { padding-top: 10px; }
-  #messages .msg.user + .msg.assistant, #messages .msg.assistant + .msg.user { padding-top: 18px; }
+  #messages .msg { padding-top: 8px; }
+  #messages .msg.user + .msg.assistant, #messages .msg.assistant + .msg.user { padding-top: 14px; }
   #messages .msg + .tool { margin-top: 4px; }
   #messages .tool + .msg { margin-top: 14px; }
 
