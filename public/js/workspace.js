@@ -299,7 +299,8 @@ $("si-close").addEventListener("click", () => $("sysinfo-modal").classList.remov
 $("sysinfo-modal").addEventListener("click", (e) => { if (e.target === e.currentTarget) $("sysinfo-modal").classList.remove("show"); });
 
 // 🔔 消息看板（pi 更新 + 能力看板）
-$("notices-btn").addEventListener("click", async () => {
+$("mm-notices").addEventListener("click", async () => {
+  $("more-menu").hidden = true;
   $("nt-content").innerHTML = "<p>加载中…</p>";
   $("notices-modal").classList.add("show");
   try {

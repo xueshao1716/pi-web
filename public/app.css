@@ -24,6 +24,21 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { height: 100%; }
   body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; overflow: hidden; }
+  /* 未来感基底：极细网格线 + 柔和光斑（Linear/科技界面标志） */
+  #main {
+    background-image:
+      radial-gradient(900px 420px at 85% -10%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 60%),
+      radial-gradient(700px 320px at 5% 112%, color-mix(in srgb, var(--accent) 3%, transparent), transparent 60%),
+      linear-gradient(to right, transparent calc(100% - 1px), color-mix(in srgb, var(--border) 30%, transparent) calc(100% - 1px));
+  }
+  /* 主画布背景网格（未来科技感） */
+  #messages {
+    background-image:
+      linear-gradient(to right, color-mix(in srgb, var(--border) 12%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, var(--border) 12%, transparent) 1px, transparent 1px);
+    background-size: 48px 48px;
+    background-position: center;
+  }
   /* ── 设计升级：噪点纹理层（全局氛围，不遮交互）── */
   body::after {
     content: ""; position: fixed; inset: 0; z-index: 9999; pointer-events: none;
@@ -1080,7 +1095,13 @@
   @media (max-width: 480px) { .emo-pill { min-width: 28px; height: 28px; font-size: 14px; } }
 
   /* ── 消息区 ── */
-  #messages { flex: 1; overflow-y: auto; min-height: 0; scroll-behavior: smooth; padding-bottom: 6px; }
+  #messages { flex: 1; overflow-y: auto; min-height: 0; scroll-behavior: smooth; padding-bottom: 6px;
+    background-image:
+      linear-gradient(to right, color-mix(in srgb, var(--border) 14%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, var(--border) 14%, transparent) 1px, transparent 1px);
+    background-size: 48px 48px;
+    background-position: center;
+  }
   /* 分叉按钮（悬停消息显示） */
   .msg-fork {
     position: absolute; top: 8px; right: 8px;

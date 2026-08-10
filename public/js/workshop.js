@@ -3,7 +3,8 @@
 // - /workshop        工作台首页（三专项卡片）
 // - /workshop/ppt    PPT 工作室独立页
 // - /workshop/article、/workshop/video 即将上线
-$("workshop-btn").addEventListener("click", () => {
+$("mm-workshop").addEventListener("click", () => {
+  $("more-menu").hidden = true;
   const t = new URLSearchParams(location.search).get("token") || localStorage.getItem("pi_web_token") || "";
   const sep = t ? "?token=" + encodeURIComponent(t) : "";
   location.href = "/workshop" + sep;

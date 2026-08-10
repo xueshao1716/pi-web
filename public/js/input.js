@@ -307,7 +307,8 @@ $("compact-dismiss").addEventListener("click", () => {
 });
 
 // ══ 导出会话 ══
-$("export-btn").addEventListener("click", async () => {
+$("mm-export").addEventListener("click", async () => {
+  $("more-menu").hidden = true;
   if (!currentId) return toast("当前无会话");
   // token 不走 URL（避免进浏览器历史/服务器日志/referrer），改用请求头，fetch 后 Blob 下载
   try {

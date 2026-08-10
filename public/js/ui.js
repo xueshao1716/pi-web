@@ -8,7 +8,7 @@ const PALETTE_CMDS = [
   { icon: "⚡", label: "管理自定义斜杠命令", kbd: "", run: () => openSlashManage() },
   { icon: "🎨", label: "打开主题编辑器", kbd: "", run: () => openThemeModal() },
   { icon: "⚙", label: "模型管理（API Key / Base URL）", kbd: "", run: () => openModelManage() },
-  { icon: "⬇", label: "导出当前会话", kbd: "", run: () => $("export-btn").click() },
+  { icon: "⬇", label: "导出当前会话", kbd: "", run: () => $("mm-export")?.click() },
   { icon: "📊", label: "会话统计（token/成本）", kbd: "", run: () => openStats() },
   { icon: "⌨️", label: "快捷键面板", kbd: "Ctrl+/", run: () => openKeysPanel() },
 ];
