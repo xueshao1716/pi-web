@@ -1141,7 +1141,7 @@ async function handleImageWithSave(res, req, body) {
 
 // POST /api/models/remove {provider}
 // 内置 provider（走 pi agent）；其余自定义 provider 走直调通道
-const KNOWN_PROVIDERS = new Set(["deepseek", "openai", "openrouter", "anthropic", "google", "qwen", "xai", "moonshotai", "zai", "together", "mistral"]);
+const KNOWN_PROVIDERS = new Set(["deepseek", "openai", "openrouter", "anthropic", "google", "qwen", "xai", "moonshotai", "zai", "together", "mistral", "opencode-go"]);
 
 // 解析 provider 的认证：优先 auth.json，其次环境变量（如 OPENROUTER_API_KEY）
 function resolveAuth(provider) {
