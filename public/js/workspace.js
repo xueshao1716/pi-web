@@ -301,14 +301,27 @@ $("mm-notices").addEventListener("click", async () => {
   $("notices-modal").querySelector(".modal-head span").textContent = "📋 关于 · 能力 · 更新";
   $("notices-modal").classList.add("show");
   try {
+    // 前端更新检测
+    let updHtml = "";
+    try {
+      const ud = await api("/api/update/check");
+      const fePart = ud.upToDate ? `✅ 前端最新（${ud.local}）` : `⬆ 前端落后 ${ud.behind} 提交（${ud.local} → ${ud.remote}）`;
+      const engPart = ud.engineOutdated
+        ? `⬆ 引擎有新版：${ud.engineLocal} → ${ud.engineLatest}`
+        : `✅ 引擎最新（${ud.engineLocal || "?"}）`;
+      updHtml = `\n\n### 更新状态\n${fePart}\n${engPart}`;
+      if (!ud.upToDate || ud.engineOutdated) {
+        updHtml += `\n\n[立即更新 →](${location.pathname}?action=update)`;
+      }
+    } catch { updHtml = "\n\n### 更新状态\n（检查失败）"; }
     const d = await api("/api/notices");
     let html = `\n\n### 引擎更新（pi v${d.piVersion}）\n\n`;
     if (d.releases.length) {
       html += d.releases.map(r => `**${r.tag}**（${r.date}）${r.name ? " " + r.name : ""}\n${escMd(r.body).slice(0, 220)}${r.body.length > 220 ? "…" : ""}\n`).join("\n");
     } else html += "（暂时拉取不到更新信息）\n";
     html += `\n### 能力看板（${d.capabilities.length} 项）\n` + d.capabilities.map(c => `- ${c.icon} **${c.name}**：${c.desc}`).join("\n");
-    $("nt-content").innerHTML = renderSimpleMd(html);
-  } catch { $("nt-content").innerHTML = "<p>加载失败</p>"; }
+    $("nt-content").innerHTML = renderSimpleMd(SYS_INFO + updHtml + html);
+  } catch { $("nt-content").innerHTML = renderSimpleMd(SYS_INFO); }
 });
 $("nt-close").addEventListener("click", () => $("notices-modal").classList.remove("show"));
 $("notices-modal").addEventListener("click", (e) => { if (e.target === e.currentTarget) $("notices-modal").classList.remove("show"); });
@@ -323,32 +336,29 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest(".tool-more")) $("more-menu").hidden = true;
 });
 
-// ⬆ 在线更新（前端 git + 后端引擎 一起检测，一键拉取重启）
-$("mm-update").addEventListener("click", async () => {
-  const btn = $("mm-update");
-  $("more-menu").hidden = true;
-  btn.textContent = "⏳ 检查中…";
-  try {
-    const d = await api("/api/update/check");
-    const fePart = d.upToDate ? `✅ 前端最新（${d.local}）` : `⬆ 前端落后 ${d.behind} 提交（${d.local} → ${d.remote}）`;
-    const engPart = d.engineOutdated
-      ? `⬆ 引擎有新版：${d.engineLocal} → ${d.engineLatest}`
-      : `✅ 引擎最新（${d.engineLocal || "?"}）`;
-    if (d.upToDate && !d.engineOutdated) {
-      await appConfirm(`✅ 全部最新\n\n${fePart}\n${engPart}`, "检查更新");
-    } else {
+// ⬆ 更新执行（从「关于·能力·更新」看板的立即更新链接触发）
+if (new URLSearchParams(location.search).get("action") === "update") {
+  (async () => {
+    try {
+      const d = await api("/api/update/check");
+      const fePart = d.upToDate ? `✅ 前端最新（${d.local}）` : `⬆ 前端落后 ${d.behind} 提交（${d.local} → ${d.remote}）`;
+      const engPart = d.engineOutdated
+        ? `⬆ 引擎有新版：${d.engineLocal} → ${d.engineLatest}`
+        : `✅ 引擎最新（${d.engineLocal || "?"}）`;
+      if (d.upToDate && !d.engineOutdated) {
+        await appConfirm(`✅ 全部最新\n\n${fePart}\n${engPart}`, "检查更新");
+        return;
+      }
       const ok = await appConfirm(`⬆ 检测到更新！\n\n${fePart}\n${engPart}\n\n确定执行更新？（前端 git pull + 引擎升级 + 重启）`, "检查更新");
       if (!ok) return;
       const r = await api("/api/update/apply", { method: "POST", body: { engine: d.engineOutdated } });
       await appConfirm(r.message || "更新完成", "更新");
       setTimeout(() => location.reload(), 10000);
+    } catch (e) {
+      await appConfirm("检查更新失败：" + (e.message || e), "检查更新");
     }
-  } catch (e) {
-    await appConfirm("检查更新失败：" + (e.message || e), "检查更新");
-  } finally {
-    btn.textContent = "⬆ 检查更新";
-  }
-});
+  })();
+}
 
 // 🛠 自愈修复（SSE 日志 → 自动重启 → 恢复）
 $("mm-repair").addEventListener("click", async () => {
