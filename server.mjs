@@ -35,8 +35,26 @@ const SESSIONS_DIR = path.join(getAgentDir(), "sessions", encodeCwdDir(CONFIG.cw
 console.log(`[pi-web] 会话目录: ${SESSIONS_DIR}`);
 
 console.log("[pi-web] 正在初始化模型运行时…");
+// OpenCode Go：pi runtime 从环境变量 OPENCODE_API_KEY 读 key——必须在 ModelRuntime.create() 前注入
+// （auth.json 在 AGENT_DIR 下，从文件读，不依赖启动 shell 环境）
+try {
+  if (!process.env.OPENCODE_API_KEY) {
+    const authPath0 = require("node:path").join(getAgentDir(), "auth.json");
+    const fs0 = require("node:fs");
+    if (fs0.existsSync(authPath0)) {
+      const auth0 = JSON.parse(fs0.readFileSync(authPath0, "utf8"));
+      const ocKey = auth0["opencode-go"]?.key || auth0["opencode"]?.key;
+      if (ocKey) process.env.OPENCODE_API_KEY = ocKey;
+    }
+  }
+} catch {}
 let modelRuntime = await ModelRuntime.create();
 console.log(`[pi-web] 模型运行时加载完成`);
+// 诊断：确认 opencode-go provider 是否被 pi runtime 识别
+try {
+  const ogCount = modelRuntime.getModels().filter(m => m.provider === "opencode-go").length;
+  console.log(`[pi-web] opencode-go 模型数: ${ogCount}`);
+} catch {}
 
 // ── 模型列表（从 models-store.json 构建：白名单精选 + 用户后添加的 provider 全部显示）──
 let modelList = [];
