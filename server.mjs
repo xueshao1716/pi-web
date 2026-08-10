@@ -400,6 +400,127 @@ async function slimSessionImages(file) {
   }
 }
 
+// 分层记忆（compaction）：会话历史超过上下文窗口阈值时，把早期消息压缩成摘要
+// 原理：pi 引擎原生支持 compaction——context.js 读上下文时自动用摘要替代其之前所有消息
+// 实现：自己算 cutPoint + directChat 生成摘要 + 重写文件（parentId 重链到 compaction 条目）
+let compactingSessions = new Set();
+
+async function compactSession(file, model) {
+  if (compactingSessions.has(file)) return; // 防重入
+  compactingSessions.add(file);
+  let sm = null;
+  try {
+    const st = fs.statSync(file);
+    // 只有超大会话（>3MB 或估算超阈值）才压缩，避免小会话频繁触发
+    if (st.size < 3 * 1024 * 1024) return;
+    // 用引擎打开会话（pi-coding-agent 的 SessionManager，fileEntries 公开且完整）
+    sm = SessionManager.open(file, path.dirname(file), CONFIG.cwd);
+    const entries = sm.fileEntries || [];
+    const msgs = entries.filter(e => e.type === "message");
+    if (msgs.length < 8) return; // 消息太少不值得压（有超大图片的会话 10+ 条就够）
+    // 已有 compaction 且后续消息不多 → 跳过（避免每次打开都压）
+    let lastCompIdx = -1;
+    for (let i = entries.length - 1; i >= 0; i--) { if (entries[i].type === "compaction") { lastCompIdx = i; break; } }
+    if (lastCompIdx >= 0 && entries.length - lastCompIdx < 40) return;
+    // 估算会话 token（中文≈1.5/字，其他≈0.35/字符）——超阈值才压缩
+    const estTok = msgs.reduce((s, e) => {
+      const txt = JSON.stringify(e.message || {});
+      const cn = (txt.match(/[\u4e00-\u9fff]/g) || []).length;
+      return s + Math.round(cn * 1.5 + (txt.length - cn) * 0.35);
+    }, 0);
+    const threshold = Math.min(300_000, Math.round((model?.contextWindow || 1_000_000) * 0.7));
+    if (estTok < threshold) return;
+    // 保留最近约 30K token 的消息（其余压掉），从 cut 消息沿 parentId 收集整条保留链
+    const keepBudget = 30000;
+    let keepFrom = msgs.length;
+    let acc = 0;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const txt = JSON.stringify(msgs[i].message || {});
+      const cn = (txt.match(/[\u4e00-\u9fff]/g) || []).length;
+      acc += Math.round(cn * 1.5 + (txt.length - cn) * 0.35);
+      if (acc >= keepBudget) { keepFrom = i; break; }
+    }
+    keepFrom = Math.max(4, Math.min(keepFrom, msgs.length - 2)); // 至少留 2 条，最多压到剩 4 条以下
+    const cutMsg = msgs[keepFrom];
+    const toSummarize = msgs.slice(0, keepFrom);
+    if (toSummarize.length < 6) return;
+    // 组装摘要输入（截断到合理长度）
+    const parts = [];
+    for (const e of toSummarize) {
+      const m = e.message || {};
+      const role = m.role || "?";
+      let text = "";
+      const content = m.content;
+      if (typeof content === "string") text = content.slice(0, 1500);
+      else if (Array.isArray(content)) {
+        text = content.map(p => (typeof p === "string" ? p : p?.text || (p?.type === "image" ? "[图片]" : ""))).join(" ").slice(0, 1500);
+      }
+      if (role === "toolResult") text = `[工具结果 ${m.toolName || ""}] ${text.slice(0, 150)}`;
+      if (text.trim()) parts.push(`${role}: ${text}`);
+    }
+    const inputText = parts.join("\n").slice(0, 120_000);
+    if (!inputText.trim()) return;
+    // 用便宜模型生成摘要（deepseek 官方直连，稳定不烧 opencode 余额）
+    const summaryModel = modelList.find(x => x.provider === "deepseek") || model;
+    const prompt = `你是会话摘要助手。以下是 AI 助手与用户的一段早期对话记录。请用简洁的中文总结：
+1. 用户的核心诉求与任务目标
+2. 已完成的事项与关键决策
+3. 重要约定/路径/技术选型（保留具体文件名、路径、命令）
+4. 遗留问题或待办
+要求：只留关键信息，总长不超过 400 字，用要点列表。
+
+对话记录：
+${inputText}`;
+    const r = await directChat(summaryModel, prompt, []);
+    const summary = (r?.text || "").trim().slice(0, 3000);
+    if (!summary) return;
+    // 构造新文件：非消息条目 + compaction + 保留消息链（parentId 重链到 compaction）
+    const compId = `comp_${Date.now().toString(36)}`;
+    const compEntry = {
+      type: "compaction", id: compId, parentId: null,
+      timestamp: new Date().toISOString(), summary, firstKeptEntryId: cutMsg.id, tokensBefore: estTok,
+      details: { via: "pi-web-auto" },
+    };
+    // 保留链条：从 cutMsg 沿 parentId 收集所有后代
+    const byId = new Map(entries.map(e => [e.id, e]));
+    const byParent = new Map();
+    for (const m of msgs) {
+      const p = m.parentId;
+      if (!byParent.has(p)) byParent.set(p, []);
+      byParent.get(p).push(m);
+    }
+    const retained = [];
+    const stack = [cutMsg.id];
+    while (stack.length) {
+      const id = stack.pop();
+      const m = byId.get(id);
+      if (!m || m.type !== "message") continue;
+      retained.push(m);
+      for (const child of (byParent.get(id) || [])) stack.push(child.id);
+    }
+    retained.sort((a, b) => entries.findIndex(e => e.id === a.id) - entries.findIndex(e => e.id === b.id));
+    // 新数组：非消息条目（保持原序）+ compaction + 保留消息
+    const newEntries = [];
+    for (const e of entries) { if (e.type !== "message") newEntries.push(e); }
+    newEntries.push(compEntry);
+    let first = true;
+    for (const m of retained) {
+      const copy = { ...m };
+      if (first) { copy.parentId = compId; first = false; }
+      newEntries.push(copy);
+    }
+    // 备份 + 重写（SessionManager 的 _rewriteFile 全量写 fileEntries）
+    try { fs.copyFileSync(file, file + ".bak"); } catch {}
+    sm.fileEntries = newEntries;
+    sm._rewriteFile();
+    console.log(`[pi-web] 分层记忆: ${file.split(/[\\/]/).pop()} ${(estTok / 1000).toFixed(0)}K→摘要(${summary.length}字), 保留 ${retained.length} 条消息`);
+  } catch (e) {
+    console.log(`[pi-web] 分层记忆跳过: ${String(e?.message || e).slice(0, 120)}`);
+  } finally {
+    compactingSessions.delete(file);
+  }
+}
+
 async function openSession(id) {
   if (activeSessions.has(id)) {
     const hit = activeSessions.get(id);
@@ -411,6 +532,8 @@ async function openSession(id) {
   if (!found || !found.file || !fs.existsSync(found.file)) return null;
   // 超大会话先瘦身（避免加载 20MB+ 历史）
   await slimSessionImages(found.file);
+  // 分层记忆：会话历史超阈值时压缩早期消息为摘要（pi 引擎原生支持 compaction 条目）
+  try { await compactSession(found.file, defaultModel); } catch {}
   const sessionCwd = found.cwd || CONFIG.cwd;
   let sm;
   try {
