@@ -456,9 +456,12 @@ async function createSessionAgent(sm, model) {
 // 确保 entry 的 agent 存在（直调通道后 agent 可能被销毁，从 session 文件重建以恢复记忆）
 async function ensureAgent(entry, model) {
   if (entry.agent) return entry.agent;
-  const agent = await createSessionAgent(entry.sm, model || defaultModel);
+  // 会话级模型优先：会话自己切过模型则用它，否则用传入的（默认全局）
+  const effModel = (entry?.modelKey && modelList.find(m => m.provider === entry.modelKey.provider && m.id === entry.modelKey.id))
+    || model || defaultModel;
+  const agent = await createSessionAgent(entry.sm, effModel);
   entry.agent = agent;
-  console.log(`[pi-web] agent 重建（直调后恢复记忆）`);
+  console.log(`[pi-web] agent 重建（模型 ${effModel?.provider}/${effModel?.id}）`);
   return agent;
 }
 
@@ -1601,24 +1604,31 @@ async function handleSwitchModel(req, res, body) {
   const m = modelList.find(x => x.provider === body.provider && x.id === body.modelId);
   if (!m) return json(res, 404, { error: `模型未找到: ${body.provider}/${body.modelId}` });
   const switched = !(defaultModel?.provider === m.provider && defaultModel?.id === m.id);
-  defaultModel = m;
   // 完整 runtime 模型（含 compat/thinkingFormat，简版模型会导致 agent 通道 reasoning 处理异常）
   let fullModel = m;
   try {
     fullModel = modelRuntime.getModels().find(x => x.provider === m.provider && x.id === m.id) || m;
   } catch {}
-  // 只切换指定会话的模型；正在生成的会话不打断（避免静默无输出）
+  // 会话级切换：只改指定会话的模型，不动全局 defaultModel（避免污染其他会话）
   if (body.sessionId && activeSessions.has(body.sessionId)) {
     const entry2 = activeSessions.get(body.sessionId);
-    if (!entry2.busy) {
-      try {
-        const ag = await ensureAgent(entry2, fullModel);
-        await ag.setModel(fullModel);
-        // 只有模型真的变了才注入上下文同步（同一模型重复切换不注入，避免刷屏污染会话）
-        if (switched) { try { await syncContextAfterSwitch(entry2, m); } catch {} }
-      } catch {}
+    // 记录会话自己的模型选择（会话重启时恢复）
+    try { entry2.modelKey = { provider: m.provider, id: m.id }; } catch {}
+    // 销毁旧 agent 强制新模型生效（setModel 可能因 busy 不生效，重建最稳）
+    if (entry2.agent && !entry2.busy) {
+      try { entry2.agent.dispose(); } catch {}
+      entry2.agent = null;
     }
+    // 重建 agent（ensureAgent 会用 entry.modelKey 的新模型）
+    try {
+      await ensureAgent(entry2, fullModel);
+      if (switched) { try { await syncContextAfterSwitch(entry2, m); } catch {} }
+    } catch {}
+    json(res, 200, { ok: true, model: { provider: m.provider, id: m.id }, sessionScoped: true });
+    return;
   }
+  // 无 sessionId → 更新全局默认（新会话用）
+  defaultModel = m;
   json(res, 200, { ok: true, model: { provider: m.provider, id: m.id } });
 }
 
