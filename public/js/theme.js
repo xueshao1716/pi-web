@@ -29,6 +29,7 @@ function makeVars(accent, accent2, deep, bg, sidebar, panel, panel2, border, tex
   };
 }
 const THEMES = {
+  apple:   { label:"苹果风", vars: makeVars("#0071e3","#5aa7f0","#0055b3","#f2f5f9","#f8fafc","#ffffff","#eef3f8","#d5dfeb","#1d1d1f","#6e6e73","#a1a1a6", 0.3) },
   quantum: { label:"量子引擎", vars: makeVars("#23e6ff","#6f8bff","#0d7ff2","#05070e","#070b16","#0b1120","#0e1628","#1d2b4a","#e8f0ff","#8ba0c8","#47597c", 0.9) },
   violet:  { label:"紫罗兰", vars: makeVars("#8b7cf6","#a394ff","#6d5ce7","#0b0c0f","#0f1116","#14161d","#171a22","#262b38","#e6e8ee","#8a91a5","#5c6375") },
   sky:     { label:"天蓝",   vars: makeVars("#38bdf8","#7dd3fc","#0ea5e9","#0a1118","#0d1620","#12202c","#162634","#1e3a4f","#e2edf7","#7f9db5","#51697e") },

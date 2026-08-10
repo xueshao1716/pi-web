@@ -758,6 +758,7 @@ function addUserMsg(text, id) {
   const box = $("messages");
   const el = document.createElement("div");
   el.className = "msg user";
+  el.style.setProperty("--i", box.children.length);
   if (id) el.dataset.msgId = id;
   el.innerHTML = `<div class="who"><span class="avatar">你</span><span class="name">你</span><span class="msg-time">${nowTime()}</span></div><div class="bubble">${esc(text).replace(/\n/g, "<br>")}</div>${id ? `<button class="msg-fork" title="从这里分叉">↳</button>` : ""}`;
   if (id) bindFork(el, id);
@@ -776,6 +777,7 @@ function addAssistantMsg(text, ts, id) {
   const box = $("messages");
   const el = document.createElement("div");
   el.className = "msg assistant";
+  el.style.setProperty("--i", box.children.length);
   if (id) el.dataset.msgId = id;
   el.innerHTML = `<div class="who"><span class="avatar">π</span><span class="name">小语</span><span class="msg-time">${fmtTs(ts)}</span></div><div class="bubble"></div>${id ? `<button class="msg-fork" title="从这里分叉">↳</button>` : ""}`;
   if (id) bindFork(el, id);
@@ -812,6 +814,8 @@ function appendDelta(text) {
   if (!render.assistantEl) {
     const el = document.createElement("div");
     el.className = "msg assistant";
+    // 入场动画序号（staggered reveal）
+    el.style.setProperty("--i", box.children.length);
     el.innerHTML = `<div class="who"><span class="avatar">π</span><span class="name">小语</span><span class="msg-time">${nowTime()}</span></div><div class="bubble"></div>`;
     box.appendChild(el);
     render.assistantEl = { el, bubble: el.querySelector(".bubble") };
