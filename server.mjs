@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { CONFIG } from "./config.mjs";
 const memoryApi = await import("./memory.mjs");
 const emotion = await import("./emotion.mjs");
+emotion.init(CONFIG.cwd); // 基因系统：加载人格基因 + 提案池
 const workshop = await import("./workshop.mjs");
 const { WORKSHOP_PAGES } = workshop;
 
@@ -1108,7 +1109,7 @@ async function handleImage(res, body) {
 
 // 出图后自动落盘到本地（生成物/图片/日期），返回本地 URL——稳定展示 + 留档
 // 避免第三方 OSS 链接不稳定导致页面图不展示
-async function handleImageWithSave(res, body) {
+async function handleImageWithSave(res, req, body) {
   let payload = null;
   const origJson = json;
   // 拦截 handleImage 内部的 json(res, ...)，吞掉输出，捕获结果
@@ -1127,6 +1128,12 @@ async function handleImageWithSave(res, body) {
   if (payload && payload.code === 200 && payload.obj?.image) {
     const saved = await saveArtifact({ type: "image", url: payload.obj.image }).catch(() => null);
     if (saved) payload.obj.image = saved;
+    // 相对路径补全为绝对 URL（按实际访问 Host，本地/公网都可用）——修复"每次手动拼 127.0.0.1:8787"的坑
+    if (typeof payload.obj.image === "string" && payload.obj.image.startsWith("/")) {
+      const host = req?.headers?.host || "127.0.0.1:8787";
+      const proto = req?.headers?.["x-forwarded-proto"]?.startsWith("https") ? "https" : "http";
+      payload.obj.image = `${proto}://${host}${payload.obj.image}`;
+    }
   }
   // 统一输出（只发一次）
   try { json(res, payload?.code || 500, payload?.obj || { error: "未知错误" }); } catch {}
@@ -3728,6 +3735,27 @@ function handleEmotion(res, url) {
 const API_ROUTES = [
   // ── 会话 ──
   ["GET", "/api/emotion", (res, req, url) => handleEmotion(res, url)],
+  // ── 人格基因 + 提案制进化 ──
+  ["GET", "/api/genome", (res) => json(res, 200, emotion.getGenome())],
+  ["POST", "/api/genome/propose", async (res, req) => {
+    const b = await readBody(req);
+    const p = emotion.proposeBaselineChange(b?.gene, b?.value, b?.reason, b?.evidence);
+    if (!p) return json(res, 400, { error: "提案无效（基因不存在或变化太小）" });
+    json(res, 200, { ok: true, proposal: p });
+  }],
+  ["POST", "/api/genome/approve", async (res, req) => {
+    const b = await readBody(req);
+    json(res, 200, emotion.approveProposal(b?.proposal_id, b?.reviewer || "operator"));
+  }],
+  ["POST", "/api/genome/reject", async (res, req) => {
+    const b = await readBody(req);
+    json(res, 200, emotion.rejectProposal(b?.proposal_id, b?.reviewer || "operator", b?.reason));
+  }],
+  ["POST", "/api/genome/rollback", async (res, req) => {
+    const b = await readBody(req);
+    json(res, 200, emotion.rollbackSnapshot(b?.snapshot_id));
+  }],
+  ["POST", "/api/genome/auto", async (res) => json(res, 200, { proposals: emotion.autoProposeFromDrift() })],
   ["GET", /^\/api\/sessions\/([^/]+)\/tree$/, (res, req, url, m) => handleSessionTree(res, decodeURIComponent(m[1]))],
   ["POST", /^\/api\/sessions\/([^/]+)\/branch$/, async (res, req, url, m) => handleSessionBranch(res, decodeURIComponent(m[1]), await readBody(req))],
   ["GET", /^\/api\/sessions\/([^/]+)\/messages$/, (res, req, url, m) => handleMessages(res, decodeURIComponent(m[1]), req, url)],
@@ -3827,7 +3855,7 @@ const API_ROUTES = [
   ["POST", "/api/model", async (res, req) => handleSwitchModel(req, res, await readBody(req))],
   // ── 媒体/对话 ──
   ["POST", "/api/think", async (res, req) => handleThink(res, await readBody(req))],
-  ["POST", "/api/image", async (res, req) => handleImageWithSave(res, await readBody(req))],
+  ["POST", "/api/image", async (res, req) => handleImageWithSave(res, req, await readBody(req))],
   ["POST", "/api/media", async (res, req) => handleMedia(res, await readBody(req))],
   ["POST", "/api/chat", async (res, req) => handleChat(req, res, await readBody(req, 12))],
   ["POST", "/api/compare", async (res, req) => handleCompare(res, await readBody(req))],

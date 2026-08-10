@@ -16,6 +16,7 @@ export function syncMemoryToTui() {
     const memory = read(path.join(WS, "记忆.md"));
     const log = read(path.join(WS, "记忆", "记忆日志.md"));
     const exp = read(path.join(WS, "工程", "经验库", "experience.md"));
+    const skills = read(path.join(WS, "记忆", "技能记忆.md"));
 
     const expRecent = exp ? exp.split(/\n### /).slice(-6).map(b => "### " + b.trim()).join("\n") : "";
 
@@ -27,6 +28,10 @@ export function syncMemoryToTui() {
 ## 固定记忆（记忆.md）
 
 ${memory || "（无）"}
+
+## 技能记忆（记忆/技能记忆.md）
+
+${skills || "（无）"}
 
 ## 最近记忆日志
 
