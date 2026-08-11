@@ -2676,11 +2676,14 @@ function createRepairCheckpoint() {
 
 // ══ 在线更新（git pull + 重启）══
 // 检查更新：对比本地 HEAD 和远程 origin/main
+// ⚠️ 代理根治：本机 git 全局/系统代理可能指向未运行的 7890（死代理）→ git 全卡死。
+//    git 命令统一加 -c http.proxy= -c https.proxy= 绕过系统代理直连。
+const GIT_NO_PROXY = ["-c", "http.proxy=", "-c", "https.proxy="];
 async function handleUpdateCheck(res) {
   try {
     const { execFile } = await import("node:child_process");
     const run = (args) => new Promise((resolve) => {
-      execFile("git", ["-C", __dirname, ...args], { encoding: "utf8", timeout: 20000 }, (err, stdout) => resolve({ ok: !err, out: String(stdout || "").trim() }));
+      execFile("git", ["-C", __dirname, ...GIT_NO_PROXY, ...args], { encoding: "utf8", timeout: 20000 }, (err, stdout) => resolve({ ok: !err, out: String(stdout || "").trim() }));
     });
     const [localR, remoteR, behindR] = await Promise.all([
       run(["rev-parse", "HEAD"]),
@@ -2728,7 +2731,7 @@ async function handleUpdateApply(res, body) {
   try {
     const { execFile, spawn } = await import("node:child_process");
     const run = (args) => new Promise((resolve) => {
-      execFile("git", ["-C", __dirname, ...args], { encoding: "utf8", timeout: 60000 }, (err, stdout) => resolve({ ok: !err, out: String(stdout || "").trim(), err: String(err?.message || "").slice(0, 200) }));
+      execFile("git", ["-C", __dirname, ...GIT_NO_PROXY, ...args], { encoding: "utf8", timeout: 60000 }, (err, stdout) => resolve({ ok: !err, out: String(stdout || "").trim(), err: String(err?.message || "").slice(0, 200) }));
     });
     const msgs = [];
     // 1. 引擎升级（如需）
