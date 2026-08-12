@@ -13,6 +13,7 @@ export const WORKSHOP_PAGES = {
   "/workshop/designer": "workshop-designer.html",
   "/workshop/wanxiang": "workshop-wanxiang.html",
   "/workshop/novel": "workshop-novel.html",
+  "/workshop/refine": "workshop-refine.html",
   "/workshop/article": "workshop-article.html",
   "/workshop/video": "workshop-video.html",
 };
@@ -44,6 +45,8 @@ export async function handleWorkshopPpt(ctx, res, body) {
   const audience = String(body?.audience || "").slice(0, 40);
   const skillPath = await findSkillPath(ctx, "ppt-generator");
   if (!skillPath) return json(res, 500, { error: "未找到 ppt-generator 技能" });
+  // findSkillPath 返回 SKILL.md 文件路径（loader 的 filePath 是文件）→ skillDir 才是技能根目录
+  const skillDir = path.dirname(skillPath);
   res.writeHead(200, {
     "Content-Type": "text/event-stream", "Cache-Control": "no-cache",
     Connection: "keep-alive", "X-Accel-Buffering": "no",
@@ -79,11 +82,11 @@ export async function handleWorkshopPpt(ctx, res, body) {
 - 风格：${style}
 
 执行要求：
-1. 先 read 技能文件了解完整流程：${path.join(skillPath, "SKILL.md").replace(/\\/g, "/")}
+1. 先 read 技能文件了解完整流程：${skillPath.replace(/\\/g, "/")}
    （以及 references/ppt_structure_guide.md 的 JSON 格式规范，如果它在技能目录下）
 2. 按七角色协作生成结构化内容（metadata + slides），产出 JSON 文件
 3. 调用技能脚本生成 .pptx：
-   python ${path.join(skillPath, "scripts", "generate_pptx.py").replace(/\\/g, "/")} --input <你的JSON路径> --output ${path.join(workDir, "presentation.pptx").replace(/\\/g, "/")}
+   python ${path.join(skillDir, "scripts", "generate_pptx.py").replace(/\\/g, "/")} --input <你的JSON路径> --output ${path.join(workDir, "presentation.pptx").replace(/\\/g, "/")}
 4. 确认 .pptx 已生成（用 bash 检查文件存在和大小），然后回复一句话总结：主题、页数、文件位置
 
 注意：产物 .pptx 必须生成在 ${workDir.replace(/\\/g, "/")} 目录内。JSON 中间文件可留在同目录。`;
@@ -99,6 +102,16 @@ export async function handleWorkshopPpt(ctx, res, body) {
         const arts = scanRecentArtifacts(5 * 60 * 1000, 20);
         file = arts.find(a => a.path.toLowerCase().endsWith(".pptx")) || null;
       } catch {}
+      // 兜底：直接查本轮工作目录的 presentation.pptx（scan 可能因目录/时间窗漏扫）
+      if (!file) {
+        try {
+          const direct = path.join(workDir, "presentation.pptx");
+          if (fs.existsSync(direct)) {
+            const st = fs.statSync(direct);
+            file = { name: "presentation.pptx", path: path.relative(WS_ROOT, direct).replace(/\\/g, "/"), size: st.size, mime: "", mtimeMs: st.mtimeMs };
+          }
+        } catch {}
+      }
       if (file) {
         write("file", file);
         write("note", { text: `✅ PPT 已生成：${file.name}（${(file.size / 1024).toFixed(0)} KB）` });
@@ -190,6 +203,16 @@ export async function handleWorkshopNovel(ctx, res, body) {
         const arts = scanRecentArtifacts(5 * 60 * 1000, 30);
         file = arts.find(a => /第001章|chapters.*\.md/i.test(a.path)) || arts.find(a => a.path.includes(safeTitle)) || null;
       } catch {}
+      // 兜底：直接查本轮 workDir 的章节文件
+      if (!file) {
+        try {
+          const ch = path.join(workDir, "chapters", "第001章.md");
+          if (fs.existsSync(ch)) {
+            const st = fs.statSync(ch);
+            file = { name: "第001章.md", path: path.relative(WS_ROOT, ch).replace(/\\/g, "/"), size: st.size, mime: "", mtimeMs: st.mtimeMs };
+          }
+        } catch {}
+      }
       if (file) {
         write("file", file);
         write("note", { text: `✅ 第 1 章已生成：${file.path}` });

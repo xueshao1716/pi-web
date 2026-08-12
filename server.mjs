@@ -837,17 +837,22 @@ function scanRecentArtifacts(withinMs = 2 * 60 * 1000, max = 10) {
     if (!fs.existsSync(root)) return [];
     const now = Date.now();
     const out = [];
-    // 只扫关键目录：根目录 + 生成物/ + 收发文件/今天（避免把工程/子目录的历史文件当本轮产物）
+    // 只扫关键目录：根目录 + 生成物/ + 收发文件/今天 + 工程/（含子目录，专项工作台产物都在这）
+    // 避免把工程/ 子目录的历史文件当本轮产物：靠 withinMs 时间窗 + 只收成品类型
     const today = new Date().toISOString().slice(0, 10);
-    const scanDirs = [root, path.join(root, "生成物"), path.join(root, "收发文件", today)];
+    const scanDirs = [root, path.join(root, "生成物"), path.join(root, "收发文件", today), path.join(root, "工程")];
     const seenNames = new Set();
-    for (const dir of scanDirs) {
+    // 递归收集（工程/ 要递归子目录；其余平扫）
+    const collect = (dir, recursive) => {
       let items;
-      try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+      try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
       for (const it of items) {
         if (it.name.startsWith(".") || it.name.startsWith("_")) continue; // 排除隐藏 + 临时验证脚本（_前缀）
         if (SCAN_EXCLUDE.test(dir + path.sep + it.name)) continue;
-        if (it.isDirectory()) continue;
+        if (it.isDirectory()) {
+          if (recursive && it.name !== "node_modules") collect(path.join(dir, it.name), true);
+          continue;
+        }
         const full = path.join(dir, it.name);
         let st;
         try { st = fs.statSync(full); } catch { continue; }
@@ -866,7 +871,8 @@ function scanRecentArtifacts(withinMs = 2 * 60 * 1000, max = 10) {
           mtimeMs: st.mtimeMs,
         });
       }
-    }
+    };
+    for (const dir of scanDirs) collect(dir, dir === path.join(root, "工程"));
     // 按"成品优先级"排序：网页/文档/图片类优先（脚本/验证文件靠后）
     const priority = (name) => {
       const ext = path.extname(name).toLowerCase();
@@ -4062,6 +4068,158 @@ function handleEmotion(res, url) {
   json(res, 200, emotion.getSnapshot(key));
 }
 
+// ══ 经验沉淀台（refine 提案制，Prime Agent 移植）══
+// 工具：工具/refine_proposal.py（plan/list/approve --only/reject/rollback/status）
+const REFINE_SCRIPT = path.join(CONFIG.cwd, "工具", "refine_proposal.py");
+const REFINE_PROPOSALS = path.join(CONFIG.cwd, "工程", "经验库", "refine-proposals.json");
+const REFINE_LOG = path.join(CONFIG.cwd, "工程", "经验库", "refine-log.jsonl");
+
+function readRefineJson(file, fallback) {
+  try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return fallback; }
+}
+
+function runRefineScript(args, timeoutMs = 180000) {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn("python", [REFINE_SCRIPT, ...args], { windowsHide: true });
+    } catch (e) {
+      return resolve({ code: -1, out: "", err: String(e?.message || e) });
+    }
+    let out = "", err = "";
+    const to = setTimeout(() => { try { child.kill(); } catch {} }, timeoutMs);
+    child.stdout.on("data", (d) => (out += d));
+    child.stderr.on("data", (d) => (err += d));
+    child.on("close", (code) => { clearTimeout(to); resolve({ code, out, err }); });
+  });
+}
+
+function handleRefineStatus(res) {
+  const data = readRefineJson(REFINE_PROPOSALS, { pending: [], applied: [], rejected: [] });
+  let lastLog = null;
+  try {
+    const lines = fs.readFileSync(REFINE_LOG, "utf8").trim().split("\n").filter(Boolean);
+    if (lines.length) lastLog = JSON.parse(lines[lines.length - 1]);
+  } catch {}
+  json(res, 200, {
+    counts: { pending: data.pending?.length || 0, applied: data.applied?.length || 0, rejected: data.rejected?.length || 0 },
+    lastLog,
+  });
+}
+
+function handleRefineList(res) {
+  const data = readRefineJson(REFINE_PROPOSALS, { pending: [], applied: [], rejected: [] });
+  json(res, 200, data);
+}
+
+// ══ 基因反馈：对已应用提案打分，驱动技能基因进化 ══
+const SKILL_GENE_FILE = path.join(CONFIG.cwd, "工程", "经验库", "技能基因.md");
+const DOMAIN_KEYWORDS = {
+  "写作": ["写作", "文案", "剧本", "小说", "分镜", "提示词"],
+  "绘图": ["绘图", "出图", "画像", "海报", "配图", "插图"],
+  "编程": ["编程", "代码", "脚本", "工具", "自动化", "debug"],
+  "视频": ["视频", "剪辑", "flvx", "flax", "flux", "转场", "配音"],
+  "网页": ["网页", "前端", "html", "css", "界面", "布局", "ui"],
+  "文档": ["文档", "文档整理", "归档", "方法论", "md"],
+};
+function detectSkillDomain(text) {
+  const s = String(text || "").toLowerCase();
+  let best = null, bestHit = 0;
+  for (const [domain, kws] of Object.entries(DOMAIN_KEYWORDS)) {
+    const hit = kws.filter(k => s.includes(k.toLowerCase())).length;
+    if (hit > bestHit) { bestHit = hit; best = domain; }
+  }
+  return best || "通用";
+}
+function handleRefineFeedback(res, body) {
+  const { id, domain, scores } = body || {};
+  if (!id || !scores) return json(res, 400, { error: "需要 id + scores" });
+  const data = readRefineJson(REFINE_PROPOSALS, { pending: [], applied: [], rejected: [] });
+  const target = (data.applied || []).find(p => p.id === id);
+  if (!target) return json(res, 404, { error: "未找到已应用提案" });
+  const d = domain || detectSkillDomain(target.summary + " " + JSON.stringify(target.edits || []));
+  // 读取技能基因.md 并更新该领域三维评分（滑动平均 0-100%）
+  try {
+    let md = fs.readFileSync(SKILL_GENE_FILE, "utf8");
+    const seed = { efficiency: 50, reliability: 50, adaptability: 50 }; // 默认
+    const get = (line) => {
+      const m = line.match(/^-\s*(效率|可靠|适应)\s+\w+\s*:\s*(\d+)%/);
+      return m ? { k: m[1], v: parseInt(m[2], 10) } : null;
+    };
+    const update = (line, key, val) => line.replace(/(效率|可靠|适应)\s+\w+\s*:\s*\d+%/, `${key} ${key === "效率" ? "efficiency" : key === "可靠" ? "reliability" : "adaptability"}: ${val}%`);
+    const lines = md.split("\n");
+    let inDomain = false;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith("## ")) inDomain = lines[i].includes(d);
+      if (inDomain && get(lines[i])) {
+        const { k, v } = get(lines[i]);
+        const map = { "效率": "efficiency", "可靠": "reliability", "适应": "adaptability" };
+        const key = map[k];
+        const fb = scores[key] != null ? Number(scores[key]) : (scores[k] ?? v);
+        const newVal = Math.round((v + fb) / 2); // 滑动平均
+        lines[i] = update(lines[i], k, Math.max(0, Math.min(100, newVal)));
+      }
+    }
+    fs.writeFileSync(SKILL_GENE_FILE, lines.join("\n"), "utf8");
+    // 记录反馈日志
+    const logLine = JSON.stringify({ ts: new Date().toISOString(), id, domain: d, scores, from: "refine-feedback" }) + "\n";
+    fs.appendFileSync(REFINE_LOG, logLine);
+    json(res, 200, { ok: true, domain: d, msg: `已更新「${d}」技能基因` });
+  } catch (e) {
+    json(res, 500, { error: "更新技能基因失败: " + (e?.message || e) });
+  }
+}
+function handleRefineGenes(res) {
+  try {
+    const md = fs.readFileSync(SKILL_GENE_FILE, "utf8");
+    const domains = {};
+    let cur = null;
+    for (const line of md.split("\n")) {
+      if (line.startsWith("## ")) { cur = line.slice(3).trim(); domains[cur] = {}; continue; }
+      if (cur) {
+        const m = line.match(/^-\s*(效率|可靠|适应)\s+\w+\s*:\s*(\d+)%/);
+        if (m) domains[cur][{ "效率": "efficiency", "可靠": "reliability", "适应": "adaptability" }[m[1]]] = parseInt(m[2], 10);
+      }
+    }
+    json(res, 200, { domains });
+  } catch (e) { json(res, 500, { error: String(e?.message || e) }); }
+}
+
+async function handleRefinePlan(res, body) {
+  const args = ["plan", "--log", String(body?.log || 15)];
+  if (body?.global) args.push("--global");
+  if (body?.dryRun) args.push("--dry-run");
+  if (body?.instructions) args.push("--instructions", String(body.instructions));
+  const r = await runRefineScript(args, 240000);
+  if (r.code !== 0) return json(res, 500, { error: r.err || r.out || `python exit ${r.code}` });
+  const data = readRefineJson(REFINE_PROPOSALS, { pending: [], applied: [], rejected: [] });
+  const latest = data.pending?.length ? data.pending[data.pending.length - 1] : null;
+  json(res, 200, { ok: true, latest, count: data.pending.length, log: r.out.slice(-600) });
+}
+
+async function handleRefineApprove(res, body) {
+  const args = ["approve", String(body?.id || "")];
+  if (body?.only) args.push("--only", String(body.only));
+  const r = await runRefineScript(args, 60000);
+  if (r.code !== 0) return json(res, 500, { error: r.err || r.out || `python exit ${r.code}` });
+  json(res, 200, { ok: true, log: r.out.trim() });
+}
+
+async function handleRefineReject(res, body) {
+  const args = ["reject", String(body?.id || "")];
+  if (body?.reason) args.push("--reason", String(body.reason));
+  const r = await runRefineScript(args, 60000);
+  if (r.code !== 0) return json(res, 500, { error: r.err || r.out || `python exit ${r.code}` });
+  json(res, 200, { ok: true, log: r.out.trim() });
+}
+
+async function handleRefineRollback(res, body) {
+  const args = ["rollback", String(body?.id || "")];
+  const r = await runRefineScript(args, 60000);
+  if (r.code !== 0) return json(res, 500, { error: r.err || r.out || `python exit ${r.code}` });
+  json(res, 200, { ok: true, log: r.out.trim() });
+}
+
 const API_ROUTES = [
   // ── 会话 ──
   ["GET", "/api/emotion", (res, req, url) => handleEmotion(res, url)],
@@ -4201,6 +4359,15 @@ const API_ROUTES = [
   // ── 专项工作台 ──
   ["POST", "/api/workshop/ppt", async (res, req) => workshop.handleWorkshopPpt(wsCtx(), res, await readBody(req))],
   ["POST", "/api/workshop/novel", async (res, req) => workshop.handleWorkshopNovel(wsCtx(), res, await readBody(req))],
+  // ── 经验沉淀台（refine 提案制，Prime Agent 移植）──
+  ["GET", "/api/refine/status", (res) => handleRefineStatus(res)],
+  ["GET", "/api/refine/list", (res) => handleRefineList(res)],
+  ["GET", "/api/refine/genes", (res) => handleRefineGenes(res)],
+  ["POST", "/api/refine/feedback", async (res, req) => handleRefineFeedback(res, await readBody(req))],
+  ["POST", "/api/refine/plan", async (res, req) => handleRefinePlan(res, await readBody(req))],
+  ["POST", "/api/refine/approve", async (res, req) => handleRefineApprove(res, await readBody(req))],
+  ["POST", "/api/refine/reject", async (res, req) => handleRefineReject(res, await readBody(req))],
+  ["POST", "/api/refine/rollback", async (res, req) => handleRefineRollback(res, await readBody(req))],
 ];
 
 const server = http.createServer(async (req, res) => {
