@@ -2355,10 +2355,40 @@ function rewriteInlineCode(cmd) {
 }
 
 async function executeUnifiedTool(name, args) {
+  // ── User 层 deny 规则（宪法硬性红线 → 代码硬拦截，deny 永远赢） ──
+  // 来源：宪法.json 条款（no-tunnel / no-secrets / no-engine-edit 等）
+  // 任何 allow 都不能覆盖 deny；命中即拒绝并给出规则 id 方便排查
+  const USER_DENY_PATTERNS = [
+    { id: "no-tunnel", re: /\b(cloudflared|ngrok|frpc|frps|localtunnel|bore|nps)\b/i },
+    { id: "no-tunnel-ssh", re: /\bssh\b[^\n]*\s(-R|-L|-D)\b/ },
+    { id: "no-tunnel-socat", re: /\bsocat\b[^\n]*(tcp-listen|tcp-connect|udp-listen|udp-connect)/i },
+    { id: "no-dns-config", re: /\b(config\.yml|cloudflared.*(config|dns)|wrangler.*(dns|tunnel)|nsupdate)\b/i },
+    { id: "no-force-git", re: /\bgit\b[^\n]*\b(push\s+(-f|--force)|reset\s+--hard|clean\s+-[a-z]*f|checkout\s+--\s+\.|rebase\s+--force|filter-branch)\b/i },
+    { id: "no-system-mutate", re: /\b(reg\s+delete|netsh\s+.*(add|delete|set)|net\s+user|sc\s+delete|diskpart|format\s+[a-zA-Z]:|bcdedit|takeown|icacls\s+.*\/(grant|deny)|taskkill\s+\/f\s+\/pid\s+0)\b/i },
+    { id: "no-secrets-write", re: /(\b|\\|\.)(token|secret|password|api[_-]?key)\b[^\n]*(>|>>|set\s+[A-Z_]+=|echo)/i },
+  ];
+  // ── 受保护路径（仓库法律：只读不写，写操作直接拒绝）──
+  const PROTECTED_PATHS = [
+    /(^|[\\/])APPEND_SYSTEM\.md$/i,
+    /(^|[\\/])SOUL$/i,
+    /(^|[\\/])IDENTITY$/i,
+    /(^|[\\/])宪法\.json$/,
+    /\.token$/i,
+  ];
+  const isProtectedPath = (p) => {
+    const abs = path.resolve(p || "").replace(/\\/g, "/");
+    return PROTECTED_PATHS.some((re) => re.test(abs));
+  };
   try {
     if (name === "bash") {
       const cmd = String(args?.command || "").trim();
       if (!cmd) return { text: "空命令", isError: true };
+      // User 层 deny：宪法红线硬拦截（先于内置默认层检查）
+      for (const rule of USER_DENY_PATTERNS) {
+        if (rule.re.test(cmd)) {
+          return { text: `⛔ 拒绝执行 [宪法规则 ${rule.id}]：该命令命中硬性红线（${rule.re.source.slice(0, 60)}…）。\n这是代码级拦截，不是建议——如需执行请联系伙伴人工操作。`, isError: true };
+        }
+      }
       // 危险命令拦截（防 prompt injection / 幻觉触发不可逆操作）
       const DANGEROUS = /^\s*(rm\s+(-rf|-r|-f)?|format\s+[a-zA-Z]:|del\s+\/[sf]|rd\s+\/s|shutdown|taskkill\s+\/f|reg\s+delete|diskpart|mkfs|dd\s+if=)/i;
       if (DANGEROUS.test(cmd)) return { text: "⚠️ 拒绝执行：该命令可能造成不可逆数据丢失", isError: true };
@@ -2431,6 +2461,7 @@ async function executeUnifiedTool(name, args) {
     if (name === "write") {
       const p = wsSafePath(args?.path);
       if (!p) return { text: "路径越权", isError: true };
+      if (isProtectedPath(p)) return { text: `⛔ 拒绝写入 [仓库法律]：${args?.path} 是受保护文件（人格/宪法/凭据），只读不写`, isError: true };
       fs.mkdirSync(path.dirname(p), { recursive: true });
       const content = String(args?.content ?? "");
       fs.writeFileSync(p, content, "utf8");
@@ -2439,6 +2470,7 @@ async function executeUnifiedTool(name, args) {
     if (name === "edit") {
       const p = wsSafePath(args?.path);
       if (!p || !fs.existsSync(p)) return { text: `文件不存在: ${args?.path}`, isError: true };
+      if (isProtectedPath(p)) return { text: `⛔ 拒绝修改 [仓库法律]：${args?.path} 是受保护文件（人格/宪法/凭据），只读不写`, isError: true };
       const c = fs.readFileSync(p, "utf8");
       const oldT = String(args?.oldText ?? "");
       if (!c.includes(oldT)) return { text: "未找到 oldText 片段（可能已修改）", isError: true };
