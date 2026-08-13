@@ -944,13 +944,15 @@ const MODELS_PATH = path.join(AGENT_DIR, "models-store.json");
     return true;
   });
 }
-// 默认模型：优先 CONFIG.model，其次官方 deepseek（稳定、独立余额、不受 opencode 影响），再兜底第一个
-// 注意：provider 必须精确 "deepseek"（官方直连），不能匹配到 opencode-go 通道
+// 默认模型：优先 CONFIG.model，其次 opencode-go 套餐的 flash（套餐策略优先），
+// opencode-go 不可用时回退官方 deepseek 直连托底，再兜底第一个
 if (CONFIG.model) {
   defaultModel = modelList.find(m => `${m.provider}/${m.id}` === CONFIG.model) || undefined;
 }
 if (!defaultModel) {
-  defaultModel = modelList.find(m => m.provider === "deepseek") || modelList[0];
+  defaultModel = modelList.find(m => m.provider === "opencode-go" && m.id === "deepseek-v4-flash")
+    || modelList.find(m => m.provider === "deepseek" && m.id === "deepseek-v4-flash")
+    || modelList[0];
 }
 console.log(`[pi-web] 默认模型: ${defaultModel?.provider}/${defaultModel?.id}`);
 console.log(`[pi-web] 可用模型: ${modelList.length} 个（含 ${Object.keys(readJsonFile(MODELS_PATH)).join(", ")}）`);
@@ -3456,7 +3458,44 @@ async function handleChat(req, res, body) {
     }
     // 媒体生成与主模型并行（拿到文字即可继续推下一步，不用等全部完成）
     const mediaResults = mediaIntents.length ? await mediaPromise : [];
-    await agent.prompt(promptMsg, { images });
+    // 图像兜底：当前模型不支持图片且消息带图 → 临时切套餐内图像模型识别，处理完恢复原模型
+    let visionSwitched = false, origAgentModel = null, visionModel = null;
+    if (images.length) {
+      const curM = entry.agentModel || (defaultModel ? { provider: defaultModel.provider, id: defaultModel.id } : null);
+      const curSupportsVision = curM && (modelList.find(m => m.provider === curM.provider && m.id === curM.id)?.input?.includes("image"));
+      if (!curSupportsVision) {
+        // 兜底优先级：opencode-go 套餐内图像模型 → xiaomi 免费 token 计划 → openrouter 图像模型
+        const fallbackIds = ["mimo-v2.5", "minimax-m3", "qwen3.8-max", "kimi-k3", "gpt-5.6-luna"];
+        visionModel = modelList.find(m => m.provider === "opencode-go" && fallbackIds.includes(m.id) && m.input?.includes("image"))
+          || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && m.input?.includes("image"))
+          || modelList.find(m => m.provider === "openrouter" && m.input?.includes("image"));
+        if (visionModel) {
+          try {
+            origAgentModel = entry.agentModel || (defaultModel ? { provider: defaultModel.provider, id: defaultModel.id } : null);
+            if (entry.agent) { try { entry.agent.dispose(); } catch {} entry.agent = null; }
+            entry.agentModel = { provider: visionModel.provider, id: visionModel.id };
+            await ensureAgent(entry, visionModel);
+            visionSwitched = true;
+            console.log(`[pi-web] 图像兜底：${curM?.provider}/${curM?.id} → ${visionModel.provider}/${visionModel.id}`);
+          } catch (e) {
+            console.log(`[pi-web] 图像兜底切换失败: ${String(e?.message || e).slice(0, 80)}`);
+          }
+        }
+      }
+    }
+    try {
+      await agent.prompt(promptMsg, { images });
+    } finally {
+      // 处理完恢复原模型（避免把会话默认模型悄悄改掉）
+      if (visionSwitched && origAgentModel) {
+        try {
+          if (entry.agent) { try { entry.agent.dispose(); } catch {} entry.agent = null; }
+          entry.agentModel = origAgentModel;
+          await ensureAgent(entry, modelList.find(m => m.provider === origAgentModel.provider && m.id === origAgentModel.id) || origAgentModel);
+          console.log(`[pi-web] 图像兜底已恢复: ${origAgentModel.provider}/${origAgentModel.id}`);
+        } catch (e) { console.log(`[pi-web] 图像兜底恢复失败: ${String(e?.message || e).slice(0, 80)}`); }
+      }
+    }
     for (const mr of mediaResults) {
       if (!mr) continue;
       if (mr.url) mr.url = await saveArtifact(mr);  // 产物落盘 → 本地路径
@@ -3709,6 +3748,43 @@ async function handleGlobalStats(res) {
   }
   rows.sort((a, b) => b.tokens.cost - a.tokens.cost);
   json(res, 200, { sessions: rows, totals, count: rows.length });
+}
+
+// GET /api/stats/providers —— 按 provider/model 聚合用量（监控各模型商消耗）
+async function handleProviderStats(res) {
+  const files = scanSessionFiles();
+  const provMap = new Map(); // provider -> { input, output, cacheRead, cost, messages, models: Map(model -> {input,output,cost,messages}) }
+  for (const file of files) {
+    try {
+      const lines = fs.readFileSync(file, "utf8").split("\n").filter(Boolean);
+      for (const line of lines) {
+        let e; try { e = JSON.parse(line); } catch { continue; }
+        if (!e || e.type !== "message" || e.message?.role !== "assistant" || !e.message?.usage) continue;
+        const prov = e.message.provider || "unknown";
+        const model = e.message.model || "unknown";
+        const u = e.message.usage;
+        let c = u.cost;
+        if (c && typeof c === "object") c = c.total || c.input || 0;
+        c = typeof c === "number" ? c : 0;
+        const p = provMap.get(prov) || { provider: prov, input: 0, output: 0, cacheRead: 0, cost: 0, messages: 0, models: new Map() };
+        p.input += u.input || 0; p.output += u.output || 0; p.cacheRead += u.cacheRead || 0;
+        p.cost += c; p.messages++;
+        const mm = p.models.get(model) || { model, input: 0, output: 0, cost: 0, messages: 0 };
+        mm.input += u.input || 0; mm.output += u.output || 0; mm.cost += c; mm.messages++;
+        p.models.set(model, mm);
+        provMap.set(prov, p);
+      }
+    } catch {}
+  }
+  const providers = [...provMap.values()]
+    .map(p => ({
+      provider: p.provider, input: p.input, output: p.output, cacheRead: p.cacheRead,
+      cost: Math.round(p.cost * 10000) / 10000, messages: p.messages,
+      models: [...p.models.values()].map(m => ({ ...m, cost: Math.round(m.cost * 10000) / 10000 })).sort((a, b) => b.cost - a.cost),
+    }))
+    .sort((a, b) => b.cost - a.cost);
+  const totalCost = Math.round(providers.reduce((a, p) => a + p.cost, 0) * 10000) / 10000;
+  json(res, 200, { providers, totalCost, updatedAt: new Date().toISOString() });
 }
 
 // 安全版会话统计：引擎 getSessionStats 遇到"无 usage 的 assistant 消息"会抛
@@ -4293,6 +4369,7 @@ const API_ROUTES = [
   ["DELETE", /^\/api\/sessions\/([^/]+)$/, async (res, req, url, m) => { await deleteSession(decodeURIComponent(m[1])); return json(res, 200, { ok: true }); }],
   ["GET", /^\/api\/sessions\/([^/]+)\/export$/, (res, req, url, m) => handleExport(res, decodeURIComponent(m[1]), url.searchParams.get("format") || "html")],
   ["GET", "/api/stats/global", (res) => handleGlobalStats(res)],
+  ["GET", "/api/stats/providers", (res) => handleProviderStats(res)],
   ["GET", "/api/sessions", (res) => json(res, 200, { sessions: getSessionList() })],
   ["POST", "/api/sessions", async (res, req) => { const body = await readBody(req); const id = await createSession(body.name); return json(res, 200, { id, name: body.name || "新会话" }); }],
   // ── 工作空间 ──
