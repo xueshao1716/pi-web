@@ -20,6 +20,21 @@
 
 基于 [pi 引擎](https://github.com/earendil-works/pi-coding-agent) 的 Web 工作台——把终端里的 AI agent 变成完整的浏览器工作伙伴：会话、工具调用、媒体生成、工作空间管理，前后端一体，纯原生实现零构建。
 
+## 🚀 一条命令安装（Windows）
+
+打开 PowerShell 直接粘贴（二选一，国内推荐 Gitee）：
+
+```powershell
+# Gitee（国内快）
+irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-all.ps1 | iex
+
+# GitHub
+irm https://raw.githubusercontent.com/xueshao1716/pi-web/main/install-all.ps1 | iex
+```
+
+自动完成：git → Node.js → **pi 引擎** → **dsh 引擎（DeepSeek Harness 执行臂）** → 源码 → 令牌 → 后台启动。
+最后一步：编辑 `~/.pi/agent/auth.json` 填入模型 API 密钥，浏览器打开 http://127.0.0.1:8787 即用。
+
 ## ✨ 为什么与众不同
 
 | 能力 | 说明 |

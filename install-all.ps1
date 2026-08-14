@@ -1,7 +1,9 @@
 ﻿# ============================================================
-#  pi-web 全自动安装（一条命令搞定所有依赖）
-#  自动检查/安装：git → Node.js → pi 引擎 → 源码 → 令牌 → 启动
-#  用法：powershell -ExecutionPolicy Bypass -File install-all.ps1
+#  pi-web 全自动安装（一条命令搞定 pi + dsh + pi-web）
+#  自动检查/安装：git → Node.js → pi 引擎 → dsh 引擎 → 源码 → 令牌 → 启动
+#  用法（任意 Windows PowerShell，一条命令）：
+#    irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-all.ps1 | iex
+#  或本地：powershell -ExecutionPolicy Bypass -File install-all.ps1
 # ============================================================
 $ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
@@ -111,12 +113,32 @@ if (Test-Path (Join-Path $DEST 'server.mjs')) {
   }
 }
 
-# ── 步骤 4/5：pi 引擎 + 令牌 + 模型清单（setup.mjs --install）──
+# ── 步骤 4/5：pi 引擎 + dsh 引擎 + 令牌 + 模型清单（setup.mjs --install）──
 Write-Host ''
-Write-Host '[4/5] 安装 pi 引擎并初始化 ...' -ForegroundColor Yellow
+Write-Host '[4/5] 安装 pi + dsh 引擎并初始化 ...' -ForegroundColor Yellow
 Push-Location $DEST
 node setup.mjs --install
 Pop-Location
+
+# ── dsh 引擎（DeepSeek Harness）：npm 一条命令，与 pi 同镜像逻辑 ──
+Write-Host ''
+Write-Host '  安装 dsh 引擎（DeepSeek Harness）...' -ForegroundColor Yellow
+if (Get-Command dsh -ErrorAction SilentlyContinue) {
+  Write-Host "  已有 dsh $(& dsh --version 2>$null)" -ForegroundColor Green
+} else {
+  $reg = npm config get registry 2>$null
+  if ($reg -match 'registry\.npmmirror\.com') {
+    npm i -g @deepseek-ai/dsh 2>&1 | Out-Null
+  } else {
+    npm i -g @deepseek-ai/dsh --registry=https://registry.npmmirror.com 2>&1 | Out-Null
+  }
+  if (Get-Command dsh -ErrorAction SilentlyContinue) {
+    Write-Host "  dsh $(& dsh --version 2>$null) 安装完成" -ForegroundColor Green
+    Write-Host '  提示：首次 headless 派单时 dsh 会自动初始化 profile 并引导配置模型' -ForegroundColor Gray
+  } else {
+    Write-Host '  dsh 安装失败，请手动执行：npm i -g @deepseek-ai/dsh' -ForegroundColor Red
+  }
+}
 
 # ── 步骤 5/5：确认服务 ──
 Write-Host ''
@@ -140,6 +162,7 @@ Write-Host '====================================' -ForegroundColor Cyan
 Write-Host "  访问地址: http://127.0.0.1:$port" -ForegroundColor Cyan
 Write-Host "  源码目录: $DEST" -ForegroundColor Cyan
 Write-Host "  访问令牌: 见 $DEST\.token 文件" -ForegroundColor Cyan
+Write-Host '  引擎就位: pi（工作台主引擎）+ dsh（DeepSeek Harness 执行臂）' -ForegroundColor Cyan
 Write-Host '  最后一步: 编辑 ~/.pi/agent/auth.json 填入 API 密钥（如 deepseek）' -ForegroundColor Yellow
 Write-Host '  停止服务: taskkill /F /IM node.exe' -ForegroundColor Gray
 Write-Host ''
