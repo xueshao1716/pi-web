@@ -1587,3 +1587,28 @@ if (typeof registerMessageRenderer === "function") {
   });
   console.log("[registry] 已注册消息渲染器:", listRenderers().join(", "));
 }
+
+// ══ 前端自动更新检测：服务端版本号变化 → 自动刷新（任务进行中不刷，避免打断）══
+(() => {
+  const KEY = "pi_fe_ver";
+  const isBusyNow = () => {
+    try { for (const [, st] of streams) if (!st.done) return true; } catch {}
+    return false;
+  };
+  const check = async () => {
+    try {
+      const r = await api("/api/frontend-version");
+      if (!r || !r.version) return;
+      const cur = parseInt(localStorage.getItem(KEY) || "0", 10);
+      if (!cur) { localStorage.setItem(KEY, String(r.version)); return; } // 首次只记录
+      if (r.version > cur) {
+        localStorage.setItem(KEY, String(r.version));
+        if (isBusyNow()) { setTimeout(check, 15000); return; } // 任务中：延后再刷
+        toast("✨ 检测到前端更新，自动刷新…");
+        setTimeout(() => location.reload(), 700);
+      }
+    } catch {}
+  };
+  setTimeout(check, 5000);
+  setInterval(check, 30000);
+})();

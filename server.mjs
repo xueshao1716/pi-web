@@ -4528,6 +4528,15 @@ const API_ROUTES = [
   ["GET", "/api/health", (res) => json(res, 200, { ok: true })],
   ["POST", "/api/repair", async (res, req) => handleRepair(res, await readBody(req))],
   ["GET", "/api/update/check", (res) => handleUpdateCheck(res)],
+  // 前端版本号（从 index.html 的 ?v= 提取）：供前端自动检测更新→自动刷新
+  ["GET", "/api/frontend-version", async (res) => {
+    try {
+      const html = fs.readFileSync(path.join(__dirname, "public", "index.html"), "utf8");
+      let max = 0;
+      for (const m of html.matchAll(/[?&]v=(\d+)/g)) max = Math.max(max, parseInt(m[1], 10));
+      json(res, 200, { version: max });
+    } catch { json(res, 200, { version: 0 }); }
+  }],
   ["POST", "/api/update/apply", async (res, req) => handleUpdateApply(res, await readBody(req))],
   // ── 设计器 ──
   ["POST", "/api/designer/generate", async (res, req) => handleDesignerGenerate(res, await readBody(req))],
