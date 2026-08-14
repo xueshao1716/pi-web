@@ -426,20 +426,13 @@ function loadOlderHistory() {
   setTimeout(() => { histBusy = false; }, 120);
 }
 
-// 渲染一批历史消息（思考合并逻辑原样保留）
+// 渲染一批历史消息（思考块：每条 assistant 消息独立紧跟，不跨消息堆积）
 function renderChunk(list) {
-  let thinkBuf = "";
-  let thinkN = 0;
-  const flush = () => {
-    if (thinkN > 0) {
-      appendExternalThink(thinkN > 1 ? `思考过程（${thinkN} 轮）` : "思考过程", thinkBuf);
-      thinkBuf = ""; thinkN = 0;
-    }
-  };
   for (const m of list) {
-    if (m.role === "user") { flush(); addUserMsg(m.text, m.id); if (Array.isArray(m.files)) m.files.forEach(f => addFileMsg(f, "user")); if (Array.isArray(m.images)) m.images.forEach(img => addImageMsg(img, "user")); }
+    if (m.role === "user") { addUserMsg(m.text, m.id); if (Array.isArray(m.files)) m.files.forEach(f => addFileMsg(f, "user")); if (Array.isArray(m.images)) m.images.forEach(img => addImageMsg(img, "user")); }
     else if (m.role === "assistant") {
-      if (m.think && m.think.trim()) { thinkBuf += (thinkBuf ? "\n\n" : "") + m.think; thinkN++; }
+      // 思考块独立渲染，紧跟本条 assistant 消息（不合并进下一轮）
+      if (m.think && m.think.trim()) appendExternalThink("思考过程", m.think);
       if (Array.isArray(m.tools) && m.tools.length) {
         for (const t of m.tools) {
           let argsText = "";
@@ -454,12 +447,11 @@ function renderChunk(list) {
         }
         document.querySelectorAll("#messages .tool").forEach(el => el.classList.remove("expanded"));
       }
-      if (m.text) { flush(); addAssistantMsg(m.text, m.ts, m.id); }
+      if (m.text) { addAssistantMsg(m.text, m.ts, m.id); }
       if (Array.isArray(m.files)) m.files.forEach(f => addFileMsg(f, "assistant"));
       if (Array.isArray(m.images)) m.images.forEach(img => addImageMsg(img, "assistant"));
     }
   }
-  flush();
 }
 
 // 滚动到顶加载更早消息（流式进行中不重建，避免打断进行中的视图）
