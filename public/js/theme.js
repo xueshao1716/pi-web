@@ -6,7 +6,7 @@ const VAR_MAP = {
   border:"--border", text:"--text", dim:"--dim", dim2:"--dim-2",
   green:"--green", red:"--red", yellow:"--yellow",
   toolBash:"--tool-bash", toolRead:"--tool-read", toolWrite:"--tool-write",
-  toolEdit:"--tool-edit", toolTodo:"--tool-todo",
+  toolEdit:"--tool-edit", toolTodo:"--tool-todo", toolThink:"--tool-think",
 };
 const EDIT_ROWS = [
   ["accent", "主色"], ["accent2", "浅色"], ["deep", "深色"],
@@ -24,11 +24,17 @@ function makeVars(accent, accent2, deep, bg, sidebar, panel, panel2, border, tex
     accent, accent2, deep, bg, sidebar, panel, panel2, border, text, dim, dim2,
     green: "#3ecf8e", red: "#f47067", yellow: "#f5b759",
     toolBash: "#34d399", toolRead: "#38bdf8", toolWrite: "#f59e0b", toolEdit: "#f59e0b", toolTodo: "#f472b6",
-    toolGlob: "#38bdf8", toolGrep: "#38bdf8",
+    toolGlob: "#38bdf8", toolGrep: "#38bdf8", toolThink: "#c084fc",
     glow,
   };
 }
 const THEMES = {
+  // AI 原生：中性炭黑底 + 单一靛蓝强调，克制辉光，高级感（源自 UI/UX Pro Max ai-native-ui 设计智能）
+  ai:      { label:"AI 原生", vars: makeVars("#7c8cf8","#9aa8ff","#5a67e0","#0b0b0d","#0f0f13","#141419","#1a1a20","#26262e","#ececf2","#90909f","#5d5d6b", 0.3) },
+  // 拟态：浅色单色系 + 柔和双阴影（Neumorphism，源自 UI/UX Pro Max 风格库）
+  neu:     { label:"拟态",   vars: makeVars("#6b7fd7","#8a9bf0","#5567c4","#e4e9f0","#dfe4ec","#e4e9f0","#dfe4ec","#d3d8e2","#3d4756","#7a8494","#a5aebe", 0) },
+  // 液态玻璃：深色底 + 彩色光斑背景 + 高光玻璃面板（Liquid Glass, Apple 2024 风）
+  liquid:  { label:"液态玻璃", vars: makeVars("#6ea8ff","#a78bfa","#4f7ddb","#080d1a","#10182c","#141e36","#1a2540","#2a3858","#eef3ff","#93a4c8","#5f6f8f", 0.5) },
   linear:  { label:"Linear 精密", vars: makeVars("#5e6ad2","#828fff","#4c56b0","#010102","#0f1011","#141516","#18191a","#23252a","#f7f8f8","#8a8f98","#62666d", 0.2) },
   ops:     { label:"运维控制台", vars: makeVars("#2596be","#4fb8dc","#1a708f","#0f1118","#12151d","#171b25","#1c2130","#2a3145","#e4e9f2","#8b93a8","#565f75", 0.35) },
   apple:   { label:"苹果风", vars: makeVars("#0071e3","#5aa7f0","#0055b3","#f2f5f9","#f8fafc","#ffffff","#eef3f8","#d5dfeb","#1d1d1f","#6e6e73","#a1a1a6", 0.3) },
@@ -285,8 +291,8 @@ const THEMES_CODEX = {
   } },
 };
 
-const TOOL_VAR = { bash:"toolBash", read:"toolRead", write:"toolWrite", edit:"toolEdit", glob:"toolRead", grep:"toolRead", rg:"toolRead", todo:"toolTodo" };
-const TOOL_ICONS = { bash: "$", read: "R", write: "W", edit: "E", glob: "G", grep: "g", rg: "g" };
+const TOOL_VAR = { bash:"toolBash", read:"toolRead", write:"toolWrite", edit:"toolEdit", glob:"toolRead", grep:"toolRead", rg:"toolRead", todo:"toolTodo", think:"toolThink" };
+const TOOL_ICONS = { bash: "$", read: "R", write: "W", edit: "E", glob: "G", grep: "g", rg: "g", think: "🧠" };
 
 // 自定义主题：localStorage
 function loadCustomThemes() {
@@ -300,13 +306,25 @@ let customThemes = loadCustomThemes();
 // v1.8.0 主题默认值迁移：量子引擎设为默认（一次性标记，之后用户手动切换不受影响）
 try {
   if (!localStorage.getItem("pi_theme_v180")) {
-    localStorage.setItem("pi_theme", "quantum");
+    localStorage.setItem("pi_theme", "neu");
     localStorage.setItem("pi_theme_v180", "1");
+  }
+  // v1.8.1 迁移：默认主题升级为 AI 原生；仅迁移未手动选过 / 仍停留在 quantum 的用户
+  if (!localStorage.getItem("pi_theme_v181")) {
+    const prev = localStorage.getItem("pi_theme");
+    if (!prev || prev === "quantum") localStorage.setItem("pi_theme", "ai");
+    localStorage.setItem("pi_theme_v181", "1");
+  }
+  // v1.8.2 迁移：拟态设为默认（用户最喜欢的风格）；仅迁移仍在 quantum / ai 的用户
+  if (!localStorage.getItem("pi_theme_v182")) {
+    const prev = localStorage.getItem("pi_theme");
+    if (!prev || prev === "quantum" || prev === "ai") localStorage.setItem("pi_theme", "neu");
+    localStorage.setItem("pi_theme_v182", "1");
   }
 } catch {}
 
-let currentTheme = localStorage.getItem("pi_theme") || "quantum";
-if (!THEMES[currentTheme] && !THEMES_CODEX[currentTheme] && !currentTheme.startsWith("custom:")) currentTheme = "quantum";
+let currentTheme = localStorage.getItem("pi_theme") || "neu";
+if (!THEMES[currentTheme] && !THEMES_CODEX[currentTheme] && !currentTheme.startsWith("custom:")) currentTheme = "neu";
 let editVars = null;   // 编辑器当前编辑的变量组
 let editDirty = false; // 是否有未保存修改
 
