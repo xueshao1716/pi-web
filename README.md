@@ -22,18 +22,23 @@
 
 ## 🚀 一条命令安装（Windows）
 
-打开 PowerShell 直接粘贴（二选一，国内推荐 Gitee）：
+**全局安装（推荐，对标 dsh，装完即用）：**
 
 ```powershell
-# Gitee（国内快）
-irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-all.ps1 | iex
-
-# GitHub
-irm https://raw.githubusercontent.com/xueshao1716/pi-web/main/install-all.ps1 | iex
+npm i -g git+https://gitee.com/linxinyu520xue/pi-web.git
+pi-web
 ```
 
-自动完成：git → Node.js → **pi 引擎** → **dsh 引擎（DeepSeek Harness 执行臂）** → 源码 → 令牌 → 后台启动。
-最后一步：编辑 `~/.pi/agent/auth.json` 填入模型 API 密钥，浏览器打开 http://127.0.0.1:8787 即用。
+首次运行 `pi-web` 自动完成：安装 **pi + dsh 双引擎** → 生成令牌 → 模型清单 → 启动服务并打开浏览器。
+最后一步：编辑 `~/.pi/agent/auth.json` 填入模型 API 密钥，即 http://127.0.0.1:8787 可用。
+
+> **备选（无 git 环境时用脚本安装，同样装双引擎）：**
+> ```powershell
+> # Gitee（国内快）
+> irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-all.ps1 | iex
+> # GitHub
+> irm https://raw.githubusercontent.com/xueshao1716/pi-web/main/install-all.ps1 | iex
+> ```
 
 ## ✨ 为什么与众不同
 
