@@ -371,10 +371,12 @@ async function pollTaskAndRecover(taskKey, { maxWait = 300000 } = {}) {
   return { recovered: false };
 }
 
-// 息屏/切后台恢复可见：当前流在跑但长时间无事件（可能已断），主动查任务状态恢复
+// 息屏/切后台恢复可见：立即渲染积压缓冲（后台节流期间积压的文字/卡片），流断则查任务恢复
 if (typeof document !== "undefined") {
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) return;
+    // 1. 立即 flush 所有积压渲染缓冲（后台节流时 setTimeout 被降频，积压的文字/卡片此刻补渲染）
+    try { flushNow(); } catch {}
     const key = currentKey();
     const st = streams.get(key);
     if (!st || st.done) return;
@@ -1344,7 +1346,8 @@ async function send() {
       // 推理模型首 token 延迟可能较长：90s 无事件才警告，且措辞中性
       if (idle > 90 && !idleWarned && !hasRunning) {
         idleWarned = true;
-        if (currentKey() === key) {
+        // 页面在后台/息屏时不计入卡顿（浏览器节流 setTimeout 是正常现象，不误报）
+        if (currentKey() === key && !document.hidden) {
           appendDelta(`\n\n⚠️ 已 ${Math.round(idle)}s 无新消息——模型可能在深度思考或网络不畅，可稍候或点「停止」重试`);
           setStatus(`等待响应 ${Math.round(idle)}s`, "error");
         }
