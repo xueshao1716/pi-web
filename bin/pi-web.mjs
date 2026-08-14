@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // pi-web 全局命令：一键启动 + 打开浏览器 + 显示地址
 // 别人电脑装完 pi-web 后，运行 `pi-web` 就能打开前端
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { createRequire } from "node:module";
 
 // 定位 pi-web 目录：优先环境变量，其次 npm 全局包，最后默认路径
 function findPiWebDir() {
@@ -34,6 +35,24 @@ if (!dir) {
 const port = parseInt(process.env.PI_WEB_PORT || "8787", 10);
 const host = process.env.PI_WEB_HOST || "127.0.0.1";
 const url = `http://${host}:${port}/`;
+
+// 首次运行自检：pi 引擎 / 令牌 / 模型清单 缺一 → 自动跑 setup.mjs --install（装 pi+dsh 引擎、生成令牌、模型清单、启动）
+function needInit() {
+  try { createRequire(import.meta.url).resolve("@earendil-works/pi-coding-agent/dist/index.js"); }
+  catch { return true; }
+  if (!fs.existsSync(path.join(dir, ".token"))) return true;
+  if (!fs.existsSync(path.join(os.homedir(), ".pi", "agent", "models-store.json"))) return true;
+  return false;
+}
+if (needInit()) {
+  console.log("🛠  首次运行：自动初始化（安装 pi + dsh 引擎、生成令牌、模型清单）…");
+  const r = spawnSync(process.execPath, ["setup.mjs", "--install"], { cwd: dir, stdio: "inherit" });
+  if (r.status !== 0) {
+    console.error("❌ 初始化失败，请手动运行：cd " + dir + " && node setup.mjs --install");
+    process.exit(1);
+  }
+  console.log("✅ 初始化完成");
+}
 
 // 检查服务是否已运行
 function isRunning() {

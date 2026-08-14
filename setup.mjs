@@ -66,6 +66,26 @@ else {
   }
 }
 
+// 2.5 dsh 引擎（双引擎：DeepSeek Harness 执行臂，与 pi 同镜像逻辑）
+console.log("[2.5/5] 检查 dsh 引擎");
+const dshV = sh("dsh --version");
+if (dshV) ok(`已找到 dsh ${dshV}`);
+else {
+  fail("未安装 dsh 引擎");
+  if (process.argv.includes("--install")) {
+    console.log("  正在安装 @deepseek-ai/dsh ...");
+    try {
+      const reg = sh("npm config get registry");
+      const args = reg && /registry\.npmmirror\.com/.test(reg) ? [] : ["--registry=https://registry.npmmirror.com"];
+      sh("npm i -g @deepseek-ai/dsh " + args.join(" "));
+      ok("安装完成（首次 headless 派单时自动初始化 profile）");
+    }
+    catch { fail("自动安装失败，请手动执行：npm i -g @deepseek-ai/dsh"); }
+  } else {
+    warn("请执行：npm i -g @deepseek-ai/dsh");
+  }
+}
+
 // 3. 访问令牌
 console.log("[3/5] 访问令牌");
 if (fs.existsSync(TOKEN_FILE)) ok("令牌已存在（.token）");
