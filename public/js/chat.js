@@ -605,7 +605,7 @@ function renderLatestNewStream() {
 // StreamState = { text, think, thinkingEl, tools: Map<id,cardData>, toolOrder, events, startedAt, done }
 const streams = new Map();
 // 渲染层：只服务当前显示的会话（currentId）
-let render = { assistantEl: null, toolEls: new Map(), toolOrder: [], thinkingEl: null, deltaBuf: "", thinkBuf: "", flushTimer: null };
+let render = { assistantEl: null, toolEls: new Map(), toolOrder: [], thinkingEl: null, deltaBuf: "", thinkBuf: "", conclusionEl: null, conclusionBuf: "", flushTimer: null };
 const currentKey = () => {
   if (currentId) return currentId;
   // 无当前会话：取最新的未命名流式会话（支持多个新会话并发）
@@ -620,13 +620,14 @@ const currentKey = () => {
 
 function clearMessages() {
   $("messages").innerHTML = "";
-  render = { assistantEl: null, toolEls: new Map(), toolOrder: [], thinkingEl: null, deltaBuf: "", thinkBuf: "", flushTimer: null };
+  render = { assistantEl: null, toolEls: new Map(), toolOrder: [], thinkingEl: null, deltaBuf: "", thinkBuf: "", conclusionEl: null, conclusionBuf: "", flushTimer: null };
 }
 
 // ── 渲染缓冲（合并高频流式事件，避免 DOM 卡死）──
 function flushNow() {
   if (render.flushTimer) { clearTimeout(render.flushTimer); render.flushTimer = null; }
   if (render.deltaBuf) { appendDelta(render.deltaBuf); render.deltaBuf = ""; }
+  if (render.conclusionBuf) { appendConclusion(render.conclusionBuf); render.conclusionBuf = ""; }
   if (render.thinkBuf) { appendThinking(render.thinkBuf); render.thinkBuf = ""; }
   autoScroll();
 }
@@ -635,12 +636,14 @@ function scheduleFlush() {
   render.flushTimer = setTimeout(() => {
     render.flushTimer = null;
     if (render.deltaBuf) { appendDelta(render.deltaBuf); render.deltaBuf = ""; }
+    if (render.conclusionBuf) { appendConclusion(render.conclusionBuf); render.conclusionBuf = ""; }
     if (render.thinkBuf) { appendThinking(render.thinkBuf); render.thinkBuf = ""; }
     autoScroll();
   }, 40);
 }
 function queueDelta(t) { render.deltaBuf += t; scheduleFlush(); }
 function queueThink(t) { render.thinkBuf += t; scheduleFlush(); }
+function queueConclusion(t) { render.conclusionBuf += t; scheduleFlush(); }
 function autoScroll() {
   const box = $("messages");
   const near = box.scrollHeight - box.scrollTop - box.clientHeight < 250;
@@ -659,9 +662,15 @@ function onDelta(sid, text) {
   if (st) {
     st.text += text;
     pushEvent(st, { type: "delta", text });
+    // 工具阶段：文字进"结论区"（始终排在所有工具卡片之后，不会被卡片淹没）
+    if (st.toolStarted) st.pendingText += text;
   }
-  // v2：工具阶段文字也实时渲染（不再压到任务结束）——干活时能看到实时描述
-  if (sid === currentKey()) queueDelta(text);
+  if (sid === currentKey()) {
+    const st2 = streams.get(sid);
+    // 工具阶段 → 实时进结论区；纯问答 → 正常流式气泡
+    if (st2 && st2.toolStarted) queueConclusion(text);
+    else queueDelta(text);
+  }
 }
 function onThink(sid, text) {
   const st = streams.get(sid);
@@ -708,15 +717,16 @@ function renderStreamView(sid, includeUser = false) {
   const st = streams.get(sid);
   if (!st) return;
   if (includeUser && st.userText) addUserMsg(st.userText);
+  let toolStarted = false;
   for (const ev of st.events) {
     switch (ev.type) {
       case "think": appendThinking(ev.text); break;
       case "think_end": endThinking(); break;
-      case "tool": addTool(ev.name, ev.argsText, ev.id, ev.rawArgs); break;
+      case "tool": toolStarted = true; addTool(ev.name, ev.argsText, ev.id, ev.rawArgs); break;
       case "tool_output": updateToolOutput(ev.id, ev.text); break;
       case "tool_end": if (ev.output) updateToolOutput(ev.id, ev.output); endTool(ev.id, ev.isError); break;
-      // v2：工具阶段的文字也实时渲染（与流式一致）
-      case "delta": appendDelta(ev.text); break;
+      // 工具阶段文字进结论区（与实时渲染一致），工具前文字正常流式
+      case "delta": if (toolStarted) appendConclusion(ev.text); else appendDelta(ev.text); break;
     }
   }
   autoScroll();
@@ -893,6 +903,20 @@ function buildDiffHtml(name, args) {
   }
   return null;
 }
+// 工具任务的结论区：独立 assistant 消息，始终排在所有工具卡片之后（滚动到底必见）
+function appendConclusion(text) {
+  const box = $("messages");
+  if (!render.conclusionEl) {
+    const el = document.createElement("div");
+    el.className = "msg assistant conclusion";
+    el.style.setProperty("--i", box.children.length);
+    el.innerHTML = `<div class="who"><span class="avatar">π</span><span class="name">小语</span><span class="msg-time">${nowTime()}</span></div><div class="bubble"></div>`;
+    box.appendChild(el);
+    render.conclusionEl = { el, bubble: el.querySelector(".bubble") };
+  }
+  render.conclusionEl.bubble.appendChild(document.createTextNode(text));
+}
+
 function addTool(name, argsText, toolCallId, rawArgs) {
   const box = $("messages");
   const colorVar = "--" + (TOOL_VAR[name] || "accent");
@@ -922,7 +946,9 @@ function addTool(name, argsText, toolCallId, rawArgs) {
     </div>`;
 
   el.querySelector(".tool-head").addEventListener("click", () => el.classList.toggle("expanded"));
-  box.appendChild(el);
+  // 卡片插到结论区之前：结论永远在消息流底部，不被卡片淹没
+  if (render.conclusionEl) box.insertBefore(el, render.conclusionEl.el);
+  else box.appendChild(el);
   box.scrollTop = box.scrollHeight;
 
   // think 草稿：把模型写进工具参数的内容直接展示为可折叠草稿块（默认展开）
@@ -1427,17 +1453,17 @@ async function send() {
     refreshEmotion(); // 对话结束同步情绪（完成/兴奋等线索已更新）
     if (currentKey() === key) {
       if (st.toolStarted) {
-        // 工具任务：文字已实时流式渲染（v2），收尾统一走 Markdown 重渲
-        if (render.assistantEl) {
-          const bubble = render.assistantEl.bubble;
+        // 工具任务：结论区（实时渲染，排在卡片后）收尾统一 Markdown 重渲
+        if (render.conclusionEl) {
+          const bubble = render.conclusionEl.bubble;
           const raw = bubble.innerText;
           if (raw.trim()) {
             bubble.innerHTML = md(raw);
-            bindCopyButtons(render.assistantEl.el);
-            renderMermaidBlocks(render.assistantEl.el);
-            highlightBlocks(render.assistantEl.el);
+            bindCopyButtons(render.conclusionEl.el);
+            renderMermaidBlocks(render.conclusionEl.el);
+            highlightBlocks(render.conclusionEl.el);
           }
-          bindMsgCopy(render.assistantEl.el);
+          bindMsgCopy(render.conclusionEl.el);
         } else if (!render.toolOrder.length) {
           addAssistantMsg("（无输出）");
         }
