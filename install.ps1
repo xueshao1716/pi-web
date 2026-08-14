@@ -1,8 +1,10 @@
-# ============================================================
-#  pi-web 一键安装（极简版）
+﻿# ============================================================
+#  pi-web 一键安装（极简版，双引擎）
 #  只需要 Node 一个软件，其余全自动：
-#  下载源码 → 装 pi 引擎 → 模型模板 → 令牌 → 后台启动
-#  用法：powershell -ExecutionPolicy Bypass -File install.ps1
+#  下载源码 → 装 pi 引擎 → 装 dsh 引擎 → 模型模板 → 令牌 → 后台启动
+#  用法（任意 Windows PowerShell，一条命令）：
+#    irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install.ps1 | iex
+#  或本地：powershell -ExecutionPolicy Bypass -File install.ps1
 # ============================================================
 $ErrorActionPreference = 'Stop'
 $MIRROR = 'https://npmmirror.com/mirrors'
@@ -37,6 +39,7 @@ if (Test-Path "$HOME\pi-web\server.mjs") {
 } else {
   Write-Host '  下载源码（GitHub zip，失败自动切镜像）...'
   $ZIP_URLS = @(
+    'https://gitee.com/linxinyu520xue/pi-web/repository/archive/main.zip',
     'https://github.com/xueshao1716/pi-web/archive/refs/heads/main.zip',
     'https://ghproxy.net/https://github.com/xueshao1716/pi-web/archive/refs/heads/main.zip',
     'https://gh-proxy.com/https://github.com/xueshao1716/pi-web/archive/refs/heads/main.zip'
@@ -63,12 +66,31 @@ Write-Host ''
 Write-Host '[3/3] 安装并启动 ...' -ForegroundColor Yellow
 Push-Location "$HOME\pi-web"
 node setup.mjs --install
+
+# dsh 引擎（DeepSeek Harness）：与 pi 同镜像逻辑
+Write-Host '  安装 dsh 引擎（DeepSeek Harness）...' -ForegroundColor Yellow
+if (Get-Command dsh -ErrorAction SilentlyContinue) {
+  Write-Host "  已有 dsh $(& dsh --version 2>$null)" -ForegroundColor Green
+} else {
+  $reg = npm config get registry 2>$null
+  if ($reg -match 'registry\.npmmirror\.com') {
+    npm i -g @deepseek-ai/dsh 2>&1 | Out-Null
+  } else {
+    npm i -g @deepseek-ai/dsh --registry=https://registry.npmmirror.com 2>&1 | Out-Null
+  }
+  if (Get-Command dsh -ErrorAction SilentlyContinue) {
+    Write-Host "  dsh $(& dsh --version 2>$null) 安装完成" -ForegroundColor Green
+  } else {
+    Write-Host '  dsh 安装失败，请手动执行：npm i -g @deepseek-ai/dsh' -ForegroundColor Red
+  }
+}
 Pop-Location
 
 Write-Host ''
 Write-Host '完成！' -ForegroundColor Green
 Write-Host '  访问地址: http://127.0.0.1:8787' -ForegroundColor Cyan
 Write-Host '  令牌文件: ~/pi-web/.token' -ForegroundColor Cyan
+Write-Host '  引擎就位: pi（工作台主引擎）+ dsh（DeepSeek Harness 执行臂）' -ForegroundColor Cyan
 Write-Host '  最后一步: 编辑 ~/.pi/agent/auth.json 填入你的 API 密钥（如 deepseek）'
 Write-Host '  停止服务: taskkill /F /IM node.exe'
 Write-Host ''
