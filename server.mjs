@@ -11,6 +11,10 @@ import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 
 import { CONFIG } from "./config.mjs";
+// ── Gateway 2.0 插件化引擎 + Code Mode（dsh 设计沉淀）──
+import { createGateway } from "./engine/gateway.mjs";
+import { CodeRuntime } from "./code-mode/code-runtime.mjs";
+import { createCodeMode } from "./code-mode/code-mode.mjs";
 const memoryApi = await import("./memory.mjs");
 const emotion = await import("./emotion.mjs");
 emotion.init(CONFIG.cwd); // 基因系统：加载人格基因 + 提案池
@@ -655,6 +659,8 @@ async function createSessionAgent(sm, model) {
   if (st) customTools.push(st);
   const sh = await initShareTool();
   if (sh) customTools.push(sh);
+  // 外部思考调试开关（externalThinking）：注入 think 工具让模型把推理写进工具参数
+  if (isExternalThinking()) customTools.push(THINK_TOOL);
   // 工具白名单：基础工具 + 自定义工具（search_files 必须放行才能被模型调用）
   const allowedTools = [...new Set([...CONFIG.tools, ...customTools.map(t => t.name)])];
   const services = await createAgentSessionServices({
@@ -1791,6 +1797,8 @@ const MIME = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".ico": "image/x-icon",
+  ".wasm": "application/wasm",
+  ".json": "application/json",
 };
 
 async function handleStatic(req, res) {
@@ -1800,9 +1808,11 @@ async function handleStatic(req, res) {
   if (!file.startsWith(PUBLIC_DIR)) { res.writeHead(403); res.end("forbidden"); return; }
   try {
     const data = await fs.promises.readFile(file);
+    const st = await fs.promises.stat(file);
     const headers = {
       "Content-Type": MIME[path.extname(file)] || "application/octet-stream",
       "Cache-Control": "no-cache, max-age=0",
+      "Last-Modified": st.mtime.toUTCString(),
     };
     // service worker 需要覆盖根路径 scope
     if (p === "/sw.js") headers["Service-Worker-Allowed"] = "/";
@@ -2289,6 +2299,14 @@ const UNIFIED_TOOLS = [
   { type: "function", function: { name: "edit", description: "用精确文本替换修改文件（先 read 再 edit）", parameters: { type: "object", properties: { path: { type: "string" }, oldText: { type: "string" }, newText: { type: "string" } }, required: ["path", "oldText", "newText"] } } },
   { type: "function", function: { name: "web_search", description: "联网搜索（DuckDuckGo，无需 key）。查询资料、最新信息、验证事实时使用。返回前 5 条结果标题+摘要+链接", parameters: { type: "object", properties: { query: { type: "string", description: "搜索关键词（中文/英文均可）" } }, required: ["query"] } } },
 ];
+// ══ 外部思考工具（externalThinking 调试开关，默认关）══
+// 思路：关闭模型原生隐藏思考后，给它一张外部"草稿纸"（think 工具），
+// 模型会把分析过程写进工具参数返回给开发者——用于调试"模型为什么这么干"。
+// 安全：think 内容只在内存/SSE 流中传向前端展示，不落盘、不进会话文件。
+const THINK_TOOL = { type: "function", function: { name: "think", description: "（调试用）动手之前，先把你的分析、推理、计划写在 content 里。这段内容仅供开发者调试查看，不会展示给用户。", parameters: { type: "object", properties: { content: { type: "string", description: "你的思考草稿（推理过程/计划/待办检查）" } }, required: ["content"] } } };
+const THINK_PROMPT = "你可以调用 think 工具，在动手之前写下你的分析过程（理解、步骤、计划、可能的坑）。写完后再执行任务。think 的内容仅供调试，不展示给用户，可以放心写。";
+const isExternalThinking = () => !!(CONFIG.externalThinking || globalThis.__piWebExternalThinking);
+
 // Web 搜索：Bing 网页搜索（免费无 key，走系统代理）。返回结构化结果列表
 async function webSearchTool(query) {
   try {
@@ -2382,6 +2400,12 @@ async function executeUnifiedTool(name, args) {
     return PROTECTED_PATHS.some((re) => re.test(abs));
   };
   try {
+    if (name === "think") {
+      // 外部思考草稿：只记录返回给前端展示，不执行、不落盘（调试用）
+      const content = String(args?.content || "").trim();
+      if (!content) return { text: "（空思考）", isError: true };
+      return { text: "✅ 思考已记录（调试草稿，仅本次会话内存可见，不落盘）", think: content };
+    }
     if (name === "bash") {
       const cmd = String(args?.command || "").trim();
       if (!cmd) return { text: "空命令", isError: true };
@@ -2624,6 +2648,46 @@ async function unifiedChat(model, messages, opts = {}) {
     }
   }
   return { error: "工具调用超过 20 轮，已停止（任务过于复杂或陷入循环）" };
+}
+
+// ══ Gateway 2.0：插件化引擎（dsh 设计沉淀——模型/工具/存储/循环全是可替换插件）══
+let gateway = null;
+let codeRuntime = null;
+let codeMode = null;
+const ENGINE_TOOL_NAMES = ["bash", "read", "write", "edit", "web_search"];
+function engineCurrentModel() {
+  return { id: defaultModel?.id || modelList[0]?.id || "", provider: defaultModel?.provider || modelList[0]?.provider || "", baseUrl: defaultModel?.baseUrl || modelList[0]?.baseUrl };
+}
+async function initEngine() {
+  if (gateway) return gateway;
+  // CodeRuntime 绑定：直接映射到现有工具执行链（含宪法 deny 红线）
+  codeRuntime = new CodeRuntime({
+    bindings: Object.fromEntries(ENGINE_TOOL_NAMES.map((n) => [n, { description: toolBindingDesc(n), args: toolBindingArgs(n), exec: async (args) => executeUnifiedTool(n, toolBindingArgsObj(n, args)) }])),
+  });
+  codeMode = createCodeMode({ runtime: codeRuntime });
+  // Gateway：注入宿主能力（httpFetch / auth / 工具执行链 / 模型）
+  gateway = await createGateway({
+    httpFetch: httpJsonFetch,
+    authReader: () => readJsonFile(AUTH_PATH),
+    modelReader: () => readJsonFile(MODELS_PATH),
+    resolveAuth: (provider) => resolveAuth(provider),
+    defaultExecutor: (name, args) => executeUnifiedTool(name, args),
+    getModel: engineCurrentModel,
+    sessionDir: path.join(getAgentDir(), "engine-sessions"),
+  });
+  // 注册 run_code 工具（Code Mode 作为引擎的一个普通工具，体现插件化）
+  gateway.tools.register(codeMode.runCodeToolDef());
+  console.log(`[engine] Gateway 2.0 就绪：适配器=${gateway.adapter.id} 工具=${gateway.tools.names().join(",")} 存储=${gateway.store.id} 循环=${gateway.loop.id}`);
+  return gateway;
+}
+function toolBindingDesc(name) {
+  return { bash: "运行 shell 命令（Windows cmd），如 dir、node、python、git", read: "读取工作空间内文件内容", write: "写入文件（自动创建目录）", edit: "用精确文本替换修改文件（先 read 再 edit）", web_search: "联网搜索（Bing，无需 key）" }[name] || name;
+}
+function toolBindingArgs(name) {
+  return { bash: "command", read: "path", write: "path, content", edit: "path, oldText, newText", web_search: "query" }[name] || "...";
+}
+function toolBindingArgsObj(name, args) {
+  return { bash: { command: args?.[0] }, read: { path: args?.[0] }, write: { path: args?.[0], content: args?.[1] }, edit: { path: args?.[0], oldText: args?.[1], newText: args?.[2] }, web_search: { query: args?.[0] } }[name] || {};
 }
 
 // ══ 消息看板：pi 更新 + 能力看板 ══
@@ -3152,8 +3216,10 @@ ${oldText.slice(0, 40000)}`, { tools: false });
 }
 
 // 统一通道：所有模型走 unifiedChat（对话 + 工具 + 思考 + 媒体 + 压缩 + 重试）
-async function handleUnifiedChat(res, entry, message, sessionId, params, signal, writer) {
+async function handleUnifiedChat(res, entry, message, sessionId, params, signal, writer, thinkOn, taskKey) {
+  const taskId = taskKey || sessionId;
   writer = writer || createSseWriter(res);
+  touchTask(taskId, { stage: "处理中" });
   let hist = [];
   try {
     const file = entry.sm.sessionFile;
@@ -3163,12 +3229,17 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal,
   const mediaPromise = mediaIntents.length
     ? Promise.all(mediaIntents.map(it => generateMediaAsync(it, extractMediaPrompt(message))))
     : Promise.resolve([]);
-  const onToolStart = (id, name, args) => writer.push("tool", { name, args, id });
+  const onToolStart = (id, name, args) => { touchTask(taskId, { stage: "执行工具", toolName: name }); writer.push("tool", { name, args, id }); };
   const onToolEnd = (id, name, args, out) => {
+    touchTask(taskId, { stage: "工具完成", toolName: name });
     const text = out?.text || "";
     writer.push("tool_end", { name, id, isError: out?.isError === true, output: text.slice(0, 2000) });
   };
   let history = [...hist.map(h => ({ role: h.role, content: h.text })), { role: "user", content: message }];
+  // 外部思考调试：注入引导语 + think 工具（默认关，本次请求开启时生效）
+  if (thinkOn) {
+    history = [{ role: "system", content: THINK_PROMPT }, ...history];
+  }
   // 注入项目规则（.pi-rules.md，借鉴 Windsurf rules），确保不挤占历史上下文
   const rules = loadProjectRules();
   if (rules.length) history = [{ role: "system", content: rules.join("\n") }, ...history];
@@ -3180,12 +3251,15 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal,
     if (fullExp.length) history = [...fullExp.map(c => ({ role: "system", content: c })), ...history];
   }
   history = await maybeCompactHistory(history, defaultModel);
-  const result = await unifiedChat(defaultModel, history, { onTool: onToolStart, onToolEnd, params, signal });
+  const toolDefs = thinkOn ? [...UNIFIED_TOOLS, THINK_TOOL] : undefined;
+  const result = await unifiedChat(defaultModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: toolDefs });
   if (!result || result.error) {
+    clearTask(taskId, "error");
     writer.push("error", { message: result?.error || "模型未返回内容，请稍后重试" });
     return;
   }
   // 客户端已断开 → 不写会话、不发 SSE（避免半截结果污染会话文件）
+  if (result.aborted || signal?.aborted) { clearTask(taskId, "aborted"); return; }
   if (result.aborted || signal?.aborted) return;
   const text = result.text;
   if (!text) { writer.push("error", { message: "模型未返回内容，请稍后重试" }); return; }
@@ -3204,12 +3278,57 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal,
     writer.push("media", mr);
   }
   writer.push("done", { sessionId });
+  clearTask(taskId, "done");
   console.log(`[pi-web] 统一通道: ${defaultModel.provider}/${defaultModel.id}`);
+}
+
+// ============================================================
+// Agent 活动事件环（借鉴 dsh 轨迹设计：小语在干嘛，前端实时可见）
+// 内存环：保留最近 200 条，不持久化（历史仍在 session 文件）
+// ============================================================
+const agentEventRing = [];
+const AGENT_EVENT_MAX = 200;
+
+// ── 任务进度快照：前端息屏/断线/刷新后，可查"任务是否还在跑、跑到哪一步" ──
+// 内存 Map（sessionId → 快照）；任务结束保留 60s 供前端查"刚结束"，之后自动清除
+const taskProgress = new Map();
+function touchTask(sessionId, patch = {}) {
+  if (!sessionId) return;
+  const t = taskProgress.get(sessionId) || { sessionId, status: "running", stage: "处理中", startedAt: Date.now() };
+  Object.assign(t, patch, { updatedAt: Date.now() });
+  taskProgress.set(sessionId, t);
+}
+function clearTask(sessionId, status = "done") {
+  if (!sessionId) return;
+  const t = taskProgress.get(sessionId);
+  if (!t) return;
+  t.status = status;
+  t.updatedAt = Date.now();
+  setTimeout(() => { taskProgress.delete(sessionId); }, 60000); // 60s 后清除，前端可查"刚结束"
+}
+
+function handleAgentEventIn(req, res, body) {
+  if (!body || !body.type) return json(res, 400, { error: "bad event" });
+  const ev = {
+    agent: body.agent || "小语",
+    type: String(body.type).replace(/^pi\//, ""),
+    data: body.data || {},
+    ts: body.ts || new Date().toISOString(),
+  };
+  agentEventRing.push(ev);
+  if (agentEventRing.length > AGENT_EVENT_MAX) agentEventRing.shift();
+  return json(res, 200, { ok: true });
+}
+
+function handleAgentEventOut(res) {
+  return json(res, 200, { events: agentEventRing.slice(-80) });
 }
 
 async function handleChat(req, res, body) {
   let message = typeof body.message === "string" ? body.message.trim() : "";
   const sessionId = typeof body.sessionId === "string" ? body.sessionId : null;
+  // 外部思考调试开关：请求级 body.think=true 或全局 CONFIG.externalThinking
+  const thinkOn = body.think === true || isExternalThinking();
   // 记录对话开始时会话行数（基线）：交付时只提取本轮新增的文件，避免历史文件重复推
   let chatBaseline = 0;
   console.log(`[chat] msg="${message.slice(0, 20)}" sid=${sessionId} model=${defaultModel?.provider}/${defaultModel?.id} agent=${body.model || ""}`);
@@ -3328,7 +3447,7 @@ async function handleChat(req, res, body) {
     const onClose = () => { try { abortCtrl.abort(); } catch {} };
     req.on("close", onClose);
     try {
-      await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl.signal);
+      await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl.signal, undefined, thinkOn, body.taskKey);
     } catch (e) {
       try { sseWrite(res, "error", { message: String(e?.message || e) }); } catch {}
     } finally {
@@ -3355,6 +3474,8 @@ async function handleChat(req, res, body) {
   const sm = entry.sm;
   const hbTimer = startSseHeartbeat(res); // 心跳保活（公网隧道不因 idle 断开）
   const writer = createSseWriter(res); // 背压控制：慢网络时事件排队等 drain，不丢不堆
+  const taskId = body.taskKey || sessionId || findKeyByEntry(entry) || "new";
+  touchTask(taskId, { stage: "处理中" });
   let sawDelta = false; // 是否产生过文本输出（用于空回复兜底）
   let collected = "";   // 收集主模型输出（用于媒体路由的配图/配音内容）
   const mediaIntents = detectMediaIntents(message);
@@ -3376,8 +3497,10 @@ async function handleChat(req, res, body) {
       } else if (event.type === "message_update" && event.assistantMessageEvent?.type === "thinking_end") {
         writer.push("think_end", {});
       } else if (event.type === "tool_execution_start") {
+        touchTask(taskId, { stage: "执行工具", toolName: event.toolName });
         writer.push("tool", { name: event.toolName, args: event.args, id: event.toolCallId });
       } else if (event.type === "tool_execution_end") {
+        touchTask(taskId, { stage: "工具完成", toolName: event.toolName });
         const text = Array.isArray(event.result?.content)
           ? event.result.content.map(c => c.text || "").join("")
           : "";
@@ -3455,6 +3578,15 @@ async function handleChat(req, res, body) {
       } catch {}
     } else {
       console.log(`[tiered] 闲聊不注入: msg="${message.slice(0, 30)}"`);
+    }
+    // 外部思考调试：注入 think 引导（nextTurn，不污染会话历史）
+    if (thinkOn) {
+      try {
+        await entry.agent?.sendCustomMessage?.(
+          { customType: "context", content: [{ type: "text", text: THINK_PROMPT }] },
+          { deliverAs: "nextTurn" }
+        );
+      } catch {}
     }
     // 媒体生成与主模型并行（拿到文字即可继续推下一步，不用等全部完成）
     const mediaResults = mediaIntents.length ? await mediaPromise : [];
@@ -3671,6 +3803,7 @@ async function handleChat(req, res, body) {
         mem.saveSnapshot(CONFIG.cwd, "auto");
       }
     } catch {}
+    clearTask(taskId, "done");
     writer.push("done", { sessionId: sessionId || findKeyByEntry(entry) });
   } catch (e) {
     // 官方 agent 管线异常 → 降级到自制 unifiedChat 兑底（避免任务静默失败）
@@ -3683,12 +3816,13 @@ async function handleChat(req, res, body) {
       const abortCtrl2 = new AbortController();
       const onClose2 = () => { try { abortCtrl2.abort(); } catch {} };
       req.on("close", onClose2);
-      await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl2.signal, writer);
+      await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl2.signal, writer, undefined, body.taskKey);
       req.removeListener("close", onClose2);
     } catch (e2) {
       try { writer.push("error", { message: `降级通道也失败: ${String(e2?.message || e2)}` }); } catch {}
     }
   } finally {
+    clearTask(taskId, "done"); // 兜底：任何路径结束都清快照，防残留 running
     clearInterval(hbTimer);
     try { unsubscribe(); } catch {}
     // 代次匹配才释放（快速重发时新请求已占 busy，旧请求不得干扰）
@@ -4462,8 +4596,69 @@ const API_ROUTES = [
   ["POST", "/api/think", async (res, req) => handleThink(res, await readBody(req))],
   ["POST", "/api/image", async (res, req) => handleImageWithSave(res, req, await readBody(req))],
   ["POST", "/api/media", async (res, req) => handleMedia(res, await readBody(req))],
+  ["GET", "/api/tasks/active", async (res, req) => {
+    const u = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    const sid = u.searchParams.get("sessionId") || "";
+    const tk = u.searchParams.get("taskKey") || "";
+    const key = tk || sid;
+    const t = key ? taskProgress.get(key) : null;
+    if (!t || t.status !== "running") return json(res, 200, { active: false, taskKey: tk || null, sessionId: sid || null });
+    return json(res, 200, { active: true, taskKey: tk || null, sessionId: sid || null, stage: t.stage, toolName: t.toolName || null, startedAt: t.startedAt, updatedAt: t.updatedAt });
+  }],
   ["POST", "/api/chat", async (res, req) => handleChat(req, res, await readBody(req, 12))],
   ["POST", "/api/compare", async (res, req) => handleCompare(res, await readBody(req))],
+  // ── Agent 活动事件（pi 事件广播扩展 → 前端实时显示小语在干嘛）──
+  ["POST", "/api/agent/events", async (res, req) => handleAgentEventIn(req, res, await readBody(req, 2))],
+  ["GET", "/api/agent/events", (res) => handleAgentEventOut(res)],
+  // ── Gateway 2.0 插件化引擎（dsh 设计沉淀）──
+  ["GET", "/api/engine/status", async (res) => { try { json(res, 200, (await initEngine()).status()); } catch (e) { json(res, 500, { error: String(e?.message || e) }); } }],
+  ["POST", "/api/engine/plugins/register", async (res, req) => {
+    try {
+      const def = await readBody(req, 2);
+      if (!def?.id) return json(res, 400, { error: "插件需要 id" });
+      const gw = await initEngine();
+      const r = await gw.registerPlugin(def);
+      json(res, 200, r);
+    } catch (e) { json(res, 400, { error: String(e?.message || e) }); }
+  }],
+  ["POST", "/api/engine/plugins/unregister", async (res, req) => {
+    try {
+      const body = await readBody(req, 1);
+      const gw = await initEngine();
+      json(res, 200, { removed: await gw.unregisterPlugin(String(body?.id || "")) });
+    } catch (e) { json(res, 400, { error: String(e?.message || e) }); }
+  }],
+  ["POST", "/api/engine/chat", async (res, req) => {
+    try {
+      const body = await readBody(req, 12);
+      const gw = await initEngine();
+      const r = await gw.chat(String(body?.message || ""), { history: body?.history || [], sessionId: body?.sessionId, model: body?.model, tools: body?.tools !== false, params: body?.params, system: body?.system });
+      json(res, r.error ? 400 : 200, r);
+    } catch (e) { json(res, 500, { error: String(e?.message || e) }); }
+  }],
+  // ── Code Mode（PTC 模式：模型写程序编排工具）──
+  ["GET", "/api/code/tools", async (res) => {
+    try {
+      const gw = await initEngine();
+      json(res, 200, { bindings: Object.entries(codeRuntime.bindings).map(([n, b]) => ({ name: n, args: b.args, description: b.description })), sdk: codeMode.buildSdkText() });
+    } catch (e) { json(res, 500, { error: String(e?.message || e) }); }
+  }],
+  ["POST", "/api/code/run", async (res, req) => {
+    try {
+      const body = await readBody(req, 4);
+      await initEngine();
+      const r = await codeRuntime.run({ program: String(body?.program || ""), timeoutMs: body?.timeoutMs });
+      json(res, r.error ? 400 : 200, r);
+    } catch (e) { json(res, 500, { error: String(e?.message || e) }); }
+  }],
+  ["POST", "/api/code/chat", async (res, req) => {
+    try {
+      const body = await readBody(req, 12);
+      const gw = await initEngine();
+      const r = await gw.chat(String(body?.message || ""), { history: body?.history || [], tools: true, params: body?.params, system: (body?.system || "") + "\n\n你可以用 run_code 工具写程序编排多步操作。" });
+      json(res, r.error ? 400 : 200, r);
+    } catch (e) { json(res, 500, { error: String(e?.message || e) }); }
+  }],
   ["POST", "/api/parse-file", async (res, req) => handleParseFile(res, await readBody(req, 12))],
   // ── 专项工作台 ──
   ["POST", "/api/workshop/ppt", async (res, req) => workshop.handleWorkshopPpt(wsCtx(), res, await readBody(req))],
@@ -4486,7 +4681,8 @@ const server = http.createServer(async (req, res) => {
   const t0 = Date.now();
   try {
     // 安全响应头（CSP 限制脚本来源，防止第三方注入执行；禁 MIME 嗅探；防 clickjacking）
-    res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' ws: wss: https://fastly.jsdelivr.net https://cubism.live2d.com https://v1.hitokoto.cn; font-src 'self' data:; frame-ancestors 'none'");
+    // OMEGA 页需连 OpenIM(10002/10001) 与 Gateway(9000)，connect-src/worker-src 已放行本地服务
+    res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' ws: wss: http://127.0.0.1:10002 http://127.0.0.1:9000 ws://127.0.0.1:10001 ws://127.0.0.1:9000 https://fastly.jsdelivr.net https://cubism.live2d.com https://v1.hitokoto.cn; worker-src 'self' blob:; font-src 'self' data:; frame-ancestors 'none'");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Referrer-Policy", "no-referrer");

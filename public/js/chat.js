@@ -349,6 +349,43 @@ async function refreshMessages() {
   if (w) w.remove();
 }
 
+// 断流恢复：轮询服务端任务状态，任务结束后拉历史刷新界面（息屏/断线场景，不丢工作状态）
+async function pollTaskAndRecover(taskKey, { maxWait = 300000 } = {}) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < maxWait) {
+    let t = null;
+    try { t = await api(`/api/tasks/active?taskKey=${encodeURIComponent(taskKey)}`); } catch {}
+    if (!t || !t.active) {
+      // 任务已结束 → 拉历史刷新界面，恢复最新状态
+      if (currentId) {
+        await refreshMessages().catch(() => {});
+        toast("✅ 任务已完成，已恢复最新状态");
+        setStatus("就绪");
+      }
+      return { recovered: true };
+    }
+    // 还在跑：保持 busy 状态，继续等（每 5s 查一次）
+    if (currentId) setStatus(`任务继续中…（${t.stage || "处理中"}）`, "busy");
+    await new Promise(r => setTimeout(r, 5000));
+  }
+  return { recovered: false };
+}
+
+// 息屏/切后台恢复可见：当前流在跑但长时间无事件（可能已断），主动查任务状态恢复
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) return;
+    const key = currentKey();
+    const st = streams.get(key);
+    if (!st || st.done) return;
+    const tk = st.taskKey || (key.startsWith("__new__") ? null : key);
+    if (!tk) return;
+    if (Date.now() - (st.lastEventAt || 0) > 30000) {
+      pollTaskAndRecover(tk).catch(() => {});
+    }
+  });
+}
+
 function renderMessages(msgs) {
   histMsgs = msgs || [];
   histLoaded = Math.min(HIST_PAGE, histMsgs.length);
@@ -878,6 +915,9 @@ function addTool(name, argsText, toolCallId, rawArgs) {
   let head = `<span class="t-ico" style="--tc:var(${colorVar})">${icon}</span>`;
   if (name === "bash") {
     head += `<span class="t-name">bash</span><span class="t-cmd"><span class="ps">$ </span>${esc(argsText)}</span>`;
+  } else if (name === "think") {
+    // 外部思考草稿：头部不堆内容，body 里展示完整草稿
+    head += `<span class="t-name">think</span><span class="t-cmd" style="color:var(--dim)">思考草稿（调试）</span>`;
   } else if (argsText) {
     head += `<span class="t-name">${esc(name)}</span><span class="t-cmd">${esc(argsText)}</span>`;
   } else {
@@ -886,7 +926,7 @@ function addTool(name, argsText, toolCallId, rawArgs) {
   head += `<span class="t-state"><span class="spinner" style="--tc:var(${colorVar})"></span>运行中</span>`;
 
   const el = document.createElement("div");
-  el.className = "tool running";
+  el.className = "tool running" + (name === "think" ? " tool-think" : "");
   el.style.setProperty("--tc", `var(${colorVar})`);
   el.innerHTML = `
     <div class="tool-head">${head}</div>
@@ -899,6 +939,17 @@ function addTool(name, argsText, toolCallId, rawArgs) {
   box.appendChild(el);
   box.scrollTop = box.scrollHeight;
 
+  // think 草稿：把模型写进工具参数的内容直接展示为可折叠草稿块（默认展开）
+  if (name === "think") {
+    const draft = String((rawArgs && rawArgs.content) || argsText || "").trim();
+    if (draft) {
+      el.classList.add("expanded");
+      const outEl = el.querySelector(".tool-out");
+      outEl.className = "tool-out tool-think-out";
+      outEl.innerHTML = `<div class="think-draft">${esc(draft)}</div><div class="think-note">🧠 思考草稿 · 仅本次会话内存可见，不落盘</div>`;
+    }
+  }
+
   const card = {
     el,
     outEl: el.querySelector(".tool-out"),
@@ -908,6 +959,7 @@ function addTool(name, argsText, toolCallId, rawArgs) {
     start: performance.now(),
     output: "",
     hasDiff: false,
+    isThink: name === "think",
   };
 
   // write/edit：渲染文件变化 diff
@@ -927,6 +979,7 @@ function updateToolOutput(toolCallId, text) {
   if (!card) return;
   card.output = text || "";
   if (card.hasDiff) return;
+  if (card.isThink) { card.sizeEl.textContent = fmtSize(card.output.length); return; } // 思考草稿保持展示，不被结果覆盖
   const shown = card.output.length > 4000 ? "…[已截断]…\n" + card.output.slice(-4000) : card.output;
   card.outEl.textContent = shown || "（无输出）";
   card.sizeEl.textContent = fmtSize(card.output.length);
@@ -943,7 +996,7 @@ function endTool(toolCallId, isError) {
     : `<span style="color:var(--green)">✓ 完成</span>`;
   card.el.classList.remove("running");
   card.el.classList.add(isError ? "done-err" : "done-ok");
-  if (card.output && !card.hasDiff) {
+  if (card.output && !card.hasDiff && !card.isThink) {
     const shown = card.output.length > 4000 ? "…[已截断]…\n" + card.output.slice(-4000) : card.output;
     card.outEl.textContent = shown;
     card.el.classList.add("expanded");
@@ -1204,6 +1257,7 @@ async function send() {
   addUserMsg(text);
   // 数据层初始化（切走再切回可重建视图）
   const st = { text: "", think: "", tools: new Map(), toolOrder: [], events: [], startedAt: performance.now(), done: false, toolStarted: false, pendingText: "", userText: text };
+  st.taskKey = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
   streams.set(key, st);
   // 渲染层复位（当前视图 = 本会话）
   render = { assistantEl: null, toolEls: new Map(), toolOrder: [], thinkingEl: null, deltaBuf: "", thinkBuf: "", flushTimer: null };
@@ -1231,10 +1285,12 @@ async function send() {
         body: JSON.stringify({
           message: text,
           sessionId: currentId,
+          taskKey: st.taskKey,
           files: attachFiles,
           images: attachImages,
           fresh,
           params: window.piParams || undefined,
+          think: window.externalThinkingOn === true,
         }),
         signal: controller.signal,
       });
@@ -1298,6 +1354,7 @@ async function send() {
         }
         if (!data) continue;
         lastEvent = Date.now();
+        st.lastEventAt = Date.now();
         let obj; try { obj = JSON.parse(data); } catch { continue; }
         // 注册表优先：自定义消息类型走渲染器（插件式扩展，不用改核心 switch）
         if (typeof dispatchRenderer === "function" && dispatchRenderer(ev, { ev, obj, key, sid: key })) {
@@ -1437,7 +1494,19 @@ async function send() {
         // 连接建立前失败（fetch failed）→ 消息未发出，恢复输入框内容
         if (!streamingStarted) { $("input").value = text; autoGrow(); updateSendBtn(); }
         else {
-          // 流中途断开：服务端已中止任务，把消息恢复到输入框，方便一键重发
+          // 流中途断开：先查服务端任务是否还在跑（息屏/网络抖动场景，任务可能并未失败）
+          const tk = st.taskKey || (key.startsWith("__new__") ? null : key);
+          if (tk) {
+            let t = null;
+            try { t = await api(`/api/tasks/active?taskKey=${encodeURIComponent(tk)}`); } catch {}
+            if (t && t.active) {
+              appendDelta(`\n\n⚠️ 连接中断，任务仍在继续（${t.stage || "处理中"}${t.toolName ? "：" + t.toolName : ""}）…正在等待完成并自动恢复`);
+              setStatus("任务继续中…", "busy");
+              pollTaskAndRecover(tk).catch(() => {});
+              return; // 消息已发出，不清输入框
+            }
+          }
+          // 任务不在跑：把消息恢复到输入框，方便一键重发
           $("input").value = text;
           autoGrow();
           updateSendBtn();
