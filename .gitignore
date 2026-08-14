@@ -33,3 +33,4 @@ _install*.ps1
 _gen.*
 _search_tmp*
 extensions/pi-reasonix/
+.watchdog.lock

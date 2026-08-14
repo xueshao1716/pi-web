@@ -65,6 +65,8 @@ export const CONFIG = {
   tools: (process.env.PI_WEB_TOOLS || "read,write,edit,bash").split(",").map(s => s.trim()).filter(Boolean),
   // 默认模型，空 = 使用第一个可用模型
   model: process.env.PI_WEB_MODEL || "",
+  // 外部思考调试开关（externalThinking）：给模型挂 think 工具导出推理草稿（默认关）
+  externalThinking: process.env.PI_WEB_EXTERNAL_THINKING === "1",
   // pi 包路径（跨平台推导）
   piPackage: resolvePiPackage(),
 };

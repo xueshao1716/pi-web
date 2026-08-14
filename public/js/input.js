@@ -330,6 +330,22 @@ $("mm-export").addEventListener("click", async () => {
 });
 
 // ══ 事件绑定 ══
+// 外部思考调试开关（🧠）：默认关，localStorage 记忆；开启后请求带 think:true
+window.externalThinkingOn = localStorage.getItem("pi-exthink") === "1";
+function refreshExThinkBtn() {
+  const b = $("btn-exthink");
+  if (!b) return;
+  b.style.opacity = window.externalThinkingOn ? "1" : "0.45";
+  b.style.boxShadow = window.externalThinkingOn ? "0 0 0 1.5px var(--accent)" : "none";
+  b.title = window.externalThinkingOn ? "🧠 外部思考已开启（推理草稿可见）" : "🧠 外部思考调试：让模型把推理草稿写出来（当前关）";
+}
+$("btn-exthink")?.addEventListener("click", () => {
+  window.externalThinkingOn = !window.externalThinkingOn;
+  localStorage.setItem("pi-exthink", window.externalThinkingOn ? "1" : "0");
+  refreshExThinkBtn();
+  toast(window.externalThinkingOn ? "🧠 外部思考已开启：模型推理草稿将可见" : "🧠 外部思考已关闭");
+});
+refreshExThinkBtn();
 $("send").addEventListener("click", () => {
   // 输入框有内容 → 发送（会话生成中会自动打断）；输入框空 → 停止当前生成
   if ($("input").value.trim()) { send(); return; }

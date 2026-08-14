@@ -783,6 +783,13 @@
   .diff-line.add { background: rgba(62,207,142,.1); color: #8be3bb; }
   .diff-line .sig { display: inline-block; width: 14px; color: var(--dim-2); user-select: none; }
 
+  /* 外部思考草稿（🧠 调试）：紫色调，跟普通工具调用区分 */
+  .tool-think { --tc: var(--tool-think, #c084fc); }
+  .tool-think .tool-head { background: linear-gradient(90deg, color-mix(in srgb, var(--tc) 12%, transparent), transparent 60%); }
+  .tool-think-out { padding: 10px 12px; }
+  .think-draft { font-family: var(--mono); font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: color-mix(in srgb, var(--text) 88%, var(--tc)); background: color-mix(in srgb, var(--tc) 7%, transparent); border: 1px solid color-mix(in srgb, var(--tc) 22%, transparent); border-radius: 8px; padding: 10px 12px; max-height: 320px; overflow-y: auto; }
+  .think-note { margin-top: 8px; font-size: 11px; color: var(--dim-2); }
+
   /* 代码块：头部栏（语言 + 复制）+ 语法高亮（借鉴 Codex/Cursor） */
   .code-wrap {
     position: relative; margin: 10px 0;
@@ -1982,4 +1989,101 @@ html[data-theme="linear"] #login {
     linear-gradient(160deg, color-mix(in srgb, var(--accent) 9%, transparent), color-mix(in srgb, var(--panel-2) 92%, transparent)),
     var(--panel-2);
   box-shadow: 0 1px 3px rgba(0,0,0,.12);
+}
+
+/* ══ Gateway 2.0 引擎面板 + 代码模式（dsh 设计沉淀）══ */
+.btn-mini {
+  background: var(--panel-2, #2a2d35); color: var(--text, #e8e8e8);
+  border: 1px solid var(--border, #3a3d45); border-radius: 6px;
+  padding: 4px 12px; cursor: pointer; font-size: 12px;
+  transition: border-color .15s, color .15s;
+}
+.btn-mini:hover { border-color: var(--accent, #7aa2f7); color: var(--accent, #7aa2f7); }
+
+/* ── 引擎面板 ── */
+.eng-loading { color: var(--muted, #9aa0aa); font-size: 12px; padding: 12px 4px; }
+.eng-block {
+  background: var(--panel-1, #1e2128); border: 1px solid var(--border, #3a3d45);
+  border-radius: 10px; padding: 12px; margin-bottom: 10px;
+}
+.eng-sec-title {
+  font-size: 12px; font-weight: 600; color: var(--accent, #7aa2f7);
+  letter-spacing: .3px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+}
+.eng-sec-title::before { content: ""; width: 3px; height: 12px; border-radius: 2px; background: var(--accent, #7aa2f7); display: inline-block; }
+
+.eng-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.eng-card {
+  background: var(--panel-2, #2a2d35); border: 1px solid var(--border, #3a3d45);
+  border-radius: 8px; padding: 10px; transition: border-color .15s;
+}
+.eng-card:hover { border-color: var(--accent, #7aa2f7); }
+.eng-card-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.eng-card-name { font-size: 12px; color: var(--muted, #9aa0aa); }
+.eng-card-value {
+  font-family: var(--mono, Consolas, monospace); font-size: 12px; color: var(--text, #e8e8e8);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.eng-card-note { font-size: 10px; color: var(--dim-2, #666); margin-top: 4px; font-family: var(--mono, monospace); }
+
+.eng-tools-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.eng-tools-label { font-size: 11px; color: var(--muted, #9aa0aa); }
+.eng-tag {
+  display: inline-block; background: var(--panel-2, #2a2d35); border: 1px solid var(--border, #3a3d45);
+  border-radius: 10px; padding: 1px 8px; margin: 2px; font-size: 11px; color: var(--muted, #9aa0aa);
+  font-family: var(--mono, monospace);
+}
+.eng-tag.ok { border-color: rgba(63,185,80,.4); color: #3fb950; }
+
+.eng-plugin-list { display: flex; flex-direction: column; gap: 6px; }
+.eng-plugin {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  background: var(--panel-2, #2a2d35); border: 1px solid var(--border, #3a3d45);
+  border-radius: 8px; padding: 8px 10px;
+}
+.eng-plugin-left { min-width: 0; }
+.eng-plugin-name { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text, #e8e8e8); }
+.eng-plugin-ver { font-size: 10px; color: var(--dim-2, #666); font-family: var(--mono, monospace); }
+.eng-plugin-deps { display: flex; align-items: center; margin-top: 4px; font-size: 10px; }
+.eng-deps-label { color: var(--dim-2, #666); margin-right: 2px; }
+.eng-plugin-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.eng-badge {
+  font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600;
+}
+.eng-badge.ok { background: rgba(63,185,80,.12); color: #3fb950; border: 1px solid rgba(63,185,80,.35); }
+.eng-badge.off { background: rgba(248,81,73,.1); color: #f85149; border: 1px solid rgba(248,81,73,.3); }
+.eng-unload { padding: 2px 8px; font-size: 11px; }
+.eng-unload:hover { border-color: #f85149; color: #f85149; }
+
+.eng-hint { font-size: 11px; color: var(--dim-2, #666); margin-bottom: 6px; line-height: 1.5; }
+.eng-reg-input {
+  width: 100%; box-sizing: border-box; padding: 8px; resize: vertical;
+  font-family: var(--mono, Consolas, monospace); font-size: 11px; line-height: 1.5;
+  background: #14161a; color: #d4d4d4; border: 1px solid var(--border, #3a3d45); border-radius: 8px;
+}
+.eng-reg-input:focus { outline: none; border-color: var(--accent, #7aa2f7); }
+.eng-reg-row { display: flex; justify-content: flex-end; margin-top: 8px; }
+.eng-reg-btn { background: var(--accent, #7aa2f7); color: #0b0d12; border: none; font-weight: 600; }
+.eng-reg-btn:hover { opacity: .85; color: #0b0d12; }
+
+/* ── 代码模式 ── */
+#code-editor {
+  width: 100%; box-sizing: border-box; min-height: 160px;
+  background: #14161a; color: #d4d4d4; border: 1px solid var(--border, #3a3d45);
+  border-radius: 8px; padding: 10px; font-family: Consolas, "Courier New", monospace;
+  font-size: 12px; line-height: 1.5; resize: vertical; margin-top: 8px;
+}
+#code-editor:focus { outline: none; border-color: var(--accent, #7aa2f7); }
+.code-out {
+  background: #0f1114; border: 1px solid var(--border, #3a3d45); border-radius: 8px;
+  padding: 10px; font-family: Consolas, "Courier New", monospace; font-size: 12px;
+  white-space: pre-wrap; word-break: break-all; max-height: 320px; overflow: auto; margin-top: 4px;
+  color: #c8d3f5;
+}
+.code-out .err { color: #f85149; }
+.code-out .log-line { color: #9aa0aa; }
+.code-tool-chip {
+  display: inline-block; border: 1px solid var(--border, #3a3d45); border-radius: 12px;
+  padding: 2px 10px; margin: 2px 4px 2px 0; font-size: 11px; color: var(--muted, #9aa0aa);
+  background: var(--panel-2, #2a2d35); font-family: var(--mono, monospace); cursor: help;
 }

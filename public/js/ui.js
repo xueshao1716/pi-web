@@ -395,18 +395,25 @@ function notifyDone() {
 
 // ══ 侧边栏视图：单按钮 + 下拉切换 ══
 let activeTab = "sessions";
-const VIEW_LABELS = { sessions: "会话", skills: "技能", workspace: "工作空间" };
+const VIEW_LABELS = { sessions: "会话", activity: "小语活动", skills: "技能", engine: "引擎", code: "代码模式", workspace: "工作空间" };
 function switchView(v) {
   activeTab = v;
   // 工作空间已独立成页（workspace.html），侧栏不再内嵌面板
   if (v === "workspace") { location.href = "/workspace"; return; }
   $("view-current").textContent = VIEW_LABELS[v];
   $("panel-sessions").hidden = v !== "sessions";
+  $("panel-activity").hidden = v !== "activity";
   $("panel-skills").hidden = v !== "skills";
+  // 防御：旧版 index.html 可能没有这些面板（缓存不一致时不抛错）
+  const pe = $("panel-engine"); if (pe) pe.hidden = v !== "engine";
+  const pc = $("panel-code"); if (pc) pc.hidden = v !== "code";
   $("panel-workspace").hidden = true;
   $("view-menu").hidden = true;
   $("view-btn").classList.remove("open");
   if (v === "skills") loadSkills();
+  if (v === "activity") { loadAgentActivity(); pollAgentActivity(); }
+  if (v === "engine") window.initEnginePanel?.();
+  if (v === "code") window.initCodePanel?.();
 }
 $("view-btn").addEventListener("click", (e) => {
   e.stopPropagation();
@@ -427,6 +434,76 @@ document.addEventListener("click", (e) => {
   }
 });
 switchView("sessions");
+
+// ══ ⚡ 小语活动面板（dsh 轨迹设计沉淀：实时看小语在干嘛）══
+const ACT_ICONS = {
+  thinking: "💭", turn_start: "▶", tool_start: "🔧", tool_end: "✔",
+  user_message: "👤", assistant_reply: "🤖", task_completed: "✓",
+  turn_end: "⏹", error: "⚠", session_start: "🟢", session_shutdown: "⚫",
+  agent_settled: "💤",
+};
+let actPollTimer = null;
+let lastActCount = 0;
+
+function actTypeLabel(type) {
+  const m = { tool_start: "调用工具", tool_end: "工具完成", assistant_reply: "回复",
+    thinking: "思考中", user_message: "你的消息", turn_start: "回合开始", turn_end: "回合结束" };
+  return m[type] || type;
+}
+
+async function loadAgentActivity() {
+  try {
+    const r = await api("/api/agent/events");
+    const evs = r.events || [];
+    lastActCount = evs.length;
+    renderAgentActivity(evs);
+  } catch (e) { /* 接口未就绪 */ }
+}
+
+function renderAgentActivity(evs) {
+  const statusBox = $("act-status");
+  const list = $("act-list");
+  if (!statusBox || !list) return;
+  // 状态条：取最新事件推断当前状态
+  const last = evs[evs.length - 1];
+  let statusText = "空闲";
+  let statusCls = "idle";
+  if (last) {
+    if (last.type === "tool_start") { statusText = `正在 ${last.data?.tool || "调用工具"}`; statusCls = "run"; }
+    else if (last.type === "thinking" || last.type === "turn_start") { statusText = "思考中…"; statusCls = "think"; }
+    else if (last.type === "assistant_reply" || last.type === "tool_end") { statusText = "工作中"; statusCls = "run"; }
+    else if (last.type === "session_shutdown") { statusText = "已停止"; statusCls = "idle"; }
+  }
+  statusBox.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:8px;background:var(--panel-2);border:1px solid var(--border);font-size:12px">
+    <span class="dot ${statusCls === 'run' ? 'run' : statusCls === 'think' ? 'think' : ''}" style="width:8px;height:8px;border-radius:50%;background:${statusCls === 'run' ? 'var(--green)' : statusCls === 'think' ? 'var(--yellow)' : 'var(--dim-2)'};box-shadow:${statusCls !== 'idle' ? '0 0 8px currentColor' : 'none'}"></span>
+    <span>${statusText}</span><span style="margin-left:auto;color:var(--dim-2);font-family:var(--mono)">${last ? new Date(last.ts).toLocaleTimeString('zh-CN', { hour12: false }) : ''}</span></div>`;
+  // 事件列表（倒序，最新的在上）
+  list.innerHTML = evs.slice().reverse().slice(0, 40).map(ev => {
+    const icon = ACT_ICONS[ev.type] || "·";
+    let desc = actTypeLabel(ev.type);
+    if (ev.type === "tool_start") desc += ` <b>${ev.data?.tool || ""}</b>`;
+    if (ev.type === "user_message") desc = `你：${(ev.data?.text || "").slice(0, 40)}`;
+    if (ev.type === "assistant_reply") desc = `小语：${(ev.data?.text || "").slice(0, 40)}`;
+    if (ev.type === "thinking") desc = "思考中";
+    const t = new Date(ev.ts).toLocaleTimeString("zh-CN", { hour12: false });
+    return `<div style="display:flex;gap:8px;padding:6px 8px;border-radius:6px;font-size:11.5px;color:var(--dim);line-height:1.5"><span style="font-family:var(--mono);color:var(--dim-2);flex-shrink:0">${t}</span><span style="flex-shrink:0">${icon}</span><span style="word-break:break-word">${desc}</span></div>`;
+  }).join("") || "<div style='padding:10px;color:var(--dim-2);font-size:11.5px'>暂无活动记录——小语干活时会实时显示在这里</div>";
+}
+
+function pollAgentActivity() {
+  if (actPollTimer) clearInterval(actPollTimer);
+  actPollTimer = setInterval(async () => {
+    if (activeTab !== "activity") return; // 离开视图停轮询
+    try {
+      const r = await api("/api/agent/events");
+      const evs = r.events || [];
+      if (evs.length !== lastActCount) { lastActCount = evs.length; renderAgentActivity(evs); }
+    } catch (e) {}
+  }, 2000);
+}
+
+// 刷新按钮
+$("act-refresh")?.addEventListener("click", loadAgentActivity);
 
 // ══ 文件树（懒加载）══
 async function loadFileTree() {
