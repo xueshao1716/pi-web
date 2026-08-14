@@ -294,9 +294,23 @@ const THEMES_CODEX = {
 const TOOL_VAR = { bash:"toolBash", read:"toolRead", write:"toolWrite", edit:"toolEdit", glob:"toolRead", grep:"toolRead", rg:"toolRead", todo:"toolTodo", think:"toolThink" };
 const TOOL_ICONS = { bash: "$", read: "R", write: "W", edit: "E", glob: "G", grep: "g", rg: "g", think: "🧠" };
 
-// 自定义主题：localStorage
+// 自定义主题：localStorage（读取时净化：只保留预定义键 + 合法 hex，防旧数据/恶意写入内联注入）
+function sanitizeThemeVars(vars) {
+  const out = {};
+  for (const [k, v] of Object.entries(THEMES.violet.vars)) {
+    if (typeof vars?.[k] === "string" && /^#[0-9a-fA-F]{6}$/.test(vars[k])) out[k] = vars[k];
+  }
+  return out;
+}
 function loadCustomThemes() {
-  try { return JSON.parse(localStorage.getItem("pi_custom_themes") || "{}"); } catch { return {}; }
+  try {
+    const raw = JSON.parse(localStorage.getItem("pi_custom_themes") || "{}");
+    const clean = {};
+    for (const [name, t] of Object.entries(raw)) {
+      if (t && typeof t === "object" && (t.vars || t)) clean[name] = { vars: sanitizeThemeVars(t.vars || t) };
+    }
+    return clean;
+  } catch { return {}; }
 }
 function saveCustomThemes() {
   try { localStorage.setItem("pi_custom_themes", JSON.stringify(customThemes)); } catch {}
@@ -535,14 +549,19 @@ $("te-import-file").addEventListener("change", (e) => {
   reader.onload = () => {
     try {
       const j = JSON.parse(reader.result);
-      const vars = { ...THEMES.violet.vars, ...(j.vars || j) };
+      // 安全导入：只接受预定义颜色键 + 合法 hex（其余一律丢弃，堵属性注入）
+      const src = j.vars || j;
+      const vars = { ...THEMES.violet.vars };
+      for (const [k] of Object.entries(THEMES.violet.vars)) {
+        if (typeof src[k] === "string" && /^#[0-9a-fA-F]{6}$/.test(src[k])) vars[k] = src[k];
+      }
       const name = (j.name || file.name.replace(/\.json$/i, "")).trim() || "导入的主题";
       customThemes[name] = { vars };
       saveCustomThemes();
       editDirty = false;
       applyTheme("custom:" + name);
       renderThemeLists();
-      toast(`已导入主题「${name}」`);
+      toast(`已导入主题「${name}」（已过滤非法颜色值）`);
     } catch { toast("导入失败：JSON 格式不正确"); }
   };
   reader.readAsText(file);

@@ -61,7 +61,11 @@ async function api(path, opts = {}) {
     clearTimeout(timer);
   }
 }
-function esc(s) { return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+// 安全转义：用于 HTML 文本与属性插值（& < > 引号全转，堵属性注入）
+function esc(s) {
+  return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;").replace(/`/g,"&#96;");
+}
 
 // ── 通用输入/确认弹窗（Promise 化，替代原生 prompt/confirm；统一样式、不阻塞、可测）──
 let promptResolve = null;
