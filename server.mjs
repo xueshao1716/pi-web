@@ -2840,8 +2840,9 @@ async function handleUpdateApply(res, body) {
     const msgs = [];
     // 1. 引擎升级（如需）
     if (body?.engine) {
+      const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm"; // Windows 上 npm 是 .cmd，execFile 直接 spawn 会 ENOENT
       const engUp = await new Promise((resolve) => {
-        execFile("npm", ["i", "-g", "@earendil-works/pi-coding-agent@latest"], { encoding: "utf8", timeout: 180000 }, (err, stdout) => resolve({ ok: !err, out: String(stdout || "").trim(), err: String(err?.message || "").slice(0, 200) }));
+        execFile(npmCmd, ["i", "-g", "@earendil-works/pi-coding-agent@latest"], { encoding: "utf8", timeout: 180000 }, (err, stdout) => resolve({ ok: !err, out: String(stdout || "").trim(), err: String(err?.message || "").slice(0, 200) }));
       });
       if (engUp.ok) msgs.push("引擎已升级");
       else return json(res, 500, { error: "引擎升级失败: " + engUp.err });
