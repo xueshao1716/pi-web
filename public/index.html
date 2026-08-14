@@ -13,8 +13,17 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="小语">
 <link rel="stylesheet" href="/static/vendor/github-dark.min.css" integrity="sha384-wH75j6z1lH97ZOpMOInqhgKzFkAInZPPSPlZpYKYTOqsaizPvhQZmAtLcPKXpLyH" crossorigin="anonymous">
-<link rel="stylesheet" href="/static/app.css?v=204">
-<link rel="stylesheet" href="/static/css/quantum.css?v=204">
+<link rel="stylesheet" href="/static/app.css?v=212">
+<link rel="stylesheet" href="/static/css/quantum.css?v=212">
+<link rel="stylesheet" href="/static/css/ai.css?v=212">
+<link rel="stylesheet" href="/static/css/neu.css?v=212">
+<link rel="stylesheet" href="/static/css/linear.css?v=212">
+<link rel="stylesheet" href="/static/css/cyber.css?v=212">
+<link rel="stylesheet" href="/static/css/aurora.css?v=212">
+<link rel="stylesheet" href="/static/css/gold.css?v=212">
+<link rel="stylesheet" href="/static/css/matrix.css?v=212">
+<link rel="stylesheet" href="/static/css/synthwave.css?v=212">
+<link rel="stylesheet" href="/static/css/tokyo.css?v=212">
 </head>
 <body>
 
@@ -42,7 +51,10 @@
         <button class="view-btn" id="view-btn">☰ 菜单 <span id="view-current" class="view-current">会话</span> <span class="caret">▾</span></button>
         <div class="view-menu" id="view-menu" hidden>
           <div class="view-item" data-view="sessions">☰ 会话历史</div>
+          <div class="view-item" data-view="activity">⚡ 小语活动</div>
           <div class="view-item" data-view="skills">⚡ 技能</div>
+          <div class="view-item" data-view="engine">🧩 引擎</div>
+          <div class="view-item" data-view="code">💻 代码模式</div>
           <div class="view-item" data-view="workspace" data-nav="/workspace">📦 工作空间</div>
         </div>
       </div>
@@ -52,9 +64,30 @@
           <div class="ft-head"><span>会话历史</span><button class="ft-refresh" id="proj-add" title="新建项目分组">＋ 项目</button></div>
           <div id="session-list"></div>
         </div>
+        <div class="tab-panel" id="panel-activity" hidden>
+          <div class="ft-head"><span>⚡ 小语活动</span><button class="ft-refresh" id="act-refresh" title="刷新">↻</button></div>
+          <div id="act-status"></div>
+          <div id="act-list" style="padding-top:6px"></div>
+        </div>
         <div class="tab-panel" id="panel-skills" hidden>
           <div class="ft-head"><span>⚡ 技能</span><button class="ft-refresh" id="sk-refresh" title="刷新">↻</button></div>
           <div id="skill-list"></div>
+        </div>
+        <div class="tab-panel" id="panel-engine" hidden>
+          <div class="ft-head"><span>🧩 插件化引擎</span><button class="ft-refresh" id="eng-refresh" title="刷新">↻</button></div>
+          <div id="eng-status"></div>
+        </div>
+        <div class="tab-panel" id="panel-code" hidden>
+          <div class="ft-head"><span>💻 代码模式</span><button class="ft-refresh" id="code-refresh" title="刷新">↻</button></div>
+          <div id="code-tools"></div>
+          <textarea id="code-editor" spellcheck="false" placeholder="// 写一段程序编排工具，顶层 await/return 可用&#10;// 例：const r = await $tools.bash('dir'); console.log(r.text); return r.text;"></textarea>
+          <div style="display:flex;gap:8px;padding:6px 0">
+            <button class="btn-mini" id="code-run">▶ 运行</button>
+            <button class="btn-mini" id="code-model">🤖 让模型写</button>
+            <span style="flex:1"></span>
+            <span id="code-msg" style="font-size:12px;color:var(--muted);align-self:center"></span>
+          </div>
+          <div id="code-out" class="code-out"></div>
         </div>
         <div class="tab-panel" id="panel-workspace" hidden>
           <div class="ft-head"><span>📦 工作空间</span><span style="display:flex;gap:4px"><button class="ft-refresh" id="ws-git-btn" title="Git 状态">⎇</button><button class="ft-refresh" id="ws-full-btn" title="全屏浏览">⛶</button><button class="ft-refresh" id="ws-new-proj" title="新建项目">＋项目</button><button class="ft-refresh" id="ws-refresh" title="刷新">↻</button></span></div>
@@ -177,6 +210,7 @@
               </div>
             </div>
             <div class="spacer"></div>
+            <button class="tool-btn" id="btn-exthink" title="外部思考调试：让模型把推理草稿写出来（默认关）">🧠</button>
             <button class="tool-btn model-btn" id="input-model" title="切换当前模型">◈ <span id="input-model-name">…</span></button>
             <button id="send" title="发送（Enter）" hidden>↩</button>
           </div>
@@ -442,16 +476,17 @@
   </div>
 </div>
 
-<script src="/static/js/core.js?v=204"></script>
-<script src="/static/js/registry.js?v=204"></script>
-<script src="/static/js/theme.js?v=204"></script>
-<script src="/static/js/chat.js?v=204"></script>
-<script src="/static/js/wallpaper.js?v=204"></script>
-<script src="/static/js/model.js?v=204"></script>
-<script src="/static/js/ui.js?v=204"></script>
-<script src="/static/js/workspace.js?v=204"></script>
-<script src="/static/js/designer.js?v=204"></script>
-<script src="/static/js/input.js?v=204"></script>
+<script src="/static/js/core.js?v=212"></script>
+<script src="/static/js/registry.js?v=212"></script>
+<script src="/static/js/theme.js?v=212"></script>
+<script src="/static/js/chat.js?v=212"></script>
+<script src="/static/js/wallpaper.js?v=212"></script>
+<script src="/static/js/model.js?v=212"></script>
+<script src="/static/js/ui.js?v=212"></script>
+<script src="/static/js/panels.js?v=212"></script>
+<script src="/static/js/workspace.js?v=212"></script>
+<script src="/static/js/designer.js?v=212"></script>
+<script src="/static/js/input.js?v=212"></script>
 <script src="/static/js/workshop.js"></script>
 </body>
 </html>
