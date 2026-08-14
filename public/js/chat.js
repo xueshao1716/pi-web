@@ -667,13 +667,9 @@ function onDelta(sid, text) {
   if (st) {
     st.text += text;
     pushEvent(st, { type: "delta", text });
-    // 工具阶段开始后：文本缓存为结论，不混排在工具卡片中间（TUI 三段式：思考→执行→结论）
-    if (st.toolStarted) st.pendingText += text;
   }
-  if (sid === currentKey()) {
-    const st2 = streams.get(sid);
-    if (!st2 || !st2.toolStarted) queueDelta(text);
-  }
+  // v2：工具阶段文字也实时渲染（不再压到任务结束）——干活时能看到实时描述
+  if (sid === currentKey()) queueDelta(text);
 }
 function onThink(sid, text) {
   const st = streams.get(sid);
@@ -720,19 +716,17 @@ function renderStreamView(sid, includeUser = false) {
   const st = streams.get(sid);
   if (!st) return;
   if (includeUser && st.userText) addUserMsg(st.userText);
-  let toolStarted = false;
-  let pending = "";
   for (const ev of st.events) {
     switch (ev.type) {
       case "think": appendThinking(ev.text); break;
       case "think_end": endThinking(); break;
-      case "tool": toolStarted = true; addTool(ev.name, ev.argsText, ev.id, ev.rawArgs); break;
+      case "tool": addTool(ev.name, ev.argsText, ev.id, ev.rawArgs); break;
       case "tool_output": updateToolOutput(ev.id, ev.text); break;
       case "tool_end": if (ev.output) updateToolOutput(ev.id, ev.output); endTool(ev.id, ev.isError); break;
-      case "delta": if (toolStarted) pending += ev.text; else appendDelta(ev.text); break;
+      // v2：工具阶段的文字也实时渲染（与流式一致）
+      case "delta": appendDelta(ev.text); break;
     }
   }
-  if (pending.trim()) renderPendingConclusion(pending);
   autoScroll();
 }
 
@@ -1441,10 +1435,18 @@ async function send() {
     refreshEmotion(); // 对话结束同步情绪（完成/兴奋等线索已更新）
     if (currentKey() === key) {
       if (st.toolStarted) {
-        // 工具任务：结论单独成消息，排在所有工具卡片之后
-        if (st.pendingText && st.pendingText.trim()) {
-          renderPendingConclusion(st.pendingText);
-        } else if (!render.assistantEl && !render.toolOrder.length) {
+        // 工具任务：文字已实时流式渲染（v2），收尾统一走 Markdown 重渲
+        if (render.assistantEl) {
+          const bubble = render.assistantEl.bubble;
+          const raw = bubble.innerText;
+          if (raw.trim()) {
+            bubble.innerHTML = md(raw);
+            bindCopyButtons(render.assistantEl.el);
+            renderMermaidBlocks(render.assistantEl.el);
+            highlightBlocks(render.assistantEl.el);
+          }
+          bindMsgCopy(render.assistantEl.el);
+        } else if (!render.toolOrder.length) {
           addAssistantMsg("（无输出）");
         }
         autoScroll();
