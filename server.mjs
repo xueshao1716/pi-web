@@ -659,10 +659,14 @@ async function createSessionAgent(sm, model) {
   if (st) customTools.push(st);
   const sh = await initShareTool();
   if (sh) customTools.push(sh);
+  // 双引擎：dsh（DeepSeek Harness）作为执行臂——pi 主引擎派单，dsh 干代码/沙箱活，pi 验收
+  const dt = await initDshTool();
+  if (dt) customTools.push(dt);
   // 外部思考调试开关（externalThinking）：注入 think 工具让模型把推理写进工具参数
   if (isExternalThinking()) customTools.push(THINK_TOOL);
   // 工具白名单：基础工具 + 自定义工具（search_files 必须放行才能被模型调用）
   const allowedTools = [...new Set([...CONFIG.tools, ...customTools.map(t => t.name)])];
+  console.log(`[agent] 工具集: ${allowedTools.join(", ")}`);
   const services = await createAgentSessionServices({
     cwd,
     agentDir: getAgentDir(),
@@ -2306,6 +2310,64 @@ const UNIFIED_TOOLS = [
 const THINK_TOOL = { type: "function", function: { name: "think", description: "（调试用）动手之前，先把你的分析、推理、计划写在 content 里。这段内容仅供开发者调试查看，不会展示给用户。", parameters: { type: "object", properties: { content: { type: "string", description: "你的思考草稿（推理过程/计划/待办检查）" } }, required: ["content"] } } };
 const THINK_PROMPT = "你可以调用 think 工具，在动手之前写下你的分析过程（理解、步骤、计划、可能的坑）。写完后再执行任务。think 的内容仅供调试，不展示给用户，可以放心写。";
 const isExternalThinking = () => !!(CONFIG.externalThinking || globalThis.__piWebExternalThinking);
+
+
+// ── 双引擎：dsh（DeepSeek Harness）执行臂工具 ──
+// 模式：pi 主引擎（规划/对话/记忆/验收）→ 派单 dsh 执行（代码/沙箱/工作流）→ 结果回 pi 验收交付。
+let dshToolDef = null;
+// dsh 并发控制：默认最多 6 个同时跑（用户定），硬上限 15，防后台进程堆积憋死电脑
+// 可通过环境变量 PI_DSH_MAX 调整；总进程数 = dsh 并发 + 系统 node 基础进程
+let dshActive = 0;
+const dshMax = Math.min(parseInt(process.env.PI_DSH_MAX || "6", 10), 15);
+async function initDshTool() {
+  if (dshToolDef) return dshToolDef;
+  try {
+    const { createRequire } = await import("node:module");
+    const req2 = createRequire(CONFIG.piPackage);
+    const { Type } = req2("typebox");
+    dshToolDef = {
+      name: "dsh_task",
+      label: "dsh 引擎执行（代码/沙箱/工作流）",
+      description: "把子任务派单给 DeepSeek Harness（dsh）引擎独立执行。dsh 擅长：安全执行模型编写的代码（Code Mode）、沙箱内跑程序、复杂多步数据处理/工作流编排。当你（pi）需要执行一段生成的代码/脚本、在沙箱环境跑程序、或做多步数据处理时，把任务完整描述给它，拿到结果后由你验收并交付。日常文件读写/搜索/简单命令用自带工具，不要滥用。",
+      promptSnippet: "需要安全执行代码/沙箱/多步工作流时，用 dsh_task 派单给 dsh 引擎，拿到结果后验收交付",
+      promptGuidelines: [
+        "Use dsh_task when a subtask needs: executing model-written code safely (Code Mode), sandboxed program runs, or multi-step data processing.",
+        "Write a complete, self-contained task description — dsh runs as an independent session without conversation history.",
+        "After dsh returns, YOU verify the result (re-read/check outputs) before presenting to the user.",
+        "Do NOT use it for simple file ops or one-line commands. Do NOT chain multiple dsh_task calls in one turn.",
+      ],
+      parameters: Type.Object({
+        task: Type.String({ description: "派单给 dsh 的完整任务描述（自包含：目标/输入/期望输出/约束）" }),
+      }),
+      async execute(toolCallId, params, signal, onUpdate, ctx) {
+        const task = String(params?.task || "").trim();
+        if (!task) return { content: [{ type: "text", text: "缺少任务描述" }] };
+        // 并发控制：达到上限（默认 6）拒绝新任务，让 pi 稍后重试
+        if (dshActive >= dshMax) return { content: [{ type: "text", text: `⚠️ dsh 引擎已达并发上限（${dshActive}/${dshMax}）。请稍后重试，或改用自带工具完成。` }] };
+        dshActive++;
+        if (onUpdate) onUpdate({ type: "status", content: [{ type: "text", text: `⏳ 已派单 dsh 引擎执行（冷启动约 5-20s，当前并发 ${dshActive}/${dshMax}）…` }] });
+        try {
+          const out = await new Promise((resolve) => {
+            execFile("dsh", ["--profile", "headless", task], {
+              cwd: CONFIG.cwd, encoding: "utf8", timeout: 180000, windowsHide: true, maxBuffer: 8 * 1024 * 1024,
+            }, (err, stdout) => resolve({ ok: !err, out: String(stdout || "").trim(), err: String(err?.message || "").slice(0, 200) }));
+          });
+          const text = (out.out || "").slice(0, 4000) || "（dsh 无输出）";
+          return { content: [{ type: "text", text: out.ok ? `【dsh 执行结果】
+${text}` : `【dsh 执行失败】${out.err}
+${text}` }] };
+        } catch (e) {
+          return { content: [{ type: "text", text: `dsh 调用异常: ${String(e?.message || e).slice(0, 200)}` }] };
+        } finally {
+          dshActive--; // 无论成败都释放并发额度
+        }
+      },
+    };
+  } catch (e) {
+    console.log(`[dsh] 工具初始化失败: ${String(e?.message || e).slice(0, 100)}`);
+  }
+  return dshToolDef;
+}
 
 // Web 搜索：Bing 网页搜索（免费无 key，走系统代理）。返回结构化结果列表
 async function webSearchTool(query) {
