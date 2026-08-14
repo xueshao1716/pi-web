@@ -9,10 +9,16 @@ let sessionModels = {};
 try { sessionModels = JSON.parse(localStorage.getItem("pi_session_models") || "{}"); } catch {}
 
 console.log("pi-web v21");
-// PWA：注册 service worker
-if ("serviceWorker" in navigator && location.protocol === "https:") {
+// PWA：禁用 service worker（2026-08-15：SW 陈旧缓存导致页面不更新/刷新才生效，本地+隧道服务离线缓存收益为负）
+// 一次性注销旧 SW + 清空缓存，之后走正常 HTTP 缓存（版本号 ?v= 控制）
+if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => {});
+    navigator.serviceWorker.getRegistrations()
+      .then((regs) => { regs.forEach((r) => r.unregister()); })
+      .catch(() => {});
+    if (window.caches) {
+      caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))).catch(() => {});
+    }
   });
 }
 
