@@ -3662,7 +3662,8 @@ async function handleChat(req, res, body) {
         const marked = (() => {
           try {
             const entries = readEntriesFromFile(entry.sm.sessionFile);
-            for (let i = entries.length - 1; i >= 0; i--) {
+            // 只扫本轮新增的 assistant 回复（chatBaseline 之后）——历史交付标记不得重复触发
+            for (let i = entries.length - 1; i >= Math.max(chatBaseline, 0); i--) {
               const e = entries[i];
               if (e?.type !== "message" || e?.message?.role !== "assistant") continue;
               const text = extractText(e.message.content) || "";
@@ -3703,7 +3704,7 @@ async function handleChat(req, res, body) {
         // 模型有明确交付标记 → 直接用；否则按用户请求关键词+类型智能查找工作空间；再无兜底最近产物
         if (!marked.length) {
           // 用户是否明确要文件（发/给/看/发一下/要文件/找文件）——创作指令（做个/帮我写）不推文件
-          const wantFile = /发|给.*(我|你|他|她)|看(看|下|一下)?|发(个|一下|我)|找.*文件|要文件|文件.*(发|给|看)/.test(message);
+          const wantFile = /发(个|一下|给我|我)|发我|给我|传我|发文件|找.*文件|要文件|文件.*(发|给|看)|发.*(图片|文件|图|照片)|(?:把|将).*(发|传|给).*我/.test(message);
           if (wantFile) {
           // 从用户请求提取关键词（去掉"发/给/我/一下/的/个/看"等虚词，保留"酒店/ppt/图片"等实词）
           const kwRaw = message.replace(/[发给我你它他她们一下看个这那张张那些最最近做的的了的地得把请帮忙]/g, " ");
