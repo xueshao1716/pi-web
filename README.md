@@ -20,9 +20,37 @@
 
 基于 [pi 引擎](https://github.com/earendil-works/pi-coding-agent) 的 Web 工作台——把终端里的 AI agent 变成完整的浏览器工作伙伴：会话、工具调用、媒体生成、工作空间管理，前后端一体，纯原生实现零构建。
 
+## 🎯 装完你能得到
+
+**一条命令装完，立刻拥有：**
+
+| 层 | 内容 |
+|---|---|
+| 🧩 **双引擎** | **pi 引擎**（主工作台：对话/工具/记忆/出图）+ **dsh 引擎**（DeepSeek Harness：独立执行臂，可派单并行干活），一次安装全到位 |
+| 🧠 **记忆系统** | 固定记忆 + 记忆日志自动沉淀 + 经验库，跨会话长期记得你的偏好，越用越懂你 |
+| ❤️ **情绪引擎** | VAD 三维情绪感知，对话自适应语气与节奏 |
+| 🧬 **进化系统** | 任务完成自动归纳经验，提案制沉淀，可回滚 |
+| 🔌 **多模型通道** | deepseek / OpenAI / 阿里百炼 / Kimi / 智谱 / 火山 / xAI / Mistral / 商汤 / 魔搭 等 10+ 家，首启引导弹窗选一家填 key 即可用 |
+| 🖼 **媒体生成** | 配图/配音/视频，多出图通道（minimax/千问万相/火山 seedream/ModelScope/Agnes/Cloudflare FLUX.2），图生图、批量出图 |
+| 📦 **智能交付** | 要图只给图/要 PPT 只给 PPT，关键词匹配 + 去重 + 断点续传 |
+| 📡 **一键外网分享** | 项目放分享目录即上线，稳定域名，多项目零配置 |
+| 🗂 **工作空间** | 工程/文档/生成物/交付分类视图，全屏浏览，文件搜索 |
+
 ## 🚀 一条命令安装（Windows）
 
-**全局安装（推荐，对标 dsh，装完即用）：**
+**最简单方式（一条命令，自动装 Node + 双引擎 + 源码 + 启动，零报错）：**
+
+```powershell
+# Gitee（国内快）
+irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-lite.ps1 | iex
+# GitHub
+irm https://raw.githubusercontent.com/xueshao1716/pi-web/main/install-lite.ps1 | iex
+```
+
+> 安装中会询问两件事，全部回车即可用默认：① 安装目录（不想装 C 盘可输 `D:\pi-web`）② pi/dsh 引擎全局包装哪个盘（输 `D:\npm-global` 可装 D 盘）。
+> 装完自动：生成访问令牌 → 启动服务 → 打开浏览器；首次打开弹窗选一家模型商填 API Key 就能开始对话。
+
+**全局安装（npm，适合已装 Node 的用户）：**
 
 ```powershell
 npm i -g git+https://gitee.com/linxinyu520xue/pi-web.git
@@ -96,19 +124,14 @@ pi-web
 
 ## 🚀 新机器一键安装（Windows）
 
-复制下面**一整条命令**到 PowerShell 运行，自动完成：装 Node → 下载源码 → 装后端 pi 引擎 → 生成令牌 → 启动服务：
+与顶部相同的最简方式（一条命令，自动装 Node + pi/dsh 双引擎 + 源码 + 启动）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -Command "curl.exe -L -o %TEMP%\pi-web-install.ps1 https://raw.githubusercontent.com/xueshao1716/pi-web/main/install.ps1 && powershell -ExecutionPolicy Bypass -File %TEMP%\pi-web-install.ps1"
+# Gitee（国内快）
+irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-lite.ps1 | iex
 ```
 
-**国内用户（Gitee 镜像，更快）：**
-
-```powershell
-powershell -ExecutionPolicy Bypass -Command "curl.exe -L -o %TEMP%\pi-web-install.ps1 https://gitee.com/linxinyu520xue/pi-web/raw/main/install.ps1 && powershell -ExecutionPolicy Bypass -File %TEMP%\pi-web-install.ps1"
-```
-
-**或手动 clone（已装 git 时）：**
+需要手动控制安装步骤（装完 Node 后自己跑）时，可分别执行：
 
 ```bash
 # Gitee（国内快）
