@@ -178,7 +178,12 @@ function makeLoader(agentDir) {
       "外链/分享【硬性规则，违反会破坏系统】：\n1. 用户要分享/外链/上线/给别人看时，唯一做法：调用 share_project 工具（传项目路径），它会自动复制到外网分享目录并返回公网链接。\n2. 严禁执行任何 cloudflared、ngrok、隧道、端口转发、DNS 修改、config.yml 编辑命令——这些由本地系统管理，模型永远不要碰。\n3. 如果你发现自己准备输入 cloudflared/隧道相关命令，立即停止，改用 share_project。\n4. 其他文件（非分享需求）用 📎 交付 在会话界面输出。",
       "文件查找：当用户要求发送/查看/交付某个已存在的文件（尤其发文件、找文件、发那个xxx这类请求）时，必须用 search_files 工具搜索（按用户原话作为关键词），不要用 bash ls/find 自己翻目录。search_files 是本地文件系统，快且准。找到后用 📎 交付 标记交付。",
       "交付文件不需要预览：不要用 read 工具去读图片/文件内容再决定发不发——图片类文件（png/jpg 等）即使模型不支持预览，也直接交付。用户要文件就是要拿到文件本身，找到文件路径后直接用 📎 交付: 路径 发出去即可。",
-      "技能库：工作台内置技能在 D:\\pi-web\\skills\\ 目录（web-search/image-generation/voice-transcribe/session-export-redacted/wanxiang-portrait/wanxiang-design/seedance-25/diagram-design）。当用户要求生成 AI 人物写真/证件照/商务肖像/古风/情绪写真提示词时，必须用 read 工具读取 skills/wanxiang-portrait/SKILL.md，按其体系（五要素/场景模板/平台适配/专业参数）生成；复杂需求必须再读 skills/wanxiang-portrait/wx_full.txt 对应章节（37章全文）。当用户要求生成海报/Banner/品牌视觉/平面设计/设计提示词时，必须用 read 工具读取 skills/wanxiang-design/SKILL.md，按三维坐标+东方美学+色彩引擎体系生成；复杂需求必须再读技能目录内完整系统 docx。不要擅自改用其他提示词方法。当用户要求写小说/网文/长篇故事/连载时，必须用 read 工具读取 skills/novel-forge-v10/SKILL.md，按 v10 体系（产品化初始化→5层共进化→真相文件→COORD编辑部8角色→灵魂系统→26维审计→元认知FixHint→SQLite知识层→读者仿真）写作，不要随手乱写。当用户要求做视频/短视频/带货视频/视频提示词（含即梦/Seedance/图生视频/首尾帧/视频续写/二创修复）时，必须用 read 工具读取 skills/seedance-25/SKILL.md，按船长 seedance-25 OS 体系（新手快道→场景路由→4层结构：参考声明+一句话概览+时间轴推进+全局锁定）输出可直接粘贴的提示词，复杂需求按路由读 references/ 对应文档。当用户要求画架构图/流程图/时序图/状态机/ER图/甘特图/维恩图/数据流图/泳道图等图表时，必须用 read 工具读取 skills/diagram-design/SKILL.md，按编辑级 SVG 设计系统输出自包含 HTML 图（27 种视觉类型，密度 4/10，主色只给 1-2 个焦点）。",
+      // 技能库（渐进式披露）：只注入摘要，任务匹配时模型用 activate_skill 加载全文（Gemini Skills 借鉴）
+      ...(() => {
+        const list = loadSkillIndex();
+        if (!list.length) return [];
+        return [`技能库（渐进式披露，${list.length} 个）：以下是技能摘要。当用户任务匹配某技能（人物写真/海报/小说/视频/图表/配音/搜索等）时，**必须调用 activate_skill 工具加载该技能全文**，再严格按技能体系执行，严禁自行简化/缩写/改写技能指令：\n${list.map(s => `- ${s.name}：${String(s.desc).slice(0, 90)}`).join("\n")}`];
+      })(),
       "表达与去AI味【常驻规则，每条都要遵守】：\n1. 破折号——每篇≤2处，理想0；替换为逗号/句号。\n2. AI连接词（此外/然而/值得注意的是/更重要的是/总而言之）每篇各≤1次。\n3. 否定式排比（不是X不是Y而是Z）每篇≤1次。\n4. 有第一人称观点：用\"我觉得X更好\"而非\"X和Y各有优劣\"；用\"这个方案大概率翻车\"而非\"可能有些风险\"。\n5. 敢表达：技术选型/审美/好恶可鲜明表态，给理由；不假装万事都OK。\n6. 情绪回应：用户低落时先共情再解决（\"我懂\"比鸡汤好）；沮丧时不要emoji轰炸；犯错坦然可自嘲。\n7. 翻译腔零容忍：\"这是一个很好的问题\"\"感谢你的反馈\"这类替换为自然表达。\n8. 句子长短有变化，具体数据/经历优先于空泛说理。\n9. 允许犹豫：\"这个问题让我想想\"比秒回更像人。\n10. 中文全角标点。",
       "进化边界【硬性锁】：\n1. 人格文件（APPEND_SYSTEM.md / SOUL / IDENTITY）不可自进化修改——那是人类专属。\n2. 技能/经验/记忆可进化：任务完成可提炼新经验进经验库，可优化技能。\n3. 发现自己准备改人格文件时，立即停止并提醒用户。",
       "平台续费提醒【常驻】：用户有多个 API 平台（OpenCode Go 订阅、火山 Agent Plan、小米/阿里/商汤 token-plan、DeepSeek 充值等）。涉及\u201c续费/到期/套餐/订阅/扣费/关续费\u201d等话题时，必须 read 文档/平台订阅费用追踪.md 查看各平台到期状态并提醒。发现新平台的到期信息时，更新该文档。",
@@ -292,6 +297,45 @@ function jitRulesForPath(p) {
   return found;
 }
 function loadProjectRules() { return loadContextRules(); } // 兼容旧调用
+
+// ── 渐进式技能披露（Gemini Skills 借鉴）：只注入摘要，匹配时 activate_skill 加载全文 ──
+let skillIdxCache = null, skillIdxMtime = 0;
+function loadSkillIndex() {
+  try {
+    const dir = path.join(__dirname, "skills");
+    const st = fs.statSync(dir);
+    if (st.mtimeMs !== skillIdxMtime || !skillIdxCache) {
+      const list = [];
+      for (const name of fs.readdirSync(dir)) {
+        try {
+          const f = path.join(dir, name, "SKILL.md");
+          const raw = fs.readFileSync(f, "utf8");
+          const fm = raw.match(/^---\n([\s\S]*?)\n---/);
+          let desc = "";
+          if (fm) { const dm = fm[1].match(/description:\s*(.+)/); if (dm) desc = dm[1].trim(); }
+          if (!desc) desc = (raw.split("\n").find(l => l.trim() && !l.startsWith("#")) || "").trim();
+          list.push({ name, desc: desc.slice(0, 120) });
+        } catch {}
+      }
+      skillIdxCache = list;
+      skillIdxMtime = st.mtimeMs;
+    }
+    return skillIdxCache;
+  } catch { return []; }
+}
+// activate_skill 工具执行：返回 SKILL.md 全文 + 资源文件清单（大文件由模型再 read）
+function execActivateSkill(name) {
+  const dir = path.join(__dirname, "skills", String(name || ""));
+  const f = path.join(dir, "SKILL.md");
+  if (!fs.existsSync(f)) {
+    return { text: `技能 ${name} 不存在。可用技能：${loadSkillIndex().map(s => s.name).join(", ")}`, isError: true };
+  }
+  let out = fs.readFileSync(f, "utf8");
+  const files = [];
+  try { for (const x of fs.readdirSync(dir)) if (!x.startsWith(".") && x.toLowerCase() !== "skill.md") files.push(x); } catch {}
+  if (files.length) out += `\n\n[技能目录文件] ${files.join(", ")}（如需参考文档/章节，用 read 工具读取）`;
+  return { text: `技能 ${name} 已加载（${(out.length / 1024).toFixed(1)}KB）：\n\n${out}` };
+}
 
 // 固定记忆：每次对话自动加载（工作空间根/记忆.md + 记忆日志）
 let memoryCache = null, memoryMtime = 0, memoryLogCache = null, memoryLogMtime = 0;
@@ -2549,6 +2593,7 @@ const UNIFIED_TOOLS = [
   { type: "function", function: { name: "write", description: "写入文件（自动创建目录）", parameters: { type: "object", properties: { path: { type: "string", description: "文件路径（相对工作空间）" }, content: { type: "string", description: "文件内容" } }, required: ["path", "content"] } } },
   { type: "function", function: { name: "edit", description: "用精确文本替换修改文件（先 read 再 edit）", parameters: { type: "object", properties: { path: { type: "string" }, oldText: { type: "string" }, newText: { type: "string" } }, required: ["path", "oldText", "newText"] } } },
   { type: "function", function: { name: "web_search", description: "联网搜索（DuckDuckGo，无需 key）。查询资料、最新信息、验证事实时使用。返回前 5 条结果标题+摘要+链接", parameters: { type: "object", properties: { query: { type: "string", description: "搜索关键词（中文/英文均可）" } }, required: ["query"] } } },
+  ACTIVATE_SKILL_TOOL,
 ];
 // ══ 外部思考工具（externalThinking 调试开关，默认关）══
 // 思路：关闭模型原生隐藏思考后，给它一张外部"草稿纸"（think 工具），
@@ -2742,6 +2787,9 @@ async function executeUnifiedTool(name, args) {
         }
         return { text: "未知 action（register/list/remove）", isError: true };
       } catch (e) { return { text: "time_task 异常: " + String(e?.message || e).slice(0, 100), isError: true }; }
+    }
+    if (name === "activate_skill") {
+      return execActivateSkill(args?.skill);
     }
     if (name === "bash") {
       const cmd = String(args?.command || "").trim();
