@@ -76,6 +76,19 @@ if (Test-Path "$DEST\server.mjs") {
 # 3. 一键安装 + 启动（自动装 pi 引擎、模型模板、令牌、后台启动）
 Write-Host ''
 Write-Host '[3/3] 安装并启动 ...' -ForegroundColor Yellow
+# ── 可选：pi/dsh 引擎的 npm 全局包也装到其他盘（默认 C 盘）──
+$NPM_ANS = Read-Host "  pi/dsh 引擎全局包装到哪个盘？（回车=默认 C 盘，或输入如 D:
+pm-global）"
+if ($NPM_ANS.Trim()) {
+  $NPM_DIR = $NPM_ANS.Trim()
+  npm config set prefix "$NPM_DIR"
+  $p = [Environment]::GetEnvironmentVariable('Path','User')
+  $p = ($p -split ';' | Where-Object { $_ -and $_ -ne "$NPM_DIR" }) -join ';'
+  [Environment]::SetEnvironmentVariable('Path', "$NPM_DIR;$p", 'User')
+  $env:Path = "$NPM_DIR;$env:Path"
+  Write-Host "  ✅ npm 全局目录已设为 $NPM_DIR（pi/dsh 将装到这里）" -ForegroundColor Green
+}
+
 Push-Location "$DEST"
 node setup.mjs --install
 

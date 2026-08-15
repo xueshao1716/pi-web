@@ -59,6 +59,7 @@ pi-web
 >
 > **不想装 C 盘？** 安装时脚本会询问安装目录，回车=默认用户目录，输入 `D:\pi-web` 之类即可装到其他盘；
 > 也可本地执行 `powershell -ExecutionPolicy Bypass -File install-all.ps1 -InstallDir D:\pi-web` 直接指定。
+> 接着还会问 **pi/dsh 引擎全局包装到哪个盘**，输入 `D:\npm-global` 可将引擎也装到 D 盘（回车则保持 C 盘默认）。
 
 ## ✨ 为什么与众不同
 
