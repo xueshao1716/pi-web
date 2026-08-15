@@ -13,18 +13,18 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="小语">
 <link rel="stylesheet" href="/static/vendor/github-dark.min.css" integrity="sha384-wH75j6z1lH97ZOpMOInqhgKzFkAInZPPSPlZpYKYTOqsaizPvhQZmAtLcPKXpLyH" crossorigin="anonymous">
-<link rel="stylesheet" href="/static/app.css?v=220">
-<link rel="stylesheet" href="/static/css/quantum.css?v=220">
-<link rel="stylesheet" href="/static/css/ai.css?v=220">
-<link rel="stylesheet" href="/static/css/neu.css?v=220">
-<link rel="stylesheet" href="/static/css/linear.css?v=220">
-<link rel="stylesheet" href="/static/css/liquid.css?v=220">
-<link rel="stylesheet" href="/static/css/cyber.css?v=220">
-<link rel="stylesheet" href="/static/css/aurora.css?v=220">
-<link rel="stylesheet" href="/static/css/gold.css?v=220">
-<link rel="stylesheet" href="/static/css/matrix.css?v=220">
-<link rel="stylesheet" href="/static/css/synthwave.css?v=220">
-<link rel="stylesheet" href="/static/css/tokyo.css?v=220">
+<link rel="stylesheet" href="/static/app.css?v=221">
+<link rel="stylesheet" href="/static/css/quantum.css?v=221">
+<link rel="stylesheet" href="/static/css/ai.css?v=221">
+<link rel="stylesheet" href="/static/css/neu.css?v=221">
+<link rel="stylesheet" href="/static/css/linear.css?v=221">
+<link rel="stylesheet" href="/static/css/liquid.css?v=221">
+<link rel="stylesheet" href="/static/css/cyber.css?v=221">
+<link rel="stylesheet" href="/static/css/aurora.css?v=221">
+<link rel="stylesheet" href="/static/css/gold.css?v=221">
+<link rel="stylesheet" href="/static/css/matrix.css?v=221">
+<link rel="stylesheet" href="/static/css/synthwave.css?v=221">
+<link rel="stylesheet" href="/static/css/tokyo.css?v=221">
 </head>
 <body>
 
@@ -287,6 +287,25 @@
 <div class="toast" id="toast"></div>
 
 <!-- 模型管理 -->
+<!-- 首次使用引导：未配置 API 密钥时弹出 -->
+<div class="modal-overlay" id="firstrun-modal">
+  <div class="modal modal-file" style="max-width:560px">
+    <div class="modal-head"><span>🔑 首次使用：配置 API 密钥</span><button class="close" id="fr-close">✕</button></div>
+    <div class="fv-content" style="padding:16px 18px;line-height:1.8">
+      <div style="font-size:14px">还没检测到模型密钥，配好 key 才能开始对话：</div>
+      <ol style="margin:10px 0 14px 20px;font-size:13.5px;color:var(--dim)">
+        <li>点下方「去配置密钥」，选择服务商（如 deepseek）粘贴 API Key</li>
+        <li>key 获取：platform.deepseek.com → API Keys（sk- 开头）</li>
+        <li>保存后即可对话（默认模型 deepseek-v4-flash）</li>
+      </ol>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button class="theme-new-btn" id="fr-go" style="padding:8px 18px">去配置密钥</button>
+        <span style="font-size:12px;color:var(--dim)">dsh 引擎首次启动会另弹窗引导，可共用同一把 key</span>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="model-modal">
   <div class="modal modal-model">
     <div class="modal-head">⚙ 模型管理 <button class="close" id="mm-close">✕</button></div>
@@ -477,17 +496,17 @@
   </div>
 </div>
 
-<script src="/static/js/core.js?v=220"></script>
-<script src="/static/js/registry.js?v=220"></script>
-<script src="/static/js/theme.js?v=220"></script>
-<script src="/static/js/chat.js?v=220"></script>
-<script src="/static/js/wallpaper.js?v=220"></script>
-<script src="/static/js/model.js?v=220"></script>
-<script src="/static/js/ui.js?v=220"></script>
-<script src="/static/js/panels.js?v=220"></script>
-<script src="/static/js/workspace.js?v=220"></script>
-<script src="/static/js/designer.js?v=220"></script>
-<script src="/static/js/input.js?v=220"></script>
+<script src="/static/js/core.js?v=221"></script>
+<script src="/static/js/registry.js?v=221"></script>
+<script src="/static/js/theme.js?v=221"></script>
+<script src="/static/js/chat.js?v=221"></script>
+<script src="/static/js/wallpaper.js?v=221"></script>
+<script src="/static/js/model.js?v=221"></script>
+<script src="/static/js/ui.js?v=221"></script>
+<script src="/static/js/panels.js?v=221"></script>
+<script src="/static/js/workspace.js?v=221"></script>
+<script src="/static/js/designer.js?v=221"></script>
+<script src="/static/js/input.js?v=221"></script>
 <script src="/static/js/workshop.js"></script>
 </body>
 </html>

@@ -57,6 +57,14 @@ async function openModelManage() {
 $("model-manage").addEventListener("click", openModelManage);
 $("mm-close").addEventListener("click", () => $("model-modal").classList.remove("show"));
 $("model-modal").addEventListener("click", (e) => { if (e.target === $("model-modal")) $("model-modal").classList.remove("show"); });
+
+// 首次使用引导：未配置任何 API 密钥时弹出（登录后模型列表为空触发）
+function showFirstRunGuide() {
+  const m = $("firstrun-modal");
+  if (m) m.classList.add("show");
+}
+$("fr-close")?.addEventListener("click", () => $("firstrun-modal")?.classList.remove("show"));
+$("fr-go")?.addEventListener("click", () => { $("firstrun-modal")?.classList.remove("show"); openModelManage(); });
 $("mm-type").addEventListener("change", () => {
   $("mm-custom-row").hidden = $("mm-type").value !== "__custom__";
   // Cloudflare Workers AI 需要 Account ID

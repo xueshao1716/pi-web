@@ -18,6 +18,7 @@ async function tryLogin() {
     modelList = data.models;
     $("cwd-label").textContent = "cwd: " + (data.cwd || "");
     populateModels(data);
+    if (!data.models.length) showFirstRunGuide();
     renderWelcome();
     await refreshSessions();
     // 刷新后自动恢复上次打开的会话（避免回主界面重新找）
