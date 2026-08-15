@@ -1650,6 +1650,50 @@ function handleKeysStatus(res) {
 }
 
 // ── 双引擎密钥：应用（pi 写 auth.json + 探测验证 + 刷新模型列表；可选 setx 同步 dsh）──
+// ── 声明式策略引擎（Gemini Policy Engine 借鉴）：~/.piweb/policies.json ──
+// 规则：tool(glob) + match(参数名→正则) → decision(allow/deny)；deny 优先；内置隧道/密钥/危险操作默认规则
+let policiesCache = null, policiesMtime = 0;
+function loadPolicies() {
+  try {
+    const f = path.join(os.homedir(), ".piweb", "policies.json");
+    const st = fs.statSync(f);
+    if (st.mtimeMs !== policiesMtime || !policiesCache) {
+      policiesCache = JSON.parse(fs.readFileSync(f, "utf8"));
+      policiesMtime = st.mtimeMs;
+    }
+  } catch { policiesCache = { rules: [] }; }
+  return policiesCache;
+}
+function toolMatch(pat, name) {
+  if (pat === "*" || pat === name) return true;
+  if (pat.includes("*")) {
+    const re = new RegExp("^" + pat.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$");
+    return re.test(name);
+  }
+  return false;
+}
+// 匹配工具调用 → { decision, note }（deny 优先于 allow；无规则默认 allow）
+function policyDecide(tool, args) {
+  const { rules = [] } = loadPolicies();
+  let deny = null, allow = null;
+  for (const r of rules) {
+    if (!r.tool || !toolMatch(r.tool, tool)) continue;
+    if (r.match) {
+      let hit = true;
+      for (const [k, re] of Object.entries(r.match)) {
+        const v = String(args?.[k] ?? "");
+        try { if (!new RegExp(re, "i").test(v)) { hit = false; break; } } catch { hit = false; break; }
+      }
+      if (!hit) continue;
+    }
+    if (r.decision === "deny") deny = r;
+    else if (r.decision === "allow") allow = r;
+  }
+  if (deny) return { decision: "deny", note: deny.note || `工具 ${tool} 被策略禁止` };
+  if (allow) return { decision: "allow", note: allow.note || "" };
+  return { decision: "allow", note: "" };
+}
+
 async function handleKeysApply(res, body) {
   const { provider, apiKey, baseUrl, toDsh } = body || {};
   if (!provider || !apiKey) return json(res, 400, { error: "缺少 provider 或 API Key" });
@@ -2844,17 +2888,14 @@ async function unifiedChat(model, messages, opts = {}) {
         let args = {};
         try { args = JSON.parse(tc.function?.arguments || "{}"); } catch {}
         const fnName = tc.function?.name || "";
-        // 隧道/分享硬拦截：模型执行 cloudflared/隧道相关命令 → 拦截并引导用 share_project
-        if (fnName === "bash") {
-          let cmdStr = "";
-          try { cmdStr = String((JSON.parse(tc.function?.arguments || "{}")?.command) || ""); } catch {}
-          if (/cloudflared|trycloudflare|ngrok|frpc|--url http|tunnel run|localtunnel/i.test(cmdStr)) {
-            if (opts.onTool) opts.onTool(tc.id, fnName, args);
-            const guide = "[系统拦截] 检测到隧道/端口转发操作，已阻止。用户要分享外链时，请改用 share_project 工具（传项目路径），它会自动复制到外网分享目录并返回公网链接。不要手动操作 cloudflared/隧道/端口/DNS。";
-            history.push({ role: "tool", tool_call_id: tc.id, content: guide });
-            if (opts.onToolEnd) opts.onToolEnd(tc.id, fnName, args, { text: guide, isError: true });
-            continue;
-          }
+        // 声明式策略拦截（Gemini Policy Engine 借鉴）：deny 规则（隧道/密钥/危险操作）→ 拦截并注入引导
+        const pd = policyDecide(fnName, args);
+        if (pd.decision === "deny") {
+          if (opts.onTool) opts.onTool(tc.id, fnName, args);
+          const guide = `[系统拦截] ${pd.note}`;
+          history.push({ role: "tool", tool_call_id: tc.id, content: guide });
+          if (opts.onToolEnd) opts.onToolEnd(tc.id, fnName, args, { text: guide, isError: true });
+          continue;
         }
         // 重复检测：相同工具+相同参数连续 3 次 → 中断（防死循环）
         // 失败重试（isError）不算死循环——模型在环境问题（网络/权限）下合理重试，但连续 5 次失败也停，避免无限空转
