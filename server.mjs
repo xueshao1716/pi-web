@@ -337,6 +337,9 @@ function execActivateSkill(name) {
   return { text: `技能 ${name} 已加载（${(out.length / 1024).toFixed(1)}KB）：\n\n${out}` };
 }
 
+// activate_skill 工具 schema（供 UNIFIED_TOOLS 引用；渐进式披露：摘要→全文）
+const ACTIVATE_SKILL_TOOL = { type: "function", function: { name: "activate_skill", description: "加载技能全文（用户任务匹配技能库摘要时调用，返回 SKILL.md 全文 + 资源清单）", parameters: { type: "object", properties: { name: { type: "string", description: "技能名称（从技能库摘要列表中选择）" } }, required: ["name"] } } };
+
 // 固定记忆：每次对话自动加载（工作空间根/记忆.md + 记忆日志）
 let memoryCache = null, memoryMtime = 0, memoryLogCache = null, memoryLogMtime = 0;
 function loadMemory() {
@@ -2611,6 +2614,66 @@ let dshToolDef = null;
 // 可通过环境变量 PI_DSH_MAX 调整；总进程数 = dsh 并发 + 系统 node 基础进程
 let dshActive = 0;
 const dshMax = Math.min(parseInt(process.env.PI_DSH_MAX || "6", 10), 15);
+
+// dsh 引擎入口：Windows 无 dsh.exe（只有 dsh.cmd shim）——直接 spawn node 执行真实 bin.js，
+// 避免 shell 注入风险（task 是模型生成的，经 shell 拼接有命令注入面）
+let dshBinCache = null;
+function resolveDshBin() {
+  if (dshBinCache) return dshBinCache;
+  try {
+    const cands = [
+      path.join(process.env.APPDATA || "", "npm", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
+      path.join(process.env.ProgramFiles || "", "nodejs", "node_modules", "npm", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
+    ];
+    for (const c of cands) {
+      if (fs.existsSync(c)) { dshBinCache = c; return c; }
+    }
+  } catch {}
+  return "dsh"; // 回退：让系统 PATH 尝试（类 Unix 环境 dsh 在 PATH 中）
+}
+
+// dsh 技能上下文：渐进式披露 pi-web 技能库，让 dsh 学会按技能执行（独立站前台第一步）
+// dsh headless 自带 read 工具，可直接读 D:/pi-web/skills/<name>/SKILL.md 全文
+function dshSkillContext() {
+  try {
+    const list = loadSkillIndex();
+    if (!list.length) return "";
+    const skillDir = path.join(__dirname, "skills").replace(/\\/g, "/");
+    return `\n\n【pi-web 技能库（${list.length} 个，渐进式披露）】\n用户任务匹配以下任一技能时，**必须先用 read 工具读取技能文件全文，再严格按技能指令执行**（禁止自行简化/缩写/改写技能步骤）：\n${list.map((s) => `- ${s.name}：${String(s.desc).slice(0, 120)}`).join("\n")}\n技能文件位置：${skillDir}/<技能名>/SKILL.md（绝对路径，直接 read）`;
+  } catch { return ""; }
+}
+
+// 结构化回传协议：从 dsh headless 输出中容错提取 JSON 块（结果+步骤+工具+元数据）
+// headless 是黑盒（事件不落盘、stderr 空），只能让模型按协议自报过程，解析失败则回退纯文本
+function extractStructuredOut(text) {
+  if (!text) return { ok: false, raw: text || "" };
+  const isValid = (d) => d && typeof d === "object" && "result" in d; // 协议强制：必须含 result
+  // 1) 优先取 ```json 代码块
+  const jb = String(text).match(/```json\s*([\s\S]*?)```/);
+  if (jb) {
+    try { const d = JSON.parse(jb[1]); if (isValid(d)) return { ok: true, data: d, raw: text }; } catch {}
+  }
+  // 2) 从后往前扫所有 {，取第一个含 result 的完整 JSON 块（避免命中嵌套的 meta 对象）
+  const s = String(text);
+  for (let i = s.length - 1; i >= 0; i--) {
+    if (s[i] !== "{") continue;
+    let depth = 0;
+    for (let j = i; j < s.length; j++) {
+      if (s[j] === "{") depth++;
+      else if (s[j] === "}") {
+        depth--;
+        if (depth === 0) {
+          try {
+            const d = JSON.parse(s.slice(i, j + 1));
+            if (isValid(d)) return { ok: true, data: d, raw: text };
+          } catch {}
+          break;
+        }
+      }
+    }
+  }
+  return { ok: false, raw: text };
+}
 async function initDshTool() {
   if (dshToolDef) return dshToolDef;
   try {
@@ -2645,15 +2708,37 @@ async function initDshTool() {
         dshActive++;
         if (onUpdate) onUpdate({ type: "status", content: [{ type: "text", text: `⏳ 已派单 dsh 引擎执行（冷启动约 5-20s，当前并发 ${dshActive}/${dshMax}）…` }] });
         try {
+          // 结构化协议：要求 dsh 末尾输出 JSON（结果+步骤+工具+元数据），pi 容错解析后基于轨迹验收
+          const structReq = "\n\n【输出格式要求（必须严格遵守）】\n执行完成后，在回复末尾单独输出一个 JSON 块（直接以 { 开头，不要放在代码块里，JSON 前后不要有其他文字）：\n{\"result\":\"给用户的最终结论(简洁)\",\"steps\":[\"关键步骤1\",\"关键步骤2\"],\"tools\":[\"工具名: 说明\"],\"meta\":{\"duration\":\"估算耗时\",\"files\":[\"涉及的文件路径\"]}}\nJSON 必须合法，步骤和工具如实填写。";
           const out = await new Promise((resolve) => {
-            execFile("dsh", ["--profile", "headless", task], {
+            execFile(process.execPath, [resolveDshBin(), "--profile", "headless", task + dshSkillContext() + structReq], {
               cwd: CONFIG.cwd, encoding: "utf8", timeout: 180000, windowsHide: true, maxBuffer: 8 * 1024 * 1024,
             }, (err, stdout) => resolve({ ok: !err, out: String(stdout || "").trim(), err: String(err?.message || "").slice(0, 200) }));
           });
-          const text = (out.out || "").slice(0, 4000) || "（dsh 无输出）";
+          const text = (out.out || "").trim();
+          const parsed = extractStructuredOut(text);
+          if (parsed.ok && parsed.data) {
+            const d = parsed.data;
+            const parts = [];
+            parts.push(`【dsh 执行结果】${String(d.result || text).slice(0, 1000)}`);
+            if (Array.isArray(d.steps) && d.steps.length) parts.push(`【执行步骤】\n${d.steps.map((s, i) => `${i + 1}. ${String(s).slice(0, 200)}`).join("\n").slice(0, 1500)}`);
+            if (Array.isArray(d.tools) && d.tools.length) parts.push(`【工具调用】${d.tools.map(String).join("；").slice(0, 800)}`);
+            if (d.meta && typeof d.meta === "object") {
+              const m = [];
+              if (d.meta.duration) m.push(`耗时 ${d.meta.duration}`);
+              if (Array.isArray(d.meta.files) && d.meta.files.length) m.push(`文件 ${d.meta.files.join(", ").slice(0, 300)}`);
+              if (m.length) parts.push(`【元数据】${m.join("；")}`);
+            }
+            parts.push(`【原始输出】${(text || "（dsh 无输出）").slice(0, 2000)}`);
+            return { content: [{ type: "text", text: out.ok ? parts.join("\n\n") : `【dsh 执行失败】${out.err}
+
+${parts.join("\n\n")}` }] };
+          }
+          // 未按协议输出：回退纯文本（不编造轨迹）
+          const t2 = (text || "（dsh 无输出）").slice(0, 4000);
           return { content: [{ type: "text", text: out.ok ? `【dsh 执行结果】
-${text}` : `【dsh 执行失败】${out.err}
-${text}` }] };
+${t2}` : `【dsh 执行失败】${out.err}
+${t2}` }] };
         } catch (e) {
           return { content: [{ type: "text", text: `dsh 调用异常: ${String(e?.message || e).slice(0, 200)}` }] };
         } finally {

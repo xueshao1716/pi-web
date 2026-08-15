@@ -2144,3 +2144,18 @@ html[data-theme="linear"] #login {
   padding: 2px 10px; margin: 2px 4px 2px 0; font-size: 11px; color: var(--muted, #9aa0aa);
   background: var(--panel-2, #2a2d35); font-family: var(--mono, monospace); cursor: help;
 }
+
+/* dsh 引擎切换按钮（独立前台跳转） */
+.dsh-switch {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 3px 9px;
+  border: 1px solid rgba(128,128,128,.35);
+  border-radius: 6px;
+  color: var(--dim);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color .15s, color .15s;
+}
+.dsh-switch:hover { border-color: var(--accent); color: var(--accent); }

@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="小语">
 <link rel="stylesheet" href="/static/vendor/github-dark.min.css" integrity="sha384-wH75j6z1lH97ZOpMOInqhgKzFkAInZPPSPlZpYKYTOqsaizPvhQZmAtLcPKXpLyH" crossorigin="anonymous">
-<link rel="stylesheet" href="/static/app.css?v=227">
+<link rel="stylesheet" href="/static/app.css?v=228">
 <link rel="stylesheet" href="/static/css/quantum.css?v=222">
 <link rel="stylesheet" href="/static/css/ai.css?v=222">
 <link rel="stylesheet" href="/static/css/neu.css?v=222">
@@ -47,6 +47,7 @@
     <aside id="sidebar">
       <div class="side-head">
         <div class="logo"><span class="mark">语</span> 小语<span style="color:var(--dim);font-weight:400"> · AI 工作台</span></div>
+        <a class="dsh-switch" id="dsh-switch" target="_blank" title="切换到 dsh 引擎前台">⇄ dsh</a>
       </div>
       <div class="side-view">
         <button class="view-btn" id="view-btn">☰ 菜单 <span id="view-current" class="view-current">会话</span> <span class="caret">▾</span></button>
@@ -544,5 +545,15 @@
 <script src="/static/js/designer.js?v=222"></script>
 <script src="/static/js/input.js?v=222"></script>
 <script src="/static/js/workshop.js"></script>
+<script>
+// dsh 引擎切换：本地/外网自适应（新窗口打开 dsh 独立前台）
+(function () {
+  const el = document.getElementById("dsh-switch");
+  if (!el) return;
+  const host = location.hostname;
+  const isLocal = host === "127.0.0.1" || host === "localhost";
+  el.href = isLocal ? "http://127.0.0.1:3080" : "https://d.myxinyu.xin";
+})();
+</script>
 </body>
 </html>
