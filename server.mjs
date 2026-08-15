@@ -1848,6 +1848,45 @@ function checkAuth(req) {
   return url.searchParams.get("token") === CONFIG.token;
 }
 
+// ── 会话事件总线：任务事件统一入缓冲 + 广播给所有订阅者（多端实时观看）──
+const sessionBus = new Map(); // key: taskId/sessionId → { seq, events: [], subs: Set }
+function busGet(key) {
+  if (!key) return null;
+  if (!sessionBus.has(key)) sessionBus.set(key, { seq: 0, events: [], subs: new Set() });
+  return sessionBus.get(key);
+}
+function busPush(key, type, data) {
+  const b = busGet(key);
+  if (!b) return null;
+  const ev = { type, seq: ++b.seq, data: data || {}, ts: Date.now() };
+  b.events.push(ev);
+  if (b.events.length > 500) b.events.splice(0, b.events.length - 500); // 环形缓冲 500
+  // 任务结束：清空缓冲，避免完成后订阅端重放（历史已从 /messages 拿）
+  if (type === "turn_end") b.events.length = 0;
+  for (const sub of b.subs) {
+    try { sub.write(`event: ${type}\ndata: ${JSON.stringify(ev)}\n\n`); } catch {}
+  }
+  return ev;
+}
+
+// GET /api/sessions/:id/stream —— 会话实时订阅（多端观看）：补发 after 之后历史 + 实时广播 + 心跳
+async function handleSessionStream(res, req, url, id) {
+  const key = decodeURIComponent(id || "");
+  if (!key) return json(res, 400, { error: "缺少会话 ID" });
+  res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache", Connection: "keep-alive", "X-Accel-Buffering": "no" });
+  const b = busGet(key);
+  const after = parseInt(url?.searchParams?.get("after") || "0", 10) || 0;
+  // 补发 after 之后的历史事件（断线续流/晚加入观看）
+  for (const ev of b.events) if (ev.seq > after) {
+    try { res.write(`event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`); } catch {}
+  }
+  try { res.write(`event: subscribed\ndata: ${JSON.stringify({ key, lastSeq: b.seq })}\n\n`); } catch {}
+  const sub = { write: (s) => { if (!res.writableEnded) { try { res.write(s); } catch {} } } };
+  b.subs.add(sub);
+  const hb = setInterval(() => { try { sub.write(": ping\n\n"); } catch {} }, 20000);
+  req.on("close", () => { clearInterval(hb); b.subs.delete(sub); });
+}
+
 // ── SSE ────────────────────────────────────────────────────────────
 function sseWrite(res, event, data) {
   res.write(`event: ${event}\n`);
@@ -3683,6 +3722,9 @@ async function handleChat(req, res, body) {
   const hbTimer = startSseHeartbeat(res); // 心跳保活（公网隧道不因 idle 断开）
   const writer = createSseWriter(res); // 背压控制：慢网络时事件排队等 drain，不丢不堆
   const taskId = body.taskKey || sessionId || findKeyByEntry(entry) || "new";
+  // 事件总线：任务事件同时入总线（多端订阅观看），sessionId 存在时双挂
+  const busKeys = [taskId, ...(sessionId && sessionId !== taskId ? [sessionId] : [])];
+  const busEmit = (type, data) => { for (const k of busKeys) busPush(k, type, data); };
   touchTask(taskId, { stage: "处理中" });
   let sawDelta = false; // 是否产生过文本输出（用于空回复兜底）
   let collected = "";   // 收集主模型输出（用于媒体路由的配图/配音内容）
@@ -3699,26 +3741,33 @@ async function handleChat(req, res, body) {
         collected += delta;
         // 过滤模型复述/泄漏的内部指令（情绪语境等），避免显示给用户
         const cleaned = delta.replace(/【内部指令·情绪语境】[\s\S]*?(?=【|\n\n|$)/, "").replace(/【当前情绪语境】[\s\S]*?(?=【|\n\n|$)/, "");
-        if (cleaned) writer.push("delta", { text: cleaned });
+        if (cleaned) { writer.push("delta", { text: cleaned }); busEmit("delta", { text: cleaned }); }
       } else if (event.type === "message_update" && event.assistantMessageEvent?.type === "thinking_delta") {
         writer.push("think", { text: event.assistantMessageEvent.delta });
+        busEmit("think", { text: event.assistantMessageEvent.delta });
       } else if (event.type === "message_update" && event.assistantMessageEvent?.type === "thinking_end") {
         writer.push("think_end", {});
+        busEmit("think_end", {});
       } else if (event.type === "tool_execution_start") {
         touchTask(taskId, { stage: "执行工具", toolName: event.toolName });
         writer.push("tool", { name: event.toolName, args: event.args, id: event.toolCallId });
+        busEmit("tool", { name: event.toolName, args: event.args, id: event.toolCallId });
       } else if (event.type === "tool_execution_end") {
         touchTask(taskId, { stage: "工具完成", toolName: event.toolName });
         const text = Array.isArray(event.result?.content)
           ? event.result.content.map(c => c.text || "").join("")
           : "";
         writer.push("tool_end", { name: event.toolName, id: event.toolCallId, isError: !!event.isError, output: text });
+        busEmit("tool_end", { name: event.toolName, id: event.toolCallId, isError: !!event.isError, output: text });
       } else if (event.type === "turn_end") {
         writer.push("turn_end", {});
+        busEmit("turn_end", {});
       } else if (event.type === "auto_retry_start") {
         writer.push("note", { text: `⚠️ 自动重试中（第 ${event.attempt} 次）：${event.errorMessage}` });
+        busEmit("note", { text: `⚠️ 自动重试中（第 ${event.attempt} 次）：${event.errorMessage}` });
       } else if (event.type === "compaction_start") {
         writer.push("note", { text: "🧹 上下文压缩中…" });
+        busEmit("note", { text: "🧹 上下文压缩中…" });
       }
     } catch {}
   });
@@ -4706,6 +4755,7 @@ const API_ROUTES = [
   ["GET", /^\/api\/sessions\/([^/]+)\/tree$/, (res, req, url, m) => handleSessionTree(res, decodeURIComponent(m[1]))],
   ["POST", /^\/api\/sessions\/([^/]+)\/branch$/, async (res, req, url, m) => handleSessionBranch(res, decodeURIComponent(m[1]), await readBody(req))],
   ["GET", /^\/api\/sessions\/([^/]+)\/messages$/, (res, req, url, m) => handleMessages(res, decodeURIComponent(m[1]), req, url)],
+  ["GET", /^\/api\/sessions\/([^/]+)\/stream$/, (res, req, url, m) => handleSessionStream(res, req, url, m[1])],
   ["GET", /^\/api\/sessions\/([^/]+)\/stats$/, (res, req, url, m) => handleStats(res, decodeURIComponent(m[1]))],
   ["POST", /^\/api\/sessions\/([^/]+)\/compact$/, (res, req, url, m) => handleCompact(res, decodeURIComponent(m[1]))],
   ["POST", /^\/api\/sessions\/([^/]+)\/rename$/, async (res, req, url, m) => handleRename(res, decodeURIComponent(m[1]), await readBody(req))],

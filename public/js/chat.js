@@ -498,7 +498,77 @@ function syncModelSelectForSession(id) {
   }
 }
 
+// ══ 会话实时订阅（多端观看）：打开会话时挂接，收事件走统一渲染；本页 POST 流渲染时跳过防重复 ══
+const sessionSubs = new Map(); // sid → AbortController
+
+function subscribeSession(sid) {
+  if (!sid || sessionSubs.has(sid)) return;
+  const ac = new AbortController();
+  sessionSubs.set(sid, ac);
+  let after = 0, attempt = 0;
+  (async () => {
+    while (!ac.signal.aborted) {
+      try {
+        const r = await fetch(`/api/sessions/${encodeURIComponent(sid)}/stream?after=${after}`, {
+          headers: { Authorization: `Bearer ${token}` }, signal: ac.signal,
+        });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const reader = r.body.getReader();
+        const dec = new TextDecoder();
+        let buf = "";
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let i;
+          while ((i = buf.indexOf("\n\n")) >= 0) {
+            const block = buf.slice(0, i); buf = buf.slice(i + 2);
+            const dl = block.split("\n").find(l => l.startsWith("data: "));
+            if (!dl) continue;
+            let ev; try { ev = JSON.parse(dl.slice(6)); } catch { continue; }
+            if (ev.type === "subscribed") { after = ev.lastSeq || after; continue; }
+            after = Math.max(after, ev.seq || after);
+            handleSubEvent(sid, ev);
+          }
+        }
+      } catch {}
+      if (ac.signal.aborted) break;
+      // 指数退避重连（500ms→10s + 抖动）
+      const delay = Math.min(10000, 500 * Math.pow(2, Math.min(attempt++, 5))) + Math.random() * 500;
+      await new Promise(r2 => setTimeout(r2, delay));
+    }
+  })();
+}
+function unsubscribeSession(sid) { const ac = sessionSubs.get(sid); if (ac) { ac.abort(); sessionSubs.delete(sid); } }
+function handleSubEvent(sid, ev) {
+  const st = streams.get(sid);
+  if (st && st.postActive) return; // 本页正在 POST 流渲染，订阅跳过防重复
+  const d = ev.data || {};
+  switch (ev.type) {
+    case "delta": onDelta(sid, d.text || ""); break;
+    case "think": onThink(sid, d.text || ""); break;
+    case "think_end": onThinkEnd(sid); break;
+    case "tool": {
+      let a = "";
+      if (d.args && typeof d.args === "object") {
+        if (d.args.command) a = d.args.command;
+        else if (d.args.path) a = d.args.path;
+        else a = JSON.stringify(d.args, null, 2);
+      } else a = String(d.args || "");
+      onTool(sid, d.name, a, d.id, d.args);
+      break;
+    }
+    case "tool_output": onToolOutput(sid, d.id, d.text || ""); break;
+    case "tool_end": onToolEnd(sid, d.id, !!d.isError, d.output); break;
+    case "turn_end": break;
+    case "file": if (d.path) addFileMsg(d, "assistant"); break;
+    case "image": if (d.url || d.path) addImageMsg ? addImageMsg(d, "assistant") : 0; break;
+    case "note": appendDelta("\n" + (d.text || "")); break;
+  }
+}
+
 async function selectSession(id) {
+  unsubscribeSession(currentId); // 切走旧会话的订阅
   currentId = id;
   try { localStorage.setItem("pi_last_session", id); } catch {}
   // 切换会话：同步模型下拉为该会话自己的模型（避免显示上一个会话的模型）
@@ -553,6 +623,7 @@ async function selectSession(id) {
   updateFooter();
   $("compact-banner").hidden = true;
   $("messages").scrollTop = $("messages").scrollHeight;
+  subscribeSession(id); // 挂会话实时订阅（多端观看同步）
 }
 async function newSession() {
   freshNewSession = true;
@@ -1281,6 +1352,7 @@ async function send() {
   // 数据层初始化（切走再切回可重建视图）
   const st = { text: "", think: "", tools: new Map(), toolOrder: [], events: [], startedAt: performance.now(), done: false, toolStarted: false, pendingText: "", userText: text };
   st.taskKey = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+  st.postActive = true; // 本页 POST 流渲染中（订阅流收到同会话事件时跳过，防重复）
   streams.set(key, st);
   // 渲染层复位（当前视图 = 本会话）
   render = { assistantEl: null, toolEls: new Map(), toolOrder: [], thinkingEl: null, deltaBuf: "", thinkBuf: "", flushTimer: null };
