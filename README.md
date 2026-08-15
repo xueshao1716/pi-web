@@ -56,6 +56,9 @@ pi-web
 > # GitHub
 > irm https://raw.githubusercontent.com/xueshao1716/pi-web/main/install-all.ps1 | iex
 > ```
+>
+> **不想装 C 盘？** 安装时脚本会询问安装目录，回车=默认用户目录，输入 `D:\pi-web` 之类即可装到其他盘；
+> 也可本地执行 `powershell -ExecutionPolicy Bypass -File install-all.ps1 -InstallDir D:\pi-web` 直接指定。
 
 ## ✨ 为什么与众不同
 

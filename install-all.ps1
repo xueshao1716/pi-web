@@ -4,7 +4,19 @@
 #  用法（任意 Windows PowerShell，一条命令）：
 #    irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-all.ps1 | iex
 #  或本地：powershell -ExecutionPolicy Bypass -File install-all.ps1
+#  选安装目录（不装 C 盘）：回车默认用户目录，或输入如 D:\pi-web；
+#    也可 powershell -File install-all.ps1 -InstallDir D:\pi-web
 # ============================================================
+# ── 安装目录：可用 -InstallDir 指定，否则交互询问（回车=默认用户目录）──
+param([string]$InstallDir = "")
+if ($InstallDir -and $InstallDir.Trim()) {
+  $DEST = $InstallDir.Trim()
+} else {
+  $DEST = Join-Path $HOME 'pi-web'
+  $ans = Read-Host "  安装到哪个目录？（回车=默认 $DEST，或输入如 D:\pi-web）"
+  if ($ans.Trim()) { $DEST = $ans.Trim() }
+}
+
 $ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
 
@@ -82,7 +94,6 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue) -or $env:NODE_SKIP) {
 # ── 步骤 3/5：获取 pi-web 源码（git 优先，失败切 zip）──
 Write-Host ''
 Write-Host '[3/5] 获取 pi-web 源码 ...' -ForegroundColor Yellow
-$DEST = Join-Path $HOME 'pi-web'
 if (Test-Path (Join-Path $DEST 'server.mjs')) {
   Write-Host "  已存在 $DEST" -ForegroundColor Green
 } else {

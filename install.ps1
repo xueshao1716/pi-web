@@ -5,11 +5,23 @@
 #  用法（任意 Windows PowerShell，一条命令）：
 #    irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install.ps1 | iex
 #  或本地：powershell -ExecutionPolicy Bypass -File install.ps1
+#  选安装目录（不装 C 盘）：回车默认用户目录，或输入如 D:\pi-web；
+#    也可 powershell -File install.ps1 -InstallDir D:\pi-web
 # ============================================================
+# ── 安装目录：可用 -InstallDir 指定，否则交互询问（回车=默认用户目录）──
+param([string]$InstallDir = "")
+if ($InstallDir -and $InstallDir.Trim()) {
+  $DEST = $InstallDir.Trim()
+} else {
+  $DEST = Join-Path $HOME 'pi-web'
+  $ans = Read-Host "  安装到哪个目录？（回车=默认 $DEST，或输入如 D:\pi-web）"
+  if ($ans.Trim()) { $DEST = $ans.Trim() }
+}
+
 $ErrorActionPreference = 'Stop'
 $MIRROR = 'https://npmmirror.com/mirrors'
 $NODE_VER = 'v22.22.3'
-$ZIP = "$HOME\Downloads\pi-web.zip"
+$ZIP = "$env:TEMP\pi-web.zip"
 
 Write-Host ''
 Write-Host '====================================' -ForegroundColor Cyan
@@ -34,8 +46,8 @@ if (Get-Command node -ErrorAction SilentlyContinue) {
 # 2. 下载 pi-web 源码（zip 方式，不需要 Git；GitHub 直连失败自动切镜像）
 Write-Host ''
 Write-Host '[2/3] 获取 pi-web 源码 ...' -ForegroundColor Yellow
-if (Test-Path "$HOME\pi-web\server.mjs") {
-  Write-Host '  已存在 ~/pi-web' -ForegroundColor Green
+if (Test-Path "$DEST\server.mjs") {
+  Write-Host "  已存在 $DEST" -ForegroundColor Green
 } else {
   Write-Host '  下载源码（GitHub zip，失败自动切镜像）...'
   $ZIP_URLS = @(
@@ -50,13 +62,13 @@ if (Test-Path "$HOME\pi-web\server.mjs") {
     if ((Test-Path "$ZIP") -and ((Get-Item "$ZIP").Length -gt 100000)) { $downloaded = $true; break }
   }
   if (-not $downloaded) { Write-Host '  源码下载失败（GitHub 与镜像均不可达，请检查网络）' -ForegroundColor Red; exit 1 }
-  Expand-Archive -Path "$ZIP" -DestinationPath "$HOME" -Force
-  Move-Item -Path "$HOME\pi-web-main" -Destination "$HOME\pi-web" -ErrorAction SilentlyContinue
-  if (-not (Test-Path "$HOME\pi-web\server.mjs")) {
-    # 如果已存在 pi-web 目录，先删再移
-    if (Test-Path "$HOME\pi-web") { Remove-Item "$HOME\pi-web" -Recurse -Force }
-    Move-Item -Path "$HOME\pi-web-main" -Destination "$HOME\pi-web"
-  }
+  $EX = "$env:TEMP\pi-web-extract"
+  Remove-Item "$EX" -Recurse -Force -ErrorAction SilentlyContinue
+  Expand-Archive -Path "$ZIP" -DestinationPath "$EX" -Force
+  $SRC = Get-ChildItem "$EX" -Directory | Select-Object -First 1
+  if (Test-Path $DEST) { Remove-Item $DEST -Recurse -Force }
+  Move-Item -Path $SRC.FullName -Destination $DEST
+  Remove-Item "$EX" -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item "$ZIP" -Force -ErrorAction SilentlyContinue
   Write-Host '  源码就绪' -ForegroundColor Green
 }
@@ -64,7 +76,7 @@ if (Test-Path "$HOME\pi-web\server.mjs") {
 # 3. 一键安装 + 启动（自动装 pi 引擎、模型模板、令牌、后台启动）
 Write-Host ''
 Write-Host '[3/3] 安装并启动 ...' -ForegroundColor Yellow
-Push-Location "$HOME\pi-web"
+Push-Location "$DEST"
 node setup.mjs --install
 
 # dsh 引擎（DeepSeek Harness）：与 pi 同镜像逻辑
@@ -89,8 +101,8 @@ Pop-Location
 Write-Host ''
 Write-Host '完成！' -ForegroundColor Green
 Write-Host '  访问地址: http://127.0.0.1:8787' -ForegroundColor Cyan
-$TOK = Get-Content "$HOME\pi-web\.token" -Raw -ErrorAction SilentlyContinue
-if ($TOK) { Write-Host "  访问令牌: $($TOK.Trim())" -ForegroundColor Green } else { Write-Host '  令牌文件: ~/pi-web/.token' -ForegroundColor Cyan }
+$TOK = Get-Content "$DEST\.token" -Raw -ErrorAction SilentlyContinue
+if ($TOK) { Write-Host "  访问令牌: $($TOK.Trim())" -ForegroundColor Green } else { Write-Host "  令牌文件: $DEST\.token" -ForegroundColor Cyan }
 Write-Host '  引擎就位: pi（工作台主引擎）+ dsh（DeepSeek Harness 执行臂）' -ForegroundColor Cyan
 Write-Host ''
 Write-Host '  ── 配置 API 密钥（必做，否则模型不可用）──' -ForegroundColor Yellow
@@ -99,7 +111,7 @@ Write-Host '  2) 创建文件 ~/.pi/agent/auth.json（记事本新建），内�
 Write-Host '     {' -ForegroundColor Gray
 Write-Host '       "deepseek": { "type": "api_key", "key": "sk-你的密钥" }' -ForegroundColor Gray
 Write-Host '     }' -ForegroundColor Gray
-Write-Host '  3) 重启服务: taskkill /F /IM node.exe ，然后 cd ~\pi-web && node server.mjs' -ForegroundColor Cyan
+Write-Host '  3) 重启服务: taskkill /F /IM node.exe ，然后 cd $DEST && node server.mjs' -ForegroundColor Cyan
 Write-Host '  4) 刷新 http://127.0.0.1:8787 即可对话（默认模型 deepseek-v4-flash 官方直连兜底）' -ForegroundColor Cyan
 Write-Host '  dsh 工作台: 运行 dsh web 打开（默认 http://127.0.0.1:3080，首次启动弹窗引导填 key）' -ForegroundColor Cyan
 Write-Host '            装完打开 pi-web 引导弹窗勾选「同时配置到 dsh」可一次配好两个引擎' -ForegroundColor Gray
