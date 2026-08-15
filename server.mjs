@@ -230,20 +230,68 @@ function loadExperience(maxEntries = 8) {
 // 文件位置：D:\pi-workspace\.pi-rules.md（或 CONFIG.cwd 下）。agent 每次对话自动携带，无需手动 @ 引用
 let projectRulesCache = null;
 let projectRulesMtime = 0;
-function loadProjectRules() {
+// ── 分层上下文规则（Gemini GEMINI.md 借鉴）：全局 ~/.piweb/GEMINI.md + 项目 GEMINI.md（兼容 .pi-rules.md）+ @import ──
+let ctxGlobalCache = null, ctxGlobalMtime = 0;
+let ctxProjCache = null, ctxProjMtime = 0;
+const jitCache = new Map(); // file → { content, mtime }
+
+// 读取规则文件并展开 @import（@file.md 同目录相对路径）
+function readRulesWithImports(filePath) {
+  const base = path.dirname(filePath);
+  const raw = fs.readFileSync(filePath, "utf8");
+  const out = [];
+  for (const ln of raw.split("\n")) {
+    const m = ln.match(/^\s*@(\S+\.md)\s*$/);
+    if (m) { try { out.push(fs.readFileSync(path.join(base, m[1]), "utf8").trim()); } catch {} }
+    else out.push(ln);
+  }
+  return out.join("\n").trim();
+}
+// 全部分层规则：全局 + 项目（GEMINI.md 优先，.pi-rules.md 兼容）
+function loadContextRules() {
+  const out = [];
   try {
+    const gf = path.join(os.homedir(), ".piweb", "GEMINI.md");
+    const st = fs.statSync(gf);
+    if (st.mtimeMs !== ctxGlobalMtime || !ctxGlobalCache) { ctxGlobalCache = readRulesWithImports(gf); ctxGlobalMtime = st.mtimeMs; }
+    if (ctxGlobalCache) out.push(`以下为全局约定（~/.piweb/GEMINI.md），跨项目适用：\n${ctxGlobalCache}`);
+  } catch {}
+  try {
+    const pf = path.join(CONFIG.cwd, "GEMINI.md");
+    const st = fs.statSync(pf);
+    if (st.mtimeMs !== ctxProjMtime || !ctxProjCache) { ctxProjCache = readRulesWithImports(pf); ctxProjMtime = st.mtimeMs; }
+    if (ctxProjCache) out.push(`以下为项目约定（GEMINI.md），请严格遵守：\n${ctxProjCache}`);
+  } catch {}
+  try { // 兼容旧 .pi-rules.md
     const f = path.join(CONFIG.cwd, ".pi-rules.md");
     const st = fs.statSync(f);
-    if (st.mtimeMs !== projectRulesMtime) {
-      projectRulesCache = fs.readFileSync(f, "utf8").trim();
-      projectRulesMtime = st.mtimeMs;
-    }
-    if (!projectRulesCache) return [];
-    return [`以下为项目规则（.pi-rules.md），请严格遵守：\n${projectRulesCache}`];
-  } catch {
-    return [];
-  }
+    if (st.mtimeMs !== projectRulesMtime) { projectRulesCache = fs.readFileSync(f, "utf8").trim(); projectRulesMtime = st.mtimeMs; }
+    if (projectRulesCache) out.push(`以下为项目规则（.pi-rules.md），请严格遵守：\n${projectRulesCache}`);
+  } catch {}
+  return out;
 }
+// JIT 发现：路径 → 该目录及祖先链的 GEMINI.md（按需注入局部约定）
+function jitRulesForPath(p) {
+  if (!p) return [];
+  const abs = path.isAbsolute(p) ? p : path.join(CONFIG.cwd, String(p));
+  const found = [];
+  const seen = new Set();
+  for (let d = path.dirname(abs); ; d = path.dirname(d)) {
+    if (seen.has(d)) break;
+    seen.add(d);
+    const f = path.join(d, "GEMINI.md");
+    try {
+      const st = fs.statSync(f);
+      const hit = jitCache.get(f);
+      if (!hit || hit.mtime !== st.mtimeMs) { jitCache.set(f, { content: readRulesWithImports(f), mtime: st.mtimeMs }); }
+      const c = jitCache.get(f).content;
+      if (c) found.unshift(`[${path.relative(CONFIG.cwd, f) || "."}] ${c}`);
+    } catch {}
+    if (d === path.dirname(d)) break;
+  }
+  return found;
+}
+function loadProjectRules() { return loadContextRules(); } // 兼容旧调用
 
 // 固定记忆：每次对话自动加载（工作空间根/记忆.md + 记忆日志）
 let memoryCache = null, memoryMtime = 0, memoryLogCache = null, memoryLogMtime = 0;
@@ -2851,6 +2899,7 @@ async function unifiedChat(model, messages, opts = {}) {
   });
   let usedThinking = thinkingParam !== null;
   let turn = 0;
+  const jitInjected = new Set(); // 本会话 JIT 目录规则已注入集合（每目录一次）
   const seenCalls = new Map();
   while (turn < 20) {
     turn++;
@@ -2903,6 +2952,19 @@ async function unifiedChat(model, messages, opts = {}) {
         seenCalls.set(sig, (seenCalls.get(sig) || 0) + 1);
         if (opts.onTool) opts.onTool(tc.id, fnName, args);
         const out = await executeUnifiedTool(fnName, args);
+        // JIT 上下文（Gemini 借鉴）：read/write/edit 带 path 时注入该目录链 GEMINI.md 约定（每目录每会话一次）
+        if (fnName === "read" || fnName === "write" || fnName === "edit") {
+          try {
+            const jits = jitRulesForPath(args.path);
+            if (jits.length) {
+              const key = jits[0].slice(0, 30);
+              if (!jitInjected.has(key)) {
+                jitInjected.add(key);
+                out.text = `[该目录约定 GEMINI.md]\n${jits.join("\n")}\n\n---\n${out.text}`;
+              }
+            }
+          } catch {}
+        }
         const failed = out.isError === true;
         if (!failed && seenCalls.get(sig) >= 3) {
           return { error: "模型工具调用陷入循环，已中断（建议换一种方式提问）" };
