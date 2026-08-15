@@ -20,11 +20,16 @@ describe("emotion.mjs 情绪引擎", () => {
     assert.ok(prompt.includes("风险") || prompt.includes("安全"), "应触发安全警觉");
   });
 
-  test("正常对话 → 无特殊指令", () => {
+  test("正常对话 → 无情绪指令（v2.1 人格基因常驻）", () => {
     clearEmotion("t-normal");
     updateEmotion("t-normal", "帮我写个网页");
     const prompt = emotionPrompt("t-normal");
-    assert.equal(prompt, "", "正常对话不应有情绪指令");
+    // v2.1 起人格基因指令常驻（性格倾向），但正常对话不应触发任何情绪/风险类指令
+    assert.ok(!prompt.includes("烦躁"), "正常对话不应有烦躁指令");
+    assert.ok(!prompt.includes("风险") && !prompt.includes("警觉"), "正常对话不应有风险警觉");
+    assert.ok(!prompt.includes("着急"), "正常对话不应有着急指令");
+    assert.ok(!prompt.includes("当前氛围"), "正常对话不应有氛围节奏指令");
+    assert.ok(prompt.includes("性格倾向"), "人格基因指令应常驻（v2.1 设计）");
   });
 
   test("用户着急 → 给快路径", () => {
