@@ -1627,6 +1627,10 @@ async function handleKeysApply(res, body) {
   const { provider, apiKey, baseUrl, toDsh } = body || {};
   if (!provider || !apiKey) return json(res, 400, { error: "缺少 provider 或 API Key" });
   if (!/^[a-zA-Z0-9_-]+$/.test(provider)) return json(res, 400, { error: "provider 名称只能包含字母、数字、横线" });
+  // API Key 必须是纯 ASCII（复制时易混入 ×✕ 等符号，undici fetch 会报 ByteString 错）
+  if (/[^\x20-\x7E]/.test(apiKey)) {
+    return json(res, 400, { error: "API Key 包含特殊字符（复制时可能带入了 ×✕ 等符号），请从平台重新复制后重试" });
+  }
   // ── 先验证、后写入：任何失败路径都不写 auth.json，杜绝假 key 污染 ──
   let models = null;
   if (KNOWN_PROVIDERS.has(provider)) {

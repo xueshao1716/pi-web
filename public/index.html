@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="小语">
 <link rel="stylesheet" href="/static/vendor/github-dark.min.css" integrity="sha384-wH75j6z1lH97ZOpMOInqhgKzFkAInZPPSPlZpYKYTOqsaizPvhQZmAtLcPKXpLyH" crossorigin="anonymous">
-<link rel="stylesheet" href="/static/app.css?v=222">
+<link rel="stylesheet" href="/static/app.css?v=224">
 <link rel="stylesheet" href="/static/css/quantum.css?v=222">
 <link rel="stylesheet" href="/static/css/ai.css?v=222">
 <link rel="stylesheet" href="/static/css/neu.css?v=222">
@@ -289,26 +289,34 @@
 <!-- 模型管理 -->
 <!-- 双引擎密钥总引导：未配置时弹出（pi + dsh 一次配好） -->
 <div class="modal-overlay" id="firstrun-modal">
-  <div class="modal modal-file" style="max-width:600px">
-    <div class="modal-head"><span>🔑 配置模型密钥（pi + dsh）</span><button class="close" id="fr-close">✕</button></div>
-    <div class="fv-content" style="padding:16px 18px">
-      <div id="fr-status" style="display:flex;gap:16px;margin-bottom:14px;font-size:13px">
-        <span id="fr-pi-status">pi 引擎：检查中…</span>
-        <span id="fr-dsh-status">dsh 引擎：检查中…</span>
+  <div class="modal fr-modal">
+    <div class="modal-head fr-head">
+      <div class="fr-title"><span class="fr-logo">🔑</span><div><div class="fr-title-main">配置模型密钥</div><div class="fr-title-sub">pi + dsh 双引擎，一次配好</div></div></div>
+      <button class="close" id="fr-close">✕</button>
+    </div>
+    <div class="fv-content fr-body">
+      <div class="fr-status">
+        <span class="fr-chip" id="fr-pi-status">pi 引擎：检查中…</span>
+        <span class="fr-chip" id="fr-dsh-status">dsh 引擎：检查中…</span>
       </div>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <input id="fr-provider" value="deepseek" autocomplete="off" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel-2);color:var(--text);font-size:13px" title="服务商（默认 deepseek，官方 key 双引擎通用）">
-        <input id="fr-key" type="password" placeholder="API Key（sk-…，platform.deepseek.com 获取）" autocomplete="off" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel-2);color:var(--text);font-size:13px">
-        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--dim);cursor:pointer">
-          <input type="checkbox" id="fr-todsh" checked> 同时配置到 dsh 引擎（DEEPSEEK_API_KEY，双引擎共用同一把 key）
-        </label>
-        <div style="display:flex;gap:10px;align-items:center">
-          <button class="theme-new-btn" id="fr-save" style="padding:8px 18px">保存配置</button>
-          <span id="fr-result" style="font-size:12.5px"></span>
-        </div>
+      <div class="fr-field">
+        <label class="fr-label">服务商</label>
+        <input id="fr-provider" value="deepseek" autocomplete="off" spellcheck="false" title="默认 deepseek，官方 key 双引擎通用">
       </div>
-      <div style="margin-top:14px;padding:10px 12px;border:1px dashed var(--border);border-radius:8px;font-size:12.5px;color:var(--dim);line-height:1.7">
-        📡 <b>dsh 工作台</b>：运行 <code>dsh web</code> 打开（默认 <code>http://127.0.0.1:3080</code>），首次启动会弹窗引导填 key；勾选上方选项可一次配好两个引擎。
+      <div class="fr-field">
+        <label class="fr-label">API Key</label>
+        <input id="fr-key" type="password" placeholder="sk-…（platform.deepseek.com 获取）" autocomplete="off" spellcheck="false">
+        <div class="fr-hint">deepseek 官方 key 可同时用于 pi 与 dsh 两个引擎</div>
+      </div>
+      <label class="fr-todsh">
+        <input type="checkbox" id="fr-todsh" checked> 同时配置到 dsh 引擎（DEEPSEEK_API_KEY）
+      </label>
+      <div class="fr-actions">
+        <button class="theme-new-btn fr-save-btn" id="fr-save">保存配置</button>
+        <span id="fr-result" class="fr-result"></span>
+      </div>
+      <div class="fr-tip">
+        📡 <b>dsh 工作台</b>：运行 <code>dsh web</code> 打开（默认 <code>http://127.0.0.1:3080</code>），勾选上方选项可一次配好两个引擎。
       </div>
     </div>
   </div>
@@ -507,9 +515,9 @@
 <script src="/static/js/core.js?v=222"></script>
 <script src="/static/js/registry.js?v=222"></script>
 <script src="/static/js/theme.js?v=222"></script>
-<script src="/static/js/chat.js?v=223"></script>
+<script src="/static/js/chat.js?v=224"></script>
 <script src="/static/js/wallpaper.js?v=222"></script>
-<script src="/static/js/model.js?v=223"></script>
+<script src="/static/js/model.js?v=224"></script>
 <script src="/static/js/ui.js?v=222"></script>
 <script src="/static/js/panels.js?v=222"></script>
 <script src="/static/js/workspace.js?v=222"></script>

@@ -78,7 +78,8 @@ async function refreshKeysStatus() {
 $("fr-close")?.addEventListener("click", () => $("firstrun-modal")?.classList.remove("show"));
 $("fr-save")?.addEventListener("click", async () => {
   const provider = ($("fr-provider")?.value || "").trim();
-  const key = ($("fr-key")?.value || "").trim();
+  // 清理复制时易混入的符号（×✕✓ 及 BOM/首尾空格），避免后端 fetch 报错
+  const key = ($("fr-key")?.value || "").trim().replace(/^[×✕✓✓\uFEFF·•\s]+/, "");
   const toDsh = $("fr-todsh")?.checked;
   const btn = $("fr-save"), res = $("fr-result");
   if (!provider || !key) { if (res) { res.textContent = "请填写服务商和 API Key"; res.style.color = "#fbbf24"; } return; }
@@ -114,7 +115,7 @@ $("mm-test").addEventListener("click", async () => {
     provider = $("mm-custom-provider").value.trim();
     if (!provider) return toast("请输入自定义服务商名称");
   }
-  const apiKey = $("mm-key").value.trim();
+  const apiKey = $("mm-key").value.trim().replace(/^[×✕✓✓\uFEFF·•\s]+/, "");
   if (!apiKey) return toast("请输入 API Key");
   const baseUrl = $("mm-baseurl").value.trim();
   const account_id = $("mm-account")?.value.trim() || undefined;
