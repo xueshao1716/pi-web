@@ -16,6 +16,7 @@ export const WORKSHOP_PAGES = {
   "/workshop/refine": "workshop-refine.html",
   "/workshop/article": "workshop-article.html",
   "/workshop/video": "workshop-video.html",
+  "/workshop/omega": "workshop-omega.html",
 };
 
 // 按技能名找文件路径（供注入 agent 自行 read SKILL.md）

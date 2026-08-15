@@ -330,7 +330,11 @@ $("mm-notices").addEventListener("click", async () => {
   };
   try {
     const d = await api("/api/notices");
-    let html = `\n\n### 引擎更新（pi v${d.piVersion}）\n\n`;
+    let html = `\n\n### 🚀 pi-web v${d.appVersion}\n\n`;
+    if (d.changelog && d.changelog.length) {
+      html += d.changelog.map(c => `**v${c.version}**\n${c.lines.map(l => l.replace(/^[-*]\s*/, "- ")).join("\n") || "（无明细）"}\n`).join("\n");
+    } else html += "（暂无更新记录）\n";
+    html += `\n---\n\n### 引擎更新（pi v${d.piVersion}）\n\n`;
     if (d.releases.length) {
       html += d.releases.map(r => `**${r.tag}**（${r.date}）${r.name ? " " + r.name : ""}\n${escMd(r.body).slice(0, 220)}${r.body.length > 220 ? "…" : ""}\n`).join("\n");
     } else html += "（暂时拉取不到更新信息）\n";

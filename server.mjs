@@ -15,6 +15,7 @@ import { CONFIG } from "./config.mjs";
 import { createGateway } from "./engine/gateway.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
 import { createCodeMode } from "./code-mode/code-mode.mjs";
+import { createTimeEngine } from "./engine/time-engine.mjs";
 const memoryApi = await import("./memory.mjs");
 const emotion = await import("./emotion.mjs");
 emotion.init(CONFIG.cwd); // 基因系统：加载人格基因 + 提案池
@@ -23,6 +24,9 @@ const { WORKSHOP_PAGES } = workshop;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, "public");
+
+// 时间引擎实例（启动时初始化；未初始化时相关 API 返回友好错误）
+let timeEngine = null;
 
 // ── 加载 pi SDK ────────────────────────────────────────────────────
 const { createAgentSession, createAgentSessionServices, createAgentSessionFromServices, SettingsManager, ModelRuntime, SessionManager, DefaultResourceLoader, getAgentDir } = await import(
@@ -2344,6 +2348,12 @@ async function initDshTool() {
         if (!task) return { content: [{ type: "text", text: "缺少任务描述" }] };
         // 并发控制：达到上限（默认 6）拒绝新任务，让 pi 稍后重试
         if (dshActive >= dshMax) return { content: [{ type: "text", text: `⚠️ dsh 引擎已达并发上限（${dshActive}/${dshMax}）。请稍后重试，或改用自带工具完成。` }] };
+        // 清理残留：先回收异常退出/超时遗留的 dsh headless 进程（防内存堆积）
+        try {
+          execFile("powershell", ["-NoProfile", "-Command",
+            "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'dsh.*headless' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+          ], { timeout: 8000, windowsHide: true }, () => {});
+        } catch {}
         dshActive++;
         if (onUpdate) onUpdate({ type: "status", content: [{ type: "text", text: `⏳ 已派单 dsh 引擎执行（冷启动约 5-20s，当前并发 ${dshActive}/${dshMax}）…` }] });
         try {
@@ -2467,6 +2477,28 @@ async function executeUnifiedTool(name, args) {
       const content = String(args?.content || "").trim();
       if (!content) return { text: "（空思考）", isError: true };
       return { text: "✅ 思考已记录（调试草稿，仅本次会话内存可见，不落盘）", think: content };
+    }
+
+    if (name === "time_task") {
+      try {
+        if (!timeEngine) return { text: "时间引擎未初始化", isError: true };
+        const a = String(args?.action || "");
+        if (a === "register") {
+          const r = timeEngine.register(args);
+          if (r.error) return { text: `注册失败：${r.error}`, isError: true };
+          return { text: `✅ 定时任务已注册（id=${r.id}）：${args.type} ${args.at}${args.day ? " 周" + args.day : ""}${args.date ? " " + args.date : ""} → ${String(args.prompt || "").slice(0, 60)}` };
+        }
+        if (a === "list") {
+          const ts = timeEngine.list();
+          if (!ts.length) return { text: "暂无定时任务" };
+          return { text: "当前定时任务：\n" + ts.map(t => `  [${t.id}] ${t.type} ${t.at}${t.day ? " 周" + t.day : ""}${t.date ? " " + t.date : ""} | 已跑${t.runs}次 | ${String(t.prompt).slice(0, 40)}`).join("\n") };
+        }
+        if (a === "remove") {
+          const r = timeEngine.remove(String(args?.id || ""));
+          return r.removed ? { text: `✅ 已删除定时任务 ${args.id}` } : { text: `未找到任务 ${args.id}`, isError: true };
+        }
+        return { text: "未知 action（register/list/remove）", isError: true };
+      } catch (e) { return { text: "time_task 异常: " + String(e?.message || e).slice(0, 100), isError: true }; }
     }
     if (name === "bash") {
       const cmd = String(args?.command || "").trim();
@@ -2753,6 +2785,7 @@ function toolBindingArgsObj(name, args) {
 }
 
 // ══ 消息看板：pi 更新 + 能力看板 ══
+const APP_VERSION = "2.5.0"; // pi-web 正式版本（每次发版 bump + 记入 CHANGELOG.md + 资源戳 v= 与 sw.js CACHE 同步）
 const CAPABILITIES = [
   { icon: "💬", name: "多模型对话", desc: "deepseek / 小米 mimo / Agnes，思考 + 工具调用" },
   { icon: "🛠", name: "编程工具", desc: "读文件 / 写文件 / 编辑 / 跑命令（与 TUI 同一引擎）" },
@@ -2807,7 +2840,14 @@ except Exception as e:
     const pkg = JSON.parse(fs.readFileSync(path.join(path.dirname(CONFIG.piPackage), "..", "package.json"), "utf8"));
     piVersion = pkg.version || "?";
   } catch {}
-  json(res, 200, { releases, piVersion, capabilities: CAPABILITIES });
+  // pi-web 自身更新日志（CHANGELOG.md 最近 5 个版本，每个最多 6 行）
+  let changelog = [];
+  try {
+    const cl = fs.readFileSync(path.join(__dirname, "CHANGELOG.md"), "utf8");
+    const blocks = [...cl.matchAll(/##\s+\[?v?([\d.]+)\]?[^\n]*\n([\s\S]*?)(?=\n##\s|\s*$)/g)];
+    changelog = blocks.slice(0, 5).map(b => ({ version: b[1], lines: b[2].trim().split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#")).slice(0, 6) }));
+  } catch {}
+  json(res, 200, { releases, piVersion, capabilities: CAPABILITIES, appVersion: APP_VERSION, changelog });
 }
 
 // ══ 自愈修复 ══
@@ -4745,6 +4785,20 @@ const API_ROUTES = [
   ["POST", "/api/refine/approve", async (res, req) => handleRefineApprove(res, await readBody(req))],
   ["POST", "/api/refine/reject", async (res, req) => handleRefineReject(res, await readBody(req))],
   ["POST", "/api/refine/rollback", async (res, req) => handleRefineRollback(res, await readBody(req))],
+  // ── 时间引擎 API ──
+  ["GET", "/api/time/tasks", (res) => json(res, 200, { tasks: timeEngine ? timeEngine.list() : [] })],
+  ["POST", "/api/time/tasks", async (res, req) => {
+    try {
+      const body = await readBody(req);
+      if (!timeEngine) return json(res, 500, { error: "时间引擎未初始化" });
+      const r = timeEngine.register(body);
+      json(res, r.error ? 400 : 200, r);
+    } catch (e) { json(res, 500, { error: String(e?.message || e).slice(0, 120) }); }
+  }],
+  ["DELETE", "/api/time/tasks", async (res, req) => {
+    const u = new URL(req.url, "http://x");
+    json(res, 200, timeEngine ? timeEngine.remove(u.searchParams.get("id") || "") : { removed: false });
+  }],
 ];
 
 const server = http.createServer(async (req, res) => {
@@ -4866,6 +4920,28 @@ function startServer() {
     console.log(`  工作目录: ${CONFIG.cwd}`);
     console.log(`  工具集  : ${CONFIG.tools.join(", ")}`);
     console.log(`  默认模型: ${defaultModel ? defaultModel.provider + "/" + defaultModel.id : "(未设置)"}`);
+    // 时间引擎：定时任务调度（触发时跑 unifiedChat + 结果落盘 文档/时间引擎日志.md）
+    try {
+      timeEngine = createTimeEngine(async (task) => {
+        try {
+          console.log(`[time-engine] 触发任务 ${task.id}: ${String(task.prompt).slice(0, 60)}`);
+          const r = await unifiedChat(defaultModel, [{ role: "user", content: `${task.prompt}\n（这是定时任务到点自动触发，请直接执行并输出结果，不要反问）` }], { tools: false });
+          const out = r?.text || r?.content || r?.error || "(无输出)";
+          const logDir = path.join(CONFIG.cwd, "文档");
+          try { fs.mkdirSync(logDir, { recursive: true }); } catch {}
+          const logFile = path.join(logDir, "时间引擎日志.md");
+          const entry = `
+### ${task.firedAt} [${task.id}] ${String(task.prompt).slice(0, 40)}
+> ${String(out).slice(0, 600).replace(/\n/g, "\n> ")}
+`;
+          try { fs.appendFileSync(logFile, entry); } catch {}
+          console.log(`[time-engine] 任务 ${task.id} 完成，已记录到 ${logFile}`);
+        } catch (e) {
+          console.log(`[time-engine] 任务 ${task.id} 异常: ${String(e?.message || e).slice(0, 100)}`);
+        }
+      });
+      timeEngine.start();
+    } catch (e) { console.log("[time-engine] 启动失败:", String(e?.message || e).slice(0, 100)); }
     console.log(`  会话目录: ${SESSIONS_DIR}`);
     // 发现文件：写 pi 引擎 agent 目录，任何 pi 会话都能发现 pi-web（替代社区 pi-web-ui）
     try {
