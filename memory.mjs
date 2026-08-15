@@ -56,6 +56,50 @@ export function loadRecentMemory(wsRoot, max = 10) {
   } catch { return []; }
 }
 
+// ── 记忆日志关键词召回（无向量，bigram + token 混合）──
+// 用途：任务消息按关键词检索历史相关条目（“上次那个方案/之前说的端口”类语义引用可查）
+// 索引按 mtime 缓存，避免每次对话全量扫文件
+const _logIdx = { mtime: 0, blocks: [], toks: [] };
+function _tokenize(str) {
+  const out = [];
+  const s = String(str || "");
+  // 英文/数字/URL
+  for (const m of s.matchAll(/[A-Za-z][A-Za-z0-9_.\-]{1,}|\d{2,}|https?:\/\/\S+/g)) out.push(m[0].toLowerCase());
+  // 中文连续段 → bigram（长度≤2 整体作为词）
+  const segs = s.replace(/[A-Za-z0-9_\-./:]/g, " ").split(/\s+/).filter(x => /[\u4e00-\u9fff]/.test(x));
+  for (const seg of segs) {
+    const ch = seg.replace(/[^\u4e00-\u9fff]/g, "");
+    if (!ch) continue;
+    if (ch.length <= 2) out.push(ch);
+    else for (let i = 0; i < ch.length - 1; i++) out.push(ch.slice(i, i + 2));
+  }
+  return [...new Set(out)];
+}
+export function searchMemoryLog(wsRoot, query, max = 5) {
+  try {
+    const paths = memoryPaths(wsRoot);
+    if (!fs.existsSync(paths.log)) return [];
+    const st = fs.statSync(paths.log);
+    if (st.mtimeMs !== _logIdx.mtime) {
+      const raw = fs.readFileSync(paths.log, "utf8");
+      _logIdx.blocks = raw.split(/\n### /).filter(b => b.trim()).map(b => (b.startsWith("### ") ? b : "### " + b).trim());
+      _logIdx.toks = _logIdx.blocks.map(b => new Set(_tokenize(b)));
+      _logIdx.mtime = st.mtimeMs;
+    }
+    const q = _tokenize(query);
+    if (!q.length) return [];
+    const scored = [];
+    for (let i = 0; i < _logIdx.blocks.length; i++) {
+      let hits = 0;
+      for (const t of q) if (_logIdx.toks[i].has(t)) hits++;
+      if (hits > 0) scored.push({ b: _logIdx.blocks[i], hits, i });
+    }
+    // 命中数优先，其次新近（序号大 = 新）
+    scored.sort((a, b) => b.hits - a.hits || b.i - a.i);
+    return scored.slice(0, max).map(x => x.b);
+  } catch { return []; }
+}
+
 // 更新固定记忆的"当前状态"节（追加一行状态，按日期分组）
 export function appendState(wsRoot, line) {
   try {

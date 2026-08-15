@@ -265,11 +265,18 @@ function loadMemory() {
     if (lst.mtimeMs !== memoryLogMtime) {
       const raw = fs.readFileSync(lf, "utf8");
       const blocks = raw.split(/\n### /).filter(b => b.trim());
-      const rec = blocks.slice(-8).map(b => (b.startsWith("### ") ? b : "### " + b).trim());
+      // 过滤空条目（只有信号无要点），避免注入噪音
+      const withNote = blocks.filter(b => /要点|✅|⚠️|交付文件/.test(b));
+      const rec = withNote.slice(-8).map(b => (b.startsWith("### ") ? b : "### " + b).trim());
       memoryLogCache = rec.length ? `以下为最近记忆日志（自动沉淀的偏好/进展/交付），供参考：\n${rec.join("\n")}` : "";
       memoryLogMtime = lst.mtimeMs;
     }
     if (memoryLogCache) out.push(memoryLogCache);
+    // 按当前消息关键词召回历史相关条目（“上次/之前/那个”类语义引用可查）
+    try {
+      const rel = memoryApi.searchMemoryLog(CONFIG.cwd, _lastUserQuery || "", 5);
+      if (rel.length) out.push(`以下为与当前话题相关的历史记忆（按关键词召回）：\n${rel.join("\n")}`);
+    } catch {}
   } catch {}
     // 纠正记忆（防再犯）+ 关系记忆（了解用户）
   try {
@@ -328,10 +335,10 @@ function loadExperienceIndex(maxEntries = 10) {
   } catch { return []; }
 }
 
-// ── 条件触发判定：任务型消息 → 注入全量记忆/经验；短闲聊 → 只带常驻索引 ──
+// 记录最近一条用户消息（供记忆关键词召回检索用）
+let _lastUserQuery = "";
 function shouldInjectFullMemory(message) {
-  const s = String(message || "");
-  // 任务词优先：含动作词即视为任务（不设长度门槛，短指令如"生成海报"也算）
+  const s = String(message || "");  // 任务词优先：含动作词即视为任务（不设长度门槛，短指令如"生成海报"也算）
   const actionWords = ["做", "写", "生成", "创建", "改", "修", "画", "设计", "整理", "分析", "查", "找", "制作", "上传", "发布", "分享", "交付", "上线", "转", "配音", "合成", "剪辑", "翻译", "总结", "评估", "测试", "部署", "搭建", "开发", "实现", "加", "删", "调", "优化", "重写", "修复", "把", "必须", "帮我", "请", "来一个"];
   if (actionWords.some(w => s.includes(w))) return true;
   if (s.length < 8) return false; // 无动作词的极短闲聊（嗯/好/继续/哈哈）不背全量
@@ -3492,6 +3499,7 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal,
   if (rules.length) history = [{ role: "system", content: rules.join("\n") }, ...history];
   // 条件注入全量记忆/经验/日志（任务型消息才带）：人格保底用常驻索引，干活时全量
   if (shouldInjectFullMemory(message)) {
+    _lastUserQuery = String(message || ""); // 供记忆关键词召回检索
     const fullMem = loadMemory();
     if (fullMem.length) history = [...fullMem.map(c => ({ role: "system", content: c })), ...history];
     const fullExp = loadExperience(8);
@@ -3822,6 +3830,7 @@ async function handleChat(req, res, body) {
     }
     // 条件注入全量记忆（任务型消息才带）：人格保底用常驻索引（agent 创建时已注入），干活时全量
     if (shouldInjectFullMemory(message)) {
+      _lastUserQuery = String(message || "");
       try {
         const fullMem = loadMemory();
         const fullExp = loadExperience(8);
