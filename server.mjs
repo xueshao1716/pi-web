@@ -1418,6 +1418,26 @@ async function handleImageWithSave(res, req, body) {
 // 内置 provider（走 pi agent）；其余自定义 provider 走直调通道
 const KNOWN_PROVIDERS = new Set(["deepseek", "openai", "openrouter", "anthropic", "google", "qwen", "xai", "moonshotai", "zai", "together", "mistral", "opencode-go"]);
 
+// 主流大厂预设（OpenAI 兼容 /models 探测）：首次启动引导下拉框 + keys/apply 验证共用
+const PROVIDER_PRESETS = {
+  deepseek:    { name: "DeepSeek 深度求索",     baseUrl: "https://api.deepseek.com" },
+  openai:      { name: "OpenAI",                baseUrl: "https://api.openai.com/v1" },
+  openrouter:  { name: "OpenRouter 聚合",        baseUrl: "https://openrouter.ai/api/v1" },
+  qwen:        { name: "阿里云百炼 · Qwen",     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
+  moonshotai:  { name: "Moonshot · Kimi",       baseUrl: "https://api.moonshot.cn/v1" },
+  zai:         { name: "智谱 · GLM",            baseUrl: "https://api.z.ai/api/v1" },
+  "volces-ark":{ name: "火山方舟 · Ark",       baseUrl: "https://ark.cn-beijing.volces.com/api/v3" },
+  xai:         { name: "xAI · Grok",            baseUrl: "https://api.x.ai/v1" },
+  mistral:     { name: "Mistral",               baseUrl: "https://api.mistral.ai/v1" },
+  sensenova:   { name: "商汤 · 日日新",         baseUrl: "https://api.sensenova.cn/v1" },
+  modelscope:  { name: "魔搭 · ModelScope",     baseUrl: "https://api.modelscope.cn/v1" },
+};
+
+// GET /api/keys/presets —— 首启引导下拉框数据（单一来源，前端不写死）
+function handleKeysPresets(res) {
+  json(res, 200, { presets: PROVIDER_PRESETS });
+}
+
 // 解析 provider 的认证：优先 auth.json，其次环境变量（如 OPENROUTER_API_KEY）
 function resolveAuth(provider) {
   const auth = readJsonFile(AUTH_PATH);
@@ -1639,8 +1659,12 @@ async function handleKeysApply(res, body) {
     try {
       const runtime = await ModelRuntime.create({ authPath: AUTH_PATH, modelsPath: MODELS_PATH });
       if (!base) {
-        const prov = (runtime.getProviders?.() || []).find(p => p.id === provider);
-        base = (prov?.baseUrl || "").replace(/\/+$/, "");
+        // 预设优先，其次 pi 内置 provider 定义
+        base = PROVIDER_PRESETS[provider]?.baseUrl || "";
+        if (!base) {
+          const prov = (runtime.getProviders?.() || []).find(p => p.id === provider);
+          base = (prov?.baseUrl || "").replace(/\/+$/, "");
+        }
       }
       if (!base) return json(res, 400, { error: `未找到 ${provider} 的 API 地址（请填写 Base URL）` });
       const probe = await fetch(base + "/models", {
@@ -4785,6 +4809,7 @@ const API_ROUTES = [
   ["GET", "/api/models/manage", (res) => handleModelsManage(res)],
   ["POST", "/api/models/add", async (res, req) => handleModelsAdd(res, await readBody(req))],
   ["GET", "/api/keys/status", (res) => handleKeysStatus(res)],
+  ["GET", "/api/keys/presets", (res) => handleKeysPresets(res)],
   ["POST", "/api/keys/apply", async (res, req) => handleKeysApply(res, await readBody(req))],
   ["POST", "/api/models/remove", async (res, req) => handleModelsRemove(res, await readBody(req))],
   ["POST", "/api/model", async (res, req) => handleSwitchModel(req, res, await readBody(req))],

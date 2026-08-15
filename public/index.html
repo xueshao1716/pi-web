@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="小语">
 <link rel="stylesheet" href="/static/vendor/github-dark.min.css" integrity="sha384-wH75j6z1lH97ZOpMOInqhgKzFkAInZPPSPlZpYKYTOqsaizPvhQZmAtLcPKXpLyH" crossorigin="anonymous">
-<link rel="stylesheet" href="/static/app.css?v=224">
+<link rel="stylesheet" href="/static/app.css?v=225">
 <link rel="stylesheet" href="/static/css/quantum.css?v=222">
 <link rel="stylesheet" href="/static/css/ai.css?v=222">
 <link rel="stylesheet" href="/static/css/neu.css?v=222">
@@ -301,12 +301,32 @@
       </div>
       <div class="fr-field">
         <label class="fr-label">服务商</label>
-        <input id="fr-provider" value="deepseek" autocomplete="off" spellcheck="false" title="默认 deepseek，官方 key 双引擎通用">
+        <select id="fr-provider" class="fr-select">
+          <option value="deepseek" selected>DeepSeek 深度求索</option>
+          <option value="openai">OpenAI</option>
+          <option value="openrouter">OpenRouter 聚合</option>
+          <option value="qwen">阿里云百炼 · Qwen</option>
+          <option value="moonshotai">Moonshot · Kimi</option>
+          <option value="zai">智谱 · GLM</option>
+          <option value="volces-ark">火山方舟 · Ark</option>
+          <option value="xai">xAI · Grok</option>
+          <option value="mistral">Mistral</option>
+          <option value="sensenova">商汤 · 日日新</option>
+          <option value="modelscope">魔搭 · ModelScope</option>
+          <option value="__custom__">自定义（填 Base URL）</option>
+        </select>
+      </div>
+      <div class="fr-field fr-custom" id="fr-custom-row" hidden>
+        <label class="fr-label">服务商名称 · Base URL</label>
+        <div class="fr-custom-grid">
+          <input id="fr-custom-provider" placeholder="服务商名，如 my-provider" autocomplete="off" spellcheck="false">
+          <input id="fr-custom-baseurl" placeholder="https://api.example.com/v1" autocomplete="off" spellcheck="false">
+        </div>
       </div>
       <div class="fr-field">
         <label class="fr-label">API Key</label>
-        <input id="fr-key" type="password" placeholder="sk-…（platform.deepseek.com 获取）" autocomplete="off" spellcheck="false">
-        <div class="fr-hint">deepseek 官方 key 可同时用于 pi 与 dsh 两个引擎</div>
+        <input id="fr-key" type="password" placeholder="sk-… 在服务商官网申请" autocomplete="off" spellcheck="false">
+        <div class="fr-hint" id="fr-key-hint">在所选服务商官网申请 API Key，粘贴即可</div>
       </div>
       <label class="fr-todsh">
         <input type="checkbox" id="fr-todsh" checked> 同时配置到 dsh 引擎（DEEPSEEK_API_KEY）
@@ -515,9 +535,9 @@
 <script src="/static/js/core.js?v=222"></script>
 <script src="/static/js/registry.js?v=222"></script>
 <script src="/static/js/theme.js?v=222"></script>
-<script src="/static/js/chat.js?v=224"></script>
+<script src="/static/js/chat.js?v=225"></script>
 <script src="/static/js/wallpaper.js?v=222"></script>
-<script src="/static/js/model.js?v=224"></script>
+<script src="/static/js/model.js?v=225"></script>
 <script src="/static/js/ui.js?v=222"></script>
 <script src="/static/js/panels.js?v=222"></script>
 <script src="/static/js/workspace.js?v=222"></script>

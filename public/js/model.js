@@ -77,7 +77,12 @@ async function refreshKeysStatus() {
 
 $("fr-close")?.addEventListener("click", () => $("firstrun-modal")?.classList.remove("show"));
 $("fr-save")?.addEventListener("click", async () => {
-  const provider = ($("fr-provider")?.value || "").trim();
+  let provider = $("fr-provider")?.value || "";
+  let baseUrl = "";
+  if (provider === "__custom__") {
+    provider = ($("fr-custom-provider")?.value || "").trim();
+    baseUrl = ($("fr-custom-baseurl")?.value || "").trim();
+  }
   // 清理复制时易混入的符号（×✕✓ 及 BOM/首尾空格），避免后端 fetch 报错
   const key = ($("fr-key")?.value || "").trim().replace(/^[×✕✓✓\uFEFF·•\s]+/, "");
   const toDsh = $("fr-todsh")?.checked;
@@ -85,7 +90,7 @@ $("fr-save")?.addEventListener("click", async () => {
   if (!provider || !key) { if (res) { res.textContent = "请填写服务商和 API Key"; res.style.color = "#fbbf24"; } return; }
   if (btn) { btn.disabled = true; btn.textContent = "验证中…"; }
   try {
-    const r = await api("/api/keys/apply", { method: "POST", body: { provider, apiKey: key, toDsh: !!toDsh } });
+    const r = await api("/api/keys/apply", { method: "POST", body: { provider, apiKey: key, baseUrl, toDsh: !!toDsh } });
     if (res) {
       res.textContent = "✅ pi 引擎已配置并生效" + (r.dsh ? "，dsh 已同步" : (toDsh ? "（" + (r.dshNote || "dsh 同步失败") + "）" : ""));
       res.style.color = "#4ade80";
@@ -101,6 +106,18 @@ $("fr-save")?.addEventListener("click", async () => {
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = "保存配置"; }
   }
+});
+// 首启引导：服务商下拉联动（自定义显示 Base URL 行 + 提示更新）
+$("fr-provider")?.addEventListener("change", () => {
+  const v = $("fr-provider").value;
+  if ($("fr-custom-row")) $("fr-custom-row").hidden = v !== "__custom__";
+  const hint = $("fr-key-hint");
+  if (!hint) return;
+  const names = { deepseek: "DeepSeek", openai: "OpenAI", openrouter: "OpenRouter", qwen: "阿里云百炼", moonshotai: "Moonshot", zai: "智谱", "volces-ark": "火山方舟", xai: "xAI", mistral: "Mistral", sensenova: "商汤", modelscope: "魔搭" };
+  hint.textContent = v === "__custom__"
+    ? "在自定义服务商官网申请 API Key，粘贴即可"
+    : "在" + (names[v] || v) + "官网申请 API Key，粘贴即可";
+  if (v !== "__custom__") { const el = $("fr-key"); if (el) el.placeholder = "sk-… 在" + (names[v] || v) + "官网申请"; }
 });
 $("mm-type").addEventListener("change", () => {
   $("mm-custom-row").hidden = $("mm-type").value !== "__custom__";
