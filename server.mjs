@@ -3497,6 +3497,12 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal,
   // 注入项目规则（.pi-rules.md，借鉴 Windsurf rules），确保不挤占历史上下文
   const rules = loadProjectRules();
   if (rules.length) history = [{ role: "system", content: rules.join("\n") }, ...history];
+  // dsh time-context 借鉴：每轮注入当前时间（agent 时间感知，涉及时效/定时判断不靠猜）
+  try {
+    const t = new Date();
+    const d = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")} ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
+    history.unshift({ role: "system", content: `【时间上下文】当前时间：${d}（周${["日","一","二","三","四","五","六"][t.getDay()]}）。涉及时间/日期/定时/时效判断以此为准。` });
+  } catch {}
   // 条件注入全量记忆/经验/日志（任务型消息才带）：人格保底用常驻索引，干活时全量
   if (shouldInjectFullMemory(message)) {
     _lastUserQuery = String(message || ""); // 供记忆关键词召回检索
@@ -3828,6 +3834,15 @@ async function handleChat(req, res, body) {
         );
       } catch {}
     }
+    // dsh time-context 借鉴：agent 管线每轮注入当前时间
+    try {
+      const t = new Date();
+      const d = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")} ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
+      await entry.agent?.sendCustomMessage?.(
+        { customType: "context", content: [{ type: "text", text: `【时间上下文】当前时间：${d}（周${["日","一","二","三","四","五","六"][t.getDay()]}）。涉及时间/日期/定时/时效判断以此为准。` }] },
+        { deliverAs: "nextTurn" }
+      );
+    } catch {}
     // 条件注入全量记忆（任务型消息才带）：人格保底用常驻索引（agent 创建时已注入），干活时全量
     if (shouldInjectFullMemory(message)) {
       _lastUserQuery = String(message || "");
