@@ -46,6 +46,8 @@ pi-web
 
 > 默认模型 deepseek-v4-flash 官方直连兑底，只填 deepseek 一个 key 就能用；
 > 更多模型商（小米/阿里/火山等）逐个加进 auth.json 即可，模型清单见 `~/.pi/agent/models-store.json`。
+>
+> **dsh 引擎的 key**：不写 auth.json，首次启动 `dsh web` 会弹窗引导填写（存为 `DEEPSEEK_API_KEY`），与 pi 共用同一把 DeepSeek key 即可。
 
 > **备选（无 git 环境时用脚本安装，同样装双引擎）：**
 > ```powershell

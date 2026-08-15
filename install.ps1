@@ -101,6 +101,8 @@ Write-Host '       "deepseek": { "type": "api_key", "key": "sk-你的密钥" }' 
 Write-Host '     }' -ForegroundColor Gray
 Write-Host '  3) 重启服务: taskkill /F /IM node.exe ，然后 cd ~\pi-web && node server.mjs' -ForegroundColor Cyan
 Write-Host '  4) 刷新 http://127.0.0.1:8787 即可对话（默认模型 deepseek-v4-flash 官方直连兜底）' -ForegroundColor Cyan
+Write-Host '  dsh 引擎: 首次启动 dsh web 会弹窗引导填 DeepSeek key（存为 DEEPSEEK_API_KEY）' -ForegroundColor Gray
+Write-Host '            与 pi 可共用同一把 key' -ForegroundColor Gray
 Write-Host '  更多模型商（小米/阿里/火山等）: 模型清单见 ~/.pi/agent/models-store.json' -ForegroundColor Gray
 Write-Host '  停止服务: taskkill /F /IM node.exe' -ForegroundColor Gray
 Write-Host ''
