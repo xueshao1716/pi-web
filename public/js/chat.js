@@ -721,7 +721,7 @@ function scheduleFlush() {
     if (render.conclusionBuf) { appendConclusion(render.conclusionBuf); render.conclusionBuf = ""; }
     if (render.thinkBuf) { appendThinking(render.thinkBuf); render.thinkBuf = ""; }
     autoScroll();
-  }, 40);
+  }, 16); // 16ms ≈ 1 帧，接近逐字符实时（原 40ms）
 }
 function queueDelta(t) { render.deltaBuf += t; scheduleFlush(); }
 function queueThink(t) { render.thinkBuf += t; scheduleFlush(); }
