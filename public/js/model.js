@@ -58,13 +58,49 @@ $("model-manage").addEventListener("click", openModelManage);
 $("mm-close").addEventListener("click", () => $("model-modal").classList.remove("show"));
 $("model-modal").addEventListener("click", (e) => { if (e.target === $("model-modal")) $("model-modal").classList.remove("show"); });
 
-// 首次使用引导：未配置任何 API 密钥时弹出（登录后模型列表为空触发）
+// 双引擎密钥总引导：未配置任何 API 密钥时弹出（登录后模型列表为空触发）
 function showFirstRunGuide() {
   const m = $("firstrun-modal");
-  if (m) m.classList.add("show");
+  if (!m) return;
+  m.classList.add("show");
+  refreshKeysStatus();
 }
+
+async function refreshKeysStatus() {
+  try {
+    const s = await api("/api/keys/status");
+    const piEl = $("fr-pi-status"), dshEl = $("fr-dsh-status");
+    if (piEl) { piEl.textContent = `pi 引擎：${s.pi.length ? "✅ 已配置（" + s.pi.join("、") + "）" : "❌ 未配置"}`; piEl.style.color = s.pi.length ? "#4ade80" : "#fbbf24"; }
+    if (dshEl) { dshEl.textContent = `dsh 引擎：${s.dsh ? "✅ 已配置" : "❌ 未配置"}`; dshEl.style.color = s.dsh ? "#4ade80" : "#fbbf24"; }
+  } catch {}
+}
+
 $("fr-close")?.addEventListener("click", () => $("firstrun-modal")?.classList.remove("show"));
-$("fr-go")?.addEventListener("click", () => { $("firstrun-modal")?.classList.remove("show"); openModelManage(); });
+$("fr-save")?.addEventListener("click", async () => {
+  const provider = ($("fr-provider")?.value || "").trim();
+  const key = ($("fr-key")?.value || "").trim();
+  const toDsh = $("fr-todsh")?.checked;
+  const btn = $("fr-save"), res = $("fr-result");
+  if (!provider || !key) { if (res) { res.textContent = "请填写服务商和 API Key"; res.style.color = "#fbbf24"; } return; }
+  if (btn) { btn.disabled = true; btn.textContent = "验证中…"; }
+  try {
+    const r = await api("/api/keys/apply", { method: "POST", body: { provider, apiKey: key, toDsh: !!toDsh } });
+    if (res) {
+      res.textContent = "✅ pi 引擎已配置并生效" + (r.dsh ? "，dsh 已同步" : (toDsh ? "（" + (r.dshNote || "dsh 同步失败") + "）" : ""));
+      res.style.color = "#4ade80";
+    }
+    $("fr-key").value = "";
+    refreshKeysStatus();
+    try {
+      const m = await api("/api/models");
+      modelList = m.models; populateModels(m); if (window.updateFooter) updateFooter();
+    } catch {}
+  } catch (e) {
+    if (res) { res.textContent = "✕ " + (e.message || e); res.style.color = "#fbbf24"; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "保存配置"; }
+  }
+});
 $("mm-type").addEventListener("change", () => {
   $("mm-custom-row").hidden = $("mm-type").value !== "__custom__";
   // Cloudflare Workers AI 需要 Account ID

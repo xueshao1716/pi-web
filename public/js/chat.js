@@ -1,6 +1,11 @@
 // ===== chat.js（从 app.js 拆分，全局作用域，保持原逻辑不变）=====
 // ══ 登录 ══
-if (token) tryLogin();
+if (token) {
+  // 有 token：先隐藏登录壳进入加载态，校验失败再弹登录（避免刷新/自动更新时闪现登录页）
+  $("login").style.display = "none";
+  $("app").style.display = "block";
+  tryLogin();
+}
 $("login-btn").addEventListener("click", () => {
   token = $("token-input").value.trim();
   if (!token) return;
@@ -27,6 +32,9 @@ async function tryLogin() {
     else refreshEmotion(); // 无恢复会话时初始化情绪指示器
     updateFooter();
   } catch (e) {
+    // 校验失败：恢复显示登录界面（此前为防闪现已隐藏）
+    $("login").style.display = "flex";
+    $("app").style.display = "none";
     // 401：token 无效 → 清除旧 token，提示正确来源（不回显 token/系统路径，防泄露）
     if (e?.status === 401) {
       localStorage.removeItem("pi_web_token");

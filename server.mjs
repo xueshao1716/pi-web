@@ -1607,6 +1607,83 @@ async function handleModelsAdd(res, body) {
   }
 }
 
+// ── 双引擎密钥：状态查询（pi auth.json + dsh DEEPSEEK_API_KEY）──
+function handleKeysStatus(res) {
+  const auth = readJsonFile(AUTH_PATH);
+  const piProviders = Object.keys(auth).filter(k => auth[k]?.key);
+  let dshKey = process.env.DEEPSEEK_API_KEY || "";
+  if (!dshKey) {
+    try {
+      const out = execFileSync("reg", ["query", "HKCU\\Environment", "/v", "DEEPSEEK_API_KEY"], { encoding: "utf8", windowsHide: true, timeout: 5000 });
+      const m = out.match(/DEEPSEEK_API_KEY\s+REG_SZ\s+(.+)/);
+      if (m) dshKey = m[1].trim();
+    } catch {}
+  }
+  json(res, 200, { pi: piProviders, dsh: !!dshKey });
+}
+
+// ── 双引擎密钥：应用（pi 写 auth.json + 探测验证 + 刷新模型列表；可选 setx 同步 dsh）──
+async function handleKeysApply(res, body) {
+  const { provider, apiKey, baseUrl, toDsh } = body || {};
+  if (!provider || !apiKey) return json(res, 400, { error: "缺少 provider 或 API Key" });
+  if (!/^[a-zA-Z0-9_-]+$/.test(provider)) return json(res, 400, { error: "provider 名称只能包含字母、数字、横线" });
+  // ── 先验证、后写入：任何失败路径都不写 auth.json，杜绝假 key 污染 ──
+  let models = null;
+  if (KNOWN_PROVIDERS.has(provider)) {
+    // 内置 provider：调真实 API 探测 key（/models 端点，OpenAI 兼容）
+    let base = (baseUrl || "").replace(/\/+$/, "");
+    try {
+      const runtime = await ModelRuntime.create({ authPath: AUTH_PATH, modelsPath: MODELS_PATH });
+      if (!base) {
+        const prov = (runtime.getProviders?.() || []).find(p => p.id === provider);
+        base = (prov?.baseUrl || "").replace(/\/+$/, "");
+      }
+      if (!base) return json(res, 400, { error: `未找到 ${provider} 的 API 地址（请填写 Base URL）` });
+      const probe = await fetch(base + "/models", {
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (probe.status === 401 || probe.status === 403) {
+        return json(res, 401, { error: `API Key 无效（HTTP ${probe.status}），未写入配置` });
+      }
+      if (!probe.ok) return json(res, 502, { error: `API 探测失败（HTTP ${probe.status}），未写入配置` });
+      models = await runtime.getAvailable(provider).catch(() => null);
+    } catch (e) {
+      console.log(`[pi-web] keys/apply 探测失败: ${provider} → ${String(e?.message || e).slice(0, 120)}`);
+      return json(res, 500, { error: `探测异常：${String(e?.message || e).slice(0, 120)}` });
+    }
+  } else {
+    // 自定义 provider：discoverCustomModels 验证通过才写入
+    const base = (baseUrl || "").replace(/\/+$/, "");
+    if (!base) return json(res, 400, { error: "自定义 provider 必须填写 Base URL" });
+    try { models = await discoverCustomModels(base, apiKey); }
+    catch (e) { return json(res, 400, { error: `验证失败：${String(e?.message || e).slice(0, 120)}` }); }
+  }
+  if (!models || !models.length) {
+    return json(res, 400, { error: "该 Key 下未发现可用模型（请确认 Base URL 与接口协议正确），未写入配置" });
+  }
+  // 验证全部通过：写入 auth.json
+  const auth = readJsonFile(AUTH_PATH);
+  auth[provider] = { type: "api_key", key: apiKey, ...(baseUrl ? { baseUrl } : {}) };
+  writeJsonFile(AUTH_PATH, auth);
+  const store = readJsonFile(MODELS_PATH);
+  store[provider] = { models, checkedAt: new Date().toISOString() };
+  writeJsonFile(MODELS_PATH, store);
+  await refreshModelList();
+  // dsh 同步（可选）：写用户级环境变量 DEEPSEEK_API_KEY（新终端/新进程生效）
+  let dshDone = false, dshNote = "";
+  if (toDsh) {
+    try {
+      execFileSync("setx", ["DEEPSEEK_API_KEY", apiKey], { windowsHide: true, timeout: 10000 });
+      dshDone = true;
+      dshNote = "dsh 已同步（新开的终端/进程生效）";
+    } catch (e) {
+      dshNote = "dsh 同步失败：" + String(e?.message || e).slice(0, 80);
+    }
+  }
+  json(res, 200, { ok: true, pi: provider, dsh: dshDone, dshNote });
+}
+
 // GET /api/prompts —— 提示词模板列表（~/.pi/agent/prompts/*.md）
 async function handlePrompts(res) {
   const dir = path.join(getAgentDir(), "prompts");
@@ -4703,6 +4780,8 @@ const API_ROUTES = [
   ["GET", "/api/models", (res) => handleModels(res)],
   ["GET", "/api/models/manage", (res) => handleModelsManage(res)],
   ["POST", "/api/models/add", async (res, req) => handleModelsAdd(res, await readBody(req))],
+  ["GET", "/api/keys/status", (res) => handleKeysStatus(res)],
+  ["POST", "/api/keys/apply", async (res, req) => handleKeysApply(res, await readBody(req))],
   ["POST", "/api/models/remove", async (res, req) => handleModelsRemove(res, await readBody(req))],
   ["POST", "/api/model", async (res, req) => handleSwitchModel(req, res, await readBody(req))],
   // ── 媒体/对话 ──

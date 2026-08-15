@@ -13,18 +13,18 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="小语">
 <link rel="stylesheet" href="/static/vendor/github-dark.min.css" integrity="sha384-wH75j6z1lH97ZOpMOInqhgKzFkAInZPPSPlZpYKYTOqsaizPvhQZmAtLcPKXpLyH" crossorigin="anonymous">
-<link rel="stylesheet" href="/static/app.css?v=221">
-<link rel="stylesheet" href="/static/css/quantum.css?v=221">
-<link rel="stylesheet" href="/static/css/ai.css?v=221">
-<link rel="stylesheet" href="/static/css/neu.css?v=221">
-<link rel="stylesheet" href="/static/css/linear.css?v=221">
-<link rel="stylesheet" href="/static/css/liquid.css?v=221">
-<link rel="stylesheet" href="/static/css/cyber.css?v=221">
-<link rel="stylesheet" href="/static/css/aurora.css?v=221">
-<link rel="stylesheet" href="/static/css/gold.css?v=221">
-<link rel="stylesheet" href="/static/css/matrix.css?v=221">
-<link rel="stylesheet" href="/static/css/synthwave.css?v=221">
-<link rel="stylesheet" href="/static/css/tokyo.css?v=221">
+<link rel="stylesheet" href="/static/app.css?v=222">
+<link rel="stylesheet" href="/static/css/quantum.css?v=222">
+<link rel="stylesheet" href="/static/css/ai.css?v=222">
+<link rel="stylesheet" href="/static/css/neu.css?v=222">
+<link rel="stylesheet" href="/static/css/linear.css?v=222">
+<link rel="stylesheet" href="/static/css/liquid.css?v=222">
+<link rel="stylesheet" href="/static/css/cyber.css?v=222">
+<link rel="stylesheet" href="/static/css/aurora.css?v=222">
+<link rel="stylesheet" href="/static/css/gold.css?v=222">
+<link rel="stylesheet" href="/static/css/matrix.css?v=222">
+<link rel="stylesheet" href="/static/css/synthwave.css?v=222">
+<link rel="stylesheet" href="/static/css/tokyo.css?v=222">
 </head>
 <body>
 
@@ -287,20 +287,28 @@
 <div class="toast" id="toast"></div>
 
 <!-- 模型管理 -->
-<!-- 首次使用引导：未配置 API 密钥时弹出 -->
+<!-- 双引擎密钥总引导：未配置时弹出（pi + dsh 一次配好） -->
 <div class="modal-overlay" id="firstrun-modal">
-  <div class="modal modal-file" style="max-width:560px">
-    <div class="modal-head"><span>🔑 首次使用：配置 API 密钥</span><button class="close" id="fr-close">✕</button></div>
-    <div class="fv-content" style="padding:16px 18px;line-height:1.8">
-      <div style="font-size:14px">还没检测到模型密钥，配好 key 才能开始对话：</div>
-      <ol style="margin:10px 0 14px 20px;font-size:13.5px;color:var(--dim)">
-        <li>点下方「去配置密钥」，选择服务商（如 deepseek）粘贴 API Key</li>
-        <li>key 获取：platform.deepseek.com → API Keys（sk- 开头）</li>
-        <li>保存后即可对话（默认模型 deepseek-v4-flash）</li>
-      </ol>
-      <div style="display:flex;gap:10px;align-items:center">
-        <button class="theme-new-btn" id="fr-go" style="padding:8px 18px">去配置密钥</button>
-        <span style="font-size:12px;color:var(--dim)">dsh 引擎首次启动会另弹窗引导，可共用同一把 key</span>
+  <div class="modal modal-file" style="max-width:600px">
+    <div class="modal-head"><span>🔑 配置模型密钥（pi + dsh）</span><button class="close" id="fr-close">✕</button></div>
+    <div class="fv-content" style="padding:16px 18px">
+      <div id="fr-status" style="display:flex;gap:16px;margin-bottom:14px;font-size:13px">
+        <span id="fr-pi-status">pi 引擎：检查中…</span>
+        <span id="fr-dsh-status">dsh 引擎：检查中…</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <input id="fr-provider" value="deepseek" autocomplete="off" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel-2);color:var(--text);font-size:13px" title="服务商（默认 deepseek，官方 key 双引擎通用）">
+        <input id="fr-key" type="password" placeholder="API Key（sk-…，platform.deepseek.com 获取）" autocomplete="off" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel-2);color:var(--text);font-size:13px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--dim);cursor:pointer">
+          <input type="checkbox" id="fr-todsh" checked> 同时配置到 dsh 引擎（DEEPSEEK_API_KEY，双引擎共用同一把 key）
+        </label>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button class="theme-new-btn" id="fr-save" style="padding:8px 18px">保存配置</button>
+          <span id="fr-result" style="font-size:12.5px"></span>
+        </div>
+      </div>
+      <div style="margin-top:14px;padding:10px 12px;border:1px dashed var(--border);border-radius:8px;font-size:12.5px;color:var(--dim);line-height:1.7">
+        📡 <b>dsh 工作台</b>：运行 <code>dsh web</code> 打开（默认 <code>http://127.0.0.1:3080</code>），首次启动会弹窗引导填 key；勾选上方选项可一次配好两个引擎。
       </div>
     </div>
   </div>
@@ -496,17 +504,17 @@
   </div>
 </div>
 
-<script src="/static/js/core.js?v=221"></script>
-<script src="/static/js/registry.js?v=221"></script>
-<script src="/static/js/theme.js?v=221"></script>
-<script src="/static/js/chat.js?v=221"></script>
-<script src="/static/js/wallpaper.js?v=221"></script>
-<script src="/static/js/model.js?v=221"></script>
-<script src="/static/js/ui.js?v=221"></script>
-<script src="/static/js/panels.js?v=221"></script>
-<script src="/static/js/workspace.js?v=221"></script>
-<script src="/static/js/designer.js?v=221"></script>
-<script src="/static/js/input.js?v=221"></script>
+<script src="/static/js/core.js?v=222"></script>
+<script src="/static/js/registry.js?v=222"></script>
+<script src="/static/js/theme.js?v=222"></script>
+<script src="/static/js/chat.js?v=223"></script>
+<script src="/static/js/wallpaper.js?v=222"></script>
+<script src="/static/js/model.js?v=223"></script>
+<script src="/static/js/ui.js?v=222"></script>
+<script src="/static/js/panels.js?v=222"></script>
+<script src="/static/js/workspace.js?v=222"></script>
+<script src="/static/js/designer.js?v=222"></script>
+<script src="/static/js/input.js?v=222"></script>
 <script src="/static/js/workshop.js"></script>
 </body>
 </html>
