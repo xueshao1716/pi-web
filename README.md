@@ -30,7 +30,22 @@ pi-web
 ```
 
 首次运行 `pi-web` 自动完成：安装 **pi + dsh 双引擎** → 生成令牌 → 模型清单 → 启动服务并打开浏览器。
-最后一步：编辑 `~/.pi/agent/auth.json` 填入模型 API 密钥，即 http://127.0.0.1:8787 可用。
+
+### 🔑 最后一步：配置 API 密钥（必做）
+
+装完打开界面若模型不可用，是因为还没填密钥。三步搞定：
+
+1. **获取密钥**：打开 https://platform.deepseek.com → API Keys → 创建，复制 `sk-` 开头密钥
+2. **创建 `~/.pi/agent/auth.json`**（记事本新建），内容：
+
+   ```json
+   { "deepseek": { "type": "api_key", "key": "sk-你的密钥" } }
+   ```
+
+3. **重启服务**：`taskkill /F /IM node.exe` 后重新 `pi-web`（或 `cd ~/pi-web && node server.mjs`），刷新 http://127.0.0.1:8787 即可对话
+
+> 默认模型 deepseek-v4-flash 官方直连兑底，只填 deepseek 一个 key 就能用；
+> 更多模型商（小米/阿里/火山等）逐个加进 auth.json 即可，模型清单见 `~/.pi/agent/models-store.json`。
 
 > **备选（无 git 环境时用脚本安装，同样装双引擎）：**
 > ```powershell

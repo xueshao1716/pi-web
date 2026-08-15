@@ -91,6 +91,15 @@ Write-Host '完成！' -ForegroundColor Green
 Write-Host '  访问地址: http://127.0.0.1:8787' -ForegroundColor Cyan
 Write-Host '  令牌文件: ~/pi-web/.token' -ForegroundColor Cyan
 Write-Host '  引擎就位: pi（工作台主引擎）+ dsh（DeepSeek Harness 执行臂）' -ForegroundColor Cyan
-Write-Host '  最后一步: 编辑 ~/.pi/agent/auth.json 填入你的 API 密钥（如 deepseek）'
-Write-Host '  停止服务: taskkill /F /IM node.exe'
+Write-Host ''
+Write-Host '  ── 配置 API 密钥（必做，否则模型不可用）──' -ForegroundColor Yellow
+Write-Host '  1) 获取密钥: 打开 https://platform.deepseek.com → API Keys → 创建，复制 sk- 开头密钥' -ForegroundColor Cyan
+Write-Host '  2) 创建文件 ~/.pi/agent/auth.json（记事本新建），内容：' -ForegroundColor Cyan
+Write-Host '     {' -ForegroundColor Gray
+Write-Host '       "deepseek": { "type": "api_key", "key": "sk-你的密钥" }' -ForegroundColor Gray
+Write-Host '     }' -ForegroundColor Gray
+Write-Host '  3) 重启服务: taskkill /F /IM node.exe ，然后 cd ~\pi-web && node server.mjs' -ForegroundColor Cyan
+Write-Host '  4) 刷新 http://127.0.0.1:8787 即可对话（默认模型 deepseek-v4-flash 官方直连兜底）' -ForegroundColor Cyan
+Write-Host '  更多模型商（小米/阿里/火山等）: 模型清单见 ~/.pi/agent/models-store.json' -ForegroundColor Gray
+Write-Host '  停止服务: taskkill /F /IM node.exe' -ForegroundColor Gray
 Write-Host ''

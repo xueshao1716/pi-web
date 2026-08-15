@@ -110,9 +110,11 @@ console.log("[4/5] 模型 API 密钥");
 if (fs.existsSync(AUTH_FILE)) ok("已配置 API 密钥（~/.pi/agent/auth.json）");
 else {
   fail("未配置 API 密钥");
-  warn("请创建 ~/.pi/agent/auth.json，示例：");
-  console.log('    { "provider名": { "type": "api_key", "key": "sk-xxx", "baseUrl": "https://api.example.com" } }');
-  warn("模型列表见 ~/.pi/agent/models-store.json");
+  warn("请创建 ~/.pi/agent/auth.json，示例（deepseek 官方，最简可用）：");
+  console.log('    { "deepseek": { "type": "api_key", "key": "sk-你的密钥" } }');
+  warn("密钥获取: https://platform.deepseek.com → API Keys → 创建");
+  warn("填完重启服务: taskkill /F /IM node.exe 后 node server.mjs");
+  warn("模型列表见 ~/.pi/agent/models-store.json（多模型商可逐个添加）");
 }
 
 // 5. 启动
