@@ -135,7 +135,7 @@ if (flag) {
     warn("请手动启动：node server.mjs");
   }
   console.log("  访问地址: http://127.0.0.1:" + (process.env.PI_WEB_PORT || "8787"));
-  console.log("  令牌: 见 .token 文件");
+  try { console.log("  访问令牌: " + fs.readFileSync(TOKEN_FILE, "utf8").trim()); } catch { console.log("  访问令牌: 见 .token 文件"); }
   console.log("  停止服务: taskkill /F /IM node.exe");
 } else {
   ok("检查完成，启动服务：node setup.mjs --start");

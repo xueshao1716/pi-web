@@ -161,7 +161,8 @@ Write-Host '  安装完成！' -ForegroundColor Green
 Write-Host '====================================' -ForegroundColor Cyan
 Write-Host "  访问地址: http://127.0.0.1:$port" -ForegroundColor Cyan
 Write-Host "  源码目录: $DEST" -ForegroundColor Cyan
-Write-Host "  访问令牌: 见 $DEST\.token 文件" -ForegroundColor Cyan
+$TOK = Get-Content "$DEST\.token" -Raw -ErrorAction SilentlyContinue
+if ($TOK) { Write-Host "  访问令牌: $($TOK.Trim())" -ForegroundColor Green } else { Write-Host "  访问令牌: 见 $DEST\.token 文件" -ForegroundColor Cyan }
 Write-Host '  引擎就位: pi（工作台主引擎）+ dsh（DeepSeek Harness 执行臂）' -ForegroundColor Cyan
 Write-Host ''
 Write-Host '  ── 配置 API 密钥（必做，否则模型不可用）──' -ForegroundColor Yellow
@@ -172,6 +173,7 @@ Write-Host '       "deepseek": { "type": "api_key", "key": "sk-你的密钥" }' 
 Write-Host '     }' -ForegroundColor Gray
 Write-Host '  3) 重启服务: taskkill /F /IM node.exe ，然后 cd ~\pi-web && node server.mjs' -ForegroundColor Cyan
 Write-Host '  4) 刷新 http://127.0.0.1:8787 即可对话（默认模型 deepseek-v4-flash 官方直连兜底）' -ForegroundColor Cyan
+Write-Host '  dsh 引擎: 同一把 DeepSeek key 通用，首次派单时 dsh 会自动引导配置' -ForegroundColor Gray
 Write-Host '  更多模型商（小米/阿里/火山等）: 模型清单见 ~/.pi/agent/models-store.json' -ForegroundColor Gray
 Write-Host '  停止服务: taskkill /F /IM node.exe' -ForegroundColor Gray
 Write-Host ''

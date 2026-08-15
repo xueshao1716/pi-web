@@ -89,7 +89,8 @@ Pop-Location
 Write-Host ''
 Write-Host '完成！' -ForegroundColor Green
 Write-Host '  访问地址: http://127.0.0.1:8787' -ForegroundColor Cyan
-Write-Host '  令牌文件: ~/pi-web/.token' -ForegroundColor Cyan
+$TOK = Get-Content "$HOME\pi-web\.token" -Raw -ErrorAction SilentlyContinue
+if ($TOK) { Write-Host "  访问令牌: $($TOK.Trim())" -ForegroundColor Green } else { Write-Host '  令牌文件: ~/pi-web/.token' -ForegroundColor Cyan }
 Write-Host '  引擎就位: pi（工作台主引擎）+ dsh（DeepSeek Harness 执行臂）' -ForegroundColor Cyan
 Write-Host ''
 Write-Host '  ── 配置 API 密钥（必做，否则模型不可用）──' -ForegroundColor Yellow
