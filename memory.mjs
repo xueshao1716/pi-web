@@ -92,7 +92,13 @@ export function searchMemoryLog(wsRoot, query, max = 5) {
     for (let i = 0; i < _logIdx.blocks.length; i++) {
       let hits = 0;
       for (const t of q) if (_logIdx.toks[i].has(t)) hits++;
-      if (hits > 0) scored.push({ b: _logIdx.blocks[i], hits, i });
+      if (hits > 0) {
+        // 要点行命中加权（结构化召回：要点 > 信号行）
+        const m = _logIdx.blocks[i].match(/要点：([\s\S]*)/);
+        let w = 1;
+        if (m) { const t2 = new Set(_tokenize(m[1])); let h2 = 0; for (const t of q) if (t2.has(t)) h2++; if (h2 > 0) w = 2; }
+        scored.push({ b: _logIdx.blocks[i], hits: hits * w, i });
+      }
     }
     // 命中数优先，其次新近（序号大 = 新）
     scored.sort((a, b) => b.hits - a.hits || b.i - a.i);
@@ -236,6 +242,84 @@ export function listSnapshots(wsRoot) {
     if (!fs.existsSync(p.dir)) return [];
     return fs.readdirSync(p.dir).filter(f => f.endsWith(".json")).sort().reverse();
   } catch { return []; }
+}
+
+// ══ P3 自动提炼：从记忆日志把"跨会话仍有效"的偏好/约定提炼进固定记忆核心约定节（去重）══
+export function distillMemory(wsRoot, { max = 60, scanN = 80, dryRun = false } = {}) {
+  try {
+    const paths = memoryPaths(wsRoot);
+    if (!fs.existsSync(paths.log)) return { ok: false, reason: "无记忆日志" };
+    const raw = fs.readFileSync(paths.log, "utf8");
+    const blocks = raw.split(/\n### /).filter(b => b.trim()).slice(-scanN); // 扫描最近 scanN 条
+    const fixed = fs.existsSync(paths.fixed) ? fs.readFileSync(paths.fixed, "utf8") : "";
+    const distilled = [];
+    for (const b of blocks) {
+      const m = b.match(/要点：([\s\S]*)/);
+      if (!m) continue;
+      const noteText = m[1];
+      // 要点本身必须含强偏好词（避免标签误标导致噪音）
+      if (!/以后|记住|我习惯|我喜欢|统一用|用这个|就按|不要|别|必须|一直|默认用|坚持|避免/.test(noteText)) continue;
+      let line = noteText.trim().split("\n")[0].replace(/^[✅⚠️📌]\s*/, "").trim().slice(0, 120);
+      if (line.length < 8) continue;
+      if (fixed.includes(line.slice(0, 20))) continue; // 已在固定记忆
+      // 偏好词位置越靠前 = 偏好表达越明确 → 优先提炼
+      const pos = noteText.search(/以后|记住|我习惯|我喜欢|统一用|用这个|就按|不要|别|必须|一直|默认用|坚持|避免/);
+      distilled.push({ line, pos: pos >= 0 ? pos : 999 });
+    }
+    distilled.sort((a, b) => a.pos - b.pos);
+    const out = distilled.slice(0, max).map(x => x.line);
+    if (dryRun || !out.length) return { ok: true, distilled: out, applied: 0 };
+    // 先快照再改（重要文件保护）
+    try { saveSnapshot(wsRoot, "distill-before-" + Date.now()); } catch {}
+    let s = fixed;
+    const anchor = "## 核心约定";
+    let applied = 0;
+    if (s.includes(anchor)) {
+      const idx = s.indexOf(anchor);
+      const nextIdx = s.indexOf("\n## ", idx + anchor.length);
+      const endIdx = nextIdx > 0 ? nextIdx : s.length;
+      let section = s.slice(idx, endIdx);
+      for (const line of out) {
+        if (!section.includes(line.slice(0, 20))) { section = section.replace(/\n*$/, "") + `\n- ${line}`; applied++; }
+      }
+      s = s.slice(0, idx) + section + s.slice(endIdx);
+    } else {
+      s = s.replace(/\n*$/, "") + `\n\n${anchor}\n` + out.map(l => `- ${l}`).join("\n") + "\n";
+      applied = out.length;
+    }
+    fs.writeFileSync(paths.fixed, s, "utf8");
+    try { syncMemoryToTui(); } catch {}
+    return { ok: true, distilled, applied };
+  } catch (e) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
+}
+
+// ══ P4 状态节归档：固定记忆"当前状态"节超过 N 个时，最旧的压缩为一行（防无限膨胀）══
+// 实现：每次重新扫描 + 只归档最旧的（文件里状态节最新在前），避免 index 失效错乱
+export function archiveStateSections(wsRoot, keep = 5) {
+  try {
+    const paths = memoryPaths(wsRoot);
+    if (!fs.existsSync(paths.fixed)) return { ok: false, reason: "无固定记忆" };
+    let s = fs.readFileSync(paths.fixed, "utf8");
+    try { saveSnapshot(wsRoot, "archive-before-" + Date.now()); } catch {}
+    let archived = 0;
+    while (true) {
+      const secs = [...s.matchAll(/## 当前状态（[^）]*）/g)]
+        .filter(m => !s.slice(m.index + m[0].length, m.index + m[0].length + 12).includes("已归档")); // 排除已归档节
+      if (secs.length <= keep) break;
+      const m = secs[secs.length - 1]; // 最旧的 = 文件末尾的
+      const idx = m.index;
+      const nextIdx = s.indexOf("\n## ", idx + m[0].length);
+      const endIdx = nextIdx > 0 ? nextIdx : s.length;
+      const section = s.slice(idx, endIdx);
+      const first = (section.match(/\n- (.{0,70})/) || [])[1] || "";
+      const title = m[0].replace(/^## /, "").split("·")[0].trim();
+      s = s.slice(0, idx) + `## ${title}（已归档）· ${first}\n` + s.slice(endIdx);
+      archived++;
+    }
+    fs.writeFileSync(paths.fixed, s, "utf8");
+    try { syncMemoryToTui(); } catch {}
+    return { ok: true, archived };
+  } catch (e) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
 }
 
 // 回退到某快照

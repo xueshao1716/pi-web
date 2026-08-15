@@ -5087,6 +5087,12 @@ function startServer() {
     console.log(`  工作目录: ${CONFIG.cwd}`);
     console.log(`  工具集  : ${CONFIG.tools.join(", ")}`);
     console.log(`  默认模型: ${defaultModel ? defaultModel.provider + "/" + defaultModel.id : "(未设置)"}`);
+    // 记忆自维护（启动后后台执行，不阻塞）：归档过期状态节；偏好提炼走提案制不自动写（改记忆需审批）
+    try {
+      const a = memoryApi.archiveStateSections(CONFIG.cwd, 5);
+      if (a?.archived) console.log(`[memory] 归档 ${a.archived} 个过期状态节（固定记忆瘦身）`);
+      else console.log(`[memory] 固定记忆状态节 ${a?.ok ? "无需归档" : "检查失败"}`);
+    } catch {}
     // 时间引擎：定时任务调度（触发时跑 unifiedChat + 结果落盘 文档/时间引擎日志.md）
     try {
       timeEngine = createTimeEngine(async (task) => {
