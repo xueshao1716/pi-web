@@ -2,11 +2,10 @@
 #  pi-web 一键安装（极简版，双引擎）
 #  只需要 Node 一个软件，其余全自动：
 #  下载源码 → 装 pi 引擎 → 装 dsh 引擎 → 模型模板 → 令牌 → 后台启动
-#  用法（任意 Windows PowerShell，一条命令）：
-#    irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install.ps1 | iex
-#  或本地：powershell -ExecutionPolicy Bypass -File install.ps1
-#  选安装目录（不装 C 盘）：回车默认用户目录，或输入如 D:\pi-web；
-#    也可 powershell -File install.ps1 -InstallDir D:\pi-web
+#  用法（任意 Windows PowerShell，一条命令，先下载再执行，零报错）：
+#    irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install.ps1 -OutFile $env:TEMP\piw.ps1; & $env:TEMP\piw.ps1
+#  指定目录：& $env:TEMP\piw.ps1 -InstallDir D:\pi-web
+#  （irm | iex 管道也可用，但 PS5.1 下会显示一行无害 BOM 报错）
 # ============================================================
 # ── 安装目录：可用 -InstallDir 指定，否则交互询问（回车=默认用户目录）──
 param([string]$InstallDir = "")

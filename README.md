@@ -51,14 +51,15 @@ pi-web
 
 > **备选（无 git 环境时用脚本安装，同样装双引擎）：**
 > ```powershell
-> # Gitee（国内快）
-> irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-all.ps1 | iex
+> # Gitee（国内快）——先下载再执行，零报错、支持参数
+> irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-all.ps1 -OutFile $env:TEMP\piw.ps1; & $env:TEMP\piw.ps1
 > # GitHub
-> irm https://raw.githubusercontent.com/xueshao1716/pi-web/main/install-all.ps1 | iex
+> irm https://raw.githubusercontent.com/xueshao1716/pi-web/main/install-all.ps1 -OutFile $env:TEMP\piw.ps1; & $env:TEMP\piw.ps1
 > ```
+> （注：`irm | iex` 管道方式也可用，但 PowerShell 5.1 下会显示一行无害的 BOM 报错，脚本照常运行；上方的先下载再执行方式无此问题，还支持 `-InstallDir` 参数）
 >
 > **不想装 C 盘？** 安装时脚本会询问安装目录，回车=默认用户目录，输入 `D:\pi-web` 之类即可装到其他盘；
-> 也可本地执行 `powershell -ExecutionPolicy Bypass -File install-all.ps1 -InstallDir D:\pi-web` 直接指定。
+> 也可直接指定：`& $env:TEMP\piw.ps1 -InstallDir D:\pi-web`。
 > 接着还会问 **pi/dsh 引擎全局包装到哪个盘**，输入 `D:\npm-global` 可将引擎也装到 D 盘（回车则保持 C 盘默认）。
 
 ## ✨ 为什么与众不同
