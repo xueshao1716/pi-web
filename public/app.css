@@ -1507,7 +1507,17 @@
   }
   #footer .ft-sep { width: 1px; height: 10px; background: var(--border); flex-shrink: 0; }
   #footer .ft-item { overflow: hidden; text-overflow: ellipsis; }
-  #footer #ft-context { margin-left: auto; }
+  #footer #ft-context { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  /* 上下文进度条 + 实时吞吐（2026-08-17 落地：借鉴 dsh-TUI 的进度条/TPS，分段着色 + 语义色） */
+  #footer .ctx-bar { width: 84px; height: 5px; background: color-mix(in srgb, var(--border) 70%, transparent); border-radius: 3px; overflow: hidden; flex-shrink: 0; }
+  #footer .ctx-fill { height: 100%; border-radius: 3px; transition: width .4s ease, background .4s ease; }
+  #footer .ctx-fill.ok { background: linear-gradient(90deg, #2ecc71, #27ae60); }
+  #footer .ctx-fill.warn { background: linear-gradient(90deg, #f1c40f, #e67e22); }
+  #footer .ctx-fill.hot { background: linear-gradient(90deg, #e74c3c, #ff5b4d); }
+  #footer #ft-tps { min-width: 58px; text-align: right; }
+  #footer #ft-tps.tps-ok { color: #2ecc71; }
+  #footer #ft-tps.tps-mid { color: #f1c40f; }
+  #footer #ft-tps.tps-hot { color: #e74c3c; }
   /* 发送中：输入框边框呼吸提示（对标 TUI 的 thinking 级别边框） */
   #inputbar.sending .input-shell { border-color: var(--yellow); box-shadow: 0 0 0 3px color-mix(in srgb, var(--yellow) 12%, transparent); }
   #inputbar.sending textarea::placeholder { color: var(--dim); }

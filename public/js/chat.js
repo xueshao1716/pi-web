@@ -740,6 +740,7 @@ function pushEvent(st, ev) {
   if (st.events.length > MAX_EVENTS) st.events.splice(0, st.events.length - MAX_EVENTS);
 }
 function onDelta(sid, text) {
+  if (sid === currentKey()) tpsFeed((text || "").length); // TPS 仪表：仅当前会话流式计数（估算）
   const st = streams.get(sid);
   if (st) {
     st.text += text;
@@ -1225,6 +1226,35 @@ async function highlightBlocks(root) {
 }
 
 // ══ TUI 风格底部状态栏（对标 pi 终端 Footer）══
+// ── 实时吞吐仪表（TPS）：流式期间对 delta 字符做启发式估算（~ 表示估算值，dsh-TUI 同款思路）──
+const tpsMeter = { winChars: 0, winStart: 0, tps: 0, timer: null };
+function tpsStart() {
+  tpsMeter.winChars = 0; tpsMeter.winStart = Date.now(); tpsMeter.tps = 0;
+  if (tpsMeter.timer) clearInterval(tpsMeter.timer);
+  tpsMeter.timer = setInterval(tpsTick, 800);
+  const el = $("ft-tps"); if (el) { el.textContent = "⇄…"; el.className = "ft-item"; }
+}
+function tpsFeed(n) { tpsMeter.winChars += n; }
+function tpsTick() {
+  const now = Date.now();
+  const dt = (now - tpsMeter.winStart) / 1000;
+  if (dt > 0.4) {
+    // 启发式：中英混合文本约 0.5 token/字符（中文≈1、英文≈0.25，取平均）
+    const tps = (tpsMeter.winChars * 0.5) / dt;
+    tpsMeter.tps = tps; tpsMeter.winChars = 0; tpsMeter.winStart = now;
+    const el = $("ft-tps");
+    if (el && tps > 0.05) {
+      el.textContent = `⇄~${tps >= 100 ? tps.toFixed(0) : tps.toFixed(1)} tok/s`;
+      el.className = "ft-item " + (tps >= 50 ? "tps-ok" : tps >= 20 ? "tps-mid" : "tps-hot");
+    }
+  }
+}
+function tpsStop() {
+  if (tpsMeter.timer) { clearInterval(tpsMeter.timer); tpsMeter.timer = null; }
+  const el = $("ft-tps");
+  if (el) { el.className = "ft-item"; el.textContent = ""; }
+}
+
 async function updateFooter() {
   $("ft-cwd").textContent = "cwd: " + (($("cwd-label").textContent || "").replace(/^cwd: /, "") || "—");
   const sel = $("model-select");
@@ -1242,8 +1272,18 @@ async function updateFooter() {
     $("ft-tokens").textContent = `↑${fmtNum(t.input)} ↓${fmtNum(t.output)}`;
     $("ft-tokens").title = `输入 ${fmtNum(t.input)} · 输出 ${fmtNum(t.output)}`;
     $("ft-cost").textContent = "$" + (stats.cost || 0).toFixed(4);
-    $("ft-context").textContent = cu.percent != null ? `上下文 ${cu.percent}%` : "—";
+    renderCtxBar(cu.percent, cu);
   } catch {}
+}
+
+// 上下文进度条（分段着色：<50% 绿 / 50-80% 黄 / >80% 红）
+function renderCtxBar(percent, cu) {
+  const el = $("ft-context"); if (!el) return;
+  if (percent == null) { el.innerHTML = "—"; el.title = "上下文占用"; return; }
+  const p = Math.max(0, Math.min(100, Math.round(percent)));
+  const cls = p < 50 ? "ok" : p < 80 ? "warn" : "hot";
+  el.innerHTML = `<span class="ctx-bar"><span class="ctx-fill ${cls}" style="width:${p}%"></span></span>`;
+  el.title = `上下文占用 ${p}%` + (cu && cu.used != null ? `（${fmtNum(cu.used)}${cu.limit ? "/" + fmtNum(cu.limit) : ""}）` : "");
 }
 
 // ══ 输入历史（↑ 调出上一条，对标 TUI 编辑历史）══
@@ -1354,6 +1394,7 @@ async function send() {
   st.taskKey = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
   st.postActive = true; // 本页 POST 流渲染中（订阅流收到同会话事件时跳过，防重复）
   streams.set(key, st);
+  tpsStart(); // 实时吞吐仪表启动
   // 渲染层复位（当前视图 = 本会话）
   render = { assistantEl: null, toolEls: new Map(), toolOrder: [], thinkingEl: null, deltaBuf: "", thinkBuf: "", flushTimer: null };
   // 先拷贝引用文件/图片，再清空（否则 body 里永远是空数组）
@@ -1568,6 +1609,7 @@ async function send() {
         autoScroll();
       }
       notifyDone();
+      tpsStop();
       updateFooter();
       inputHistory.push(text);
       histIdx = -1;
@@ -1580,6 +1622,7 @@ async function send() {
       }
     }
   } catch (e) {
+    tpsStop();
     if (currentKey() === key && streamEpoch[key] === epoch) {
       if (e.name === "AbortError") {
         // 把被中断的进行中工具卡片标记为中断（停止转圈）

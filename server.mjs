@@ -515,23 +515,23 @@ async function slimSessionImages(file) {
 // 实现：自己算 cutPoint + directChat 生成摘要 + 重写文件（parentId 重链到 compaction 条目）
 let compactingSessions = new Set();
 
-async function compactSession(file, model) {
-  if (compactingSessions.has(file)) return; // 防重入
+async function compactSession(file, model, force = false, focus = "") {
+  if (compactingSessions.has(file)) return { skip: true, reason: "busy: 该会话正在压缩中" };
   compactingSessions.add(file);
   let sm = null;
   try {
     const st = fs.statSync(file);
     // 只有超大会话（>3MB 或估算超阈值）才压缩，避免小会话频繁触发
-    if (st.size < 3 * 1024 * 1024) return;
+    if (!force && st.size < 3 * 1024 * 1024) return;
     // 用引擎打开会话（pi-coding-agent 的 SessionManager，fileEntries 公开且完整）
     sm = SessionManager.open(file, path.dirname(file), CONFIG.cwd);
     const entries = sm.fileEntries || [];
     const msgs = entries.filter(e => e.type === "message");
-    if (msgs.length < 8) return; // 消息太少不值得压（有超大图片的会话 10+ 条就够）
+    if (msgs.length < 8) return { skip: true, reason: "会话消息过少(或已压缩过)，无需压缩" };
     // 已有 compaction 且后续消息不多 → 跳过（避免每次打开都压）
     let lastCompIdx = -1;
     for (let i = entries.length - 1; i >= 0; i--) { if (entries[i].type === "compaction") { lastCompIdx = i; break; } }
-    if (lastCompIdx >= 0 && entries.length - lastCompIdx < 40) return;
+    if (!force && lastCompIdx >= 0 && entries.length - lastCompIdx < 40) return; // 手动 /compact 强制再压
     // 估算会话 token（中文≈1.5/字，其他≈0.35/字符）——超阈值才压缩
     const estTok = msgs.reduce((s, e) => {
       const txt = JSON.stringify(e.message || {});
@@ -539,7 +539,7 @@ async function compactSession(file, model) {
       return s + Math.round(cn * 1.5 + (txt.length - cn) * 0.35);
     }, 0);
     const threshold = Math.min(300_000, Math.round((model?.contextWindow || 1_000_000) * 0.7));
-    if (estTok < threshold) return;
+    if (!force && estTok < threshold) return; // 手动 /compact 无条件压缩，自动压缩仍按阈值
     // 保留最近约 30K token 的消息（其余压掉），从 cut 消息沿 parentId 收集整条保留链
     const keepBudget = 30000;
     let keepFrom = msgs.length;
@@ -551,9 +551,9 @@ async function compactSession(file, model) {
       if (acc >= keepBudget) { keepFrom = i; break; }
     }
     keepFrom = Math.max(4, Math.min(keepFrom, msgs.length - 2)); // 至少留 2 条，最多压到剩 4 条以下
-    const cutMsg = msgs[keepFrom];
+    const cutMsg = msgs[Math.min(keepFrom, msgs.length - 1)];
     const toSummarize = msgs.slice(0, keepFrom);
-    if (toSummarize.length < 6) return;
+    if (!force && toSummarize.length < 6) return; // 手动 /compact 无条件压缩（force）
     // 组装摘要输入（截断到合理长度）
     const parts = [];
     for (const e of toSummarize) {
@@ -568,22 +568,42 @@ async function compactSession(file, model) {
       if (role === "toolResult") text = `[工具结果 ${m.toolName || ""}] ${text.slice(0, 150)}`;
       if (text.trim()) parts.push(`${role}: ${text}`);
     }
-    const inputText = parts.join("\n").slice(0, 120_000);
-    if (!inputText.trim()) return;
+    const inputText = parts.join("\n").slice(0, 60000).replace(/[\uD800-\uDFFF]/g, "") + (focus ? "[\n压缩焦点：" + focus + "]" : "");
+    if (!inputText.trim()) return { skip: true, reason: "无可压缩的文本内容" };
     // 用便宜模型生成摘要（deepseek 官方直连，稳定不烧 opencode 余额）
-    const summaryModel = modelList.find(x => x.provider === "deepseek") || model;
-    const prompt = `你是会话摘要助手。以下是 AI 助手与用户的一段早期对话记录。请用简洁的中文总结：
+    // 摘要生成走 unifiedChat（主聊天通道，模型已实证可用）；deepseek 直连优先省钱，失败回退默认模型
+    let summaryModel = modelList.find(x => x.provider === "deepseek");
+    if (!summaryModel) summaryModel = { provider: "deepseek", id: "deepseek-v4-flash", baseUrl: "https://api.deepseek.com" };
+    const prompt = `你是会话摘要助手。以下是 AI 助手与用户的一段早期对话记录。请生成结构化摘要，按下列六类保留关键信息：
 1. 用户的核心诉求与任务目标
 2. 已完成的事项与关键决策
 3. 重要约定/路径/技术选型（保留具体文件名、路径、命令）
-4. 遗留问题或待办
-要求：只留关键信息，总长不超过 400 字，用要点列表。
+4. 错误与修复方式
+5. 遗留问题与待办
+6. 当前工作状态
+要求：只留关键信息，总长不超过 400 字，按 1-6 编号要点列表输出。
 
 对话记录：
 ${inputText}`;
-    const r = await directChat(summaryModel, prompt, []);
-    const summary = (r?.text || "").trim().slice(0, 3000);
-    if (!summary) return;
+    // 内联 deepseek 官方直连生成摘要（curl 已验证 200；directChat/unifiedChat 均存在中间层 400/回 null 问题，不再依赖）
+    let summary = "";
+    let dcErr = "";
+    try {
+      const _auth2 = readJsonFile(AUTH_PATH);
+      const _dk = _auth2["deepseek"]?.key || _auth2["opencode-go"]?.key || "";
+      const _url = "https://api.deepseek.com/v1/chat/completions";
+      const _rr = await httpJsonFetch(_url, { method: "POST", timeout: 90000,
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${_dk}` },
+        body: JSON.stringify({ model: "deepseek-v4-flash", messages: [{ role: "user", content: prompt }], max_tokens: 8000 }) });
+      if (_rr.ok) {
+        const _dd = await _rr.json();
+        summary = String((_dd?.choices?.[0]?.message?.content) || (_dd?.choices?.[0]?.message?.reasoning_content) || "").trim().slice(0, 3000);
+        if (!summary) console.log("[pi-web] compact 摘要响应异常: " + JSON.stringify(_dd).slice(0, 500));
+      } else {
+        dcErr = "HTTP " + _rr.status + ": " + String(await _rr.text()).slice(0, 200);
+      }
+    } catch (e) { dcErr = String(e?.message || e).slice(0, 200); }
+    if (!summary) return { skip: true, reason: "摘要生成失败: " + (dcErr || "响应无 content") };
     // 构造新文件：非消息条目 + compaction + 保留消息链（parentId 重链到 compaction）
     const compId = `comp_${Date.now().toString(36)}`;
     const compEntry = {
@@ -624,11 +644,14 @@ ${inputText}`;
     sm.fileEntries = newEntries;
     sm._rewriteFile();
     console.log(`[pi-web] 分层记忆: ${file.split(/[\\/]/).pop()} ${(estTok / 1000).toFixed(0)}K→摘要(${summary.length}字), 保留 ${retained.length} 条消息`);
+    return { summary, retained: retained.length, before: estTok };
   } catch (e) {
     console.log(`[pi-web] 分层记忆跳过: ${String(e?.message || e).slice(0, 120)}`);
+    return { skip: true, reason: "异常: " + String((e && (e.stack || e.message)) || e).slice(0, 500) };
   } finally {
     compactingSessions.delete(file);
   }
+  return null;
 }
 
 async function openSession(id) {
@@ -770,8 +793,16 @@ async function createSessionAgent(sm, model) {
   if (dt) customTools.push(dt);
   // 外部思考调试开关（externalThinking）：注入 think 工具让模型把推理写进工具参数
   if (isExternalThinking()) customTools.push(THINK_TOOL);
-  // 工具白名单：基础工具 + 自定义工具（search_files 必须放行才能被模型调用）
-  const allowedTools = [...new Set([...CONFIG.tools, ...customTools.map(t => t.name)])];
+  // 两阶段引导（dsh 生态 anchored-standard 借鉴，2026-08-17）：
+  // DeepSeek 系模型对首轮工具目录敏感——dsh 生态实测 7 工具首轮 91-92 分 vs 2-4 工具首轮 99 分。
+  // 新会话首轮只暴露文件核心工具（read/write/edit/bash），首个文本/工具事件后 promote 恢复完整集
+  // （setActiveToolsByName 下个 turn 生效，不打断当前轮）。可用环境变量 PI_TWO_PHASE=0 关闭。
+  const MIN_BOOTSTRAP = ["read", "write", "edit", "bash"].filter(t => CONFIG.tools.includes(t));
+  const bootstrap = isFirstTurn(sm) && MIN_BOOTSTRAP.length >= 2 && process.env.PI_TWO_PHASE !== "0";
+  const allowedTools = bootstrap
+    ? [...new Set([...MIN_BOOTSTRAP, ...customTools.map(t => t.name).filter(n => MIN_BOOTSTRAP.includes(n))])]
+    : [...new Set([...CONFIG.tools, ...customTools.map(t => t.name)])];
+  if (bootstrap) console.log(`[agent] 两阶段引导：首轮最小工具集 ${allowedTools.join(", ")}（首个文本/工具后自动 promote 完整集）`);
   console.log(`[agent] 工具集: ${allowedTools.join(", ")}`);
   const services = await createAgentSessionServices({
     cwd,
@@ -3481,7 +3512,7 @@ async function directChat(model, message, history = []) {
     const store = readJsonFile(MODELS_PATH);
     const mdef = (store[model.provider]?.models || []).find(m => m.id === model.id)
       || modelList.find(m => m.provider === model.provider && m.id === model.id);
-    const baseUrl = resolved?.baseUrl || mdef?.baseUrl;
+    const baseUrl = resolved?.baseUrl || mdef?.baseUrl || model.baseUrl;
     if (!baseUrl) return null;
     const base = (baseUrl || "").replace(/\/+$/, "");
     const baseNoV1 = base.endsWith("/v1") ? base.slice(0, -3) : base;
@@ -3687,19 +3718,29 @@ async function handleDirectChat(res, entry, message, sessionId, writer) {
   console.log(`[pi-web] 直调通道: ${defaultModel.provider}/${defaultModel.id}`);
 }
 
-// 上下文压缩：历史超限时用模型摘要旧消息（保留最近 8 条），防止长对话撑爆上下文
-async function maybeCompactHistory(history, model) {
+// 上下文压缩 v2（借鉴 Claude Code 摘要式压缩）：历史超限时用模型生成"结构化摘要"替换旧消息
+// 保留六类关键信息（Claude 同款：意图/技术概念/文件路径命令/错误修复/已完成/待办），支持定向焦点（/compact focus on X）
+async function maybeCompactHistory(history, model, focus = "") {
   const total = history.reduce((n, m) => n + String(m.content || "").length, 0);
   if (history.length < 12 || total < 80000) return history;
-  const keep = history.slice(-8);
-  const old = history.slice(0, -8);
-  const oldText = old.map(m => `${m.role}: ${typeof m.content === "string" ? m.content.slice(0, 600) : "(工具调用)"}`).join("\n");
+  const keep = history.slice(-10);
+  const old = history.slice(0, -10);
+  const oldText = old.map(m => `${m.role}: ${typeof m.content === "string" ? m.content.slice(0, 800) : "(工具调用)"}`).join("\n");
+  const focusLine = focus ? `\n压缩焦点（请特别保留与以下主题相关的信息）：${focus}` : "";
   try {
-    const summary = await unifiedChat(model, `请用不超过 250 字总结以下对话的关键信息（保留：用户的需求、已创建的文件的路径、已完成的关键操作、待办事项）。只输出总结：
+    const summary = await unifiedChat(model, `你是上下文压缩助手。以下是一段 AI 助手与用户的早期对话。请生成结构化摘要，按下列六类保留关键信息：
+1. 用户请求与意图（保留具体需求）
+2. 关键技术概念与决策
+3. 文件/路径/命令（保留具体文件名、路径、命令）
+4. 错误与修复方式
+5. 已完成的关键操作
+6. 待办事项与当前工作
+要求：只留关键信息，总长不超过 500 字，按 1-6 编号要点输出。完整工具输出和中间推理不要保留。${focusLine}
 
-${oldText.slice(0, 40000)}`, { tools: false });
+对话记录：
+${oldText.slice(0, 50000)}`, { tools: false });
     if (summary && summary.text) {
-      return [{ role: "system", content: "【早前对话摘要】" + summary.text }, ...keep];
+      return [{ role: "system", content: "【早前对话摘要】\n" + summary.text }, ...keep];
     }
   } catch {}
   return history;
@@ -3912,6 +3953,27 @@ async function handleChat(req, res, body) {
   const thisGen = entry.gen;
   entry.busy = true;
 
+  // /compact 手动压缩命令（Claude Code /compact 借鉴）：强制对早前历史生成结构化摘要，不消耗模型回合
+  // 用法：/compact 或 /compact focus on <主题>；压缩结果写入会话（compaction 条目），返回摘要供前端展示
+  const compactCmd = typeof message === "string" && message.trim().match(/^\/compact(?:\s+(?:focus\s+on\s+)?(.+))?$/i);
+  if (compactCmd) {
+    const compactFocus = (compactCmd[1] || "").trim();
+    const sf = entry.sm.sessionFile;
+    try {
+      if (!sf || !fs.existsSync(sf)) return json(res, 400, { error: "会话文件不存在，无法压缩" });
+      entry.busy = false;
+      const r = await compactSession(sf, defaultModel, true, compactFocus);
+      if (!r || r.skip) return json(res, 200, { compact: "skip", reason: r?.reason || "没有可压缩的内容（消息过少或摘要生成失败）" });
+      console.log(`[pi-web] 手动 /compact 完成: focus=${compactFocus || "-"} retained=${r.retained}`);
+      return json(res, 200, { compact: "done", focus: compactFocus, retained: r.retained, summary: String(r.summary || "").slice(0, 500) });
+    } catch (e) {
+      console.log(`[pi-web] 手动 /compact 失败: ${String(e?.message || e).slice(0, 120)}`);
+      return json(res, 500, { error: "压缩失败：" + String(e?.message || e).slice(0, 120) });
+    } finally {
+      entry.busy = false;
+    }
+  }
+
   // 绘图模型（id 含 image）→ 走图像生成接口（在写 SSE headers 之前处理）
   if (defaultModel && /image/i.test(defaultModel.id)) {
     try {
@@ -3969,6 +4031,8 @@ async function handleChat(req, res, body) {
   const agent = await ensureAgent(entry, effModel);
   // agentModel 由 ensureAgent/createSessionAgent 设置真实值，这里不覆盖
   const sm = entry.sm;
+  // 两阶段引导：本次请求是否新会话首轮（首轮锚定后 promote 完整工具集）
+  let bootstrapTurn = isFirstTurn(entry.sm) && process.env.PI_TWO_PHASE !== "0";
   const hbTimer = startSseHeartbeat(res); // 心跳保活（公网隧道不因 idle 断开）
   const writer = createSseWriter(res); // 背压控制：慢网络时事件排队等 drain，不丢不堆
   const taskId = body.taskKey || sessionId || findKeyByEntry(entry) || "new";
@@ -3985,6 +4049,18 @@ async function handleChat(req, res, body) {
     : Promise.resolve([]);
   const unsubscribe = agent.subscribe((event) => {
     try {
+      // 两阶段引导 promote：首轮产生首个文本/工具事件 → 恢复完整工具集（下个 turn 生效，零成本）
+      // turn_end 兜底：首轮无论是否产生文本/工具事件（纯思考/空回复/报错），结束时也强制 promote，杜绝工具集永久残缺
+      if (bootstrapTurn && (event.type === "message_update" || event.type === "tool_execution_start" || event.type === "turn_end")) {
+        try {
+          const allNames = agent.getAllTools().map(t => t.name);
+          if (allNames.length) {
+            agent.setActiveToolsByName(allNames);
+            console.log(`[agent] 两阶段引导：首轮锚定完成，promote → 完整工具集 ${allNames.join(", ")}`);
+          }
+        } catch (e) { console.log(`[agent] 两阶段引导 promote 失败: ${String(e?.message || e).slice(0, 80)}`); }
+        bootstrapTurn = false;
+      }
       if (event.type === "message_update" && event.assistantMessageEvent?.type === "text_delta") {
         sawDelta = true;
         const delta = event.assistantMessageEvent.delta || "";
