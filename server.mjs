@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { CONFIG } from "./config.mjs";
 // ── Gateway 2.0 插件化引擎 + Code Mode（dsh 设计沉淀）──
 import { createGateway } from "./engine/gateway.mjs";
+import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
 import { createCodeMode } from "./code-mode/code-mode.mjs";
 import { createTimeEngine } from "./engine/time-engine.mjs";
@@ -1103,6 +1104,62 @@ if (!defaultModel) {
 }
 console.log(`[pi-web] 默认模型: ${defaultModel?.provider}/${defaultModel?.id}`);
 console.log(`[pi-web] 可用模型: ${modelList.length} 个（含 ${Object.keys(readJsonFile(MODELS_PATH)).join(", ")}）`);
+
+// ══ Cursor Router 简化版（2026-08-17，对标 Cursor Router Auto / Windsurf Adaptive）══
+// 理念：默认 Auto 路由——规则分类器按任务复杂度选模型：简单→flash（日常主力），复杂→pro（强推理，带上限）。
+// 策略保守：flash vs pro 实测（2026-08-13）——pro 慢 2.4-7×、贵 3×、过度思考烧 token、偶发篡改数据，
+// 所以 99% 的日常任务走 flash；只有明确复杂任务（长任务/多步骤/深度分析/代码库级）才升级 pro。
+// 用户手动选择具体模型 → 不干预（与 Cursor "手动覆盖 Auto" 同构）。环境变量 PI_AUTO_ROUTE=0 可关闭。
+const ROUTER_AUTO = { provider: "auto", id: "auto" };
+// Plan 模式只读工具集（工具级硬限制）：读文件 + 搜索，不给写/执行工具
+const PLAN_READONLY_SET = ["read", "search_files"];
+function isAutoModel(m) { return !!m && (m.provider === "auto" || m.id === "auto" || m.id === "auto-smart"); }
+// 复杂/简单任务关键词表（可扩展；命中均带权重，取累计分与阈值比较）
+const ROUTER_COMPLEX_PATTERNS = [
+  { w: 2, re: /(重构|重写|架构|设计方案?|系统设计|代码库级|跨模块|多文件|多个文件|整个项目|从零(搭建|实现|开发))/i, label: "代码库级" },
+  { w: 2, re: /(单元测试|集成测试|测试用例|调试|排错|性能优化|安全审查|代码审查|评审)/i, label: "测试/审查" },
+  { w: 2, re: /(迁移|升级改造|协议|算法|并发|分布式|高可用|缓存策略)/i, label: "深度技术" },
+  { w: 1, re: /(实现|开发|编写|构建|搭建|部署|集成|对接)/i, label: "开发" },
+  { w: 1, re: /(分析|设计|规划|评估|调研|研究|梳理|总结)/i, label: "分析" },
+  { w: 1, re: /(请逐步|一步一步|分步骤|详细说明|深入研究)/i, label: "要求细致" },
+  { w: 1, re: /```[\s\S]{200,}```/, label: "大段代码" } // 大段代码块 = 编码任务
+];
+const ROUTER_SIMPLE_PATTERNS = [
+  { w: 2, re: /^(你好|hi|hello|在吗|早|晚上好|嗨|谢谢|感谢|再见|拜拜)/i, label: "问候" },
+  { w: 1, re: /(闲聊|随便聊聊|讲个笑话|笑话|天气|几点|现在几点|周末)/i, label: "闲聊" },
+  { w: 1, re: /^(解释|介绍一下|什么是|什么叫|能不能|请问|翻译|帮我算)/, label: "轻问答" },
+  { w: 1, re: /^.{0,30}$/, label: "短消息" } // 极短消息按简单处理（修饰词少，多为闲聊/快问快答）
+];
+// 任务复杂度分类（规则评分，可解释、零成本、可调阈值）
+function classifyTaskComplexity(text) {
+  const t = String(text || "").trim();
+  let score = 0; const reasons = [];
+  if (t.length > 400) { score += 3; reasons.push("长任务"); }
+  else if (t.length > 150) { score += 1; reasons.push("较长"); }
+  for (const p of ROUTER_COMPLEX_PATTERNS) { if (p.re.test(t)) { score += p.w; reasons.push(p.label || p.re.source.slice(0, 18)); } }
+  for (const p of ROUTER_SIMPLE_PATTERNS) { if (p.re.test(t)) { score -= p.w; reasons.push("-" + (p.label || p.re.source.slice(0, 12))); } }
+  const complex = score >= 3;
+  return { level: complex ? "complex" : "simple", score, reasons: reasons.slice(0, 5) };
+}
+// Auto 路由：按复杂度选 flash/pro（都带 max_tokens 上限；pro 升级仅在明确复杂且存在 pro 模型时）
+// 若显式配置了 CONFIG.model（管理员指定默认模型）→ 不用 Auto，直接用该默认模型
+function routeForAuto(text) {
+  if (CONFIG.model) return { model: defaultModel, level: "simple", score: 0, reasons: ["显式默认模型"], auto: false };
+  const cl = classifyTaskComplexity(text);
+  if (process.env.PI_AUTO_ROUTE === "0") {
+    return { model: defaultModel, level: "simple", score: 0, reasons: ["已关闭(PI_AUTO_ROUTE=0)"], auto: false };
+  }
+  if (cl.level === "complex") {
+    const pro = modelList.find(m => m.provider === "opencode-go" && /deepseek-v4-pro/i.test(m.id))
+      || modelList.find(m => m.provider === "deepseek" && /deepseek-v4-pro/i.test(m.id));
+    if (pro) return { model: pro, level: "complex", score: cl.score, reasons: cl.reasons, auto: true };
+  }
+  const flash = modelList.find(m => m.provider === "opencode-go" && /deepseek-v4-flash/i.test(m.id))
+    || modelList.find(m => m.provider === "deepseek" && /deepseek-v4-flash/i.test(m.id))
+    || defaultModel;
+  return { model: flash, level: cl.level, score: cl.score, reasons: cl.reasons, auto: true };
+}
+
 const SUPPORTED_PROVIDERS = ["deepseek", "openai", "openrouter", "anthropic", "google", "qwen", "xai", "moonshotai", "zai", "together", "mistral", "modelscope", "cloudflare-ai"];
 
 function readJsonFile(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return {}; } }
@@ -2130,7 +2187,11 @@ const MIME = {
   ".json": "application/json",
 };
 
+const staticServer = createStaticServer({ publicDir: PUBLIC_DIR, mime: MIME });
+
 async function handleStatic(req, res) {
+  return staticServer.handle(req, res);
+}
   let p = new URL(req.url, "http://localhost").pathname;
   if (p === "/") p = "/index.html";
   const file = path.join(PUBLIC_DIR, path.normalize(p).replace(/^([/\\])+/, ""));
@@ -2171,12 +2232,30 @@ function handleModels(res) {
   json(res, 200, {
     models: list,
     current: defaultModel ? { provider: defaultModel.provider, id: defaultModel.id } : null,
+    autoDefault: !CONFIG.model, // 未显式配置默认模型 → Auto（智能路由）为全局默认
     cwd: CONFIG.cwd,
     tools: CONFIG.tools,
   });
 }
 
 async function handleSwitchModel(req, res, body) {
+  // Auto 路由特殊处理（Cursor Router 简化版）：不绑定具体模型，每条消息按复杂度路由
+  if (body.provider === "auto" || (body.modelId && /^auto(-smart)?$/i.test(body.modelId))) {
+    if (body.sessionId && activeSessions.has(body.sessionId)) {
+      const entry2 = activeSessions.get(body.sessionId);
+      try { entry2.modelKey = { provider: "auto", id: "auto" }; } catch {}
+      // 重建 agent 用默认 flash 暂代，下条消息 handleChat 按复杂度实时路由
+      if (entry2.agent && !entry2.busy) {
+        try { entry2.agent.dispose(); } catch {}
+        entry2.agent = null;
+        try { const ag = await createSessionAgent(entry2.sm, defaultModel); entry2.agent = ag; entry2.agentModel = { provider: defaultModel.provider, id: defaultModel.id }; } catch {}
+      }
+      json(res, 200, { ok: true, model: { provider: "auto", id: "auto" }, sessionScoped: true, auto: true });
+      return;
+    }
+    json(res, 200, { ok: true, model: { provider: "auto", id: "auto" }, deferred: true, auto: true });
+    return;
+  }
   const m = modelList.find(x => x.provider === body.provider && x.id === body.modelId);
   if (!m) return json(res, 404, { error: `模型未找到: ${body.provider}/${body.modelId}` });
   const switched = !(defaultModel?.provider === m.provider && defaultModel?.id === m.id);
@@ -3789,7 +3868,33 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal,
     if (fullExp.length) history = [...fullExp.map(c => ({ role: "system", content: c })), ...history];
   }
   history = await maybeCompactHistory(history, defaultModel);
+  // Plan 模式（unifiedChat 兕底路径）：工具定义层过滤为只读（read/web_search）——模型只能请求只读工具，无写路径
+  // 注意：thinkOn=false 时 toolDefs 为 undefined（unifiedChat 内部才默认 UNIFIED_TOOLS），必须显式构建只读集，否则拦截被短路
+  const isPlanLock = !!entry.planPending;
   const toolDefs = thinkOn ? [...UNIFIED_TOOLS, THINK_TOOL] : undefined;
+  if (isPlanLock) {
+    const base = toolDefs || UNIFIED_TOOLS;
+    const locked = base.filter(t => t.function?.name === "read" || t.function?.name === "web_search");
+    writer.push("note", { text: "🔒 规划模式（工具级只读）· 批准后恢复写/执行" });
+    console.log(`[plan] unifiedChat 工具级只读生效 → ${locked.map(t => t.function.name).join(", ")}`);
+    return await runLockedChat(locked);
+  }
+  async function runLockedChat(locked) {
+    // history 末条已是 handleChat 改写后的规划指令消息（含需求），直接复用；只传只读工具定义
+    const result = await unifiedChat(defaultModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: locked });
+    if (!result || result.error) {
+      clearTask(taskId, "error"); writer.push("error", { message: result?.error || "模型未返回内容" }); return;
+    }
+    if (result.aborted || signal?.aborted) { clearTask(taskId, "aborted"); return; }
+    const text = result.text;
+    if (!text) { writer.push("error", { message: "模型未返回内容" }); return; }
+    try { entry.sm.appendMessage({ role: "user", content: [{ type: "text", text: message }] }); entry.sm.appendMessage({ role: "assistant", content: [{ type: "text", text }] }); } catch {}
+    if (entry.agent) { try { entry.agent.dispose(); } catch {} entry.agent = null; }
+    if (result.think) { writer.push("think", { text: result.think }); writer.push("think_end", {}); }
+    writer.push("delta", { text });
+    writer.push("done", { sessionId });
+    clearTask(taskId, "done");
+  }
   const result = await unifiedChat(defaultModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: toolDefs });
   if (!result || result.error) {
     clearTask(taskId, "error");
@@ -3974,21 +4079,34 @@ async function handleChat(req, res, body) {
     }
   }
 
-  // Plan Mode（Claude Code 借鉴，v1 指令级）：/plan <需求> → 只读调研+输出分步计划；/plan accept|cancel → 批准/取消
-  // v1 用系统指令强制只读（模型自觉）；后续可升级为工具级硬限制（setActiveToolsByName 只读集）
+  // Plan Mode v2（Cursor/Claude Code 借鉴，工具级硬限制）：/plan <需求> → 只读调研+输出分步计划
+  // v2 用 agent.setActiveToolsByName 把工具集硬切为只读集（read/search_files）——模型目录里没有写工具，
+  // 无法调用 write/edit/bash/dsh/share，结构性杜绝违规（v1 仅指令约束靠模型自觉）；accept 时恢复全量。
+  // unifiedChat 兑底路径在 handleUnifiedChat 内做工具定义层过滤（见下）。
   const planCmd = typeof message === "string" && message.trim().match(/^\/plan(?:\s+(accept|cancel|execute)\b)?\s*(.*)$/i);
   if (planCmd) {
     const pAct = (planCmd[1] || "").toLowerCase();
     const pRest = (planCmd[2] || "").trim();
+    const applyPlanTools = async (readonly) => {
+      if (!entry.agent) return; // agent 尚未创建（新会话首条 /plan），ensureAgent 后统一应用
+      try {
+        const names = readonly ? PLAN_READONLY_SET : entry.agent.getAllTools().map(t => t.name);
+        entry.agent.setActiveToolsByName(names);
+        console.log(`[plan] ${readonly ? "工具级限制生效（只读）" : "工具集已恢复全量"} → ${names.join(", ")}`);
+      } catch (e) { console.log(`[plan] 工具集设置失败: ${String(e?.message || e).slice(0, 80)}`); }
+    };
     if (!pAct) {
       if (!pRest) return json(res, 400, { error: "/plan 用法：/plan <需求> 进入规划模式；/plan accept 批准执行；/plan cancel 取消" });
       entry.planPending = true;
-      message = `【规划模式】请先只读调研（可以读取/搜索文件，严禁修改/创建/删除任何文件，严禁执行写入类命令与测试命令），然后输出一份分步实施计划：目标 / 实施步骤 / 涉及文件 / 风险点。计划用编号列表清晰输出，最后询问用户是否批准。\n\n需求：${pRest}`;
+      await applyPlanTools(true);
+      message = `【规划模式】请先只读调研（你的工具已被系统限制为只读，仅能读取/搜索文件，无法修改/创建/删除任何文件、无法运行写入或测试命令），然后输出一份分步实施计划：目标 / 实施步骤 / 涉及文件 / 风险点。计划用编号列表清晰输出，最后询问用户是否批准。\n\n需求：${pRest}`;
     } else if (pAct === "accept" || pAct === "execute") {
       entry.planPending = false;
-      message = "【批准规划】用户已批准你上一步输出的计划。请现在按计划开始执行（可以正常读写文件、运行命令）。";
+      await applyPlanTools(false);
+      message = `【批准规划】用户已批准你上一步输出的计划。请现在按计划开始执行（你的工具已恢复，可以正常读写文件、运行命令）。`;
     } else {
       entry.planPending = false;
+      await applyPlanTools(false);
       return json(res, 200, { plan: "cancelled" });
     }
   }
@@ -4038,9 +4156,19 @@ async function handleChat(req, res, body) {
     }
     return;
   }
-  // 会话级模型：切过模型则用会话的，否则默认；agent 模型不一致时重建
-  const effModel = (entry.modelKey && modelList.find(m => m.provider === entry.modelKey.provider && m.id === entry.modelKey.id))
-    || defaultModel;
+  // 会话级模型：切过模型则用会话的；未切（默认）→ Auto 路由（Cursor Router 简化版：按任务复杂度选 flash/pro）
+  let autoRoute = null;
+  const effModel = (() => {
+    if (entry.modelKey && isAutoModel(entry.modelKey)) {
+      autoRoute = routeForAuto(message);
+      return autoRoute.model;
+    }
+    if (entry.modelKey) return modelList.find(m => m.provider === entry.modelKey.provider && m.id === entry.modelKey.id) || defaultModel;
+    // 未设置会话模型：默认走 Auto 路由（对标 Cursor 默认 Auto；PI_AUTO_ROUTE=0 可关闭）
+    autoRoute = routeForAuto(message);
+    return autoRoute.model;
+  })();
+  entry.autoRoute = autoRoute; // 供 SSE 播报与日志
   if (entry.agent && entry.modelKey && entry.agentModel &&
       (entry.agentModel.provider !== entry.modelKey.provider || entry.agentModel.id !== entry.modelKey.id)) {
     try { entry.agent.dispose(); } catch {}
@@ -4048,12 +4176,26 @@ async function handleChat(req, res, body) {
     console.log(`[pi-web] 会话模型已切换，重建 agent → ${entry.modelKey.provider}/${entry.modelKey.id}`);
   }
   const agent = await ensureAgent(entry, effModel);
+  // Plan 模式工具级限制：agent 就绪后统一应用一次（覆盖新会话首条 /plan / 模型切换重建后的 agent）
+  if (entry.planPending) {
+    try {
+      agent.setActiveToolsByName(PLAN_READONLY_SET);
+      console.log(`[plan] 工具级限制生效（只读）→ ${PLAN_READONLY_SET.join(", ")}`);
+    } catch (e) { console.log(`[plan] 工具集设置失败: ${String(e?.message || e).slice(0, 80)}`); }
+  }
   // agentModel 由 ensureAgent/createSessionAgent 设置真实值，这里不覆盖
   const sm = entry.sm;
   // 两阶段引导：本次请求是否新会话首轮（首轮锚定后 promote 完整工具集）
   let bootstrapTurn = isFirstTurn(entry.sm) && process.env.PI_TWO_PHASE !== "0";
   const hbTimer = startSseHeartbeat(res); // 心跳保活（公网隧道不因 idle 断开）
   const writer = createSseWriter(res); // 背压控制：慢网络时事件排队等 drain，不丢不堆
+  // Cursor Router 播报：Auto 路由决策对用户透明（取 Cursor 可用性长板，可解释）
+  if (autoRoute && autoRoute.auto && effModel) {
+    const routeBadge = autoRoute.level === "complex" ? "🛰️ 复杂任务" : "⚡ 日常任务";
+    const routeNote = `${routeBadge} · Auto 路由 → ${effModel.id}${autoRoute.reasons?.length ? "（" + autoRoute.reasons.join("/") + "）" : ""}`;
+    writer.push("note", { text: routeNote });
+    console.log(`[router] ${routeNote}`);
+  }
   const taskId = body.taskKey || sessionId || findKeyByEntry(entry) || "new";
   // 事件总线：任务事件同时入总线（多端订阅观看），sessionId 存在时双挂
   const busKeys = [taskId, ...(sessionId && sessionId !== taskId ? [sessionId] : [])];
@@ -4070,7 +4212,8 @@ async function handleChat(req, res, body) {
     try {
       // 两阶段引导 promote：首轮产生首个文本/工具事件 → 恢复完整工具集（下个 turn 生效，零成本）
       // turn_end 兜底：首轮无论是否产生文本/工具事件（纯思考/空回复/报错），结束时也强制 promote，杜绝工具集永久残缺
-      if (bootstrapTurn && (event.type === "message_update" || event.type === "tool_execution_start" || event.type === "turn_end")) {
+      // Plan 模式例外：规划期间保持只读硬限制，不 promote（否则工具级限制被绕过）
+      if (bootstrapTurn && !entry.planPending && (event.type === "message_update" || event.type === "tool_execution_start" || event.type === "turn_end")) {
         try {
           const allNames = agent.getAllTools().map(t => t.name);
           if (allNames.length) {

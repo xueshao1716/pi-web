@@ -50,6 +50,13 @@ async function tryLogin() {
 function populateModels(data) {
   const sel = $("model-select");
   sel.innerHTML = "";
+  // ⚡ Auto（智能路由，Cursor Router 简化版）：服务端按任务复杂度自动选 flash/pro
+  const autoOpt = document.createElement("option");
+  autoOpt.value = "auto/auto";
+  autoOpt.textContent = "⚡ Auto（智能路由）";
+  autoOpt.dataset.provider = "auto";
+  autoOpt.dataset.modelId = "auto";
+  sel.appendChild(autoOpt);
   const groups = {};
   for (const m of modelList) (groups[m.provider] = groups[m.provider] || []).push(m);
   const order = Object.keys(groups).sort((a,b) => {
@@ -69,8 +76,9 @@ function populateModels(data) {
     }
     sel.appendChild(og);
   }
-  // 会话级模型优先：当前会话自己切过模型则显示它，否则用全局默认
-  const cur = (currentId && sessionModels[currentId]) || (data.current ? `${data.current.provider}/${data.current.id}` : "");
+  // 会话级模型优先：当前会话自己切过模型则显示它；否则 Auto 为全局默认（服务端 autoDefault）时选 Auto
+  const saved = (currentId && sessionModels[currentId]);
+  const cur = saved || (data.autoDefault ? "auto/auto" : (data.current ? `${data.current.provider}/${data.current.id}` : "auto/auto"));
   if (cur && [...sel.options].some(o => o.value === cur)) {
     sel.value = cur;
     window.currentModelKey = cur;
@@ -85,7 +93,7 @@ function populateModels(data) {
   setTimeout(() => { suppress = false; }, 300);
   // 同步输入框旁的模型名
   const curOpt = sel.selectedOptions[0];
-  $("input-model-name").textContent = curOpt ? curOpt.dataset.modelId : "…";
+  $("input-model-name").textContent = curOpt ? (curOpt.dataset.modelId === "auto" ? "Auto" : curOpt.dataset.modelId) : "…";
 }
 // 切换模型：当前会话正在生成时先打断（避免 server 静默中断导致无输出）
 async function switchModel(provider, modelId) {
@@ -100,7 +108,7 @@ async function switchModel(provider, modelId) {
     // 新会话（currentId=null）切模型：不更新全局，只记 pending，发送时创建会话并应用
     if (!currentId) {
       window.pendingModel = `${provider}/${modelId}`;
-      $("input-model-name").textContent = modelId;
+      $("input-model-name").textContent = modelId === "auto" ? "Auto" : modelId;
       const data = await api("/api/models");
       modelList = data.models; populateModels(data); updateFooter();
       toast(`新会话将使用 → ${provider}/${modelId}`);
@@ -112,7 +120,7 @@ async function switchModel(provider, modelId) {
       sessionModels[currentId] = `${provider}/${modelId}`;
       try { localStorage.setItem("pi_session_models", JSON.stringify(sessionModels)); } catch {}
     }
-    $("input-model-name").textContent = modelId;
+    $("input-model-name").textContent = modelId === "auto" ? "Auto" : modelId;
     const data = await api("/api/models");
     modelList = data.models; populateModels(data); updateFooter();
     toast(`已切换 → ${provider}/${modelId}`);
