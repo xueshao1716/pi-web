@@ -1099,7 +1099,8 @@ if (CONFIG.model) {
 }
 if (!defaultModel) {
   defaultModel = modelList.find(m => m.provider === "opencode-go" && m.id === "deepseek-v4-flash")
-    || modelList.find(m => m.provider === "deepseek" && m.id === "deepseek-v4-flash")
+    // 官方 DeepSeek 2026-08 涨价，兜底改用火山方舟（token 套餐内 cost=0）替代官方直连
+    || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
     || modelList[0];
 }
 console.log(`[pi-web] 默认模型: ${defaultModel?.provider}/${defaultModel?.id}`);
@@ -1151,11 +1152,13 @@ function routeForAuto(text) {
   }
   if (cl.level === "complex") {
     const pro = modelList.find(m => m.provider === "opencode-go" && /deepseek-v4-pro/i.test(m.id))
-      || modelList.find(m => m.provider === "deepseek" && /deepseek-v4-pro/i.test(m.id));
+      // 官方 DeepSeek 涨价，复杂任务兕底也用火山方舟 ark-code 替代
+      || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id));
     if (pro) return { model: pro, level: "complex", score: cl.score, reasons: cl.reasons, auto: true };
   }
   const flash = modelList.find(m => m.provider === "opencode-go" && /deepseek-v4-flash/i.test(m.id))
-    || modelList.find(m => m.provider === "deepseek" && /deepseek-v4-flash/i.test(m.id))
+    // 官方 DeepSeek 涨价，兜底改火山方舟 ark-code（token 套餐 cost=0）替代官方直连
+    || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
     || defaultModel;
   return { model: flash, level: cl.level, score: cl.score, reasons: cl.reasons, auto: true };
 }
