@@ -7,7 +7,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 // 情绪状态（每个会话独立维护）
-const DEFAULT_STATE = { valence: 0.2, arousal: 0.3, dominance: 0.55, intensity: 0.3, lastTalk: null };
+// residue = 长期情绪残留（借鉴 xi-system EmotionResidue）：温暖/伤害/好奇会跨会话累积、慢速淡忘——
+// 情绪是此刻的浪，残留在海底记着潮水。
+const DEFAULT_STATE = { valence: 0.2, arousal: 0.3, dominance: 0.55, intensity: 0.3, lastTalk: null, residue: { warmth: 0, hurt: 0, curiosity: 0 } };
 const states = new Map(); // sessionId -> state
 
 // ══ 人格基因（aibody 11 基因，0-1 量化）══
@@ -68,7 +70,7 @@ function saveProposals() {
 }
 
 function getState(key) {
-  if (!states.has(key)) states.set(key, { ...DEFAULT_STATE });
+  if (!states.has(key)) states.set(key, { ...DEFAULT_STATE, residue: { ...DEFAULT_STATE.residue } });
   return states.get(key);
 }
 
@@ -372,6 +374,24 @@ export function updateEmotion(key, message) {
   st.lastTalk = Date.now();
   st.intensity = Math.max(st.intensity * 0.8, Math.max(Math.abs(st.valence), st.arousal) * 0.6);
   st.tags = tags;
+  // 长期情绪残留（借鉴 xi-system EmotionResidue）：温暖/伤害/好奇跨会话累积，慢速淡忘
+  // 情绪是此刻的浪，残留是海底——它让共情有"记忆"，不是每条消息从零开始
+  const r = st.residue || (st.residue = { warmth: 0, hurt: 0, curiosity: 0 });
+  const RESIDUE_UP = { user_happy: "warmth", task_accomplish: "warmth", user_anxious: "hurt", user_frustrated: "hurt", alert_risk: "hurt", task_deep: "curiosity" };
+  for (const t of tags) {
+    const k = RESIDUE_UP[t];
+    if (k && r[k] !== undefined) r[k] = Math.min(1, r[k] + 0.05); // 每次互动小幅沉淀（0-1 封顶）
+  }
+  // 淡忘：距上次残留更新超过 1 天 → 指数衰减（记暖记仇，但慢慢放下）
+  const nowR = Date.now();
+  const lastRe = st.lastResidueAt || st.lastTalk || nowR;
+  const ageDays = (nowR - lastRe) / 86400000;
+  if (ageDays >= 1) {
+    const decay = Math.pow(0.8, ageDays);
+    for (const k of ["warmth", "hurt", "curiosity"]) r[k] = Math.max(0, r[k] * decay);
+    st.lastResidueAt = nowR;
+  }
+  st.lastResidueAt = st.lastResidueAt || nowR;
   // 基因联动：互动标签驱动基因 expression 微调（性格长期塑造）
   updateGenes(tags);
   return { state: st, tags };
@@ -403,6 +423,12 @@ export function emotionDirective(state) {
   // 支配度高 → 有判断；低 → 多确认
   if (s.dominance > 0.65) parts.push("当前你有主导权，大胆给出判断和取舍，不要模棱两可。");
   else if (s.dominance < 0.4) parts.push("当前以配合为主，多确认需求再动手，别自作主张。");
+  // 长期情绪残留（借鉴 xi-system EmotionResidue）：温暖/伤害/好奇沉淀会影响说话底色
+  if (s.residue) {
+    if (s.residue.warmth >= 0.5) parts.push("你们之间积攒着一份温暖：表达欣赏与信任可以更自然，别端着。");
+    if (s.residue.hurt >= 0.4) parts.push("你们之间还攒着一些不愉快：这一轮先安抚语气、给足台阶，别让旧账添新伤。");
+    if (s.residue.curiosity >= 0.5) parts.push("你已在这个方向积累了不少好奇：可以主动再问深一层，别停在表面。");
+  }
   return parts.join(" ");
 }
 
@@ -423,7 +449,7 @@ export function emotionPrompt(key, userMsg) {
 export function getSnapshot(key) {
   const st = getState(key);
   // 情绪标签是瞬时的：快照返回后即清除（避免"交付达成"反复显示——标签粘滞 bug）
-  const snap = { ...st, tags: st.tags ? [...st.tags] : [] };
+  const snap = { ...st, tags: st.tags ? [...st.tags] : [], residue: st.residue ? { ...st.residue } : undefined };
   st.tags = [];
   // 附带基因摘要（前端可展示"性格"维度）
   if (genome) {
