@@ -572,6 +572,7 @@ function handleSubEvent(sid, ev) {
     case "file": if (d.path) addFileMsg(d, "assistant"); break;
     case "image": if (d.url || d.path) addImageMsg ? addImageMsg(d, "assistant") : 0; break;
     case "note": appendDelta("\n" + (d.text || "")); break;
+    case "emotion": if (d.state) applyEmotionNow(d.state); break;
   }
 }
 
@@ -1321,13 +1322,13 @@ function emoMeta(s) {
   if (a >= 0.45 && v < 0.3) return { emoji: "🤨", label: "有压力", cls: "low" };
   return { emoji: "🧘", label: "专注", cls: "focus" };
 }
-async function refreshEmotion() {
+// SSE 实时情绪推送：服务端每轮结束推送 emotion 快照，前端直接应用（无需再调 API）
+function applyEmotionNow(s) {
   try {
-    const s = await api("/api/emotion?session=" + encodeURIComponent(currentId || "new"));
-    const m = emoMeta(s);
-    window.emoState = { state: s, meta: m }; // 供右下角虚拟形象驱动表情
-    $("emo-ico").textContent = m.emoji;
-    // 悬停提示：情绪 + 人格基因摘要（性格维度）
+    const m = emoMeta(s || {});
+    window.emoState = { state: s, meta: m };
+    const ico = $("emo-ico");
+    if (ico) ico.textContent = m.emoji;
     let title = "小语情绪：" + m.label;
     if (s.genome) {
       const g = s.genome;
@@ -1335,12 +1336,20 @@ async function refreshEmotion() {
       const names = { gentleness: "温柔", initiative: "主动", curiosity: "好奇", attachment: "依恋", learning: "好学", creativity: "创造", caution: "谨慎", humor: "幽默", loyalty: "忠诚", autonomy_bias: "自主", adaptability: "适应" };
       title += "\n性格：" + top.map(([k, v]) => `${names[k] || k} ${Math.round(v * 100)}%`).join(" · ");
     }
-    $("emo-pill").title = title;
     const pill = $("emo-pill");
-    if (pill.dataset.emo !== m.cls) {
-      pill.dataset.emo = m.cls;
-      pill.classList.remove("pop"); void pill.offsetWidth; pill.classList.add("pop");
+    if (pill) {
+      pill.title = title;
+      if (pill.dataset.emo !== m.cls) {
+        pill.dataset.emo = m.cls;
+        pill.classList.remove("pop"); void pill.offsetWidth; pill.classList.add("pop");
+      }
     }
+  } catch {}
+}
+async function refreshEmotion() {
+  try {
+    const s = await api("/api/emotion?session=" + encodeURIComponent(currentId || "new"));
+    applyEmotionNow(s);
   } catch {}
 }
 
@@ -1549,6 +1558,7 @@ async function send() {
             }
             break;
           case "note": onNote(key, obj.text || ""); break;
+          case "emotion": if (obj.state) applyEmotionNow(obj.state); break;
           case "done":
             if (obj.sessionId && key.startsWith("__new__")) {
               streams.set(obj.sessionId, st);

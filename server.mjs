@@ -2192,26 +2192,6 @@ const staticServer = createStaticServer({ publicDir: PUBLIC_DIR, mime: MIME });
 async function handleStatic(req, res) {
   return staticServer.handle(req, res);
 }
-  let p = new URL(req.url, "http://localhost").pathname;
-  if (p === "/") p = "/index.html";
-  const file = path.join(PUBLIC_DIR, path.normalize(p).replace(/^([/\\])+/, ""));
-  if (!file.startsWith(PUBLIC_DIR)) { res.writeHead(403); res.end("forbidden"); return; }
-  try {
-    const data = await fs.promises.readFile(file);
-    const st = await fs.promises.stat(file);
-    const headers = {
-      "Content-Type": MIME[path.extname(file)] || "application/octet-stream",
-      "Cache-Control": "no-cache, max-age=0",
-      "Last-Modified": st.mtime.toUTCString(),
-    };
-    // service worker 需要覆盖根路径 scope
-    if (p === "/sw.js") headers["Service-Worker-Allowed"] = "/";
-    res.writeHead(200, headers);
-    res.end(data);
-  } catch {
-    res.writeHead(404); res.end("not found");
-  }
-}
 
 function json(res, code, obj) {
   res.writeHead(code, { "Content-Type": "application/json" });
@@ -4250,6 +4230,12 @@ async function handleChat(req, res, body) {
       } else if (event.type === "turn_end") {
         writer.push("turn_end", {});
         busEmit("turn_end", {});
+        // 情绪实时推送：每轮结束把最新情绪快照推给前端（emo 指示器实时跳动，不再是只发/收时更新）
+        try {
+          const esKey = sessionId || findKeyByEntry(entry) || "new";
+          const es = emotion.getSnapshot(esKey);
+          if (es) { writer.push("emotion", { state: es }); busEmit("emotion", { state: es }); }
+        } catch {}
       } else if (event.type === "auto_retry_start") {
         writer.push("note", { text: `⚠️ 自动重试中（第 ${event.attempt} 次）：${event.errorMessage}` });
         busEmit("note", { text: `⚠️ 自动重试中（第 ${event.attempt} 次）：${event.errorMessage}` });

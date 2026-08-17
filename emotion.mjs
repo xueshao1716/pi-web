@@ -364,8 +364,11 @@ export function updateEmotion(key, message) {
   }
   // 温和回归：每次对话后朝默认值小幅回归（修复"低落粘滞"——极端值不再长期卡住显示）
   // 仅回归，不回推；单条线索的瞬时刺激仍保留在当次交互内
-  st.valence = lerp(st.valence, DEFAULT_STATE.valence, 0.12);
-  st.arousal = lerp(st.arousal, DEFAULT_STATE.arousal, 0.12);
+  // 2026-08-17 调优：回归系数 0.12→0.06——原值让情绪 3-4 轮内几乎归零，普通对话（无线索词）看不出梯度；
+  // 改小后情绪有"记忆残留"，多轮正向/负向反馈能累积出可见变化（配合 SSE 实时推送，emo 指示器更活）
+  st.valence = lerp(st.valence, DEFAULT_STATE.valence, 0.06);
+  st.arousal = lerp(st.arousal, DEFAULT_STATE.arousal, 0.06);
+  if (st.dominance !== DEFAULT_STATE.dominance) st.dominance = lerp(st.dominance, DEFAULT_STATE.dominance, 0.05);
   st.lastTalk = Date.now();
   st.intensity = Math.max(st.intensity * 0.8, Math.max(Math.abs(st.valence), st.arousal) * 0.6);
   st.tags = tags;
