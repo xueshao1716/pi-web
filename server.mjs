@@ -3974,6 +3974,25 @@ async function handleChat(req, res, body) {
     }
   }
 
+  // Plan Mode（Claude Code 借鉴，v1 指令级）：/plan <需求> → 只读调研+输出分步计划；/plan accept|cancel → 批准/取消
+  // v1 用系统指令强制只读（模型自觉）；后续可升级为工具级硬限制（setActiveToolsByName 只读集）
+  const planCmd = typeof message === "string" && message.trim().match(/^\/plan(?:\s+(accept|cancel|execute)\b)?\s*(.*)$/i);
+  if (planCmd) {
+    const pAct = (planCmd[1] || "").toLowerCase();
+    const pRest = (planCmd[2] || "").trim();
+    if (!pAct) {
+      if (!pRest) return json(res, 400, { error: "/plan 用法：/plan <需求> 进入规划模式；/plan accept 批准执行；/plan cancel 取消" });
+      entry.planPending = true;
+      message = `【规划模式】请先只读调研（可以读取/搜索文件，严禁修改/创建/删除任何文件，严禁执行写入类命令与测试命令），然后输出一份分步实施计划：目标 / 实施步骤 / 涉及文件 / 风险点。计划用编号列表清晰输出，最后询问用户是否批准。\n\n需求：${pRest}`;
+    } else if (pAct === "accept" || pAct === "execute") {
+      entry.planPending = false;
+      message = "【批准规划】用户已批准你上一步输出的计划。请现在按计划开始执行（可以正常读写文件、运行命令）。";
+    } else {
+      entry.planPending = false;
+      return json(res, 200, { plan: "cancelled" });
+    }
+  }
+
   // 绘图模型（id 含 image）→ 走图像生成接口（在写 SSE headers 之前处理）
   if (defaultModel && /image/i.test(defaultModel.id)) {
     try {
