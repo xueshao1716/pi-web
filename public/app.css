@@ -438,6 +438,15 @@
     font-size: 13px; padding: 0 2px; line-height: 1;
   }
   .theme-more:hover { color: var(--accent); }
+  /* 深色/浅色一键切换按钮（与色板同行） */
+  .theme-toggle {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 6px; padding: 1px 5px; cursor: pointer;
+    font-size: 12px; line-height: 1.6; color: var(--dim); flex-shrink: 0;
+    transition: border-color .12s, transform .12s, background .12s;
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); transform: scale(1.1); }
+  .theme-toggle:active { transform: scale(.94); }
   .sf-label {
     font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase;
     color: var(--dim-2); font-weight: 700; margin: 2px 2px 0;

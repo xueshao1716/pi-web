@@ -121,12 +121,12 @@ html[data-theme="neu"] .new-session {
   transition: transform .12s ease, box-shadow .12s ease;
 }
 html[data-theme="neu"] .new-session:active { transform: scale(.98); box-shadow: var(--neu-in); }
-html[data-theme="neu"] .tool-btn, html[data-theme="neu"] .menu-btn, html[data-theme="neu"] .ft-refresh, html[data-theme="neu"] .theme-more, html[data-theme="neu"] .theme-edit-btn {
+html[data-theme="neu"] .tool-btn, html[data-theme="neu"] .menu-btn, html[data-theme="neu"] .ft-refresh, html[data-theme="neu"] .theme-more, html[data-theme="neu"] .theme-edit-btn, html[data-theme="neu"] .theme-toggle {
   background: #e4e9f0;
   border: none;
   box-shadow: var(--neu-in-sm);
 }
-html[data-theme="neu"] .tool-btn:hover, html[data-theme="neu"] .menu-btn:hover, html[data-theme="neu"] .ft-refresh:hover { background: #e9eef5; }
+html[data-theme="neu"] .tool-btn:hover, html[data-theme="neu"] .menu-btn:hover, html[data-theme="neu"] .ft-refresh:hover, html[data-theme="neu"] .theme-toggle:hover { background: #e9eef5; }
 
 /* ── 欢迎区 logo ── */
 html[data-theme="neu"] .welcome .w-logo {

@@ -339,6 +339,30 @@ try {
 
 let currentTheme = localStorage.getItem("pi_theme") || "neu";
 if (!THEMES[currentTheme] && !THEMES_CODEX[currentTheme] && !currentTheme.startsWith("custom:")) currentTheme = "neu";
+
+// ── 深色/浅色一键切换："明暗槽位"记录各自侧最近选的主题 ──
+// 点切换按钮 = 在当前明暗侧与另一侧槽位主题之间往返；手动选主题自动更新所属槽位。
+const DARK_DEFAULT = "quantum", LIGHT_DEFAULT = "neu";
+function isThemeKeyValid(key) {
+  return !!key && (!!THEMES[key] || !!THEMES_CODEX[key] || (key.startsWith("custom:") && !!customThemes[key.slice(7)]));
+}
+function hexLuminance(hex) {
+  const m = /^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/.exec(hex || "");
+  if (!m) return 1; // 非法值按浅色处理（安全侧）
+  const [r, g, b] = m.slice(1).map(h => parseInt(h, 16) / 255);
+  return 0.2126 * (r <= 0.03928 ? r / 12.92 : Math.pow((r + 0.055) / 1.055, 2.4))
+       + 0.7152 * (g <= 0.03928 ? g / 12.92 : Math.pow((g + 0.055) / 1.055, 2.4))
+       + 0.0722 * (b <= 0.03928 ? b / 12.92 : Math.pow((b + 0.055) / 1.055, 2.4));
+}
+function isLightTheme(key) { return hexLuminance(getThemeVars(key).bg) > 0.3; }
+let darkSlot = localStorage.getItem("pi_theme_dark") || DARK_DEFAULT;
+let lightSlot = localStorage.getItem("pi_theme_light") || LIGHT_DEFAULT;
+if (!isThemeKeyValid(darkSlot)) darkSlot = DARK_DEFAULT;
+if (!isThemeKeyValid(lightSlot)) lightSlot = LIGHT_DEFAULT;
+// 首次使用（无槽位记录）时用当前主题补位，保证第一下切换就能往返
+if (!localStorage.getItem("pi_theme_dark") && !isLightTheme(currentTheme)) darkSlot = currentTheme;
+if (!localStorage.getItem("pi_theme_light") && isLightTheme(currentTheme)) lightSlot = currentTheme;
+
 let editVars = null;   // 编辑器当前编辑的变量组
 let editDirty = false; // 是否有未保存修改
 
@@ -356,9 +380,15 @@ function applyTheme(key, save = true) {
   currentTheme = key;
   applyVars(getThemeVars(key));
   document.documentElement.dataset.theme = key; // 组件级主题覆盖层的挂载点（quantum.css）
-  if (save) localStorage.setItem("pi_theme", key);
+  if (save) {
+    localStorage.setItem("pi_theme", key);
+    // 手动选主题时同步更新所属明暗槽位（下次一键切换回到这一侧时恢复该主题）
+    if (isLightTheme(key)) { lightSlot = key; localStorage.setItem("pi_theme_light", key); }
+    else { darkSlot = key; localStorage.setItem("pi_theme_dark", key); }
+  }
   renderSwatches();
   syncEditor();
+  syncToggleBtn();
   toast(`已应用主题：${getThemeLabel(key)}`);
 }
 function getThemeLabel(key) {
@@ -581,7 +611,24 @@ $("te-reset").addEventListener("click", () => {
   toast("已重置为默认紫罗兰主题");
 });
 
+// ── 深色/浅色一键切换按钮 ──
+function syncToggleBtn() {
+  const el = $("theme-toggle");
+  if (!el) return;
+  const nowLight = isLightTheme(currentTheme);
+  el.textContent = nowLight ? "🌙" : "☀️"; // 显示"点击后将切换到的模式"
+  el.title = nowLight ? "切换到深色主题" : "切换到浅色主题";
+}
+function toggleDarkLight() {
+  const nowLight = isLightTheme(currentTheme);
+  const target = nowLight ? darkSlot : lightSlot;
+  // 兜底：目标槽与当前相同（极端情况），改切同侧默认
+  applyTheme(target === currentTheme ? (nowLight ? DARK_DEFAULT : LIGHT_DEFAULT) : target);
+}
+$("theme-toggle").addEventListener("click", toggleDarkLight);
+
 renderSwatches();
 applyTheme(currentTheme, false);
 renderThemeLists();
+syncToggleBtn();
 
