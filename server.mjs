@@ -29,6 +29,8 @@ import { createTimeEngine } from "./engine/time-engine.mjs";
 const memoryApi = await import("./memory.mjs");
 const emotion = await import("./emotion.mjs");
 emotion.init(CONFIG.cwd); // 基因系统：加载人格基因 + 提案池
+// 隔离子任务执行器（P2）：注入模型适配依赖（复用系统代理栈）
+const subagent = await import("./engine/subagent.mjs");
 const workshop = await import("./workshop.mjs");
 const { WORKSHOP_PAGES } = workshop;
 
@@ -1175,6 +1177,23 @@ async function httpJsonFetch(url, options = {}) {
 }
 
 const CRLF = "\r\n";
+
+// ── 隔离子任务执行器初始化（P2）──
+// 复用系统代理栈 + 模型配置；flash 候选走千问（成本优先，子任务不值得 pro）
+try {
+  subagent.initSubagent({
+    httpFetch: httpJsonFetch,
+    authReader: () => readJsonFile(AUTH_PATH),
+    modelReader: () => readJsonFile(MODELS_PATH),
+    resolveAuth,
+    getDefaultModel: () => defaultModel,
+    getFlashModel: () => modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
+      || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
+      || defaultModel,
+  });
+} catch (e) { console.log("[pi-web] subagent 初始化失败: " + String(e?.message || e).slice(0, 80)); }
+// P3 资产路由：技能库摘要索引注入（任务→技能自动匹配）
+try { emotion.bindSkillIndex(() => loadSkillIndex()); } catch {}
 
 // 模型能力档案：根据 id 推断（chat 默认 + image/video/tts/asr 标记）
 function modelCapabilities(id) {
@@ -5329,6 +5348,15 @@ const API_ROUTES = [
     const domain = b?.domain || emotion.detectSkillDomain(b?.text || "");
     const updated = emotion.updateSkillGene(domain, { success: b?.success, efficiency: b?.efficiency, reliability: b?.reliability, adaptability: b?.adaptability });
     json(res, 200, { ok: true, domain, genes: updated });
+  }],
+  // ── P3 资产路由：任务 → 技能自动匹配 ──
+  ["GET", "/api/skill-router", (res, req, url) => json(res, 200, { skills: emotion.routerSkill(url.searchParams.get("text") || "", 3) })],
+  // ── P2 隔离子任务执行器（多 agent）──
+  ["POST", "/api/subagent", async (res, req) => {
+    const b = await readBody(req);
+    if (!b?.task) return json(res, 400, { error: "缺 task 参数" });
+    const r = await subagent.spawnSubagent({ task: b.task, context: b.context || [] });
+    json(res, 200, r);
   }],
   ["GET", /^\/api\/sessions\/([^/]+)\/tree$/, (res, req, url, m) => handleSessionTree(res, decodeURIComponent(m[1]))],
   ["POST", /^\/api\/sessions\/([^/]+)\/branch$/, async (res, req, url, m) => handleSessionBranch(res, decodeURIComponent(m[1]), await readBody(req))],
