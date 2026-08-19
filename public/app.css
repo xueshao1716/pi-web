@@ -1120,6 +1120,15 @@
     background: var(--bg);
     opacity: var(--wallpaper-dim, 0);
   }
+  /* 浅色主题：bg 色压暗层会蒙灰（12% 浅灰全屏），浅色下无意义——关掉，壁纸本身保留 */
+  html[data-theme="apple"] body::after,
+  html[data-theme="neu"] body::after { opacity: 0 !important; }
+  /* 浅色主题：壁纸降透明降模糊，别抢内容（仍可见壁纸氛围） */
+  html[data-theme="apple"] body.has-wallpaper::before,
+  html[data-theme="neu"] body.has-wallpaper::before {
+    opacity: calc(var(--wallpaper-opacity, .55) * .5) !important;
+    filter: blur(12px) !important;
+  }
   #sidebar, .main-top, #messages, #inputbar { position: relative; z-index: 1; }
   .menu-btn {
     display: flex; align-items: center;
