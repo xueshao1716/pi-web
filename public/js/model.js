@@ -107,10 +107,16 @@ $("fr-save")?.addEventListener("click", async () => {
     if (btn) { btn.disabled = false; btn.textContent = "保存配置"; }
   }
 });
-// 首启引导：服务商下拉联动（自定义显示 Base URL 行 + 提示更新）
+// 首启引导：服务商下拉联动（自定义显示 Base URL 行 + 提示更新 + dsh 同步默认仅 deepseek 系）
+const DSHSYNC_PROVIDERS = new Set(["deepseek", "opencode-go", "moonshotai", "xiaomi-token-plan-cn"]);
+function syncDshDefault(v) {
+  const t = $("fr-todsh");
+  if (t && v !== "__custom__") { t.checked = DSHSYNC_PROVIDERS.has(v); }
+}
 $("fr-provider")?.addEventListener("change", () => {
   const v = $("fr-provider").value;
   if ($("fr-custom-row")) $("fr-custom-row").hidden = v !== "__custom__";
+  syncDshDefault(v);
   const hint = $("fr-key-hint");
   if (!hint) return;
   const names = { deepseek: "DeepSeek", openai: "OpenAI", openrouter: "OpenRouter", qwen: "阿里云百炼", moonshotai: "Moonshot", zai: "智谱", "volces-ark": "火山方舟", xai: "xAI", mistral: "Mistral", sensenova: "商汤", modelscope: "魔搭" };

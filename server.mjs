@@ -1895,6 +1895,17 @@ async function handleKeysApply(res, body) {
       }
       if (!probe.ok) return json(res, 502, { error: `API 探测失败（HTTP ${probe.status}），未写入配置` });
       models = await runtime.getAvailable(provider).catch(() => null);
+      // ⚠️ 新装场景：store 尚无该 provider 模型定义时 getAvailable 返回空 → 用刚探测到的 /models 响应兜底建模型，杜绝"未发现可用模型"引导死路
+      if (!models || !models.length) {
+        try {
+          const pj = await probe.json();
+          models = (pj?.data || []).map(mm => ({ id: mm.id, name: mm.id || mm.id, input: ["text"], contextWindow: 128000 }))
+            .filter(mm => typeof mm.id === "string" && mm.id.trim());
+        } catch {}
+        if (!models || !models.length) {
+          try { models = await discoverCustomModels(base, apiKey); } catch { models = null; }
+        }
+      }
     } catch (e) {
       console.log(`[pi-web] keys/apply 探测失败: ${provider} → ${String(e?.message || e).slice(0, 120)}`);
       return json(res, 500, { error: `探测异常：${String(e?.message || e).slice(0, 120)}` });
