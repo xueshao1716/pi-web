@@ -17,6 +17,8 @@ import { shrinkToolResult, NEEDS_PRO_RE, scavengeToolCalls } from "./engine/reas
 // ── 会话解析纯函数（拆模块）：消息/文本/图片/文件提取 ──
 import { extractMessages, extractText, extractImages, extractFiles } from "./engine/session-utils.mjs";
 
+// ── 模型路由层（拆模块）：429 降级 / 复杂度分类 / Auto 路由 / pro 候选 ──
+import { initModelRouter, isOcGoBlocked, markOcGoBlocked, ocGoCandidate, pickFallbackDefault, isAutoModel, routeForAuto, routeProCandidate, ROUTER_AUTO } from "./engine/model-router.mjs";
 import { CONFIG } from "./config.mjs";
 // ── Gateway 2.0 插件化引擎 + Code Mode（dsh 设计沉淀）──
 import { createGateway } from "./engine/gateway.mjs";
@@ -1056,38 +1058,17 @@ if (!defaultModel) {
 console.log(`[pi-web] 默认模型: ${defaultModel?.provider}/${defaultModel?.id}`);
 console.log(`[pi-web] 可用模型: ${modelList.length} 个（含 ${Object.keys(readJsonFile(MODELS_PATH)).join(", ")}）`);
 
+// 模型路由层依赖注入（engine/model-router.mjs）：getter 动态读取，避免值拷贝 stale
+initModelRouter({ getModelList: () => modelList, getDefaultModel: () => defaultModel, configModel: CONFIG.model });
+
 // ══ Cursor Router 简化版（2026-08-17，对标 Cursor Router Auto / Windsurf Adaptive）══
 // 理念：默认 Auto 路由——规则分类器按任务复杂度选模型：简单→flash（日常主力），复杂→pro（强推理，带上限）。
 // 策略保守：flash vs pro 实测（2026-08-13）——pro 慢 2.4-7×、贵 3×、过度思考烧 token、偶发篡改数据，
 // 所以 99% 的日常任务走 flash；只有明确复杂任务（长任务/多步骤/深度分析/代码库级）才升级 pro。
 // 用户手动选择具体模型 → 不干预（与 Cursor "手动覆盖 Auto" 同构）。环境变量 PI_AUTO_ROUTE=0 可关闭。
-// ══ opencode-go 429 自动降级（2026-08-19 修复 B）════
-// 现象：opencode-go 周额度耗尽（GoUsageLimitError 429）时，默认/Auto 路由仍优先 opencode-go → 持续 429。
-// 修复：探测到 429 后 30 分钟内 Auto 路由/默认选择/图像兕底自动避开 opencode-go，落到实测可用通道，定期重探恢复。
-// ⚠️ 2026-08-19 实测修正：deepseek 官方 flash 在 agent 管线不调工具/无思考流（ls 任务纯文本教命令）；
-//    火山方舟 ark-code thinking 模式空回复。两者都不作首选降级——用小米 mimo-v2.5（实测思考+工具全通）。
-let ocGoBlockedUntil = 0;
-const OCGO_BLOCK_MS = 30 * 60 * 1000;
-function isOcGoBlocked() { return Date.now() < ocGoBlockedUntil; }
-function markOcGoBlocked(detail) {
-  if (Date.now() < ocGoBlockedUntil) return; // 已标记，不重复刷日志
-  ocGoBlockedUntil = Date.now() + OCGO_BLOCK_MS;
-  console.log(`[pi-web] ⛔ opencode-go 429 → 标记不可用 ${OCGO_BLOCK_MS/60000} 分钟（${String(detail||"").slice(0,60)}）`);
-}
-// opencode-go 候选（blocked 期间返回 undefined，让路由落到下一顺位）
-function ocGoCandidate(re) { return isOcGoBlocked() ? undefined : modelList.find(m => m.provider === "opencode-go" && re.test(m.id)); }
-// defaultModel 兕底（blocked 且 defaultModel 恰为 opencode-go 时换可用通道）
-// ⚠️ 成本策略（2026-08-19 用户定）：deepseek 官方直连涨价贵，日常不用——降级链全部走 token 计划免费通道
-// 实测可用性：小米 mimo-v2.5 思考+工具全通；阿里 qwen3.8-max；商汤/NVIDIA 免费待验证；ark-code thinking 空回复（末位）
-function pickFallbackDefault() {
-  if (defaultModel && !(defaultModel.provider === "opencode-go" && isOcGoBlocked())) return defaultModel;
-  return modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
-    || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
-    || modelList.find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id))
-    || modelList.find(m => m.provider === "nvidia" && /gemma-3-12b/i.test(m.id))
-    || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
-    || defaultModel;
-}
+// ⚠️ 实现已拆到 engine/model-router.mjs（2026-08-19）：
+//   pro/flash 同源问题修正——千问只作 flash 主力，pro = ocGo deepseek-v4-pro → mimo-pro → ark；
+//   ocGo 429 期间 pro 无可用 → 回落 flash 并播报真实原因（不假装升级）。
 
 // ══ 复读检测与降级重试（2026-08-19 加固）══
 // 判定逻辑已迁移到 engine/output-guard.mjs（输出质量守卫，纯判定模块）：
@@ -1131,71 +1112,8 @@ function saveLastModel(mk) {
 }
 let lastModelKey = (() => { try { const d = readJsonFile(LAST_MODEL_FILE); return d?.provider && d?.id ? { provider: d.provider, id: d.id } : null; } catch { return null; } })();
 
-const ROUTER_AUTO = { provider: "auto", id: "auto" };
 // Plan 模式只读工具集（工具级硬限制）：读文件 + 搜索，不给写/执行工具
 const PLAN_READONLY_SET = ["read", "search_files"];
-function isAutoModel(m) { return !!m && (m.provider === "auto" || m.id === "auto" || m.id === "auto-smart"); }
-// 复杂/简单任务关键词表（可扩展；命中均带权重，取累计分与阈值比较）
-const ROUTER_COMPLEX_PATTERNS = [
-  { w: 2, re: /(重构|重写|架构|设计方案?|系统设计|代码库级|跨模块|多文件|多个文件|整个项目|从零(搭建|实现|开发))/i, label: "代码库级" },
-  { w: 2, re: /(单元测试|集成测试|测试用例|调试|排错|性能优化|安全审查|代码审查|评审)/i, label: "测试/审查" },
-  { w: 2, re: /(迁移|升级改造|协议|算法|并发|分布式|高可用|缓存策略)/i, label: "深度技术" },
-  { w: 1, re: /(实现|开发|编写|构建|搭建|部署|集成|对接)/i, label: "开发" },
-  { w: 1, re: /(分析|设计|规划|评估|调研|研究|梳理|总结)/i, label: "分析" },
-  { w: 1, re: /(请逐步|一步一步|分步骤|详细说明|深入研究)/i, label: "要求细致" },
-  { w: 1, re: /```[\s\S]{200,}```/, label: "大段代码" } // 大段代码块 = 编码任务
-];
-const ROUTER_SIMPLE_PATTERNS = [
-  { w: 2, re: /^(你好|hi|hello|在吗|早|晚上好|嗨|谢谢|感谢|再见|拜拜)/i, label: "问候" },
-  { w: 1, re: /(闲聊|随便聊聊|讲个笑话|笑话|天气|几点|现在几点|周末)/i, label: "闲聊" },
-  { w: 1, re: /^(解释|介绍一下|什么是|什么叫|能不能|请问|翻译|帮我算)/, label: "轻问答" },
-  { w: 1, re: /^.{0,30}$/, label: "短消息" } // 极短消息按简单处理（修饰词少，多为闲聊/快问快答）
-];
-// 任务复杂度分类（规则评分，可解释、零成本、可调阈值）
-function classifyTaskComplexity(text) {
-  const t = String(text || "").trim();
-  let score = 0; const reasons = [];
-  if (t.length > 400) { score += 3; reasons.push("长任务"); }
-  else if (t.length > 150) { score += 1; reasons.push("较长"); }
-  for (const p of ROUTER_COMPLEX_PATTERNS) { if (p.re.test(t)) { score += p.w; reasons.push(p.label || p.re.source.slice(0, 18)); } }
-  for (const p of ROUTER_SIMPLE_PATTERNS) { if (p.re.test(t)) { score -= p.w; reasons.push("-" + (p.label || p.re.source.slice(0, 12))); } }
-  const complex = score >= 3;
-  return { level: complex ? "complex" : "simple", score, reasons: reasons.slice(0, 5) };
-}
-// Auto 路由：按复杂度选 flash/pro（都带 max_tokens 上限；pro 升级仅在明确复杂且存在 pro 模型时）
-// 若显式配置了 CONFIG.model（管理员指定默认模型）→ 不用 Auto，直接用该默认模型
-function routeForAuto(text) {
-  if (CONFIG.model) return { model: defaultModel, level: "simple", score: 0, reasons: ["显式默认模型"], auto: false };
-  const cl = classifyTaskComplexity(text);
-  if (process.env.PI_AUTO_ROUTE === "0") {
-    return { model: defaultModel, level: "simple", score: 0, reasons: ["已关闭(PI_AUTO_ROUTE=0)"], auto: false };
-  }
-  if (cl.level === "complex") {
-    // 2026-08-19 用户定：后端统一千问优先（免费 token 计划）；ocGo 429 降为备选
-    const pro = modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
-      || ocGoCandidate(/deepseek-v4-pro/i)
-      || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5-pro/i.test(m.id))
-      // 火山方舟 ark-code：cost=0，但 thinking 模式空回复（末位兜底）
-      || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id));
-    if (pro) return { model: pro, level: "complex", score: cl.score, reasons: cl.reasons, auto: true };
-  }
-  // 2026-08-19 用户定：后端统一千问优先；⚠️ deepseek 官方涨价贵不走；ocGo 429 降为备选
-  const flash = modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
-    || ocGoCandidate(/deepseek-v4-flash/i)
-    || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
-    || modelList.find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id))
-    || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
-    || pickFallbackDefault();
-  return { model: flash, level: cl.level, score: cl.score, reasons: cl.reasons, auto: true };
-}
-// pro 候选（NEEDS_PRO 自报升级用，与 routeForAuto complex 分支同源）：千问 → ocGo pro → mimo-pro → ark
-function routeProCandidate() {
-  return modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
-    || ocGoCandidate(/deepseek-v4-pro/i)
-    || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5-pro/i.test(m.id))
-    || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id));
-}
-
 const SUPPORTED_PROVIDERS = ["deepseek", "openai", "openrouter", "anthropic", "google", "qwen", "xai", "moonshotai", "zai", "together", "mistral", "modelscope", "cloudflare-ai"];
 
 function readJsonFile(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return {}; } }
