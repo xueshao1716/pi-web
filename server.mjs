@@ -10,6 +10,9 @@ import { execFile, execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 
+// ── 输出质量守卫（Output Guard）：模型不可靠是默认假设（借鉴 dsh repeat-tool-reminder）──
+import { bindOutputGuardDeps, classifyAnomaly, isRepeatReply, normReply, recordReply } from "./engine/output-guard.mjs";
+
 import { CONFIG } from "./config.mjs";
 // ── Gateway 2.0 插件化引擎 + Code Mode（dsh 设计沉淀）──
 import { createGateway } from "./engine/gateway.mjs";
@@ -1054,6 +1057,9 @@ function readEntriesFromFile(file) {
   return lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
 }
 
+// 输出质量守卫依赖注入（engine/output-guard.mjs 需要读会话文件做复读基准恢复）
+try { bindOutputGuardDeps({ readEntriesFromFile, extractText }); } catch {}
+
 // ── 模型管理（前端手动添加 API + 测试识别）────────────────────────
 const AGENT_DIR = getAgentDir();
 const AUTH_PATH = path.join(AGENT_DIR, "auth.json");
@@ -1130,35 +1136,8 @@ function pickFallbackDefault() {
 }
 
 // ══ 复读检测与降级重试（2026-08-19 加固）══
-// 现象：qwen3.8-max 等推理模型在 thinking=high + 长上下文时偶发 repetition loop——
-//   连续多次独立调用生成字节级相同的回复，甚至编造未执行的操作（无 toolCall 却说"已沉淀"）。
-// 加固：会话级记录上次完整回复 → 本次相同则判定复读 → 自动换 fallback 模型重试一次并播报。
-const lastReplyMap = new Map(); // sessionKey → 归一化后的上次回复
-function normReply(s) { return String(s || "").replace(/\s+/g, "").replace(/[。．.!！?？]+$/, "").slice(0, 2000); }
-// 基准获取：内存 Map 优先（快），miss 时读会话文件最后一条 assistant 回复（服务重启后也能防首条复读）
-function lastReplyOf(sessionKey, sessionFile) {
-  const mem = lastReplyMap.get(sessionKey);
-  if (mem) return mem;
-  if (!sessionFile || !fs.existsSync(sessionFile)) return null;
-  try {
-    const entries = readEntriesFromFile(sessionFile);
-    for (let i = entries.length - 1; i >= 0; i--) {
-      const e = entries[i];
-      if (e?.type === "message" && e?.message?.role === "assistant") {
-        const t = extractText(e.message.content) || "";
-        const n = normReply(t);
-        if (n.length >= 30) return n;
-      }
-    }
-  } catch {}
-  return null;
-}
-function isRepeatReply(sessionKey, text, sessionFile) {
-  if (!text || normReply(text).length < 30) return false;
-  const last = lastReplyOf(sessionKey, sessionFile);
-  return !!last && last === normReply(text);
-}
-// 复读 → 用备用模型重新直调一次，结果以 note + delta 追加推送
+// 判定逻辑已迁移到 engine/output-guard.mjs（输出质量守卫，纯判定模块）：
+//   复读/空回复/纯思考 统一 classifyAnomaly；这里只保留"重试执行"（换 fallback 模型直调 + 播报）。
 async function retryRepeatWithFallback(message, sessionKey, writer, busEmit) {
   const fbModel = pickFallbackDefault();
   const note = `⚠️ 检测到模型复读（回复与上一条完全相同），已自动切换 ${fbModel.provider}/${fbModel.id} 重新生成…`;
@@ -1167,7 +1146,7 @@ async function retryRepeatWithFallback(message, sessionKey, writer, busEmit) {
   if (fb?.text) {
     const add = `\n\n（以下为切换模型后的新回复）\n${fb.text}`;
     try { writer.push("delta", { text: add }); if (busEmit) busEmit("delta", { text: add }); } catch {}
-    lastReplyMap.set(sessionKey, normReply(fb.text));
+    recordReply(sessionKey, fb.text);
     console.log(`[pi-web] 复读重试成功: ${fbModel.provider}/${fbModel.id}`);
     return fb.text;
   }
@@ -4011,21 +3990,22 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal,
   if (result.aborted || signal?.aborted) return;
   let text = result.text;
   if (!text) { writer.push("error", { message: "模型未返回内容，请稍后重试" }); return; }
-  // 复读检测（2026-08-19 加固）：兑底通道同样防 repetition loop
+  // 输出质量守卫（2026-08-19 机制化）：兑底通道统一检测 空回复/纯思考/复读 → 自动切 fallback 重试
   const rkU = sessionId || findKeyByEntry(entry) || "new";
-  if (isRepeatReply(rkU, text, entry.sm?.sessionFile)) {
-    console.log(`[pi-web] 复读检测触发(统一通道): ${chatModel.provider}/${chatModel.id} → 自动切换重试`);
+  const anomaly = classifyAnomaly({ sessionKey: rkU, text, think: result.think || "", sessionFile: entry.sm?.sessionFile });
+  if (anomaly.type !== "none") {
+    console.log(`[pi-web] 输出守卫(${anomaly.type}): ${chatModel.provider}/${chatModel.id} ${anomaly.reason} → 自动切换重试`);
     const fbModel = pickFallbackDefault();
-    writer.push("note", { text: `⚠️ 检测到模型复读，自动切换 ${fbModel.provider}/${fbModel.id} 重试…` });
+    writer.push("note", { text: `⚠️ ${anomaly.reason}，自动切换 ${fbModel.provider}/${fbModel.id} 重试…` });
     const fb = await directChat(fbModel, message);
     if (fb?.text) {
       text = fb.text;
-      lastReplyMap.set(rkU, normReply(text));
+      recordReply(rkU, text);
     } else {
-      writer.push("note", { text: "⚠️ 复读检测触发，但备用模型也无回复（请手动切换模型或重试）" });
+      writer.push("note", { text: "⚠️ 输出守卫触发，但备用模型也无回复（请手动切换模型或重试）" });
     }
-  } else if (normReply(text).length >= 30) {
-    lastReplyMap.set(rkU, normReply(text));
+  } else {
+    recordReply(rkU, text);
   }
   try {
     entry.sm.appendMessage({ role: "user", content: [{ type: "text", text: message }] });
@@ -4561,13 +4541,14 @@ async function handleChat(req, res, body) {
         try { writer.push("error", { message: `模型 ${fbModel.provider}/${fbModel.id} 无回复——API Key 可能失效或额度不足，请到模型管理中重新配置` }); } catch {}
       }
     }
-    // 复读检测（2026-08-19 加固）：主模型输出与上一条完整回复字节级相同 → 判定 repetition loop，自动切 fallback 重试
+    // 输出质量守卫：主模型输出与上一条完整回复字节级相同 → 判定 repetition loop，自动切 fallback 重试
+    //（空回复/纯思考由上方 sawDelta 兜底处理，此处只做复读判定，避免双重兜底）
     const rk = sessionId || findKeyByEntry(entry) || "new";
-    if (collected && isRepeatReply(rk, collected, entry.sm?.sessionFile)) {
-      console.log(`[pi-web] 复读检测触发: ${effModel?.provider}/${effModel?.id} 与上一条回复相同 → 自动切换重试`);
+    if (sawDelta && collected && isRepeatReply(rk, collected, entry.sm?.sessionFile)) {
+      console.log(`[pi-web] 输出守卫(repeat): ${effModel?.provider}/${effModel?.id} 与上一条回复相同 → 自动切换重试`);
       await retryRepeatWithFallback(message, rk, writer, busEmit);
-    } else if (collected && normReply(collected).length >= 30) {
-      lastReplyMap.set(rk, normReply(collected));
+    } else if (sawDelta && collected) {
+      recordReply(rk, collected);
     }
     // 自动命名：尚无名称时用首条消息
     if (!entry.sm.getSessionName()) {
