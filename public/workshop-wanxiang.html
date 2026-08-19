@@ -400,6 +400,7 @@
           <option value="2">2 张</option>
           <option value="4" selected>4 张</option>
         </select>
+        <button class="gen-btn img-photo" id="imgPhoto" title="按摄影级人像法则增强提示词（S型摆姿/五大布光/相机参数/瑕疵修复）">📷 摄影级</button>
         <button class="gen-btn img-go" id="imgGo">🎨 直出图像</button>
       </div>
       <div id="imgStatus" class="img-status" hidden></div>
@@ -411,6 +412,31 @@
           <button id="imgSave" hidden>💾 保存到本地</button>
         </div>
       </div>
+      <style id="assetBoardCss">
+        #uploadArea{position:relative}
+        .asset-board-wrap{margin-top:14px;padding:10px 12px;background:rgba(255,255,255,.03);border:1px solid var(--border,#333);border-radius:12px}
+        .asset-board-head{font-size:12px;color:var(--dim,#aaa);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+        .asset-board-head .ab-hint{color:var(--dim-2,#777);font-size:11px;font-weight:400}
+        .asset-board{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+        .ab-item{position:relative;flex:none;width:76px;height:76px;border-radius:8px;overflow:hidden;cursor:pointer;border:1px solid transparent;transition:border-color .15s}
+        .ab-item:hover{border-color:var(--accent,#6b7fd7)}
+        .ab-item img{width:100%;height:100%;object-fit:cover;display:block}
+        .ab-ts{position:absolute;left:2px;bottom:2px;font-size:9px;color:#fff;background:rgba(0,0,0,.55);border-radius:4px;padding:0 3px}
+        .asset-mention{position:absolute;z-index:50;left:0;right:0;bottom:100%;max-height:240px;overflow-y:auto;background:rgba(20,22,26,.96);border:1px solid #333;border-radius:12px;padding:6px;display:flex;flex-direction:column;gap:4px;box-shadow:0 12px 32px rgba(0,0,0,.45)}
+        .am-item{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:8px;cursor:pointer}
+        .am-item:hover{background:rgba(255,255,255,.07)}
+        .am-item img{width:34px;height:34px;border-radius:6px;object-fit:cover}
+        .am-item span{font-size:12px;color:#ddd;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .img-photo{border:1px solid var(--line,#333);background:rgba(255,255,255,.04);color:var(--dim,#aaa);transition:all .2s}
+        .img-photo.on{background:var(--accent,#6b7fd7);border-color:transparent;color:#fff;box-shadow:0 2px 10px rgba(107,127,215,.4)}
+        .img-retry{margin-left:10px;background:var(--accent,#6b7fd7);color:#fff;border:none;border-radius:8px;padding:5px 14px;font-size:12.5px;cursor:pointer;vertical-align:middle}
+        .img-retry:hover{filter:brightness(1.15)}
+      </style>
+      <div id="assetBoardWrap" class="asset-board-wrap" hidden>
+        <div class="asset-board-head">🗂 素材板 <span class="ab-hint">生成自动登记 · 点击素材 → 自动设为图生图参考</span></div>
+        <div id="assetBoard" class="asset-board"></div>
+      </div>
+      <div id="assetMention" class="asset-mention" hidden></div>
     </div>
   </div>
   <div class="hint">
@@ -967,6 +993,8 @@ async function generateImageNow() {
     clean = extractCleanPrompt($('output').value);
   }
   if (!clean) { setImgStatus('请先输入提示词', true); return; }
+  // 摄影级增强：按摄影法则注入（摆姿/布光/相机参数/瑕疵修复）
+  if (photoMode && clean) clean = clean + PHOTO_BOOST;
   // 自动翻译：提示词含中文 + 模型是国外系（万相/FLUX/Agnes 等）→ 自动转英文提升控制力
   if (/[\u4e00-\u9fa5]/.test(clean) && /^(aliyun-bailian|cloudflare-ai|volces-ark|nvidia|modelscope|agnes)/.test(provider)) {
     setImgStatus('⏳ 检测到中文提示词，自动翻译成英文…', false, true);
@@ -987,9 +1015,14 @@ async function generateImageNow() {
     );
     const ok = results.filter(r => r.status === 'fulfilled').map(r => r.value);
     const failN = count - ok.length;
+    registerAssets(ok, clean); // 生成成功 → 自动登记素材板（@可引用/可设为图生图参考）
     if (!ok.length) {
       const err = results[0]?.reason?.message || '生成失败';
-      setImgStatus('生成失败：' + err, true);
+      setImgStatus('生成失败：' + err + ' ', true);
+      const rb = document.createElement('button');
+      rb.className = 'img-retry'; rb.textContent = '🔄 重试';
+      rb.onclick = () => { rb.remove(); generateImageNow(); };
+      $imgStatus.appendChild(rb);
     } else if (ok.length === 1) {
       // 单张 → 直接大图展示
       showSingle(ok[0]);
@@ -1063,6 +1096,66 @@ $imgSave.addEventListener('click', async () => {
   } catch { setImgStatus('保存失败（跨域限制，可点「打开原图」）', true); }
 });
 $imgGo.addEventListener('click', generateImageNow);
+
+// ══ 摄影级人像增强（photography-portrait-generator 技能法则压缩版）══
+const PHOTO_BOOST = `，专业人像摄影法则：脊柱呈S型曲线避免笔直站立，重心落于后脚、前脚自然前伸，有关节必微弯（肘/膝/腕/指节），手臂与腰侧保留负空间，手部展示手掌侧缘、手指自然错落微弯，下巴微前伸微低拉紧下颌线，鼻尖与视线方向保持微妙角度差，一肩微高打破水平对称，前膝微弯前后腿交错；主光采用伦勃朗光（侧上方45°，暗面脸颊倒三角亮区）辅以轮廓光勾发丝肩线，背景光比克制；85mm镜头 f/1.8 ISO200 1/160s 浅景深，眼平机位，细微胶片颗粒；避免塑料皮肤、多指、乱发、手指畸形、过度磨皮、网红感，保留真实皮肤纹理与自然毛孔`;
+let photoMode = false;
+const $imgPhoto = $('imgPhoto');
+$imgPhoto.addEventListener('click', () => {
+  photoMode = !photoMode;
+  $imgPhoto.classList.toggle('on', photoMode);
+  $imgPhoto.textContent = photoMode ? '📷 摄影级 ✓' : '📷 摄影级';
+  setImgStatus(photoMode ? '✓ 摄影级已开启：将按摆姿/布光/相机参数/瑕疵修复法则增强提示词' : '摄影级已关闭', false);
+});
+
+// ══ 素材板 + @引用（生成自动登记，点击设为图生图参考）══
+const ASSET_KEY = 'wanxiang_asset_board';
+function getAssets(){ try { return JSON.parse(localStorage.getItem(ASSET_KEY) || '[]'); } catch { return []; } }
+function saveAsset(src, prompt){ if (!src || !src.startsWith('http')) return; const list = getAssets(); list.unshift({ src, prompt: String(prompt||'').slice(0,120), ts: Date.now() }); if (list.length > 60) list.length = 60; try { localStorage.setItem(ASSET_KEY, JSON.stringify(list)); } catch {} renderAssetBoard(); }
+function renderAssetBoard(){
+  const list = getAssets(); const wrap = $('assetBoardWrap'), board = $('assetBoard');
+  if (!list.length) { wrap.hidden = true; return; }
+  wrap.hidden = false; board.innerHTML = '';
+  list.forEach(a => {
+    const it = document.createElement('div'); it.className = 'ab-item';
+    it.innerHTML = `<img src="${a.src}" alt="素材"><span class="ab-ts">${new Date(a.ts).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})}</span>`;
+    it.title = a.prompt || '';
+    it.addEventListener('click', () => loadAssetAsRef(a));
+    board.appendChild(it);
+  });
+}
+async function toB64(src){ const r = await fetch(src); const blob = await r.blob(); return new Promise((res,rej)=>{ const rd = new FileReader(); rd.onload = () => res(String(rd.result).split(',')[1]); rd.onerror = rej; rd.readAsDataURL(blob); }); }
+async function loadAssetAsRef(a){
+  try {
+    const b64 = await toB64(a.src);
+    uploadedImage = b64;
+    setMode('i2i');
+    $imgStatus.textContent = `✓ 已把素材设为参考图：${(a.prompt||'素材').slice(0,24)}（已切图生图模式，输入场景描述即可拉入）`;
+    $imgStatus.hidden = false; $imgStatus.className = 'img-status';
+  } catch { setImgStatus('读取素材失败（链接可能已过期），重新生成后再试', true); }
+}
+function registerAssets(urls, prompt){ (urls||[]).forEach(u => saveAsset(u, prompt)); }
+// i2iPrompt 的 @ 引用
+const $i2i = $('i2iPrompt'), $mention = $('assetMention');
+function renderMention(){
+  const list = getAssets(); if (!list.length) { $mention.hidden = true; return; }
+  $mention.innerHTML = '';
+  list.slice(0, 12).forEach(a => {
+    const it = document.createElement('div'); it.className = 'am-item';
+    it.innerHTML = `<img src="${a.src}"><span>${(a.prompt||'素材').slice(0,28)}</span>`;
+    it.addEventListener('click', () => {
+      $i2i.value = $i2i.value.replace(/@\s*$/, '');
+      $mention.hidden = true;
+      loadAssetAsRef(a);
+    });
+    $mention.appendChild(it);
+  });
+  $mention.hidden = false;
+}
+$i2i.addEventListener('input', () => { if (/@\s*$/.test($i2i.value)) renderMention(); else $mention.hidden = true; });
+$i2i.addEventListener('blur', () => setTimeout(() => $mention.hidden = true, 180));
+$i2i.addEventListener('keydown', e => { if (e.key === 'Escape') $mention.hidden = true; });
+renderAssetBoard();
 
 // ══ 图生图：模式切换 + 上传 + 拖拽 ══
 let currentMode = 't2i';
