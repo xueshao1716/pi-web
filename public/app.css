@@ -1935,8 +1935,8 @@ html[data-theme="apple"] .code-wrap { background: rgba(0, 0, 0, 0.05); }
 html[data-theme="apple"] {
   --radius: 16px;
 }
-html[data-theme="apple"] #messages { padding: 26px 28px 10px; }
-html[data-theme="apple"] .msg { margin-bottom: 18px; }
+html[data-theme="apple"] #messages { padding: 20px 22px 10px; }
+html[data-theme="apple"] .msg { max-width: 920px; margin-bottom: 18px; }
 html[data-theme="apple"] .msg .bubble {
   border-radius: 18px;
   padding: 14px 18px;
