@@ -32,12 +32,12 @@ const THEMES = {
   // AI 原生：中性炭黑底 + 单一靛蓝强调，克制辉光，高级感（源自 UI/UX Pro Max ai-native-ui 设计智能）
   ai:      { label:"AI 原生", vars: makeVars("#7c8cf8","#9aa8ff","#5a67e0","#0b0b0d","#0f0f13","#141419","#1a1a20","#26262e","#ececf2","#90909f","#5d5d6b", 0.3) },
   // 拟态：浅色单色系 + 柔和双阴影（Neumorphism，源自 UI/UX Pro Max 风格库）
-  neu:     { label:"拟态",   vars: makeVars("#6b7fd7","#8a9bf0","#5567c4","#e4e9f0","#dfe4ec","#e4e9f0","#dfe4ec","#d3d8e2","#3d4756","#7a8494","#a5aebe", 0) },
+  neu:     { label:"拟态",   vars: makeVars("#6b7fd7","#8a9bf0","#5567c4","#f5f7fa","#eef2f6","#f8fafc","#eef2f6","#dfe4ea","#3d4756","#7a8494","#a5aebe", 0) },
   // 液态玻璃：深色底 + 彩色光斑背景 + 高光玻璃面板（Liquid Glass, Apple 2024 风）
   liquid:  { label:"液态玻璃", vars: makeVars("#6ea8ff","#a78bfa","#4f7ddb","#080d1a","#10182c","#141e36","#1a2540","#2a3858","#eef3ff","#93a4c8","#5f6f8f", 0.5) },
   linear:  { label:"Linear 精密", vars: makeVars("#5e6ad2","#828fff","#4c56b0","#010102","#0f1011","#141516","#18191a","#23252a","#f7f8f8","#8a8f98","#62666d", 0.2) },
   ops:     { label:"运维控制台", vars: makeVars("#2596be","#4fb8dc","#1a708f","#0f1118","#12151d","#171b25","#1c2130","#2a3145","#e4e9f2","#8b93a8","#565f75", 0.35) },
-  apple:   { label:"苹果风", vars: makeVars("#0071e3","#5aa7f0","#0055b3","#f5f5f7","#f8f8fa","#ffffff","#f0f0f2","#d9d9de","#1d1d1f","#6e6e73","#86868b", 0.15) },
+  apple:   { label:"苹果风", vars: makeVars("#0071e3","#5aa7f0","#0055b3","#fafafa","#f8f8fa","#ffffff","#f4f4f6","#e3e3e7","#1d1d1f","#6e6e73","#86868b", 0.15) },
   quantum: { label:"量子引擎", vars: makeVars("#23e6ff","#6f8bff","#0d7ff2","#05070e","#070b16","#0b1120","#0e1628","#1d2b4a","#e8f0ff","#8ba0c8","#47597c", 0.9) },
   violet:  { label:"紫罗兰", vars: makeVars("#8b7cf6","#a394ff","#6d5ce7","#0b0c0f","#0f1116","#14161d","#171a22","#262b38","#e6e8ee","#8a91a5","#5c6375") },
   sky:     { label:"天蓝",   vars: makeVars("#38bdf8","#7dd3fc","#0ea5e9","#0a1118","#0d1620","#12202c","#162634","#1e3a4f","#e2edf7","#7f9db5","#51697e") },
