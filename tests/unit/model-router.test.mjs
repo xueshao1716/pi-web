@@ -1,7 +1,7 @@
-// 模型路由层单测（2026-08-19 拆模块 + pro/flash 同源修正验证）
+// 模型路由层单测（2026-08-19 拆模块 + pro/flash 同源修正验证；2026-08-20 健康冷却泛化验证）
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { initModelRouter, classifyTaskComplexity, routeForAuto, routeProCandidate, isAutoModel, isOcGoBlocked, markOcGoBlocked, ocGoCandidate, pickFallbackDefault } from "../../engine/model-router.mjs";
+import { initModelRouter, classifyTaskComplexity, routeForAuto, routeProCandidate, isAutoModel, isOcGoBlocked, markOcGoBlocked, ocGoCandidate, pickFallbackDefault, markModelBlocked, isModelBlocked, resetModelHealth, pickFallbackExcluding } from "../../engine/model-router.mjs";
 
 // 构造假模型池（模拟 13 provider 关键项）
 const makePool = () => [
@@ -11,6 +11,8 @@ const makePool = () => [
   { provider: "opencode-go", id: "deepseek-v4-flash" },
   { provider: "opencode-go", id: "deepseek-v4-pro" },
   { provider: "volces-ark", id: "ark-code" },
+  { provider: "sensenova", id: "SenseNova-Flash-Lite" },
+  { provider: "nvidia", id: "gemma-3-12b-it" },
 ];
 let pool = makePool();
 let def = pool[0];
@@ -67,4 +69,38 @@ test("pro 候选: 非 429 时 ocGo pro 优先", () => {
 test("isAutoModel: auto 识别", () => {
   assert.equal(isAutoModel({ provider: "auto", id: "auto" }), true);
   assert.equal(isAutoModel({ provider: "aliyun-bailian", id: "qwen3.8-max" }), false);
+});
+
+// ── 通用健康冷却（2026-08-20 泛化：403/402/429 任意 provider）──
+test("健康冷却: 千问 403 → flash 主力自动绕开，落到下一顺位", () => {
+  resetModelHealth();
+  const qwen = pool[0];
+  markModelBlocked(qwen, { reason: "HTTP 403 Access denied" });
+  assert.equal(isModelBlocked(qwen), true);
+  const r = routeForAuto("你好");
+  const chosen = `${r.model.provider}/${r.model.id}`;
+  console.log(`  [403] 千问冷却后 simple→${chosen}`);
+  assert.notEqual(chosen, "aliyun-bailian/qwen3.8-max", "403 的千问应被绕开");
+  assert.equal(chosen, "opencode-go/deepseek-v4-flash", "落到免费链下一顺位 ocGo flash");
+});
+
+test("健康冷却: pro 链同样过滤冷却模型", () => {
+  markOcGoBlocked("test"); // ocGo 整体冷却
+  const ark = pool.find((m) => m.provider === "volces-ark");
+  markModelBlocked(ark, { reason: "HTTP 429" });
+  const pro = routeProCandidate(); // ocGo 冷却 + ark 冷却 → 无 pro 可用
+  assert.equal(pro, undefined, "ocGo 429 + ark 冷却 → 无 pro 可用");
+});
+
+test("排除兜底: pickFallbackExcluding 绝不返回被排除的模型", () => {
+  const excl = pool.find((m) => m.provider === "sensenova");
+  const fb = pickFallbackExcluding(excl);
+  if (fb) assert.notEqual(`${fb.provider}/${fb.id}`, "sensenova/SenseNova-Flash-Lite", "兜底不可回到被排除模型");
+});
+
+test("健康冷却: resetModelHealth 清零后千问恢复主力", () => {
+  resetModelHealth();
+  assert.equal(isModelBlocked(pool[0]), false);
+  const r = routeForAuto("你好");
+  assert.equal(`${r.model.provider}/${r.model.id}`, "aliyun-bailian/qwen3.8-max");
 });

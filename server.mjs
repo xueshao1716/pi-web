@@ -23,7 +23,7 @@ import { BASE_TOOL_SCHEMAS, createUnifiedToolExecutor } from "./engine/tools/uni
 import { safeJoin } from "./engine/tools/security.mjs";
 
 // ── 模型路由层（拆模块）：429 降级 / 复杂度分类 / Auto 路由 / pro 候选 ──
-import { initModelRouter, isOcGoBlocked, markOcGoBlocked, ocGoCandidate, pickFallbackDefault, pickFallbackExcluding, isAutoModel, routeForAuto, routeProCandidate, ROUTER_AUTO } from "./engine/model-router.mjs";
+import { initModelRouter, isOcGoBlocked, markModelBlocked, markOcGoBlocked, ocGoCandidate, pickFallbackDefault, pickFallbackExcluding, resetModelHealth, isAutoModel, routeForAuto, routeProCandidate, ROUTER_AUTO } from "./engine/model-router.mjs";
 import { CONFIG } from "./config.mjs";
 // ── Gateway 2.0 插件化引擎 + Code Mode（dsh 设计沉淀）──
 import { createGateway } from "./engine/gateway.mjs";
@@ -1536,6 +1536,7 @@ function resolveAuth(provider) {
 // 刷新内存模型列表（直接读 models-store.json——权威来源，且重建运行时让新 key 生效）
 async function refreshModelList() {
   try { modelRuntime = await ModelRuntime.create(); } catch {}
+  resetModelHealth(); // 模型清单刷新 = 重新探测，冷却状态一并清零给所有模型新机会
   const store = readJsonFile(MODELS_PATH);
   const authed = new Set(Object.keys(readJsonFile(AUTH_PATH)));
   const all = [];
@@ -2864,8 +2865,9 @@ async function unifiedChat(model, messages, opts = {}) {
     }
     if (!r.ok) {
       const errBody = await r.text().catch(() => "");
-      // 429 额度检测（修复 B）：unifiedChat 兕底通道同样识别 opencode-go 周额度耗尽
-      if (model.provider === "opencode-go" && (r.status === 429 || /GoUsageLimit/i.test(errBody))) markOcGoBlocked(errBody);
+      // 健康冷却（2026-08-20 泛化）：401/402/403/429/529 标记 30 分钟，Auto 路由与兜底链自动避开该模型
+      if ([401, 402, 403, 429, 529].includes(r.status)) markModelBlocked(model, { reason: `HTTP ${r.status} ${String(errBody).slice(0, 60)}` });
+      else if (model.provider === "opencode-go" && /GoUsageLimit/i.test(errBody)) markModelBlocked(model, { reason: errBody });
       return { error: `HTTP ${r.status}: ${String(errBody).slice(0, 150)}` };
     }
     const data = await r.json();
@@ -3325,7 +3327,10 @@ async function directChat(model, message, history = []) {
       });
       let rr = await mkResp(`${baseNoV1}/v1/responses`);
       if (rr.status === 404) rr = await mkResp(`${baseNoV1}/responses`);
-      if (!rr.ok) return null;
+      if (!rr.ok) {
+        if ([401, 402, 403, 429, 529].includes(rr.status)) markModelBlocked(model, { reason: `HTTP ${rr.status} (responses)` });
+        return null;
+      }
       const rd = await rr.json();
       // responses 格式：output[] 里 message 类型取 text
       const textParts = (rd.output || [])
@@ -3347,7 +3352,10 @@ async function directChat(model, message, history = []) {
     });
     let r = await mkReq(`${baseNoV1}/v1/chat/completions`);
     if (r.status === 404) r = await mkReq(`${baseNoV1}/chat/completions`);
-    if (!r.ok) return null;
+    if (!r.ok) {
+      if ([401, 402, 403, 429, 529].includes(r.status)) markModelBlocked(model, { reason: `HTTP ${r.status} (directChat)` });
+      return null;
+    }
     const data = await r.json();
     const msg = data.choices?.[0]?.message || {};
     const content = msg.content || "";
@@ -4372,6 +4380,12 @@ async function handleChat(req, res, body) {
     const agentErr = String(e?.message || e);
     // 429/额度检测（修复 B）：agent 管线错误里出现 opencode-go 额度耗尽 → 标记降级，后续 Auto 路由避开
     if (/GoUsageLimit|HTTP 429|status.?429/i.test(agentErr) && modelList.some(m => m.provider === "opencode-go")) markOcGoBlocked(agentErr);
+    // 健康冷却（2026-08-20 泛化）：401/402/403/529 等权限/额度错误 → 标记本次生效模型，Auto 路由后续避开
+    else if (effModel) {
+      const st = agentErr.match(/HTTP (\d{3})|status.?(\d{3})/);
+      const code = st ? parseInt(st[1] || st[2], 10) : 0;
+      if ([401, 402, 403, 529].includes(code)) markModelBlocked(effModel, { reason: `HTTP ${code} (agent管线)` });
+    }
     console.log(`[pi-web] agent 通道异常，降级 unifiedChat: ${agentErr.slice(0, 120)}`);
     try { unsubscribe(); } catch {}
     try {

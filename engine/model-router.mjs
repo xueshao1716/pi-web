@@ -1,5 +1,5 @@
 // ══ 模型路由层（2026-08-19 拆模块：从 server.mjs 抽出 + 修正 pro/flash 同源问题）══
-// 职责：429 降级状态 / 默认模型兜底 / 任务复杂度分类 / Auto 路由 / pro 候选。
+// 职责：模型健康冷却（429/402/403 通用）/ 默认模型兜底 / 任务复杂度分类 / Auto 路由 / pro 候选。
 // 纯逻辑模块：modelList/defaultModel 通过 initModelRouter 注入 getter（避免值拷贝 stale）。
 
 let _getModelList = () => [];
@@ -12,46 +12,81 @@ export function initModelRouter({ getModelList, getDefaultModel, configModel = "
   _configModel = configModel || "";
 }
 
-// ── opencode-go 429 自动降级 ──
-// 现象：opencode-go 周额度耗尽（GoUsageLimitError 429）时，默认/Auto 路由仍优先 opencode-go → 持续 429。
-// 修复：探测到 429 后 30 分钟内自动避开 opencode-go，落到实测可用通道，定期重探恢复。
-let ocGoBlockedUntil = 0;
-const OCGO_BLOCK_MS = 30 * 60 * 1000;
-export function isOcGoBlocked() { return Date.now() < ocGoBlockedUntil; }
-export function markOcGoBlocked(detail) {
-  if (Date.now() < ocGoBlockedUntil) return; // 已标记，不重复刷日志
-  ocGoBlockedUntil = Date.now() + OCGO_BLOCK_MS;
-  console.log(`[pi-web] ⛔ opencode-go 429 → 标记不可用 ${OCGO_BLOCK_MS / 60000} 分钟（${String(detail || "").slice(0, 60)}）`);
+// ── 模型健康冷却（原 opencode-go 429 机制的泛化，2026-08-20）──
+// 任何 provider 的 401/402/403/429/529 错误都可标记；冷却期内候选链自动避开。
+// 典型场景：千问 token 计划 403 → 不标记的话每次简单任务都先撞一次墙再靠复读守卫救。
+const modelBlockedUntil = new Map(); // "provider/id" → { until, reason }
+let ocGoBlockedUntil = 0; // opencode-go 走全 provider 屏蔽（它的 flash/pro 都在同一套餐里）
+const BLOCK_MS_DEFAULT = 30 * 60 * 1000;
+
+export function modelKey(m) { return m ? `${m.provider}/${m.id}` : ""; }
+export function isModelBlocked(m) {
+  if (!m) return false;
+  if (m.provider === "opencode-go" && Date.now() < ocGoBlockedUntil) return true;
+  const cur = modelBlockedUntil.get(modelKey(m));
+  return !!(cur && Date.now() < cur.until);
 }
+export function markModelBlocked(m, { ms = BLOCK_MS_DEFAULT, reason = "" } = {}) {
+  if (!m) return;
+  if (m.provider === "opencode-go") { // 兼容旧语义：ocGo 标记即整个 provider 冷却
+    if (Date.now() < ocGoBlockedUntil) return;
+    ocGoBlockedUntil = Date.now() + ms;
+    console.log(`[router] ⛔ opencode-go 冷却 ${ms / 60000} 分钟（${String(reason).slice(0, 60)}）`);
+    return;
+  }
+  const key = modelKey(m);
+  const cur = modelBlockedUntil.get(key);
+  if (cur && Date.now() < cur.until) return; // 已标记，不重复刷日志
+  modelBlockedUntil.set(key, { until: Date.now() + ms, reason });
+  console.log(`[router] ⛔ ${key} 冷却 ${ms / 60000} 分钟（${String(reason).slice(0, 60)}）`);
+}
+// 重置全部健康状态（模型清单刷新/重新探测后调用，给所有模型一次新机会）
+export function resetModelHealth() {
+  modelBlockedUntil.clear();
+  ocGoBlockedUntil = 0;
+}
+
+// ── opencode-go 兼容导出（server.mjs 既有调用点继续可用）──
+export function isOcGoBlocked() { return Date.now() < ocGoBlockedUntil; }
+export function markOcGoBlocked(detail) { markModelBlocked({ provider: "opencode-go", id: "any" }, { reason: detail }); }
 // opencode-go 候选（blocked 期间返回 undefined，让路由落到下一顺位）
 export function ocGoCandidate(re) {
   return isOcGoBlocked() ? undefined : _getModelList().find(m => m.provider === "opencode-go" && re.test(m.id));
 }
 
+// 按 provider+正则找模型，跳过冷却中的（候选链统一走这个，健康过滤不再散落各处）
+function findLive(provider, re) {
+  const m = _getModelList().find(x => x.provider === provider && re.test(x.id));
+  return m && !isModelBlocked(m) ? m : undefined;
+}
+// 候选链最终兜底：默认模型 → 清单里第一个活着的 → null（绝不返回 undefined）
+
 // defaultModel 兜底（blocked 且 defaultModel 恰为 opencode-go 时换可用通道）
 // ⚠️ 成本策略（2026-08-19 用户定）：deepseek 官方涨价贵不用——降级链全走 token 计划免费通道
+// 2026-08-20：候选链全部改为 findLive（跳过冷却中的模型），末位兜底从「裸 defaultModel」改为「活的模型」
 export function pickFallbackDefault() {
   const defaultModel = _getDefaultModel();
-  if (defaultModel && !(defaultModel.provider === "opencode-go" && isOcGoBlocked())) return defaultModel;
-  return _getModelList().find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
-    || _getModelList().find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
-    || _getModelList().find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id))
-    || _getModelList().find(m => m.provider === "nvidia" && /gemma-3-12b/i.test(m.id))
-    || _getModelList().find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
-    || defaultModel;
+  if (defaultModel && !isModelBlocked(defaultModel)) return defaultModel;
+  // ⚠️ 2026-08-19 用户指令：mimo（xiaomi-token-plan-cn）从自动路由摘除，只留千问→商汤→NVIDIA→ark
+  return findLive("aliyun-bailian", /qwen3\.8-max/i)
+    || findLive("sensenova", /flash-lite/i)
+    || findLive("nvidia", /gemma-3-12b/i)
+    || findLive("volces-ark", /ark-code/i)
+    || defaultModel; // 全部冷却时仍返回 defaultModel（宁可重试已知模型，不可无模型可用）
 }
 
 // ⚠️ 2026-08-19 修复：复读守卫的兜底必须**排除出问题的模型**（否则千问复读→兜底还是千问，切换无效）。
-// 在免费通道里按实测可用性选：mimo（思考+工具全通）→ 商汤 → NVIDIA → ark（末位）；全不可用才退回默认。
+// 2026-08-20 修正残留：末位兜底 pickFallbackDefault() 也可能返回被排除模型——现在全链过滤。
 export function pickFallbackExcluding(excludeModel) {
-  const excludeKey = excludeModel ? `${excludeModel.provider}/${excludeModel.id}` : "";
+  const excludeKey = modelKey(excludeModel);
   const cands = [
-    _getModelList().find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id)),
-    _getModelList().find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id)),
-    _getModelList().find(m => m.provider === "nvidia" && /gemma-3-12b/i.test(m.id)),
-    _getModelList().find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id)),
-  ].filter(Boolean).filter(m => `${m.provider}/${m.id}` !== excludeKey);
-  return cands[0] || pickFallbackDefault();
+    findLive("sensenova", /flash-lite/i),
+    findLive("nvidia", /gemma-3-12b/i),
+    findLive("volces-ark", /ark-code/i),
+  ].filter(Boolean).filter(m => modelKey(m) !== excludeKey);
+  if (cands[0]) return cands[0];
+  const fb = pickFallbackDefault();
+  return fb && modelKey(fb) !== excludeKey ? fb : null;
 }
 
 export const ROUTER_AUTO = { provider: "auto", id: "auto" };
@@ -85,22 +120,20 @@ export function classifyTaskComplexity(text) {
   return { level: complex ? "complex" : "simple", score, reasons: reasons.slice(0, 5) };
 }
 
-// flash 主力候选：千问（免费 token 计划主力）→ ocGo flash → mimo → sensenova → ark
+// flash 主力候选：千问（免费 token 计划主力）→ ocGo flash → sensenova → ark（mimo 已摘除）
 function flashCandidate() {
-  return _getModelList().find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
+  return findLive("aliyun-bailian", /qwen3\.8-max/i)
     || ocGoCandidate(/deepseek-v4-flash/i)
-    || _getModelList().find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
-    || _getModelList().find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id))
-    || _getModelList().find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
+    || findLive("sensenova", /flash-lite/i)
+    || findLive("volces-ark", /ark-code/i)
     || pickFallbackDefault();
 }
 // pro 候选（复杂任务 / NEEDS_PRO 升级共用）：
 // ⚠️ 2026-08-19 修正：千问不再作为 pro（它已是 flash 主力）——否则"升级"是假升级。
-//   真 pro = ocGo deepseek-v4-pro（8/23 套餐恢复后）→ mimo-pro → ark（thinking 空回复，末位）。
+//   真 pro = ocGo deepseek-v4-pro（8/23 套餐恢复后）→ ark（thinking 空回复，末位）。（mimo-pro 已摘除）
 export function routeProCandidate() {
   return ocGoCandidate(/deepseek-v4-pro/i)
-    || _getModelList().find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5-pro/i.test(m.id))
-    || _getModelList().find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id));
+    || findLive("volces-ark", /ark-code/i);
 }
 
 // Auto 路由：按复杂度选 flash/pro。
@@ -114,7 +147,7 @@ export function routeForAuto(text) {
   if (cl.level === "complex") {
     const pro = routeProCandidate();
     if (pro) return { model: pro, level: "complex", score: cl.score, reasons: cl.reasons, auto: true };
-    // 无可用 pro（ocGo 429 中、mimo-pro/ark 不可用）→ 回落 flash 主力并播报真实原因，不假装升级
+    // 无可用 pro（ocGo 429 中、ark 不可用）→ 回落 flash 主力并播报真实原因，不假装升级
     const flash = flashCandidate();
     return { model: flash, level: "complex", score: cl.score, reasons: [...cl.reasons, "pro 暂不可用(ocGo 429)，回落主力模型"], auto: true };
   }
