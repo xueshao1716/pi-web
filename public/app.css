@@ -135,7 +135,7 @@
   .side-head { display: flex; align-items: center; gap: 8px; padding: 11px 14px 8px; }
   .side-head .logo {
     font-family: var(--mono); font-weight: 700; font-size: 18px; letter-spacing: -.5px;
-    display: flex; align-items: center; gap: 8px;
+    display: flex; align-items: center; gap: 2px;
     background: linear-gradient(135deg, var(--accent-2), var(--accent-deep));
     -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
   }
