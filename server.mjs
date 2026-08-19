@@ -12,6 +12,10 @@ import { fileURLToPath } from "node:url";
 
 // ── 输出质量守卫（Output Guard）：模型不可靠是默认假设（借鉴 dsh repeat-tool-reminder）──
 import { bindOutputGuardDeps, classifyAnomaly, isRepeatReply, normReply, recordReply } from "./engine/output-guard.mjs";
+// ── Reasonix 机制（esengine/DeepSeek-Reasonix 借鉴）：工具结果压缩 / NEEDS_PRO 自报升级 / scavenge 捞回 ──
+import { shrinkToolResult, NEEDS_PRO_RE, scavengeToolCalls } from "./engine/reasonix-tools.mjs";
+// ── 会话解析纯函数（拆模块）：消息/文本/图片/文件提取 ──
+import { extractMessages, extractText, extractImages, extractFiles } from "./engine/session-utils.mjs";
 
 import { CONFIG } from "./config.mjs";
 // ── Gateway 2.0 插件化引擎 + Code Mode（dsh 设计沉淀）──
@@ -862,77 +866,8 @@ async function deleteSession(id) {
   }
 }
 
-// 从会话文件中提取消息（供历史渲染）
-function extractMessages(entries, leafId) {
-  // 若指定 leafId：只返回该分支路径上的消息（沿 parentId 回溯）
-  const byId = new Map(entries.filter(e => e.id).map(e => [e.id, e]));
-  const pathIds = new Set();
-  if (leafId && byId.has(leafId)) {
-    let cur = byId.get(leafId);
-    while (cur) { pathIds.add(cur.id); cur = cur.parentId && byId.get(cur.parentId) ? byId.get(cur.parentId) : null; }
-  }
-  // 第一遍：收集 toolResult（可能出现在 assistant 之后）
-  const toolResults = new Map();
-  for (const e of entries) {
-    if (e.type !== "message" || !e.message) continue;
-    const m = e.message;
-    if (m.role === "toolResult" && m.toolCallId) {
-      toolResults.set(m.toolCallId, { output: extractText(m.content), isError: !!m.isError });
-    }
-  }
-  const out = [];
-  for (const e of entries) {
-    if (e.type !== "message") continue;
-    if (leafId && !pathIds.has(e.id)) continue;
-    const m = e.message;
-    if (!m) continue;
-    if (m.role === "user") {
-      const text = extractText(m.content);
-      const files = extractFiles(m.content);
-      const images = extractImages(m.content);
-      if (text || files.length || images.length) out.push({ role: "user", text, files, images, ts: e.timestamp, id: e.id });
-    } else if (m.role === "assistant") {
-      const text = extractText(m.content);
-      const files = extractFiles(m.content);
-      const images = extractImages(m.content);
-      const tools = [];
-      let think = "";
-      if (Array.isArray(m.content)) {
-        for (const b of m.content) {
-          if (b.type === "toolCall" && b.id && b.name) {
-            const r = toolResults.get(b.id) || {};
-            tools.push({ id: b.id, name: b.name, args: b.arguments || null, output: r.output || "", isError: !!r.isError });
-          } else if (b.type === "thinking" && (b.thinking || b.text)) {
-            think += (b.thinking || b.text || "");
-          }
-        }
-      }
-      if (text || files.length || images.length || tools.length || think) out.push({ role: "assistant", text, files, images, tools, think, ts: e.timestamp, id: e.id });
-    }
-  }
-  return out;
-}
-function extractText(content) {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content.filter(b => b.type === "text").map(b => b.text || "").join("");
-  }
-  return "";
-}
-
-// 从消息 content 提取图片附件（type: image 的块）——base64 过大（>2.5MB）的省略，避免传输过重
-function extractImages(content) {
-  if (!Array.isArray(content)) return [];
-  return content
-    .filter(b => b.type === "image" && b.data && b.mimeType && b.data.length <= 2.5 * 1024 * 1024)
-    .map(b => ({ data: b.data, mimeType: b.mimeType }));
-}
-
-// 从消息 content 提取文件附件（type: file 的块）
-function extractFiles(content) {
-  if (!Array.isArray(content)) return [];
-  return content.filter(b => b.type === "file").map(b => ({ name: b.name, path: b.path, size: b.size, mime: b.mime }));
-}
+// 从会话文件中提取消息（供历史渲染）——已拆到 engine/session-utils.mjs
+// 从消息 content 提取文本（type: text 的块）——已拆到 engine/session-utils.mjs
 
 // 从会话最新 assistant 消息提取文件附件（供 SSE 实时推送）
 function extractMessageFiles(sm, baselineLines = 0) {
@@ -1026,9 +961,28 @@ function scanRecentArtifacts(withinMs = 2 * 60 * 1000, max = 10) {
   } catch { return []; }
 }
 
+// ── 会话解析缓存（2026-08-19 索引优化）──
+// parseSessionFile 每次读整个 jsonl（大会话几百 KB）→ 用 mtime+size 指纹做文件级缓存，
+// 文件没变不重读；文件被外部（TUI）修改时指纹自动失效，天然免疫 staleness。
+const sessionParseCache = new Map(); // file → {mtimeMs, size, info}
+function parseSessionFileCached(file) {
+  try {
+    const st = fs.statSync(file);
+    const hit = sessionParseCache.get(file);
+    if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.info;
+    const info = parseSessionFile(file);
+    if (sessionParseCache.size > 500) sessionParseCache.clear(); // 缓存上限防膨胀
+    sessionParseCache.set(file, { mtimeMs: st.mtimeMs, size: st.size, info });
+    return info;
+  } catch {
+    // 文件不存在/不可读（可能刚被删除）→ 不缓存，直接重新解析（返回默认 info）
+    return parseSessionFile(file);
+  }
+}
+
 function listSessions() {
   const files = scanSessionFiles();
-  return files.map(parseSessionFile)
+  return files.map(parseSessionFileCached)
     .filter(s => s.id)
     .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))
     .map(s => ({
@@ -1233,6 +1187,13 @@ function routeForAuto(text) {
     || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
     || pickFallbackDefault();
   return { model: flash, level: cl.level, score: cl.score, reasons: cl.reasons, auto: true };
+}
+// pro 候选（NEEDS_PRO 自报升级用，与 routeForAuto complex 分支同源）：千问 → ocGo pro → mimo-pro → ark
+function routeProCandidate() {
+  return modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
+    || ocGoCandidate(/deepseek-v4-pro/i)
+    || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5-pro/i.test(m.id))
+    || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id));
 }
 
 const SUPPORTED_PROVIDERS = ["deepseek", "openai", "openrouter", "anthropic", "google", "qwen", "xai", "moonshotai", "zai", "together", "mistral", "modelscope", "cloudflare-ai"];
@@ -3174,6 +3135,11 @@ async function executeUnifiedTool(name, args) {
     return { text: `工具执行失败: ${String(e?.message || e).slice(0, 200)}`, isError: true };
   }
 }
+
+// ══ Reasonix 三大机制落地（2026-08-19，esengine/DeepSeek-Reasonix 借鉴）══
+// 实现已抽到 engine/reasonix-tools.mjs（纯逻辑模块）：
+//   ① shrinkToolResult 工具结果压缩（P3） ② NEEDS_PRO_RE 自报升级（P3） ③ scavengeToolCalls 捞回（P2）
+
 // 统一对话循环：openai 兼容 API → tool_calls 循环 → 思考提取
 async function unifiedChat(model, messages, opts = {}) {
   const auth = readJsonFile(AUTH_PATH);
@@ -3302,6 +3268,27 @@ async function unifiedChat(model, messages, opts = {}) {
         }
         if (opts.onToolEnd) opts.onToolEnd(tc.id, fnName, args, out);
         history.push({ role: "tool", tool_call_id: tc.id, content: out.text });
+      }
+      continue;
+    }
+    // ══ P2 scavenge（Reasonix 借鉴，2026-08-19）：无 tool_calls 但思考里捞到合法工具调用 → 执行（带策略拦截）
+    const scavenged = tcs?.length ? [] : scavengeToolCalls(msg.reasoning_content || "", toolDefs, seenCalls);
+    if (scavenged.length) {
+      history.push({ role: "assistant", content: msg.content || null, tool_calls: scavenged.map(s => ({ id: s.id, type: "function", function: { name: s.name, arguments: JSON.stringify(s.args) } })) });
+      for (const s of scavenged) {
+        seenCalls.set(s.name + ":" + JSON.stringify(s.args), 1);
+        const pd = policyDecide(s.name, s.args);
+        if (pd.decision === "deny") {
+          const guide = `[系统拦截] ${pd.note}`;
+          if (opts.onTool) opts.onTool(s.id, s.name, s.args);
+          history.push({ role: "tool", tool_call_id: s.id, content: guide });
+          if (opts.onToolEnd) opts.onToolEnd(s.id, s.name, s.args, { text: guide, isError: true });
+          continue;
+        }
+        if (opts.onTool) opts.onTool(s.id, s.name, s.args);
+        const out = await executeUnifiedTool(s.name, s.args);
+        if (opts.onToolEnd) opts.onToolEnd(s.id, s.name, s.args, out);
+        history.push({ role: "tool", tool_call_id: s.id, content: out.text });
       }
       continue;
     }
@@ -3931,7 +3918,7 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal,
     const text = out?.text || "";
     writer.push("tool_end", { name, id, isError: out?.isError === true, output: text.slice(0, 2000) });
   };
-  let history = [...hist.map(h => ({ role: h.role, content: h.text })), { role: "user", content: message }];
+  let history = [...hist.map(h => ({ role: h.role, content: h.role === "tool" ? shrinkToolResult(h.text) : h.text })), { role: "user", content: message }];
   // 外部思考调试：注入引导语 + think 工具（默认关，本次请求开启时生效）
   if (thinkOn) {
     history = [{ role: "system", content: THINK_PROMPT }, ...history];
@@ -3990,6 +3977,23 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal,
   if (result.aborted || signal?.aborted) return;
   let text = result.text;
   if (!text) { writer.push("error", { message: "模型未返回内容，请稍后重试" }); return; }
+  // ══ NEEDS_PRO 自报升级（Reasonix P3，2026-08-19）：模型认为任务超纲 → 用 pro 模型重试一次（纯自报、无静默升级）
+  const proMatch = NEEDS_PRO_RE.exec(text || "");
+  if (proMatch) {
+    const proModel = routeProCandidate();
+    if (proModel && (proModel.provider !== chatModel.provider || proModel.id !== chatModel.id)) {
+      writer.push("note", { text: `🚀 模型自报任务超纲，升级 ${proModel.provider}/${proModel.id} 重试${proMatch[1] ? `（原因：${proMatch[1].trim()}）` : ""}…` });
+      const proResult = await unifiedChat(proModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: toolDefs });
+      if (proResult?.text && !proResult.error) {
+        const proTxt = String(proResult.text).trim();
+        if (!NEEDS_PRO_RE.test(proTxt)) {
+          text = proTxt;
+          result.think = proResult.think || result.think;
+          console.log(`[pi-web] NEEDS_PRO 升级成功: ${proModel.provider}/${proModel.id}`);
+        }
+      }
+    }
+  }
   // 输出质量守卫（2026-08-19 机制化）：兑底通道统一检测 空回复/纯思考/复读 → 自动切 fallback 重试
   const rkU = sessionId || findKeyByEntry(entry) || "new";
   const anomaly = classifyAnomaly({ sessionKey: rkU, text, think: result.think || "", sessionFile: entry.sm?.sessionFile });
