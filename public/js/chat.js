@@ -108,6 +108,7 @@ async function switchModel(provider, modelId) {
     // 新会话（currentId=null）切模型：不更新全局，只记 pending，发送时创建会话并应用
     if (!currentId) {
       window.pendingModel = `${provider}/${modelId}`;
+      window.currentModelKey = `${provider}/${modelId}`; // 2026-08-19: 同步显示值，避免发送时带 stale auto
       $("input-model-name").textContent = modelId === "auto" ? "Auto" : modelId;
       const data = await api("/api/models");
       modelList = data.models; populateModels(data); updateFooter();
@@ -120,6 +121,7 @@ async function switchModel(provider, modelId) {
       sessionModels[currentId] = `${provider}/${modelId}`;
       try { localStorage.setItem("pi_session_models", JSON.stringify(sessionModels)); } catch {}
     }
+    window.currentModelKey = `${provider}/${modelId}`; // 2026-08-19: 切换后立即同步，防止发送时带 stale auto 覆盖服务端
     $("input-model-name").textContent = modelId === "auto" ? "Auto" : modelId;
     const data = await api("/api/models");
     modelList = data.models; populateModels(data); updateFooter();

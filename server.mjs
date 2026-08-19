@@ -553,10 +553,9 @@ async function compactSession(file, model, force = false, focus = "") {
     }
     const inputText = parts.join("\n").slice(0, 60000).replace(/[\uD800-\uDFFF]/g, "") + (focus ? "[\n压缩焦点：" + focus + "]" : "");
     if (!inputText.trim()) return { skip: true, reason: "无可压缩的文本内容" };
-    // 用便宜模型生成摘要（deepseek 官方直连，稳定不烧 opencode 余额）
-    // 摘要生成走 unifiedChat（主聊天通道，模型已实证可用）；deepseek 直连优先省钱，失败回退默认模型
-    let summaryModel = modelList.find(x => x.provider === "deepseek");
-    if (!summaryModel) summaryModel = { provider: "deepseek", id: "deepseek-v4-flash", baseUrl: "https://api.deepseek.com" };
+    // 用 token 计划免费模型生成摘要（2026-08-19 用户定：deepseek 官方涨价贵，日常不用）；失败回退默认模型
+    let summaryModel = modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
+      || modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id));
     const prompt = `你是会话摘要助手。以下是 AI 助手与用户的一段早期对话记录。请生成结构化摘要，按下列六类保留关键信息：
 1. 用户的核心诉求与任务目标
 2. 已完成的事项与关键决策
@@ -1113,13 +1112,14 @@ function markOcGoBlocked(detail) {
 // opencode-go 候选（blocked 期间返回 undefined，让路由落到下一顺位）
 function ocGoCandidate(re) { return isOcGoBlocked() ? undefined : modelList.find(m => m.provider === "opencode-go" && re.test(m.id)); }
 // defaultModel 兕底（blocked 且 defaultModel 恰为 opencode-go 时换可用通道）
+// ⚠️ 成本策略（2026-08-19 用户定）：deepseek 官方直连涨价贵，日常不用——降级链全部走 token 计划免费通道
+// 实测可用性：小米 mimo-v2.5 思考+工具全通；阿里 qwen3.8-max；商汤/NVIDIA 免费待验证；ark-code thinking 空回复（末位）
 function pickFallbackDefault() {
   if (defaultModel && !(defaultModel.provider === "opencode-go" && isOcGoBlocked())) return defaultModel;
-  // ⚠️ 实测优先级（2026-08-19 真机）：deepseek 官方 flash 不调工具/无思考、ark-code 空回复 → 都不作首选
-  // 小米 mimo-v2.5 / 阿里 qwen3.8-max：思考+工具全通，实测正常
   return modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
     || modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
-    || modelList.find(m => m.provider === "deepseek" && /flash/i.test(m.id))
+    || modelList.find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id))
+    || modelList.find(m => m.provider === "nvidia" && /gemma-3-12b/i.test(m.id))
     || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
     || defaultModel;
 }
@@ -1178,15 +1178,15 @@ function routeForAuto(text) {
     const pro = ocGoCandidate(/deepseek-v4-pro/i)
       || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5-pro/i.test(m.id))
       || modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
-      // 官方 DeepSeek 涨价，复杂任务兕底用火山方舟 ark-code（⚠️ thinking 空回复，最后顺位）
+      // 火山方舟 ark-code：cost=0，但 thinking 模式空回复（末位兜底）
       || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id));
     if (pro) return { model: pro, level: "complex", score: cl.score, reasons: cl.reasons, auto: true };
   }
   const flash = ocGoCandidate(/deepseek-v4-flash/i)
-    // ⚠️ deepseek 官方 flash agent 管线实测不调工具/无思考（2026-08-19），小米/阿里实测可用
+    // ⚠️ 成本策略（2026-08-19 用户定）：deepseek 官方涨价贵，降级链不走它，全用 token 计划免费通道
     || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
     || modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
-    || modelList.find(m => m.provider === "deepseek" && /flash/i.test(m.id))
+    || modelList.find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id))
     || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
     || pickFallbackDefault();
   return { model: flash, level: cl.level, score: cl.score, reasons: cl.reasons, auto: true };
@@ -4196,11 +4196,19 @@ async function handleChat(req, res, body) {
     return;
   }
   // 前端携带模型同步（修复 C：显示与实发一致——刷新/多端时前端下拉值与服务端 modelKey 对齐）
+  // ⚠️ 2026-08-19 防呆：auto/auto 是前端下拉默认显示值（未显式选择），不能覆盖用户已切过的具体会话模型
+  //    ——否则用户切千问后，消息带的 stale "auto/auto" 会把 modelKey 打回 Auto → 路由乱跳（铁证：选了千问实际跑 mimo）
   if (typeof body.model === "string" && body.model.includes("/")) {
     const [bp, bm] = body.model.split("/");
     try {
       if (bp === "auto" || /^auto(-smart)?$/i.test(bm)) {
-        if (!entry.modelKey || entry.modelKey.provider !== "auto") { entry.modelKey = { provider: "auto", id: "auto" }; if (sessionId) saveSessionModelKey(sessionId, entry.modelKey); }
+        // 仅当会话本就处于 Auto（未切过具体模型）才保持；用户显式切过具体模型 → 不动，避免覆盖
+        if (entry.modelKey && entry.modelKey.provider !== "auto" && entry.modelKey.id !== "auto") {
+          // 已切具体模型：忽略 stale auto，保持用户选择
+        } else if (!entry.modelKey || entry.modelKey.provider !== "auto") {
+          entry.modelKey = { provider: "auto", id: "auto" };
+          if (sessionId) saveSessionModelKey(sessionId, entry.modelKey);
+        }
       } else {
         const same = entry.modelKey && entry.modelKey.provider === bp && entry.modelKey.id === bm;
         if (!same && modelList.find(m => m.provider === bp && m.id === bm)) {
@@ -4350,7 +4358,7 @@ async function handleChat(req, res, body) {
     let promptMsg = message;
     const isIdentityAsk = /谁|介绍.*(自己|一下|你)|你是|你叫|名字|叫什么|干嘛的|干什么的|身份|自我介绍|能力/.test(message) && message.length < 80;
     if (isIdentityAsk) {
-      const m = defaultModel;
+      const m = effModel || defaultModel;
       const features = [];
       if (m?.reasoning) features.push("推理型");
       if (m?.contextWindow) features.push(`上下文 ${Math.round(m.contextWindow / 1000)}k`);
