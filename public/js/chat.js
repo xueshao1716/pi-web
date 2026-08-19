@@ -1013,8 +1013,9 @@ function addTool(name, argsText, toolCallId, rawArgs) {
   const box = $("messages");
   const colorVar = "--" + (TOOL_VAR[name] || "accent");
   const icon = TOOL_ICONS[name] || "⚙";
+  const idx = String(render.toolOrder.length + 1).padStart(2, "0");
 
-  let head = `<span class="t-ico" style="--tc:var(${colorVar})">${icon}</span>`;
+  let head = `<span class="t-idx" style="--tc:var(${colorVar})">${idx}</span><span class="t-ico" style="--tc:var(${colorVar})">${icon}</span>`;
   if (name === "bash") {
     head += `<span class="t-name">bash</span><span class="t-cmd"><span class="ps">$ </span>${esc(argsText)}</span>`;
   } else if (name === "think") {
@@ -1025,7 +1026,7 @@ function addTool(name, argsText, toolCallId, rawArgs) {
   } else {
     head += `<span class="t-name">${esc(name)}</span>`;
   }
-  head += `<span class="t-state"><span class="spinner" style="--tc:var(${colorVar})"></span>运行中</span>`;
+  head += `<span class="t-state"><span class="t-dot run"></span>运行中</span>`;
 
   const el = document.createElement("div");
   el.className = "tool running" + (name === "think" ? " tool-think" : "");
@@ -1096,8 +1097,8 @@ function endTool(toolCallId, isError) {
   const dur = performance.now() - card.start;
   card.durEl.textContent = "用时 " + fmtDur(dur);
   card.stateEl.innerHTML = isError
-    ? `<span style="color:var(--red)">✕ 失败</span>`
-    : `<span style="color:var(--green)">✓ 完成</span>`;
+    ? `<span class="t-dot err"></span><span style="color:var(--red)">失败</span>`
+    : `<span class="t-dot ok"></span><span style="color:var(--green)">完成</span>`;
   card.el.classList.remove("running");
   card.el.classList.add(isError ? "done-err" : "done-ok");
   if (card.output && !card.hasDiff && !card.isThink) {
@@ -1118,7 +1119,7 @@ setInterval(() => {
     if (sec > 120 && !card.timeoutWarned) {
       card.timeoutWarned = true;
       card.el.classList.add("tool-timeout");
-      card.stateEl.innerHTML = `<span style="color:var(--yellow)">⚠ 可能卡住</span>`;
+      card.stateEl.innerHTML = `<span class="t-dot warn"></span><span style="color:var(--yellow)">可能卡住</span>`;
       setStatus("工具可能卡住", "error");
     }
   }
