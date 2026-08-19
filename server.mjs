@@ -429,18 +429,13 @@ async function createSession(name) {
   const sm = SessionManager.create(CONFIG.cwd, SESSIONS_DIR);
   const id = sm.getSessionId();
   const file = sm.getSessionFile();
-  // 2026-08-19：新会话继承全局最后选择的模型（用户切过千问→新会话直接千问，不再回 Auto 乱跳）；未切过则用 defaultModel
+  // 2026-08-19 收敛：新会话一律用默认模型（千问）。不再继承 lastModelKey——
+  //   否则用户切过的 nvidia/deepseek 残留会污染新会话默认（“后端不是千问”死循环根源）。
+  //   用户切模型只锁当前会话（session-model-keys 持久化），新会话永远回到默认。
   let agent = null;
   let modelKey = null;
-  if (lastModelKey && lastModelKey.provider && lastModelKey.id) {
-    const m = modelList.find(x => x.provider === lastModelKey.provider && x.id === lastModelKey.id);
-    if (m) {
-      modelKey = { provider: m.provider, id: m.id };
-      try { agent = await createSessionAgent(sm, m); } catch { agent = null; }
-    }
-  }
-  if (!agent) agent = await createSessionAgent(sm, defaultModel);
-  activeSessions.set(id, { agent, sm, busy: false, lastUsed: Date.now(), ...(modelKey ? { modelKey, agentModel: modelKey } : {}) });
+  agent = await createSessionAgent(sm, defaultModel);
+  activeSessions.set(id, { agent, sm, busy: false, lastUsed: Date.now(), modelKey: defaultModel && defaultModel.provider ? { provider: defaultModel.provider, id: defaultModel.id } : null, agentModel: defaultModel && defaultModel.provider ? { provider: defaultModel.provider, id: defaultModel.id } : null });
   invalidateSessionCache(); // 新增会话 → 列表缓存失效
   if (name) { try { sm.appendSessionInfo(name); } catch {} }
   return id;
@@ -1126,12 +1121,58 @@ function ocGoCandidate(re) { return isOcGoBlocked() ? undefined : modelList.find
 // 实测可用性：小米 mimo-v2.5 思考+工具全通；阿里 qwen3.8-max；商汤/NVIDIA 免费待验证；ark-code thinking 空回复（末位）
 function pickFallbackDefault() {
   if (defaultModel && !(defaultModel.provider === "opencode-go" && isOcGoBlocked())) return defaultModel;
-  return modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
-    || modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
+  return modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
+    || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
     || modelList.find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id))
     || modelList.find(m => m.provider === "nvidia" && /gemma-3-12b/i.test(m.id))
     || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
     || defaultModel;
+}
+
+// ══ 复读检测与降级重试（2026-08-19 加固）══
+// 现象：qwen3.8-max 等推理模型在 thinking=high + 长上下文时偶发 repetition loop——
+//   连续多次独立调用生成字节级相同的回复，甚至编造未执行的操作（无 toolCall 却说"已沉淀"）。
+// 加固：会话级记录上次完整回复 → 本次相同则判定复读 → 自动换 fallback 模型重试一次并播报。
+const lastReplyMap = new Map(); // sessionKey → 归一化后的上次回复
+function normReply(s) { return String(s || "").replace(/\s+/g, "").replace(/[。．.!！?？]+$/, "").slice(0, 2000); }
+// 基准获取：内存 Map 优先（快），miss 时读会话文件最后一条 assistant 回复（服务重启后也能防首条复读）
+function lastReplyOf(sessionKey, sessionFile) {
+  const mem = lastReplyMap.get(sessionKey);
+  if (mem) return mem;
+  if (!sessionFile || !fs.existsSync(sessionFile)) return null;
+  try {
+    const entries = readEntriesFromFile(sessionFile);
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i];
+      if (e?.type === "message" && e?.message?.role === "assistant") {
+        const t = extractText(e.message.content) || "";
+        const n = normReply(t);
+        if (n.length >= 30) return n;
+      }
+    }
+  } catch {}
+  return null;
+}
+function isRepeatReply(sessionKey, text, sessionFile) {
+  if (!text || normReply(text).length < 30) return false;
+  const last = lastReplyOf(sessionKey, sessionFile);
+  return !!last && last === normReply(text);
+}
+// 复读 → 用备用模型重新直调一次，结果以 note + delta 追加推送
+async function retryRepeatWithFallback(message, sessionKey, writer, busEmit) {
+  const fbModel = pickFallbackDefault();
+  const note = `⚠️ 检测到模型复读（回复与上一条完全相同），已自动切换 ${fbModel.provider}/${fbModel.id} 重新生成…`;
+  try { writer.push("note", { text: note }); if (busEmit) busEmit("note", { text: note }); } catch {}
+  const fb = await directChat(fbModel, message);
+  if (fb?.text) {
+    const add = `\n\n（以下为切换模型后的新回复）\n${fb.text}`;
+    try { writer.push("delta", { text: add }); if (busEmit) busEmit("delta", { text: add }); } catch {}
+    lastReplyMap.set(sessionKey, normReply(fb.text));
+    console.log(`[pi-web] 复读重试成功: ${fbModel.provider}/${fbModel.id}`);
+    return fb.text;
+  }
+  try { writer.push("note", { text: "⚠️ 复读检测触发，但备用模型也无回复（请手动切换模型或重试）" }); } catch {}
+  return null;
 }
 
 // ══ 会话级模型选择持久化（2026-08-19 修复 A）════
@@ -1197,17 +1238,18 @@ function routeForAuto(text) {
     return { model: defaultModel, level: "simple", score: 0, reasons: ["已关闭(PI_AUTO_ROUTE=0)"], auto: false };
   }
   if (cl.level === "complex") {
-    const pro = ocGoCandidate(/deepseek-v4-pro/i)
+    // 2026-08-19 用户定：后端统一千问优先（免费 token 计划）；ocGo 429 降为备选
+    const pro = modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
+      || ocGoCandidate(/deepseek-v4-pro/i)
       || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5-pro/i.test(m.id))
-      || modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
       // 火山方舟 ark-code：cost=0，但 thinking 模式空回复（末位兜底）
       || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id));
     if (pro) return { model: pro, level: "complex", score: cl.score, reasons: cl.reasons, auto: true };
   }
-  const flash = ocGoCandidate(/deepseek-v4-flash/i)
-    // ⚠️ 成本策略（2026-08-19 用户定）：deepseek 官方涨价贵，降级链不走它，全用 token 计划免费通道
+  // 2026-08-19 用户定：后端统一千问优先；⚠️ deepseek 官方涨价贵不走；ocGo 429 降为备选
+  const flash = modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
+    || ocGoCandidate(/deepseek-v4-flash/i)
     || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
-    || modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
     || modelList.find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id))
     || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
     || pickFallbackDefault();
@@ -2329,7 +2371,7 @@ async function handleSwitchModel(req, res, body) {
     // 记录会话自己的模型选择（会话重启时恢复）
     try { entry2.modelKey = { provider: m.provider, id: m.id }; } catch {}
     saveSessionModelKey(body.sessionId, { provider: m.provider, id: m.id }); // 修复 A：持久化
-    lastModelKey = { provider: m.provider, id: m.id }; saveLastModel(lastModelKey); // 2026-08-19：新会话继承
+    // 2026-08-19 收敛：不再写全局 lastModel——新会话一律默认千问，用户切模型只锁当前会话
     // 如果 agent 空闲，立即重建生效；busy 则标记（下次消息 handleChat 对比重建）
     if (entry2.agent && !entry2.busy) {
       try { entry2.agent.dispose(); } catch {}
@@ -3967,8 +4009,24 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal,
   // 客户端已断开 → 不写会话、不发 SSE（避免半截结果污染会话文件）
   if (result.aborted || signal?.aborted) { clearTask(taskId, "aborted"); return; }
   if (result.aborted || signal?.aborted) return;
-  const text = result.text;
+  let text = result.text;
   if (!text) { writer.push("error", { message: "模型未返回内容，请稍后重试" }); return; }
+  // 复读检测（2026-08-19 加固）：兑底通道同样防 repetition loop
+  const rkU = sessionId || findKeyByEntry(entry) || "new";
+  if (isRepeatReply(rkU, text, entry.sm?.sessionFile)) {
+    console.log(`[pi-web] 复读检测触发(统一通道): ${chatModel.provider}/${chatModel.id} → 自动切换重试`);
+    const fbModel = pickFallbackDefault();
+    writer.push("note", { text: `⚠️ 检测到模型复读，自动切换 ${fbModel.provider}/${fbModel.id} 重试…` });
+    const fb = await directChat(fbModel, message);
+    if (fb?.text) {
+      text = fb.text;
+      lastReplyMap.set(rkU, normReply(text));
+    } else {
+      writer.push("note", { text: "⚠️ 复读检测触发，但备用模型也无回复（请手动切换模型或重试）" });
+    }
+  } else if (normReply(text).length >= 30) {
+    lastReplyMap.set(rkU, normReply(text));
+  }
   try {
     entry.sm.appendMessage({ role: "user", content: [{ type: "text", text: message }] });
     entry.sm.appendMessage({ role: "assistant", content: [{ type: "text", text }] });
@@ -4235,11 +4293,16 @@ async function handleChat(req, res, body) {
         }
       } else {
         const same = entry.modelKey && entry.modelKey.provider === bp && entry.modelKey.id === bm;
+        // ⚠️ 2026-08-19 收敛：前端 stale 显示值（localStorage 残留 nvidia/deepseek）不再同步进服务端——
+        //   新会话一律默认千问，用户切模型走 /api/model 显式切换，只锁当前会话
         if (!same && modelList.find(m => m.provider === bp && m.id === bm)) {
-          entry.modelKey = { provider: bp, id: bm };
-          if (sessionId) saveSessionModelKey(sessionId, entry.modelKey);
-          lastModelKey = { provider: bp, id: bm }; saveLastModel(lastModelKey); // 2026-08-19：新会话继承
-          console.log(`[pi-web] 前端同步模型 → ${bp}/${bm}`);
+          if (bp !== "deepseek" && bp !== "nvidia") {
+            entry.modelKey = { provider: bp, id: bm };
+            if (sessionId) saveSessionModelKey(sessionId, entry.modelKey);
+            console.log(`[pi-web] 前端同步模型 → ${bp}/${bm}`);
+          } else {
+            console.log(`[pi-web] 忽略前端 ${bp} 同步（残留显示值防呆）→ ${bp}/${bm}`);
+          }
         }
       }
     } catch {}
@@ -4497,6 +4560,14 @@ async function handleChat(req, res, body) {
         // 明确提示（API Key 失效 / 模型异常），避免用户以为卡死
         try { writer.push("error", { message: `模型 ${fbModel.provider}/${fbModel.id} 无回复——API Key 可能失效或额度不足，请到模型管理中重新配置` }); } catch {}
       }
+    }
+    // 复读检测（2026-08-19 加固）：主模型输出与上一条完整回复字节级相同 → 判定 repetition loop，自动切 fallback 重试
+    const rk = sessionId || findKeyByEntry(entry) || "new";
+    if (collected && isRepeatReply(rk, collected, entry.sm?.sessionFile)) {
+      console.log(`[pi-web] 复读检测触发: ${effModel?.provider}/${effModel?.id} 与上一条回复相同 → 自动切换重试`);
+      await retryRepeatWithFallback(message, rk, writer, busEmit);
+    } else if (collected && normReply(collected).length >= 30) {
+      lastReplyMap.set(rk, normReply(collected));
     }
     // 自动命名：尚无名称时用首条消息
     if (!entry.sm.getSessionName()) {

@@ -76,9 +76,11 @@ function populateModels(data) {
     }
     sel.appendChild(og);
   }
-  // 会话级模型优先：当前会话自己切过模型则显示它；否则 Auto 为全局默认（服务端 autoDefault）时选 Auto
+  // 会话级模型优先：当前会话自己切过模型则显示它；新会话继承全局最后模型（2026-08-19）；否则 Auto 为全局默认
   const saved = (currentId && sessionModels[currentId]);
-  const cur = saved || (data.autoDefault ? "auto/auto" : (data.current ? `${data.current.provider}/${data.current.id}` : "auto/auto"));
+  let lastM = null;
+  try { lastM = (!currentId && localStorage.getItem("pi_last_model")) || null; } catch {}
+  const cur = saved || lastM || (data.autoDefault ? "auto/auto" : (data.current ? `${data.current.provider}/${data.current.id}` : "auto/auto"));
   if (cur && [...sel.options].some(o => o.value === cur)) {
     sel.value = cur;
     window.currentModelKey = cur;
@@ -109,6 +111,7 @@ async function switchModel(provider, modelId) {
     if (!currentId) {
       window.pendingModel = `${provider}/${modelId}`;
       window.currentModelKey = `${provider}/${modelId}`; // 2026-08-19: 同步显示值，避免发送时带 stale auto
+      try { localStorage.setItem("pi_last_model", `${provider}/${modelId}`); } catch {} // 新会话继承
       $("input-model-name").textContent = modelId === "auto" ? "Auto" : modelId;
       const data = await api("/api/models");
       modelList = data.models; populateModels(data); updateFooter();
@@ -122,6 +125,7 @@ async function switchModel(provider, modelId) {
       try { localStorage.setItem("pi_session_models", JSON.stringify(sessionModels)); } catch {}
     }
     window.currentModelKey = `${provider}/${modelId}`; // 2026-08-19: 切换后立即同步，防止发送时带 stale auto 覆盖服务端
+    try { localStorage.setItem("pi_last_model", `${provider}/${modelId}`); } catch {} // 2026-08-19: 新会话继承
     $("input-model-name").textContent = modelId === "auto" ? "Auto" : modelId;
     const data = await api("/api/models");
     modelList = data.models; populateModels(data); updateFooter();
