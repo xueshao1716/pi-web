@@ -18,7 +18,7 @@ import { shrinkToolResult, NEEDS_PRO_RE, scavengeToolCalls } from "./engine/reas
 import { extractMessages, extractText, extractImages, extractFiles } from "./engine/session-utils.mjs";
 
 // ── 模型路由层（拆模块）：429 降级 / 复杂度分类 / Auto 路由 / pro 候选 ──
-import { initModelRouter, isOcGoBlocked, markOcGoBlocked, ocGoCandidate, pickFallbackDefault, isAutoModel, routeForAuto, routeProCandidate, ROUTER_AUTO } from "./engine/model-router.mjs";
+import { initModelRouter, isOcGoBlocked, markOcGoBlocked, ocGoCandidate, pickFallbackDefault, pickFallbackExcluding, isAutoModel, routeForAuto, routeProCandidate, ROUTER_AUTO } from "./engine/model-router.mjs";
 import { CONFIG } from "./config.mjs";
 // ── Gateway 2.0 插件化引擎 + Code Mode（dsh 设计沉淀）──
 import { createGateway } from "./engine/gateway.mjs";
@@ -1073,8 +1073,9 @@ initModelRouter({ getModelList: () => modelList, getDefaultModel: () => defaultM
 // ══ 复读检测与降级重试（2026-08-19 加固）══
 // 判定逻辑已迁移到 engine/output-guard.mjs（输出质量守卫，纯判定模块）：
 //   复读/空回复/纯思考 统一 classifyAnomaly；这里只保留"重试执行"（换 fallback 模型直调 + 播报）。
-async function retryRepeatWithFallback(message, sessionKey, writer, busEmit) {
-  const fbModel = pickFallbackDefault();
+async function retryRepeatWithFallback(message, sessionKey, writer, busEmit, currentModel) {
+  // ⚠️ 2026-08-19 修复：兜底必须排除出问题的模型（否则千问复读→兜底还是千问，切换无效）
+  const fbModel = pickFallbackExcluding(currentModel);
   const note = `⚠️ 检测到模型复读（回复与上一条完全相同），已自动切换 ${fbModel.provider}/${fbModel.id} 重新生成…`;
   try { writer.push("note", { text: note }); if (busEmit) busEmit("note", { text: note }); } catch {}
   const fb = await directChat(fbModel, message);
@@ -3917,7 +3918,7 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal,
   const anomaly = classifyAnomaly({ sessionKey: rkU, text, think: result.think || "", sessionFile: entry.sm?.sessionFile });
   if (anomaly.type !== "none") {
     console.log(`[pi-web] 输出守卫(${anomaly.type}): ${chatModel.provider}/${chatModel.id} ${anomaly.reason} → 自动切换重试`);
-    const fbModel = pickFallbackDefault();
+    const fbModel = pickFallbackExcluding(chatModel);
     writer.push("note", { text: `⚠️ ${anomaly.reason}，自动切换 ${fbModel.provider}/${fbModel.id} 重试…` });
     const fb = await directChat(fbModel, message);
     if (fb?.text) {
@@ -4451,8 +4452,8 @@ async function handleChat(req, res, body) {
     }
     // 空回复兜底：agent 完成但无任何文本输出（部分推理模型偶发把回答全放 <think>）→ 直调模型接口补一次
     if (!sawDelta) {
-      // 修复 B：空回复兕底用安全模型（避开 opencode-go 429），不再死磕 defaultModel
-      const fbModel = pickFallbackDefault();
+      // 修复 B：空回复兕底用安全模型（避开 opencode-go 429 且排除当前模型，不再死磕 defaultModel）
+      const fbModel = pickFallbackExcluding(effModel);
       const fallback = await directChat(fbModel, message);
       if (fallback?.text) {
         writer.push("delta", { text: fallback.text });
@@ -4470,7 +4471,7 @@ async function handleChat(req, res, body) {
       const anom = classifyAnomaly({ sessionKey: rk, text: collected, think: "", sessionFile: entry.sm?.sessionFile });
       if (anom.type === "repeat" || anom.type === "marker") {
         console.log(`[pi-web] 输出守卫(${anom.type}): ${effModel?.provider}/${effModel?.id} ${anom.reason} → 自动切换重试`);
-        await retryRepeatWithFallback(message, rk, writer, busEmit);
+        await retryRepeatWithFallback(message, rk, writer, busEmit, effModel);
       } else if (anom.type === "none") {
         recordReply(rk, collected);
       }

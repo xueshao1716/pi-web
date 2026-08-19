@@ -41,6 +41,19 @@ export function pickFallbackDefault() {
     || defaultModel;
 }
 
+// ⚠️ 2026-08-19 修复：复读守卫的兜底必须**排除出问题的模型**（否则千问复读→兜底还是千问，切换无效）。
+// 在免费通道里按实测可用性选：mimo（思考+工具全通）→ 商汤 → NVIDIA → ark（末位）；全不可用才退回默认。
+export function pickFallbackExcluding(excludeModel) {
+  const excludeKey = excludeModel ? `${excludeModel.provider}/${excludeModel.id}` : "";
+  const cands = [
+    _getModelList().find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id)),
+    _getModelList().find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id)),
+    _getModelList().find(m => m.provider === "nvidia" && /gemma-3-12b/i.test(m.id)),
+    _getModelList().find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id)),
+  ].filter(Boolean).filter(m => `${m.provider}/${m.id}` !== excludeKey);
+  return cands[0] || pickFallbackDefault();
+}
+
 export const ROUTER_AUTO = { provider: "auto", id: "auto" };
 export function isAutoModel(m) { return !!m && (m.provider === "auto" || m.id === "auto" || m.id === "auto-smart"); }
 
