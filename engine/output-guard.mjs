@@ -53,10 +53,13 @@ export function isRepeatReply(sessionKey, text, sessionFile) {
   return !!last && last === normReply(text);
 }
 
+// 纯标记文本（模型复读占位标记，如"（交付文件）"）→ 视为异常，正文为空
+const MARKER_ONLY_RE = /^[\(（\s]*(?:交付文件|文件交付|已交付|交付中?)[\)）\s]*$/;
+
 /**
- * 统一异常分类：对一次完整模型输出做四类检查。
+ * 统一异常分类：对一次完整模型输出做四类检查（+marker 纯标记）。
  * @param {{sessionKey:string, text:string, think:string, sessionFile:string}} p
- * @returns {{type:'repeat'|'think-only'|'empty'|'none', reason:string}}
+ * @returns {{type:'repeat'|'think-only'|'empty'|'marker'|'none', reason:string}}
  */
 export function classifyAnomaly({ sessionKey, text, think = "", sessionFile }) {
   const n = normReply(text);
@@ -64,6 +67,7 @@ export function classifyAnomaly({ sessionKey, text, think = "", sessionFile }) {
     if (normReply(think).length >= 10) return { type: "think-only", reason: "正文为空，回答全在思考里" };
     return { type: "empty", reason: "模型空回复（无任何正文）" };
   }
+  if (MARKER_ONLY_RE.test(n)) return { type: "marker", reason: "回复仅为占位标记（交付文件类），正文为空" };
   if (isRepeatReply(sessionKey, text, sessionFile)) return { type: "repeat", reason: "与上一条完整回复完全相同（repetition loop）" };
   return { type: "none", reason: "" };
 }

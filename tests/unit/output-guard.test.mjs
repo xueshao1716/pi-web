@@ -63,6 +63,17 @@ test("classifyAnomaly: 复读 → repeat", () => {
   assert.equal(r.type, "repeat");
 });
 
+test("classifyAnomaly: 纯标记文本（交付文件）→ marker（2026-08-19 修复）", () => {
+  assert.equal(classifyAnomaly({ sessionKey: "c6", text: "（交付文件）", think: "", sessionFile: "D:/nonexistent" }).type, "marker");
+  assert.equal(classifyAnomaly({ sessionKey: "c6", text: "交付文件", think: "", sessionFile: "D:/nonexistent" }).type, "marker");
+  assert.equal(classifyAnomaly({ sessionKey: "c6", text: "（已交付）", think: "", sessionFile: "D:/nonexistent" }).type, "marker");
+});
+
+test("classifyAnomaly: 正常回复/短回复不误判为 marker", () => {
+  assert.equal(classifyAnomaly({ sessionKey: "c7", text: "这是正常的长回复内容，包含实际信息。", think: "", sessionFile: "D:/nonexistent" }).type, "none");
+  assert.equal(classifyAnomaly({ sessionKey: "c7", text: "好的", think: "", sessionFile: "D:/nonexistent" }).type, "none");
+});
+
 test("recordReply: <30 字符不记录基准", () => {
   recordReply("c5", "收到");
   assert.equal(lastReplyOf("c5", null), null);

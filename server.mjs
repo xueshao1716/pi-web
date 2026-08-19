@@ -4463,14 +4463,17 @@ async function handleChat(req, res, body) {
         try { writer.push("error", { message: `模型 ${fbModel.provider}/${fbModel.id} 无回复——API Key 可能失效或额度不足，请到模型管理中重新配置` }); } catch {}
       }
     }
-    // 输出质量守卫：主模型输出与上一条完整回复字节级相同 → 判定 repetition loop，自动切 fallback 重试
-    //（空回复/纯思考由上方 sawDelta 兜底处理，此处只做复读判定，避免双重兜底）
+    // 输出质量守卫：主模型输出异常（复读/纯标记/空回复）→ 自动切 fallback 重试
+    //（空回复/纯思考由 sawDelta 兜底处理；此处统一 classifyAnomaly 判定，避免双重兜底）
     const rk = sessionId || findKeyByEntry(entry) || "new";
-    if (sawDelta && collected && isRepeatReply(rk, collected, entry.sm?.sessionFile)) {
-      console.log(`[pi-web] 输出守卫(repeat): ${effModel?.provider}/${effModel?.id} 与上一条回复相同 → 自动切换重试`);
-      await retryRepeatWithFallback(message, rk, writer, busEmit);
-    } else if (sawDelta && collected) {
-      recordReply(rk, collected);
+    if (sawDelta && collected) {
+      const anom = classifyAnomaly({ sessionKey: rk, text: collected, think: "", sessionFile: entry.sm?.sessionFile });
+      if (anom.type === "repeat" || anom.type === "marker") {
+        console.log(`[pi-web] 输出守卫(${anom.type}): ${effModel?.provider}/${effModel?.id} ${anom.reason} → 自动切换重试`);
+        await retryRepeatWithFallback(message, rk, writer, busEmit);
+      } else if (anom.type === "none") {
+        recordReply(rk, collected);
+      }
     }
     // 自动命名：尚无名称时用首条消息
     if (!entry.sm.getSessionName()) {
@@ -4575,7 +4578,9 @@ async function handleChat(req, res, body) {
             pushedArtifacts.set(sessKey, pushedSet);
             try {
               const fw = fresh.slice(0, 5).map(f => ({ type: "file", name: f.name, path: f.path, size: f.size, mime: f.mime }));
-              await entry.sm.appendMessage({ role: "assistant", content: [{ type: "text", text: "（交付文件）" }, ...fw] });
+              // ⚠️ 2026-08-19 修复：不再写"（交付文件）"文本标记——模型会把它当回复模板复读（正文全空）；
+              //    file 块本身前端就能识别渲染（extractFiles → m.files），无需占位文本。
+              await entry.sm.appendMessage({ role: "assistant", content: fw });
             } catch {}
             files = fresh;
           } else {
