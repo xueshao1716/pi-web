@@ -6,7 +6,7 @@ import tls from "node:tls";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFile, execFileSync } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 
@@ -16,6 +16,8 @@ import { bindOutputGuardDeps, classifyAnomaly, isRepeatReply, normReply, recordR
 import { shrinkToolResult, NEEDS_PRO_RE, scavengeToolCalls } from "./engine/reasonix-tools.mjs";
 // ── 会话解析纯函数（拆模块）：消息/文本/图片/文件提取 ──
 import { extractMessages, extractText, extractImages, extractFiles } from "./engine/session-utils.mjs";
+// ── 统一 HTTP 客户端（拆模块）：原生 fetch + 自动系统代理（env → Windows 注册表），替代 python 子进程 ──
+import { httpJsonFetch, httpBufferFetch } from "./engine/http.mjs";
 
 // ── 模型路由层（拆模块）：429 降级 / 复杂度分类 / Auto 路由 / pro 候选 ──
 import { initModelRouter, isOcGoBlocked, markOcGoBlocked, ocGoCandidate, pickFallbackDefault, pickFallbackExcluding, isAutoModel, routeForAuto, routeProCandidate, ROUTER_AUTO } from "./engine/model-router.mjs";
@@ -1121,61 +1123,6 @@ const SUPPORTED_PROVIDERS = ["deepseek", "openai", "openrouter", "anthropic", "g
 
 function readJsonFile(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return {}; } }
 function writeJsonFile(p, obj) { try { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(obj, null, 2), "utf8"); return true; } catch { return false; } }
-// 对外请求：用 python 子进程（自动走系统代理，部分平台如 apihub.agnes-ai.com 直连不通）
-const { spawn } = await import("node:child_process");
-async function httpJsonFetch(url, options = {}) {
-  // 代码走 stdin（python -），body 走临时文件——避免 argv 传参在 Windows 命令行被拆坏（引号/长度）
-  const tmpFile = path.join(os.tmpdir(), "piweb-req-" + Date.now() + "-" + Math.floor(Math.random() * 1e6));
-  try { fs.writeFileSync(tmpFile, options.body || "", "utf8"); } catch { return Promise.reject(new Error("临时文件写入失败")); }
-  const pyCode = [
-    "import urllib.request, json, sys, urllib.error",
-    "url=sys.argv[1]; method=sys.argv[2]; headers=json.loads(sys.argv[3]); timeout=float(sys.argv[4]); body_file=sys.argv[5]",
-    "headers.setdefault('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0')",
-    "try: body=open(body_file, 'r', encoding='utf-8').read()",
-    "except: body=''",
-    "req=urllib.request.Request(url, data=body.encode() if body else None, method=method or 'GET', headers=headers)",
-    "try:",
-    "  r=urllib.request.urlopen(req, timeout=timeout)",
-    "  data=r.read()",
-    "  sys.stdout.write(str(r.status)+chr(10)+data.decode('utf-8','replace'))",
-    "except urllib.error.HTTPError as e:",
-    "  # 非 2xx 也返回 status+body（如 404/401），让调用方走 endpoint fallback 链",
-    "  data=e.read()",
-    "  sys.stdout.write(str(e.code)+chr(10)+data.decode('utf-8','replace'))",
-    "os_remove=1",
-  ].join("\n");
-  return new Promise((resolve, reject) => {
-    const child = spawn("python", ["-", url, options.method || "GET", JSON.stringify(options.headers || {}), String(options.timeout || 60000), tmpFile],
-      { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, env: { ...process.env } });
-    let stdout = "", stderr = "";
-    const timer = setTimeout(() => { try { child.kill(); } catch {} reject(new Error("timeout")); }, (options.timeout || 60000) + 5000);
-    child.stdout.on("data", (d) => { stdout += d; if (stdout.length > 50 * 1024 * 1024) { try { child.kill(); } catch {} } });
-    child.stderr.on("data", (d) => { stderr += d; });
-    child.on("error", (err) => { clearTimeout(timer); reject(new Error(String(err.message).slice(0, 120))); });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      try { fs.unlinkSync(tmpFile); } catch {}
-      if (code !== 0) {
-        const msg = String(stderr || `exit ${code}`).slice(0, 150);
-        if (/timed? ?out|timeout/i.test(msg)) return reject(new Error("timeout"));
-        return reject(new Error(msg || "python 请求失败"));
-      }
-      const nl = stdout.indexOf("\n");
-      const status = parseInt(stdout.slice(0, nl), 10) || 200;
-      const body = stdout.slice(nl + 1);
-      resolve({
-        status,
-        ok: status >= 200 && status < 300,
-        json: async () => { try { return JSON.parse(body); } catch { return null; } },
-        text: async () => body,
-      });
-    });
-    // 代码通过 stdin 传（python - 从 stdin 读代码），body 已在临时文件
-    try { child.stdin.write(pyCode + "\n"); } catch {}
-    try { child.stdin.end(); } catch {}
-  });
-}
-
 const CRLF = "\r\n";
 
 // ── 隔离子任务执行器初始化（P2）──
@@ -1441,53 +1388,18 @@ async function handleImage(res, body) {
         headers = { "Content-Type": `multipart/form-data; boundary=${boundary}`, Authorization: `Bearer ${key}` };
       }
       if (rawChannel) {
-        // 二进制模型：绕过 httpJsonFetch（python decode 会损坏字节），直接拿原始 buffer
-        const tmpFile = path.join(os.tmpdir(), "piweb-cf-bin-" + Date.now() + "-" + Math.floor(Math.random() * 1e6));
-        try { fs.writeFileSync(tmpFile, body, "utf8"); } catch { return json(res, 500, { error: "临时文件写入失败" }); }
-        const pyCode = [
-          "import urllib.request, json, sys, urllib.error, base64",
-          "url=sys.argv[1]; headers=json.loads(sys.argv[2]); body_file=sys.argv[3]",
-          "headers.setdefault('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0')",
-          "body=open(body_file,'rb').read()",
-          "req=urllib.request.Request(url, data=body, method='POST', headers=headers)",
-          "try:",
-          "  r=urllib.request.urlopen(req, timeout=180)",
-          "  data=r.read()",
-          "  sys.stdout.write(str(r.status)+chr(10)+base64.b64encode(data).decode())",
-          "except urllib.error.HTTPError as e:",
-          "  data=e.read()",
-          "  sys.stdout.write(str(e.code)+chr(10)+base64.b64encode(data).decode())",
-        ].join("\n");
-        const raw = await new Promise((resolve, reject) => {
-          const child = spawn("python", ["-", url, JSON.stringify(headers), tmpFile],
-            { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, env: { ...process.env } });
-          let stdout = "", stderr = "";
-          const timer = setTimeout(() => { try { child.kill(); } catch {} reject(new Error("timeout")); }, 190000);
-          child.stdout.on("data", d => { stdout += d; });
-          child.stderr.on("data", d => { stderr += d; });
-          child.on("error", err => { clearTimeout(timer); reject(new Error(String(err.message).slice(0, 120))); });
-          child.on("close", code => {
-            clearTimeout(timer);
-            try { fs.unlinkSync(tmpFile); } catch {}
-            if (code !== 0) return reject(new Error(String(stderr || `exit ${code}`).slice(0, 150)));
-            resolve(stdout);
-          });
-          try { child.stdin.write(pyCode + "\n"); } catch {}
-          try { child.stdin.end(); } catch {}
-        });
-        const nl = raw.indexOf("\n");
-        const status = parseInt(raw.slice(0, nl), 10) || 200;
-        const b64 = raw.slice(nl + 1);
-        if (status >= 300) return json(res, 502, { error: `cloudflare 绘图失败 ${status}` });
-        if (!b64) return json(res, 500, { error: "cloudflare 未返回图片数据" });
+        // 二进制模型：原生 fetch 直接拿 buffer（旧 python 中转 + base64 方案已移除）
+        const r = await httpBufferFetch(url, { method: "POST", headers, body, timeout: 180000 });
+        if (r.status >= 300) return json(res, 502, { error: `cloudflare 绘图失败 ${r.status}` });
+        const buf = r.buffer();
+        if (!buf || !buf.length) return json(res, 500, { error: "cloudflare 未返回图片数据" });
         // 部分模型（FLUX.2）响应是 JSON {result:{image: b64}}，需要解包；纯二进制模型（phoenix）直接用
         try {
-          const decoded = Buffer.from(b64, "base64").toString("utf8");
-          const parsed = JSON.parse(decoded);
+          const parsed = JSON.parse(buf.toString("utf8"));
           const inner = parsed?.result?.image;
           if (typeof inner === "string") return json(res, 200, { image: `data:image/jpeg;base64,${inner}` });
         } catch {}
-        return json(res, 200, { image: `data:image/jpeg;base64,${b64}` });
+        return json(res, 200, { image: `data:image/jpeg;base64,${buf.toString("base64")}` });
       }
       const r = await httpJsonFetch(url, {
         method: "POST",

@@ -4,6 +4,9 @@
   "private": true,
   "description": "pi coding agent web interface (SSE chat over pi SDK)",
   "type": "module",
+  "dependencies": {
+    "undici": "^7.16.0"
+  },
   "scripts": {
     "start": "node server.mjs",
     "test": "node --test tests/unit/*.test.mjs"
