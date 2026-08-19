@@ -660,6 +660,9 @@ async function openSession(id) {
   }
   const agent = await createSessionAgent(sm, defaultModel);
   const entry = { agent, sm, busy: false, lastUsed: Date.now() };
+  // 恢复会话级模型选择（修复 A：LRU 淘汰/服务重启后不丢用户切的模型；handleChat 检测到不一致会自动重建 agent）
+  const savedKey = loadSessionModelKey(id);
+  if (savedKey) entry.modelKey = savedKey;
   activeSessions.set(id, entry);
   return entry;
 }
@@ -832,6 +835,7 @@ function isFirstTurn(sm) {
 }
 
 async function deleteSession(id) {
+  clearSessionModelKey(id); // 修复 A：删除会话时清理模型选择记录
   const entry = activeSessions.get(id);
   if (entry) {
     try { entry.agent.dispose(); } catch {}
@@ -1093,6 +1097,40 @@ console.log(`[pi-web] 可用模型: ${modelList.length} 个（含 ${Object.keys(
 // 策略保守：flash vs pro 实测（2026-08-13）——pro 慢 2.4-7×、贵 3×、过度思考烧 token、偶发篡改数据，
 // 所以 99% 的日常任务走 flash；只有明确复杂任务（长任务/多步骤/深度分析/代码库级）才升级 pro。
 // 用户手动选择具体模型 → 不干预（与 Cursor "手动覆盖 Auto" 同构）。环境变量 PI_AUTO_ROUTE=0 可关闭。
+// ══ opencode-go 429 自动降级（2026-08-19 修复 B）════
+// 现象：opencode-go 周额度耗尽（GoUsageLimitError 429）时，默认/Auto 路由仍优先 opencode-go → 持续 429。
+// 修复：探测到 429 后 30 分钟内 Auto 路由/默认选择/图像兕底自动避开 opencode-go，落到火山方舟/deepseek 官方，定期重探恢复。
+let ocGoBlockedUntil = 0;
+const OCGO_BLOCK_MS = 30 * 60 * 1000;
+function isOcGoBlocked() { return Date.now() < ocGoBlockedUntil; }
+function markOcGoBlocked(detail) {
+  if (Date.now() < ocGoBlockedUntil) return; // 已标记，不重复刷日志
+  ocGoBlockedUntil = Date.now() + OCGO_BLOCK_MS;
+  console.log(`[pi-web] ⛔ opencode-go 429 → 标记不可用 ${OCGO_BLOCK_MS/60000} 分钟（${String(detail||"").slice(0,60)}）`);
+}
+// opencode-go 候选（blocked 期间返回 undefined，让路由落到下一顺位）
+function ocGoCandidate(re) { return isOcGoBlocked() ? undefined : modelList.find(m => m.provider === "opencode-go" && re.test(m.id)); }
+// defaultModel 兕底（blocked 且 defaultModel 恰为 opencode-go 时换可用通道）
+function pickFallbackDefault() {
+  if (defaultModel && !(defaultModel.provider === "opencode-go" && isOcGoBlocked())) return defaultModel;
+  // ⚠️ 火山方舟 ark-code 在 pi agent 管线实测空回复（thinking 模式 content 为空），不作为首选兕底（2026-08-19）
+  return modelList.find(m => m.provider === "deepseek" && /flash/i.test(m.id))
+    || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
+    || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && m.id.includes("v2.5"))
+    || defaultModel;
+}
+
+// ══ 会话级模型选择持久化（2026-08-19 修复 A）════
+// 现象：模型切换只存内存 entry.modelKey，会话 LRU 淘汰/服务重启后丢失 → 悄悄回 Auto → 429 场景下持续报错。
+// 修复：切换写入 AGENT_DIR/session-model-keys.json，openSession 恢复；删除会话时清理。
+const SESSION_KEYS_FILE = path.join(AGENT_DIR, "session-model-keys.json");
+function saveSessionModelKey(sid, mk) {
+  if (!sid) return;
+  try { const d = readJsonFile(SESSION_KEYS_FILE); d[sid] = mk; fs.writeFileSync(SESSION_KEYS_FILE, JSON.stringify(d, null, 1)); } catch {}
+}
+function loadSessionModelKey(sid) { try { return readJsonFile(SESSION_KEYS_FILE)[sid] || null; } catch { return null; } }
+function clearSessionModelKey(sid) { try { const d = readJsonFile(SESSION_KEYS_FILE); if (d[sid]) { delete d[sid]; fs.writeFileSync(SESSION_KEYS_FILE, JSON.stringify(d, null, 1)); } } catch {} }
+
 const ROUTER_AUTO = { provider: "auto", id: "auto" };
 // Plan 模式只读工具集（工具级硬限制）：读文件 + 搜索，不给写/执行工具
 const PLAN_READONLY_SET = ["read", "search_files"];
@@ -1133,15 +1171,16 @@ function routeForAuto(text) {
     return { model: defaultModel, level: "simple", score: 0, reasons: ["已关闭(PI_AUTO_ROUTE=0)"], auto: false };
   }
   if (cl.level === "complex") {
-    const pro = modelList.find(m => m.provider === "opencode-go" && /deepseek-v4-pro/i.test(m.id))
+    const pro = ocGoCandidate(/deepseek-v4-pro/i)
       // 官方 DeepSeek 涨价，复杂任务兕底也用火山方舟 ark-code 替代
       || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id));
     if (pro) return { model: pro, level: "complex", score: cl.score, reasons: cl.reasons, auto: true };
   }
-  const flash = modelList.find(m => m.provider === "opencode-go" && /deepseek-v4-flash/i.test(m.id))
-    // 官方 DeepSeek 涨价，兜底改火山方舟 ark-code（token 套餐 cost=0）替代官方直连
+  const flash = ocGoCandidate(/deepseek-v4-flash/i)
+    // ⚠️ 火山方舟 ark-code 在 pi agent 管线实测空回复，不作为首选兕底（2026-08-19）；deepseek 官方 flash 稳定可用
+    || modelList.find(m => m.provider === "deepseek" && /flash/i.test(m.id))
     || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
-    || defaultModel;
+    || pickFallbackDefault();
   return { model: flash, level: cl.level, score: cl.score, reasons: cl.reasons, auto: true };
 }
 
@@ -2232,6 +2271,7 @@ async function handleSwitchModel(req, res, body) {
     if (body.sessionId && activeSessions.has(body.sessionId)) {
       const entry2 = activeSessions.get(body.sessionId);
       try { entry2.modelKey = { provider: "auto", id: "auto" }; } catch {}
+      saveSessionModelKey(body.sessionId, { provider: "auto", id: "auto" }); // 修复 A：持久化
       // 重建 agent 用默认 flash 暂代，下条消息 handleChat 按复杂度实时路由
       if (entry2.agent && !entry2.busy) {
         try { entry2.agent.dispose(); } catch {}
@@ -2257,6 +2297,7 @@ async function handleSwitchModel(req, res, body) {
     const entry2 = activeSessions.get(body.sessionId);
     // 记录会话自己的模型选择（会话重启时恢复）
     try { entry2.modelKey = { provider: m.provider, id: m.id }; } catch {}
+    saveSessionModelKey(body.sessionId, { provider: m.provider, id: m.id }); // 修复 A：持久化
     // 如果 agent 空闲，立即重建生效；busy 则标记（下次消息 handleChat 对比重建）
     if (entry2.agent && !entry2.busy) {
       try { entry2.agent.dispose(); } catch {}
@@ -3157,6 +3198,8 @@ async function unifiedChat(model, messages, opts = {}) {
     }
     if (!r.ok) {
       const errBody = await r.text().catch(() => "");
+      // 429 额度检测（修复 B）：unifiedChat 兕底通道同样识别 opencode-go 周额度耗尽
+      if (model.provider === "opencode-go" && (r.status === 429 || /GoUsageLimit/i.test(errBody))) markOcGoBlocked(errBody);
       return { error: `HTTP ${r.status}: ${String(errBody).slice(0, 150)}` };
     }
     const data = await r.json();
@@ -3816,6 +3859,8 @@ ${oldText.slice(0, 50000)}`, { tools: false });
 // 统一通道：所有模型走 unifiedChat（对话 + 工具 + 思考 + 媒体 + 压缩 + 重试）
 async function handleUnifiedChat(res, entry, message, sessionId, params, signal, writer, thinkOn, taskKey) {
   const taskId = taskKey || sessionId;
+  // 修复 B：兕底通道用安全模型（opencode-go 429 标记期间避开，不撞额度墙）
+  const chatModel = pickFallbackDefault();
   writer = writer || createSseWriter(res);
   touchTask(taskId, { stage: "处理中" });
   let hist = [];
@@ -3853,7 +3898,7 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal,
     const fullMem = loadMemory();
     if (fullMem.length) history = [...fullMem.map(c => ({ role: "system", content: c })), ...history];
   }
-  history = await maybeCompactHistory(history, defaultModel);
+  history = await maybeCompactHistory(history, chatModel);
   // Plan 模式（unifiedChat 兕底路径）：工具定义层过滤为只读（read/web_search）——模型只能请求只读工具，无写路径
   // 注意：thinkOn=false 时 toolDefs 为 undefined（unifiedChat 内部才默认 UNIFIED_TOOLS），必须显式构建只读集，否则拦截被短路
   const isPlanLock = !!entry.planPending;
@@ -3867,7 +3912,7 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal,
   }
   async function runLockedChat(locked) {
     // history 末条已是 handleChat 改写后的规划指令消息（含需求），直接复用；只传只读工具定义
-    const result = await unifiedChat(defaultModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: locked });
+    const result = await unifiedChat(chatModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: locked });
     if (!result || result.error) {
       clearTask(taskId, "error"); writer.push("error", { message: result?.error || "模型未返回内容" }); return;
     }
@@ -3881,7 +3926,7 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal,
     writer.push("done", { sessionId });
     clearTask(taskId, "done");
   }
-  const result = await unifiedChat(defaultModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: toolDefs });
+  const result = await unifiedChat(chatModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: toolDefs });
   if (!result || result.error) {
     clearTask(taskId, "error");
     writer.push("error", { message: result?.error || "模型未返回内容，请稍后重试" });
@@ -3908,7 +3953,7 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal,
   }
   writer.push("done", { sessionId });
   clearTask(taskId, "done");
-  console.log(`[pi-web] 统一通道: ${defaultModel.provider}/${defaultModel.id}`);
+  console.log(`[pi-web] 统一通道: ${chatModel.provider}/${chatModel.id}`);
 }
 
 // ============================================================
@@ -4142,6 +4187,22 @@ async function handleChat(req, res, body) {
     }
     return;
   }
+  // 前端携带模型同步（修复 C：显示与实发一致——刷新/多端时前端下拉值与服务端 modelKey 对齐）
+  if (typeof body.model === "string" && body.model.includes("/")) {
+    const [bp, bm] = body.model.split("/");
+    try {
+      if (bp === "auto" || /^auto(-smart)?$/i.test(bm)) {
+        if (!entry.modelKey || entry.modelKey.provider !== "auto") { entry.modelKey = { provider: "auto", id: "auto" }; if (sessionId) saveSessionModelKey(sessionId, entry.modelKey); }
+      } else {
+        const same = entry.modelKey && entry.modelKey.provider === bp && entry.modelKey.id === bm;
+        if (!same && modelList.find(m => m.provider === bp && m.id === bm)) {
+          entry.modelKey = { provider: bp, id: bm };
+          if (sessionId) saveSessionModelKey(sessionId, entry.modelKey);
+          console.log(`[pi-web] 前端同步模型 → ${bp}/${bm}`);
+        }
+      }
+    } catch {}
+  }
   // 会话级模型：切过模型则用会话的；未切（默认）→ Auto 路由（Cursor Router 简化版：按任务复杂度选 flash/pro）
   let autoRoute = null;
   const effModel = (() => {
@@ -4344,7 +4405,7 @@ async function handleChat(req, res, body) {
       if (!curSupportsVision) {
         // 兜底优先级：opencode-go 套餐内图像模型 → xiaomi 免费 token 计划 → openrouter 图像模型
         const fallbackIds = ["mimo-v2.5", "minimax-m3", "qwen3.8-max", "kimi-k3", "gpt-5.6-luna"];
-        visionModel = modelList.find(m => m.provider === "opencode-go" && fallbackIds.includes(m.id) && m.input?.includes("image"))
+        visionModel = (isOcGoBlocked() ? undefined : modelList.find(m => m.provider === "opencode-go" && fallbackIds.includes(m.id) && m.input?.includes("image")))
           || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && m.input?.includes("image"))
           || modelList.find(m => m.provider === "openrouter" && m.input?.includes("image"));
         if (visionModel) {
@@ -4380,15 +4441,17 @@ async function handleChat(req, res, body) {
       writer.push("media", mr);
     }
     // 空回复兜底：agent 完成但无任何文本输出（部分推理模型偶发把回答全放 <think>）→ 直调模型接口补一次
-    if (!sawDelta && defaultModel) {
-      const fallback = await directChat(defaultModel, message);
+    if (!sawDelta) {
+      // 修复 B：空回复兕底用安全模型（避开 opencode-go 429），不再死磕 defaultModel
+      const fbModel = pickFallbackDefault();
+      const fallback = await directChat(fbModel, message);
       if (fallback?.text) {
         writer.push("delta", { text: fallback.text });
-        console.log(`[pi-web] 空回复兜底成功: ${defaultModel.provider}/${defaultModel.id}`);
+        console.log(`[pi-web] 空回复兜底成功: ${fbModel.provider}/${fbModel.id}`);
       } else {
-        console.log(`[pi-web] 空回复兜底失败: ${defaultModel.provider}/${defaultModel.id}`);
+        console.log(`[pi-web] 空回复兜底失败: ${fbModel.provider}/${fbModel.id}`);
         // 明确提示（API Key 失效 / 模型异常），避免用户以为卡死
-        try { writer.push("error", { message: `模型 ${defaultModel.provider}/${defaultModel.id} 无回复——API Key 可能失效或额度不足，请到模型管理中重新配置` }); } catch {}
+        try { writer.push("error", { message: `模型 ${fbModel.provider}/${fbModel.id} 无回复——API Key 可能失效或额度不足，请到模型管理中重新配置` }); } catch {}
       }
     }
     // 自动命名：尚无名称时用首条消息
@@ -4555,6 +4618,8 @@ async function handleChat(req, res, body) {
   } catch (e) {
     // 官方 agent 管线异常 → 降级到自制 unifiedChat 兑底（避免任务静默失败）
     const agentErr = String(e?.message || e);
+    // 429/额度检测（修复 B）：agent 管线错误里出现 opencode-go 额度耗尽 → 标记降级，后续 Auto 路由避开
+    if (/GoUsageLimit|HTTP 429|status.?429/i.test(agentErr) && modelList.some(m => m.provider === "opencode-go")) markOcGoBlocked(agentErr);
     console.log(`[pi-web] agent 通道异常，降级 unifiedChat: ${agentErr.slice(0, 120)}`);
     try { unsubscribe(); } catch {}
     try {
@@ -5567,6 +5632,22 @@ function startServer() {
     console.log(`  工作目录: ${CONFIG.cwd}`);
     console.log(`  工具集  : ${CONFIG.tools.join(", ")}`);
     console.log(`  默认模型: ${defaultModel ? defaultModel.provider + "/" + defaultModel.id : "(未设置)"}`);
+    // 启动预探测 opencode-go（修复 B）：周额度 429 时启动即标记，Auto 路由全程避开，不浪费首轮请求；8/23 额度恢复后探测通过自动回到 opencode-go 优先
+    setTimeout(async () => {
+      try {
+        const oc = modelList.find(m => m.provider === "opencode-go" && /deepseek-v4-flash/i.test(m.id));
+        const ocKey = readJsonFile(AUTH_PATH)["opencode-go"]?.key;
+        if (!oc || !ocKey) return;
+        const ocBase = (oc.baseUrl || "https://opencode.ai/zen/go/v1").replace(/\/+$/, "");
+        const probe = await httpJsonFetch(`${ocBase}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${ocKey}` },
+          body: JSON.stringify({ model: oc.id, messages: [{ role: "user", content: "hi" }], max_tokens: 1 }),
+          timeout: 25000,
+        });
+        if (probe.status === 429 || /GoUsageLimit/i.test(await probe.text().catch(() => ""))) markOcGoBlocked(`启动预探测 HTTP ${probe.status}`);
+      } catch {}
+    }, 3000);
     // 记忆自维护（启动后后台执行，不阻塞）：归档过期状态节；偏好提炼走提案制不自动写（改记忆需审批）
     try {
       const a = memoryApi.archiveStateSections(CONFIG.cwd, 5);

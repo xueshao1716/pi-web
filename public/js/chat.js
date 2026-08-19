@@ -1443,6 +1443,7 @@ async function send() {
           files: attachFiles,
           images: attachImages,
           fresh,
+          model: window.currentModelKey || undefined,
           params: window.piParams || undefined,
           think: window.externalThinkingOn === true,
         }),
