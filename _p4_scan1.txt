@@ -1,0 +1,2 @@
+54:const SESSIONS_DIR = path.join(getAgentDir(), "sessions", encodeCwdDir(CONFIG.cwd));
+124:    const root = path.join(getAgentDir(), "sessions");

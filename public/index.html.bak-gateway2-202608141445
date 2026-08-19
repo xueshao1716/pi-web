@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小语 · AI 工作台</title>
+<link rel="manifest" href="/static/manifest.json">
+<link rel="icon" href="/static/icon-192.png">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<meta name="theme-color" content="#8b7cf6">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="小语">
+<link rel="stylesheet" href="/static/vendor/github-dark.min.css" integrity="sha384-wH75j6z1lH97ZOpMOInqhgKzFkAInZPPSPlZpYKYTOqsaizPvhQZmAtLcPKXpLyH" crossorigin="anonymous">
+<link rel="stylesheet" href="/static/app.css?v=204">
+<link rel="stylesheet" href="/static/css/quantum.css?v=204">
+</head>
+<body>
+
+<!-- 登录 -->
+<div id="login">
+  <div class="login-card">
+    <div class="logo">◈ 小语<span> · AI 工作台</span></div>
+    <p class="sub">输入访问令牌以连接你的 AI 工作台</p>
+    <input id="token-input" type="password" placeholder="访问令牌" autocomplete="off">
+    <button id="login-btn">连接</button>
+    <div class="login-err" id="login-err"></div>
+  </div>
+</div>
+
+<!-- 主界面 -->
+<div id="app">
+  <div class="layout">
+
+    <!-- 侧边栏 -->
+    <aside id="sidebar">
+      <div class="side-head">
+        <div class="logo"><span class="mark">语</span> 小语<span style="color:var(--dim);font-weight:400"> · AI 工作台</span></div>
+      </div>
+      <div class="side-view">
+        <button class="view-btn" id="view-btn">☰ 菜单 <span id="view-current" class="view-current">会话</span> <span class="caret">▾</span></button>
+        <div class="view-menu" id="view-menu" hidden>
+          <div class="view-item" data-view="sessions">☰ 会话历史</div>
+          <div class="view-item" data-view="activity">⚡ 小语活动</div>
+          <div class="view-item" data-view="skills">⚡ 技能</div>
+          <div class="view-item" data-view="workspace" data-nav="/workspace">📦 工作空间</div>
+        </div>
+      </div>
+      <div class="side-body">
+        <div class="tab-panel" id="panel-sessions">
+          <button class="new-session" id="new-session"><span class="plus">+</span> 新建会话</button>
+          <div class="ft-head"><span>会话历史</span><button class="ft-refresh" id="proj-add" title="新建项目分组">＋ 项目</button></div>
+          <div id="session-list"></div>
+        </div>
+        <div class="tab-panel" id="panel-activity" hidden>
+          <div class="ft-head"><span>⚡ 小语活动</span><button class="ft-refresh" id="act-refresh" title="刷新">↻</button></div>
+          <div id="act-status"></div>
+          <div id="act-list" style="padding-top:6px"></div>
+        </div>
+        <div class="tab-panel" id="panel-skills" hidden>
+          <div class="ft-head"><span>⚡ 技能</span><button class="ft-refresh" id="sk-refresh" title="刷新">↻</button></div>
+          <div id="skill-list"></div>
+        </div>
+        <div class="tab-panel" id="panel-workspace" hidden>
+          <div class="ft-head"><span>📦 工作空间</span><span style="display:flex;gap:4px"><button class="ft-refresh" id="ws-git-btn" title="Git 状态">⎇</button><button class="ft-refresh" id="ws-full-btn" title="全屏浏览">⛶</button><button class="ft-refresh" id="ws-new-proj" title="新建项目">＋项目</button><button class="ft-refresh" id="ws-refresh" title="刷新">↻</button></span></div>
+          <div class="ws-search-wrap"><input id="ws-search" placeholder="🔍 搜索工作空间文件…" autocomplete="off"></div>
+          <div id="ws-search-results"></div>
+          <div class="ws-del-head">📤 最近交付</div>
+          <div id="ws-deliveries" class="ws-deliveries"></div>
+          <div id="ws-tree"></div>
+        </div>
+      </div>
+      <div class="side-foot">
+        <div class="sf-row">
+          <div class="sf-label">模型</div>
+          <span class="sf-actions">
+            <button class="theme-edit-btn" id="model-manage" title="管理模型 API">⚙</button>
+            <button class="theme-edit-btn" id="theme-edit" title="打开主题编辑器">🎨</button>
+          </span>
+        </div>
+        <div class="box">
+          <span class="mlabel">模型</span>
+          <select id="model-select" title="切换模型"></select>
+        </div>
+        <div class="theme-row">
+          <span class="mlabel">主题</span>
+          <div class="swatches" id="swatches"></div>
+          <button class="theme-more" id="theme-more" title="更多主题">⋯</button>
+        </div>
+        <div class="sf-label">系统</div>
+        <div class="info-row">
+          <span id="cwd-label" title="工作目录">…</span>
+          <button class="logout-btn" id="logout">断开</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 主区域 -->
+    <main id="main">
+      <div class="main-top">
+        <button class="menu-btn" id="menu-btn" title="菜单">☰</button>
+        <span class="session-name" id="session-name" title="点击重命名">新会话</span>
+        <div class="spacer"></div>
+        <div class="tool-more">
+          <button class="tool-btn" id="more-btn" title="更多">⋯</button>
+          <div class="tool-more-menu" id="more-menu" hidden>
+            <div class="tool-more-item" id="mm-export">⬇ 导出当前会话</div>
+            <div class="tool-more-item" id="mm-workshop">🧰 专项工作台</div>
+            <div class="tool-more-item" id="mm-notices">📋 关于 · 能力 · 更新</div>
+            <div class="tool-more-item" id="mm-repair">🛠 自愈修复</div>
+          </div>
+        </div>
+        <div class="emo-pill" id="emo-pill" title="小语情绪状态"><span class="emo-ico" id="emo-ico">🧘</span></div>
+        <div class="status-pill idle" id="status"><span class="dot"></span><span id="status-text">就绪</span></div>
+      </div>
+
+      <!-- 上下文压缩提醒横幅 -->
+      <div class="compact-banner" id="compact-banner" hidden>
+        <span id="compact-msg">上下文占用过高</span>
+        <button id="compact-now">⚡ 立即压缩</button>
+        <button class="cb-close" id="compact-dismiss" title="忽略本次">✕</button>
+      </div>
+
+      <div id="messages">
+        <div class="welcome">
+          <div class="w-logo">语</div>
+          <div class="big">小语 · AI 工作台</div>
+          <div class="sub">你的 AI 工作伙伴 · 多会话 · 云端安全连接</div>
+          <div class="w-actions">
+            <button id="w-new">＋ 新建会话</button>
+            <button id="w-file">@ 引用文件</button>
+            <button id="w-cmd">/ 斜杠命令</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 回到底部浮动按钮（长对话快速回底） -->
+      <button id="scroll-bottom" class="scroll-bottom" title="回到底部" hidden>↓</button>
+
+      <div id="inputbar">
+        <div class="input-shell">
+          <div class="chips" id="chips" hidden></div>
+          <textarea id="input" placeholder="给 pi 发消息，@ 引用文件，/ 查看命令…" rows="1"></textarea>
+          <div class="file-picker" id="file-picker" hidden>
+            <div class="fp-head">
+              <span class="fp-title">@ 引用文件</span>
+              <span class="fp-path" id="fp-path">.</span>
+              <button class="fp-up" id="fp-up">↑ 上级</button>
+            </div>
+            <div class="fp-list" id="fp-list"></div>
+          </div>
+          <div class="slash-menu" id="slash-menu" hidden></div>
+          <div class="skill-menu" id="skill-menu" hidden></div>
+          <div class="attach-menu" id="attach-menu" hidden>
+            <div class="attach-item" id="att-upload">⬆ 上传本地文件</div>
+            <div class="attach-item" id="att-browse">📁 浏览工作目录</div>
+          </div>
+          <div class="think-menu" id="think-menu" hidden></div>
+          <div class="params-menu" id="params-menu" hidden>
+            <div class="pm-title">⚙ 模型参数</div>
+            <div class="pm-row"><span>温度 Temperature</span><input type="range" id="pm-temp" min="0" max="2" step="0.1" value="0.7"><span class="pm-val" id="pm-temp-val">0.7</span></div>
+            <div class="pm-row"><span>Top P</span><input type="range" id="pm-topp" min="0" max="1" step="0.05" value="0.95"><span class="pm-val" id="pm-topp-val">0.95</span></div>
+            <div class="pm-row"><button id="pm-reset" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:12px;padding:0">↺ 恢复默认</button></div>
+          </div>
+          <div class="params-menu" id="compare-menu" hidden style="width:340px">
+            <div class="pm-title">⛓ 多模型对比</div>
+            <div style="max-height:220px;overflow-y:auto;margin-bottom:10px" id="compare-list"></div>
+            <div style="display:flex;justify-content:flex-end;gap:8px">
+              <button class="theme-new-btn" id="compare-cancel">取消</button>
+              <button id="compare-go" style="padding:6px 14px;border:none;border-radius:6px;background:var(--accent);color:var(--bg);font-weight:600;cursor:pointer">对比发送</button>
+            </div>
+          </div>
+          <input type="file" id="local-file" multiple hidden>
+          <div class="input-foot">
+            <div class="attach-drop" id="attach-drop">
+              <button class="tool-btn" id="btn-more-input" title="更多">+</button>
+              <div class="attach-drop-menu" id="attach-drop-menu" hidden>
+                <div class="attach-item" id="dd-file">📎 引用文件</div>
+                <div class="attach-item" id="dd-cmd">⚡ 斜杠命令</div>
+                <div class="attach-item" id="dd-params">⚙ 模型参数</div>
+                <div class="attach-item" id="dd-voice">🎤 语音输入</div>
+              </div>
+            </div>
+            <div class="spacer"></div>
+            <button class="tool-btn model-btn" id="input-model" title="切换当前模型">◈ <span id="input-model-name">…</span></button>
+            <button id="send" title="发送（Enter）" hidden>↩</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TUI 风格底部状态栏（对标 pi 终端 Footer：cwd/模型/token/成本/上下文） -->
+      <div id="footer">
+        <span class="ft-item" id="ft-cwd" title="工作目录">cwd: …</span>
+        <span class="ft-sep"></span>
+        <span class="ft-item" id="ft-model" title="当前模型">—</span>
+        <span class="ft-sep"></span>
+        <span class="ft-item" id="ft-tokens" title="token 用量：↑输入 ↓输出">↑– ↓–</span>
+        <span class="ft-item" id="ft-cost" title="本会话成本">$–</span>
+        <span class="ft-item" id="ft-context" title="上下文占用">—</span>
+      </div>
+    </main>
+
+  </div>
+</div>
+
+<div class="side-backdrop" id="side-backdrop"></div>
+
+<!-- 主题编辑器 -->
+<div class="modal-overlay" id="theme-modal">
+  <div class="modal">
+    <div class="modal-head">🎨 主题编辑器 <button class="close" id="theme-close">✕</button></div>
+    <div class="modal-body">
+      <div class="theme-list-col">
+        <div class="tl-label">预设</div>
+        <div id="preset-list"></div>
+        <div class="tl-label">Codex 皮肤</div>
+        <div id="codex-list"></div>
+        <div class="tl-label">自定义</div>
+        <div id="custom-list"></div>
+        <button class="theme-new-btn" id="theme-new">＋ 新建主题</button>
+      </div>
+      <div class="theme-edit-col">
+        <div class="te-name-row">
+          <input id="te-name" placeholder="主题名称（自定义时使用）">
+          <button id="te-save">另存为新主题</button>
+        </div>
+        <div class="te-rows" id="te-rows"></div>
+        <div class="te-actions">
+          <button id="te-export">⬇ 导出 JSON</button>
+          <button id="te-import">⬆ 导入 JSON</button>
+          <button id="te-reset">↺ 重置默认</button>
+        </div>
+        <input type="file" id="te-import-file" accept=".json" hidden>
+        <div class="te-group">背景壁纸</div>
+        <div class="wp-row">
+          <button id="wp-upload">📷 上传图片</button>
+          <input type="text" id="wp-url" placeholder="或粘贴图片 URL…">
+          <button id="wp-url-apply">应用</button>
+        </div>
+        <div class="wp-row">
+          <span class="wp-label">透明度</span>
+          <input type="range" id="wp-opacity" min="0.1" max="1" step="0.05" value="0.55">
+          <span class="wp-label">模糊</span>
+          <input type="range" id="wp-blur" min="0" max="20" step="1" value="6">
+        </div>
+        <div class="wp-row">
+          <button class="wp-remove" id="wp-remove">✕ 移除壁纸</button>
+          <span class="wp-status" id="wp-status"></span>
+        </div>
+        <input type="file" id="wp-file" accept="image/*" hidden>
+        <div class="te-hint">💡 改颜色即时生效；<b>另存为新主题</b> 保存当前配色；导出的 JSON 可分享给其他设备。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- 模型管理 -->
+<div class="modal-overlay" id="model-modal">
+  <div class="modal modal-model">
+    <div class="modal-head">⚙ 模型管理 <button class="close" id="mm-close">✕</button></div>
+    <div class="mm-body">
+      <div class="mm-label">已配置 API</div>
+      <div id="mm-providers"></div>
+      <div class="mm-label">添加 API</div>
+      <div class="mm-add">
+        <select id="mm-type"></select>
+        <input id="mm-key" type="password" placeholder="API Key (sk-…)" autocomplete="off">
+        <button id="mm-test">测试并添加</button>
+      </div>
+      <div class="mm-add mm-add-url" id="mm-custom-row" hidden>
+        <input id="mm-custom-provider" type="text" placeholder="自定义服务商名称（如 siliconflow / deepbricks / 中转站名…）" autocomplete="off">
+      </div>
+      <div class="mm-add mm-add-url">
+        <input id="mm-baseurl" type="text" placeholder="Base URL（可选，留空=官方地址，如 https://api.xxx.com/v1）" autocomplete="off">
+      </div>
+      <div class="mm-add mm-add-url" id="mm-cf-row" hidden>
+        <input id="mm-account" type="text" placeholder="Cloudflare Account ID（控制台 → Workers AI → REST API）" autocomplete="off">
+      </div>
+      <div class="mm-result" id="mm-result"></div>
+      <div class="te-hint">💡 选服务商（或用「✏️ 自定义…」输入任意名称）→ 粘贴 API Key →（可选）填 Base URL（中转站地址填这里）→ 点「测试并添加」，自动验证并识别模型。</div>
+    </div>
+  </div>
+</div>
+
+<!-- 搜索面板 -->
+<div class="modal-overlay" id="search-modal">
+  <div class="modal modal-search">
+    <div class="modal-head">🔍 搜索所有会话 <button class="close" id="search-close">✕</button></div>
+    <input id="search-input" type="text" placeholder="输入关键词（Ctrl+K 呼出）…" autocomplete="off">
+    <div id="search-results"></div>
+  </div>
+</div>
+
+<!-- Git 面板 -->
+<div class="modal-overlay" id="git-modal">
+  <div class="modal modal-git">
+    <div class="modal-head">⎇ Git <button class="close" id="git-close">✕</button></div>
+    <div class="git-tabs">
+      <button class="git-tab active" id="git-tab-status">状态</button>
+      <button class="git-tab" id="git-tab-diff">Diff</button>
+    </div>
+    <pre class="git-output" id="git-output"></pre>
+  </div>
+</div>
+
+<!-- 统计面板 -->
+<div class="modal-overlay" id="stats-modal">
+  <div class="modal modal-sm">
+    <div class="modal-head">📊 会话统计 <button class="close" id="stats-close">✕</button></div>
+    <div class="stats-body" id="stats-body"></div>
+  </div>
+</div>
+
+<!-- 全局用量看板 -->
+<div class="modal-overlay" id="gstats-modal">
+  <div class="modal modal-gstats">
+    <div class="modal-head">📈 全局用量 · 所有会话 <button class="close" id="gstats-close">✕</button></div>
+    <div class="gstats-body" id="gstats-body">加载中…</div>
+  </div>
+</div>
+
+<!-- 自定义斜杠命令管理 -->
+<div class="modal-overlay" id="slash-manage-modal">
+  <div class="modal modal-slash">
+    <div class="modal-head">⚡ 自定义斜杠命令 <button class="close" id="sm-close">✕</button></div>
+    <div class="sm-body">
+      <div class="mm-label">我的命令（/xxx 插入到输入框）</div>
+      <div id="sm-list"></div>
+      <div class="mm-label">新增命令</div>
+      <div class="sm-add">
+        <input id="sm-cmd" placeholder="/ 命令名" autocomplete="off">
+        <input id="sm-desc" placeholder="描述（可选）" autocomplete="off">
+      </div>
+      <textarea id="sm-prompt" rows="3" placeholder="提示词模板，发送到输入框后可编辑"></textarea>
+      <div class="sm-actions">
+        <button id="sm-save">＋ 添加命令</button>
+        <span class="te-hint" style="margin:0">💡 输入 / 唤起菜单 → 点命令即可插入模板</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 快捷键面板 -->
+<div class="modal-overlay" id="keys-modal">
+  <div class="modal modal-keys">
+    <div class="modal-head">⌨️ 快捷键 <button class="close" id="keys-close">✕</button></div>
+    <div class="keys-body" id="keys-body"></div>
+  </div>
+</div>
+
+<!-- 文件预览 -->
+<div class="modal-overlay" id="fileview-modal">
+  <div class="modal modal-file">
+    <div class="modal-head"><span id="fv-title">文件</span><button class="close" id="fv-close">✕</button></div>
+    <div class="fv-meta" id="fv-meta"></div>
+    <div class="fv-content" id="fv-content"></div>
+    <div class="fv-actions">
+      <button id="fv-download" style="color:#4ec9b0">⬇ 下载</button>
+      <button id="fv-copy">📋 复制内容</button>
+      <button id="fv-ref">@ 引用到对话</button>
+      <button id="fv-deliver">📦 一键交付</button>
+      <button id="fv-convert">🔄 转 Markdown</button>
+      <button id="fv-edit">✏️ 编辑</button>
+      <button id="fv-delete" style="color:#ff6b6b">🗑 删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 工作空间全屏浏览（保留侧边栏，全屏查看文件） -->
+<div class="modal-overlay" id="wsfull-modal">
+  <div class="wsfull">
+    <div class="wsfull-head">
+      <span class="wsfull-title">📦 工作空间</span>
+      <span class="spacer"></span>
+      <input id="wsfull-search" class="wsfull-search" placeholder="🔍 搜索文件…">
+      <button class="close" id="wsfull-close">✕</button>
+    </div>
+    <div class="wsfull-body">
+      <div class="wsfull-side">
+        <div class="wsfull-cats" id="wsfull-tree"></div>
+      </div>
+      <div class="wsfull-resizer" id="wsfull-resizer" title="拖动调整宽度"></div>
+      <div class="wsfull-main">
+        <div class="wsfull-placeholder" id="wsfull-ph">← 选择左侧文件查看</div>
+        <div class="wsfull-preview" id="wsfull-preview" hidden></div>
+      </div>
+    </div>
+    <div class="wsfull-foot">
+      <span id="wsfull-info"></span>
+      <span class="spacer"></span>
+      <button id="wsfull-dl" hidden>⬇ 下载</button>
+      <button id="wsfull-deliver" hidden>📦 交付</button>
+    </div>
+  </div>
+</div>
+
+<!-- 系统说明 -->
+<div class="modal-overlay" id="sysinfo-modal">
+  <div class="modal modal-file" style="max-width:560px">
+    <div class="modal-head"><span id="si-title">ⓘ 关于小语</span><button class="close" id="si-close">✕</button></div>
+    <div class="fv-content markdown" id="si-content" style="max-height:62vh"></div>
+  </div>
+</div>
+
+<!-- 更新与能力看板 -->
+<div class="modal-overlay" id="notices-modal">
+  <div class="modal modal-file" style="max-width:600px">
+    <div class="modal-head"><span>🔔 更新与能力看板</span><button class="close" id="nt-close">✕</button></div>
+    <div class="fv-content markdown" id="nt-content" style="max-height:60vh"></div>
+  </div>
+</div>
+
+<!-- 自愈修复 -->
+<div class="modal-overlay" id="repair-modal">
+  <div class="modal modal-file" style="max-width:560px">
+    <div class="modal-head"><span>🛠 自愈修复</span><button class="close" id="rp-close">✕</button></div>
+    <div class="fv-content" id="rp-log" style="max-height:50vh;white-space:pre-wrap"></div>
+  </div>
+</div>
+
+<!-- 技能详情 -->
+<div class="modal-overlay" id="skill-modal">
+  <div class="modal modal-file">
+    <div class="modal-head"><span id="sk-title">技能</span><button class="close" id="sk-close">✕</button></div>
+    <div class="fv-meta" id="sk-meta"></div>
+    <pre class="fv-content" id="sk-content"></pre>
+    <div class="fv-actions">
+      <button id="sk-use">/ 插入到输入框</button>
+    </div>
+  </div>
+</div>
+
+<!-- 通用输入/确认弹窗（替代原生 prompt/confirm，样式统一且不阻塞主线程） -->
+<div class="modal-overlay" id="app-prompt-modal">
+  <div class="modal modal-file" style="width:420px;max-width:92vw">
+    <div class="modal-head"><span id="app-prompt-title">输入</span><button class="close" id="app-prompt-close">✕</button></div>
+    <div class="modal-body" style="padding:14px 18px;display:block">
+      <div id="app-prompt-msg" style="color:var(--dim);font-size:13px;margin-bottom:10px;white-space:pre-wrap"></div>
+      <input id="app-prompt-input" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel-2);color:var(--text);font-size:14px" autocomplete="off">
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+        <button class="theme-new-btn" id="app-prompt-cancel">取消</button>
+        <button id="app-prompt-ok" style="padding:7px 16px;border:none;border-radius:6px;background:var(--accent);color:var(--bg);font-weight:600;cursor:pointer">确定</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/core.js?v=204"></script>
+<script src="/static/js/registry.js?v=204"></script>
+<script src="/static/js/theme.js?v=204"></script>
+<script src="/static/js/chat.js?v=204"></script>
+<script src="/static/js/wallpaper.js?v=204"></script>
+<script src="/static/js/model.js?v=204"></script>
+<script src="/static/js/ui.js?v=204"></script>
+<script src="/static/js/workspace.js?v=204"></script>
+<script src="/static/js/designer.js?v=204"></script>
+<script src="/static/js/input.js?v=204"></script>
+<script src="/static/js/workshop.js"></script>
+</body>
+</html>
