@@ -980,7 +980,10 @@ function parseSessionFileCached(file) {
     const hit = sessionParseCache.get(file);
     if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.info;
     const info = parseSessionFile(file);
-    if (sessionParseCache.size > 500) sessionParseCache.clear(); // 缓存上限防膨胀
+    // 上限 500：满了逐条淘汰最旧（插入序），不再整体 clear——避免热会话被误伤反复重解析
+    if (sessionParseCache.size >= 500) {
+      sessionParseCache.delete(sessionParseCache.keys().next().value);
+    }
     sessionParseCache.set(file, { mtimeMs: st.mtimeMs, size: st.size, info });
     return info;
   } catch {
@@ -1588,7 +1591,15 @@ async function handleModelsManage(res) {
 }
 
 // 添加时实际探测模型能力（无关键字模型逐个验证：chat / image / tts）
+// 探测缓存：一次探测 = 3 个真实 API 请求（chat×2 + image），50 模型的 provider 就是 150 次。
+// 进程内 TTL 缓存（24h）——refreshModelList 反复触发/重复添加不再重复烧请求。
+const probeCache = new Map(); // `${baseNoV1}|${modelId}` → { caps, at }
+const PROBE_CACHE_TTL = 24 * 3600 * 1000;
+
 async function probeModelCapabilities(baseNoV1, key, modelId) {
+  const cacheKey = `${baseNoV1}|${modelId}`;
+  const hit = probeCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < PROBE_CACHE_TTL) return hit.caps;
   const caps = { chat: false, image: false, video: false, tts: false, asr: false };
   const headers = { "Content-Type": "application/json", "Authorization": `Bearer ${key}` };
   try {
@@ -1616,11 +1627,13 @@ async function probeModelCapabilities(baseNoV1, key, modelId) {
     });
     if (r.ok) caps.image = true;
   } catch {}
+  probeCache.set(cacheKey, { caps, at: Date.now() });
   return caps;
 }
 
 // 自定义 provider 模型发现：直调 openai 兼容 /v1/models，并探测能力
-async function discoverCustomModels(base, apiKey) {
+// oldCaps：上次已探测的能力表（重复添加时复用，跳过逐模型 API 探测）
+async function discoverCustomModels(base, apiKey, oldCaps = new Map()) {
   const mk = (u) => httpJsonFetch(u, { headers: { "Authorization": `Bearer ${apiKey}` }, timeout: 20000 });
   const baseNoV1 = base.endsWith("/v1") ? base.slice(0, -3) : base;
   for (const u of [`${baseNoV1}/v1/models`, `${base}/models`]) {
@@ -1635,7 +1648,7 @@ async function discoverCustomModels(base, apiKey) {
         if (typeof m.id !== "string") continue;
         const model = { id: m.id, name: m.name || m.id, api: "openai-completions", baseUrl: baseNoV1, provider: "", reasoning: true, input: ["text"], contextWindow: 128000, maxTokens: 32768 };
         if (/(image|video|tts|asr)/i.test(m.id)) model.capabilities = modelCapabilities(m.id);
-        else model.capabilities = await probeModelCapabilities(baseNoV1, apiKey, m.id);
+        else model.capabilities = oldCaps.get(m.id) || await probeModelCapabilities(baseNoV1, apiKey, m.id);
         models.push(model);
       }
       return models;
@@ -1670,6 +1683,12 @@ async function handleModelsAdd(res, body) {
     await refreshModelList();
     return json(res, 200, { ok: true, provider, models: store[provider].models, manual: true });
   }
+  // 复用上次探测结果：同一 provider 重复添加时跳过逐模型 API 探测（配合 probeCache 双保险）
+  const oldCaps = new Map(
+    (readJsonFile(MODELS_PATH)[provider]?.models || [])
+      .filter((m) => m.capabilities && typeof m.capabilities.chat === "boolean")
+      .map((m) => [m.id, m.capabilities])
+  );
   try {
     let models = null;
     if (KNOWN_PROVIDERS.has(provider)) {
@@ -1685,13 +1704,13 @@ async function handleModelsAdd(res, body) {
       const baseNoV1 = base.endsWith("/v1") ? base.slice(0, -3) : base;
       if (baseNoV1 && models?.length) {
         for (const m of models) {
-          if (!/(image|video|tts|asr)/i.test(m.id)) m.capabilities = await probeModelCapabilities(baseNoV1, apiKey, m.id);
+          if (!/(image|video|tts|asr)/i.test(m.id)) m.capabilities = oldCaps.get(m.id) || await probeModelCapabilities(baseNoV1, apiKey, m.id);
         }
       }
     } else {
       const base = (baseUrl || "").replace(/\/+$/, "");
       if (!base) return json(res, 400, { error: "自定义 provider 必须填写 Base URL" });
-      models = await discoverCustomModels(base, apiKey);
+      models = await discoverCustomModels(base, apiKey, oldCaps);
     }
     if (!models || !models.length) {
       delete auth[provider]; writeJsonFile(AUTH_PATH, auth);
@@ -2273,11 +2292,10 @@ async function saveArtifact(artifact) {
       const b64 = artifact.url.split(",")[1];
       fs.writeFileSync(file, Buffer.from(b64, "base64"));
     } else if (artifact.url.startsWith("http")) {
-      // python 下载（走系统代理，二进制安全）
-      const py = "import urllib.request,sys; urllib.request.urlretrieve(sys.argv[1], sys.argv[2])";
-      await new Promise((resolve, reject) => {
-        execFile("python", ["-c", py, artifact.url, file], { timeout: 60000, windowsHide: true }, (err) => err ? reject(err) : resolve());
-      });
+      // 原生 fetch 下载（自动系统代理、二进制安全；替代 python urlretrieve）
+      const r = await httpBufferFetch(artifact.url, { timeout: 60000 });
+      if (!r.ok) throw new Error(`下载失败 HTTP ${r.status}`);
+      fs.writeFileSync(file, r.buffer());
     } else {
       return artifact.url;
     }
