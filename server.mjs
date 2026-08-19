@@ -429,8 +429,18 @@ async function createSession(name) {
   const sm = SessionManager.create(CONFIG.cwd, SESSIONS_DIR);
   const id = sm.getSessionId();
   const file = sm.getSessionFile();
-  const agent = await createSessionAgent(sm, defaultModel);
-  activeSessions.set(id, { agent, sm, busy: false, lastUsed: Date.now() });
+  // 2026-08-19：新会话继承全局最后选择的模型（用户切过千问→新会话直接千问，不再回 Auto 乱跳）；未切过则用 defaultModel
+  let agent = null;
+  let modelKey = null;
+  if (lastModelKey && lastModelKey.provider && lastModelKey.id) {
+    const m = modelList.find(x => x.provider === lastModelKey.provider && x.id === lastModelKey.id);
+    if (m) {
+      modelKey = { provider: m.provider, id: m.id };
+      try { agent = await createSessionAgent(sm, m); } catch { agent = null; }
+    }
+  }
+  if (!agent) agent = await createSessionAgent(sm, defaultModel);
+  activeSessions.set(id, { agent, sm, busy: false, lastUsed: Date.now(), ...(modelKey ? { modelKey, agentModel: modelKey } : {}) });
   invalidateSessionCache(); // 新增会话 → 列表缓存失效
   if (name) { try { sm.appendSessionInfo(name); } catch {} }
   return id;
@@ -1077,14 +1087,14 @@ const MODELS_PATH = path.join(AGENT_DIR, "models-store.json");
     return true;
   });
 }
-// 默认模型：优先 CONFIG.model，其次 opencode-go 套餐的 flash（套餐策略优先），
-// opencode-go 不可用时回退官方 deepseek 直连托底，再兜底第一个
+// 默认模型：优先 CONFIG.model，其次千问 qwen3.8-max（2026-08-19 用户定：免费 token 计划优先，deepseek/go 套餐涨价受限不用），
+// 再回退小米/火山等免费通道，最后第一个
 if (CONFIG.model) {
   defaultModel = modelList.find(m => `${m.provider}/${m.id}` === CONFIG.model) || undefined;
 }
 if (!defaultModel) {
-  defaultModel = modelList.find(m => m.provider === "opencode-go" && m.id === "deepseek-v4-flash")
-    // 官方 DeepSeek 2026-08 涨价，兜底改用火山方舟（token 套餐内 cost=0）替代官方直连
+  defaultModel = modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
+    || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
     || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
     || modelList[0];
 }
@@ -1134,6 +1144,18 @@ function saveSessionModelKey(sid, mk) {
 }
 function loadSessionModelKey(sid) { try { return readJsonFile(SESSION_KEYS_FILE)[sid] || null; } catch { return null; } }
 function clearSessionModelKey(sid) { try { const d = readJsonFile(SESSION_KEYS_FILE); if (d[sid]) { delete d[sid]; fs.writeFileSync(SESSION_KEYS_FILE, JSON.stringify(d, null, 1)); } } catch {} }
+
+// ══ 全局最后模型（2026-08-19 新增）══
+// 现象：新建会话 createSession 不恢复模型选择 → 新会话永远回 Auto → 降级链落 mimo，用户上次选的千问不继承 → “智能路由乱了”
+// 修复：用户切过具体模型后记录全局 lastModel，新会话继承（agent 直接用该模型）；切回 Auto 时清空
+const LAST_MODEL_FILE = path.join(AGENT_DIR, "last-model.json");
+function saveLastModel(mk) {
+  try {
+    if (!mk || (mk.provider === "auto" && mk.id === "auto")) { fs.writeFileSync(LAST_MODEL_FILE, JSON.stringify({}, null, 1)); return; }
+    fs.writeFileSync(LAST_MODEL_FILE, JSON.stringify({ provider: mk.provider, id: mk.id }, null, 1));
+  } catch {}
+}
+let lastModelKey = (() => { try { const d = readJsonFile(LAST_MODEL_FILE); return d?.provider && d?.id ? { provider: d.provider, id: d.id } : null; } catch { return null; } })();
 
 const ROUTER_AUTO = { provider: "auto", id: "auto" };
 // Plan 模式只读工具集（工具级硬限制）：读文件 + 搜索，不给写/执行工具
@@ -2276,6 +2298,7 @@ function handleModels(res) {
 async function handleSwitchModel(req, res, body) {
   // Auto 路由特殊处理（Cursor Router 简化版）：不绑定具体模型，每条消息按复杂度路由
   if (body.provider === "auto" || (body.modelId && /^auto(-smart)?$/i.test(body.modelId))) {
+    lastModelKey = null; saveLastModel(null); // 用户切回 Auto → 新会话也回 Auto（2026-08-19）
     if (body.sessionId && activeSessions.has(body.sessionId)) {
       const entry2 = activeSessions.get(body.sessionId);
       try { entry2.modelKey = { provider: "auto", id: "auto" }; } catch {}
@@ -2306,6 +2329,7 @@ async function handleSwitchModel(req, res, body) {
     // 记录会话自己的模型选择（会话重启时恢复）
     try { entry2.modelKey = { provider: m.provider, id: m.id }; } catch {}
     saveSessionModelKey(body.sessionId, { provider: m.provider, id: m.id }); // 修复 A：持久化
+    lastModelKey = { provider: m.provider, id: m.id }; saveLastModel(lastModelKey); // 2026-08-19：新会话继承
     // 如果 agent 空闲，立即重建生效；busy 则标记（下次消息 handleChat 对比重建）
     if (entry2.agent && !entry2.busy) {
       try { entry2.agent.dispose(); } catch {}
@@ -4214,6 +4238,7 @@ async function handleChat(req, res, body) {
         if (!same && modelList.find(m => m.provider === bp && m.id === bm)) {
           entry.modelKey = { provider: bp, id: bm };
           if (sessionId) saveSessionModelKey(sessionId, entry.modelKey);
+          lastModelKey = { provider: bp, id: bm }; saveLastModel(lastModelKey); // 2026-08-19：新会话继承
           console.log(`[pi-web] 前端同步模型 → ${bp}/${bm}`);
         }
       }
