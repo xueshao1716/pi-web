@@ -563,6 +563,19 @@
   }
   .fr-tip code { font-family: var(--mono); font-size: 11px; color: var(--accent-2); background: color-mix(in srgb, var(--accent) 12%, transparent); padding: 1px 5px; border-radius: 5px; }
   .fr-tip b { color: var(--text); }
+  /* ── 首启引导美化增强（2026-08-19）：下拉分组感/字段卡片/状态更精致 ── */
+  .fr-body { max-height: 72vh; overflow-y: auto; }
+  .fr-select { height: 40px; line-height: 1; font-size: 13px; text-overflow: ellipsis; }
+  .fr-field input, .fr-field .fr-select { min-height: 40px; }
+  .fr-select::-ms-expand { display: none; }
+  .fr-field { background: color-mix(in srgb, var(--panel-2) 30%, transparent); border: 1px solid var(--border); border-radius: 11px; padding: 9px 11px; }
+  .fr-field:focus-within { border-color: color-mix(in srgb, var(--accent) 45%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
+  .fr-field input, .fr-field .fr-select { border: none; background: transparent; box-shadow: none !important; border-radius: 0; min-height: 32px; padding-left: 0; }
+  .fr-field input:focus, .fr-field .fr-select:focus { box-shadow: none !important; }
+  .fr-chip { padding: 5px 11px; border-radius: 999px; font-size: 11.5px; border: 1px solid var(--border); background: color-mix(in srgb, var(--panel-2) 50%, transparent); }
+  .fr-todsh { margin-top: -4px; }
+  .mm-todsh { font-size: 12px; color: var(--dim-2); }
+  .mm-todsh input { width: 14px; height: 14px; vertical-align: text-bottom; }
   .modal-body { display: flex; min-height: 0; }
   .theme-list-col {
     width: 210px; flex-shrink: 0; border-right: 1px solid var(--border);

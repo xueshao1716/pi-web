@@ -63,7 +63,29 @@ function showFirstRunGuide() {
   const m = $("firstrun-modal");
   if (!m) return;
   m.classList.add("show");
+  populateFrProviders();
   refreshKeysStatus();
+}
+
+// 首启服务商下拉：/api/keys/presets 全部预设（含中文名，对齐 pi 模型管理）+ 已配置 ✓ 置前 + 自定义
+async function populateFrProviders() {
+  const sel = $("fr-provider");
+  if (!sel) return;
+  let presets = {}, configured = [];
+  try { const p = await api("/api/keys/presets"); presets = p.presets || {}; } catch {}
+  try { const m = await api("/api/models/manage"); configured = (m.providers || []).map(x => x.provider); } catch {}
+  const seen = new Set();
+  sel.innerHTML = "";
+  for (const prov of configured) {
+    if (seen.has(prov)) continue; seen.add(prov);
+    const o = document.createElement("option"); o.value = prov; o.textContent = (presets[prov]?.name || prov) + " ✓"; sel.appendChild(o);
+  }
+  for (const [prov, cfg] of Object.entries(presets)) {
+    if (seen.has(prov)) continue; seen.add(prov);
+    const o = document.createElement("option"); o.value = prov; o.textContent = cfg.name; sel.appendChild(o);
+  }
+  const co = document.createElement("option"); co.value = "__custom__"; co.textContent = "✏️ 自定义（填 Base URL 与名称）"; sel.appendChild(co);
+  sel.dispatchEvent(new Event("change"));
 }
 
 async function refreshKeysStatus() {
@@ -151,9 +173,9 @@ $("mm-test").addEventListener("click", async () => {
   r.className = "mm-result";
   r.textContent = "正在验证 API Key 并识别可用模型…";
   try {
-    const res = await api("/api/models/add", { method: "POST", body: { provider, apiKey, baseUrl: baseUrl || undefined, account_id } });
+    const res = await api("/api/models/add", { method: "POST", body: { provider, apiKey, baseUrl: baseUrl || undefined, account_id, toDsh: !!($("mm-todsh")?.checked) } });
     r.className = "mm-result ok";
-    r.textContent = `✓ 添加成功！${res.manual ? "已注册 " + res.models.length + " 个模型（" + res.models.map(m => m.name || m.id).join("、") + "）" : `识别到 ${res.modelCount} 个可用模型：\n${res.models.slice(0, 12).join("、")}${res.modelCount > 12 ? "…" : ""}`}`;
+    r.textContent = `✓ 添加成功！${res.manual ? "已注册 " + res.models.length + " 个模型（" + res.models.map(m => m.name || m.id).join("、") + "）" : `识别到 ${res.modelCount} 个可用模型：\n${res.models.slice(0, 12).join("、")}${res.modelCount > 12 ? "…" : ""}`}${res.dsh ? " · dsh 已同步" : ""}`;
     $("mm-key").value = "";
     $("mm-baseurl").value = "";
     // 刷新模型下拉

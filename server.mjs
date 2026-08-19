@@ -1598,14 +1598,18 @@ const PROVIDER_PRESETS = {
   deepseek:    { name: "DeepSeek 深度求索",     baseUrl: "https://api.deepseek.com" },
   openai:      { name: "OpenAI",                baseUrl: "https://api.openai.com/v1" },
   openrouter:  { name: "OpenRouter 聚合",        baseUrl: "https://openrouter.ai/api/v1" },
+  anthropic:   { name: "Anthropic · Claude",    baseUrl: "https://api.anthropic.com/v1" },
+  google:      { name: "Google · Gemini",        baseUrl: "https://generativelanguage.googleapis.com/v1beta" },
   qwen:        { name: "阿里云百炼 · Qwen",     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
   moonshotai:  { name: "Moonshot · Kimi",       baseUrl: "https://api.moonshot.cn/v1" },
   zai:         { name: "智谱 · GLM",            baseUrl: "https://api.z.ai/api/v1" },
   "volces-ark":{ name: "火山方舟 · Ark",       baseUrl: "https://ark.cn-beijing.volces.com/api/v3" },
   xai:         { name: "xAI · Grok",            baseUrl: "https://api.x.ai/v1" },
   mistral:     { name: "Mistral",               baseUrl: "https://api.mistral.ai/v1" },
+  together:    { name: "Together AI",           baseUrl: "https://api.together.xyz/v1" },
   sensenova:   { name: "商汤 · 日日新",         baseUrl: "https://api.sensenova.cn/v1" },
   modelscope:  { name: "魔搭 · ModelScope",     baseUrl: "https://api.modelscope.cn/v1" },
+  "cloudflare-ai": { name: "Cloudflare Workers AI", baseUrl: "" },
 };
 
 // GET /api/keys/presets —— 首启引导下拉框数据（单一来源，前端不写死）
@@ -1738,7 +1742,7 @@ async function discoverCustomModels(base, apiKey) {
 
 // POST /api/models/add —— 添加（内置 provider 用 pi runtime；自定义 provider 直调探测）
 async function handleModelsAdd(res, body) {
-  const { provider, apiKey, baseUrl, account_id } = body || {};
+  const { provider, apiKey, baseUrl, account_id, toDsh } = body || {};
   if (!provider || !apiKey) return json(res, 400, { error: "缺少 provider 或 API Key" });
   if (!/^[a-zA-Z0-9_-]+$/.test(provider)) return json(res, 400, { error: "provider 名称只能包含字母、数字、横线" });
   const auth = readJsonFile(AUTH_PATH);
@@ -1794,7 +1798,15 @@ async function handleModelsAdd(res, body) {
     writeJsonFile(MODELS_PATH, store);
     console.log(`[pi-web] 模型添加成功: ${provider} ${models.length} 个`);
     await refreshModelList();
-    json(res, 200, { ok: true, modelCount: models.length, models: models.map(m => m.id) });
+    // dsh 同步（可选）：写用户级环境变量 DEEPSEEK_API_KEY（新终端/进程生效）
+    let dsh = false, dshNote = "";
+    if (toDsh) {
+      try {
+        execFileSync("setx", ["DEEPSEEK_API_KEY", apiKey], { windowsHide: true, timeout: 10000 });
+        dsh = true; dshNote = "dsh 已同步（新开的终端/进程生效）";
+      } catch (e) { dshNote = "dsh 同步失败：" + String(e?.message || e).slice(0, 80); }
+    }
+    json(res, 200, { ok: true, modelCount: models.length, models: models.map(m => m.id), dsh, dshNote });
   } catch (e) {
     const a2 = readJsonFile(AUTH_PATH); delete a2[provider]; writeJsonFile(AUTH_PATH, a2);
     console.log(`[pi-web] 模型添加失败: ${provider} → ${String(e?.message || e).slice(0, 100)}`);
