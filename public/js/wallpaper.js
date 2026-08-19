@@ -8,7 +8,7 @@ function applyWallpaper() {
     r.setProperty("--wallpaper", `url("${wallpaper.url}")`);
     r.setProperty("--wallpaper-opacity", String(wallpaper.opacity ?? 0.55));
     r.setProperty("--wallpaper-blur", (wallpaper.blur ?? 6) + "px");
-    r.setProperty("--wallpaper-dim", String(0.45));
+    r.setProperty("--wallpaper-dim", String(0.12));
     document.body.classList.add("has-wallpaper");
   } else {
     r.removeProperty("--wallpaper");
