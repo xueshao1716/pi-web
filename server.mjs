@@ -21,6 +21,8 @@ import { httpJsonFetch, httpBufferFetch } from "./engine/http.mjs";
 // ── 统一工具集（拆模块）：schema + 执行器；安全线（deny/危险命令/受保护路径/路径越权）在 engine/tools/security.mjs ──
 import { BASE_TOOL_SCHEMAS, createUnifiedToolExecutor } from "./engine/tools/unified-tools.mjs";
 import { safeJoin } from "./engine/tools/security.mjs";
+// ── dsh 执行臂工具（拆模块）：双引擎派单/并发控制/结构化回传解析 ──
+import { createDshTool } from "./engine/dsh-tool.mjs";
 
 // ── 模型路由层（拆模块）：429 降级 / 复杂度分类 / Auto 路由 / pro 候选 ──
 import { initModelRouter, isOcGoBlocked, markModelBlocked, markOcGoBlocked, ocGoCandidate, pickFallbackDefault, pickFallbackExcluding, resetModelHealth, isAutoModel, routeForAuto, routeProCandidate, ROUTER_AUTO } from "./engine/model-router.mjs";
@@ -2630,150 +2632,14 @@ const THINK_PROMPT = "你可以调用 think 工具，在动手之前写下你的
 const isExternalThinking = () => !!(CONFIG.externalThinking || globalThis.__piWebExternalThinking);
 
 
-// ── 双引擎：dsh（DeepSeek Harness）执行臂工具 ──
-// 模式：pi 主引擎（规划/对话/记忆/验收）→ 派单 dsh 执行（代码/沙箱/工作流）→ 结果回 pi 验收交付。
-let dshToolDef = null;
-// dsh 并发控制：默认最多 6 个同时跑（用户定），硬上限 15，防后台进程堆积憋死电脑
-// 可通过环境变量 PI_DSH_MAX 调整；总进程数 = dsh 并发 + 系统 node 基础进程
-let dshActive = 0;
-const dshMax = Math.min(parseInt(process.env.PI_DSH_MAX || "6", 10), 15);
-
-// dsh 引擎入口：Windows 无 dsh.exe（只有 dsh.cmd shim）——直接 spawn node 执行真实 bin.js，
-// 避免 shell 注入风险（task 是模型生成的，经 shell 拼接有命令注入面）
-let dshBinCache = null;
-function resolveDshBin() {
-  if (dshBinCache) return dshBinCache;
-  try {
-    const cands = [
-      path.join(process.env.APPDATA || "", "npm", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
-      path.join(process.env.ProgramFiles || "", "nodejs", "node_modules", "npm", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
-    ];
-    for (const c of cands) {
-      if (fs.existsSync(c)) { dshBinCache = c; return c; }
-    }
-  } catch {}
-  return "dsh"; // 回退：让系统 PATH 尝试（类 Unix 环境 dsh 在 PATH 中）
-}
-
-// dsh 技能上下文：渐进式披露 pi-web 技能库，让 dsh 学会按技能执行（独立站前台第一步）
-// dsh headless 自带 read 工具，可直接读 D:/pi-web/skills/<name>/SKILL.md 全文
-function dshSkillContext() {
-  try {
-    const list = loadSkillIndex();
-    if (!list.length) return "";
-    const skillDir = path.join(__dirname, "skills").replace(/\\/g, "/");
-    return `\n\n【pi-web 技能库（${list.length} 个，渐进式披露）】\n用户任务匹配以下任一技能时，**必须先用 read 工具读取技能文件全文，再严格按技能指令执行**（禁止自行简化/缩写/改写技能步骤）：\n${list.map((s) => `- ${s.name}：${String(s.desc).slice(0, 120)}`).join("\n")}\n技能文件位置：${skillDir}/<技能名>/SKILL.md（绝对路径，直接 read）`;
-  } catch { return ""; }
-}
-
-// 结构化回传协议：从 dsh headless 输出中容错提取 JSON 块（结果+步骤+工具+元数据）
-// headless 是黑盒（事件不落盘、stderr 空），只能让模型按协议自报过程，解析失败则回退纯文本
-function extractStructuredOut(text) {
-  if (!text) return { ok: false, raw: text || "" };
-  const isValid = (d) => d && typeof d === "object" && "result" in d; // 协议强制：必须含 result
-  // 1) 优先取 ```json 代码块
-  const jb = String(text).match(/```json\s*([\s\S]*?)```/);
-  if (jb) {
-    try { const d = JSON.parse(jb[1]); if (isValid(d)) return { ok: true, data: d, raw: text }; } catch {}
-  }
-  // 2) 从后往前扫所有 {，取第一个含 result 的完整 JSON 块（避免命中嵌套的 meta 对象）
-  const s = String(text);
-  for (let i = s.length - 1; i >= 0; i--) {
-    if (s[i] !== "{") continue;
-    let depth = 0;
-    for (let j = i; j < s.length; j++) {
-      if (s[j] === "{") depth++;
-      else if (s[j] === "}") {
-        depth--;
-        if (depth === 0) {
-          try {
-            const d = JSON.parse(s.slice(i, j + 1));
-            if (isValid(d)) return { ok: true, data: d, raw: text };
-          } catch {}
-          break;
-        }
-      }
-    }
-  }
-  return { ok: false, raw: text };
-}
-async function initDshTool() {
-  if (dshToolDef) return dshToolDef;
-  try {
-    const { createRequire } = await import("node:module");
-    const req2 = createRequire(CONFIG.piPackage);
-    const { Type } = req2("typebox");
-    dshToolDef = {
-      name: "dsh_task",
-      label: "dsh 引擎执行（代码/沙箱/工作流）",
-      description: "把子任务派单给 DeepSeek Harness（dsh）引擎独立执行。dsh 擅长：安全执行模型编写的代码（Code Mode）、沙箱内跑程序、复杂多步数据处理/工作流编排。当你（pi）需要执行一段生成的代码/脚本、在沙箱环境跑程序、或做多步数据处理时，把任务完整描述给它，拿到结果后由你验收并交付。日常文件读写/搜索/简单命令用自带工具，不要滥用。",
-      promptSnippet: "需要安全执行代码/沙箱/多步工作流时，用 dsh_task 派单给 dsh 引擎，拿到结果后验收交付",
-      promptGuidelines: [
-        "Use dsh_task when a subtask needs: executing model-written code safely (Code Mode), sandboxed program runs, or multi-step data processing.",
-        "Write a complete, self-contained task description — dsh runs as an independent session without conversation history.",
-        "After dsh returns, YOU verify the result (re-read/check outputs) before presenting to the user.",
-        "Do NOT use it for simple file ops or one-line commands. Do NOT chain multiple dsh_task calls in one turn.",
-      ],
-      parameters: Type.Object({
-        task: Type.String({ description: "派单给 dsh 的完整任务描述（自包含：目标/输入/期望输出/约束）" }),
-      }),
-      async execute(toolCallId, params, signal, onUpdate, ctx) {
-        const task = String(params?.task || "").trim();
-        if (!task) return { content: [{ type: "text", text: "缺少任务描述" }] };
-        // 并发控制：达到上限（默认 6）拒绝新任务，让 pi 稍后重试
-        if (dshActive >= dshMax) return { content: [{ type: "text", text: `⚠️ dsh 引擎已达并发上限（${dshActive}/${dshMax}）。请稍后重试，或改用自带工具完成。` }] };
-        // 清理残留：先回收异常退出/超时遗留的 dsh headless 进程（防内存堆积）
-        try {
-          execFile("powershell", ["-NoProfile", "-Command",
-            "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'dsh.*headless' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
-          ], { timeout: 8000, windowsHide: true }, () => {});
-        } catch {}
-        dshActive++;
-        if (onUpdate) onUpdate({ type: "status", content: [{ type: "text", text: `⏳ 已派单 dsh 引擎执行（冷启动约 5-20s，当前并发 ${dshActive}/${dshMax}）…` }] });
-        try {
-          // 结构化协议：要求 dsh 末尾输出 JSON（结果+步骤+工具+元数据），pi 容错解析后基于轨迹验收
-          const structReq = "\n\n【输出格式要求（必须严格遵守）】\n执行完成后，在回复末尾单独输出一个 JSON 块（直接以 { 开头，不要放在代码块里，JSON 前后不要有其他文字）：\n{\"result\":\"给用户的最终结论(简洁)\",\"steps\":[\"关键步骤1\",\"关键步骤2\"],\"tools\":[\"工具名: 说明\"],\"meta\":{\"duration\":\"估算耗时\",\"files\":[\"涉及的文件路径\"]}}\nJSON 必须合法，步骤和工具如实填写。";
-          const out = await new Promise((resolve) => {
-            execFile(process.execPath, [resolveDshBin(), "--profile", "headless", task + dshSkillContext() + structReq], {
-              cwd: CONFIG.cwd, encoding: "utf8", timeout: 180000, windowsHide: true, maxBuffer: 8 * 1024 * 1024,
-            }, (err, stdout) => resolve({ ok: !err, out: String(stdout || "").trim(), err: String(err?.message || "").slice(0, 200) }));
-          });
-          const text = (out.out || "").trim();
-          const parsed = extractStructuredOut(text);
-          if (parsed.ok && parsed.data) {
-            const d = parsed.data;
-            const parts = [];
-            parts.push(`【dsh 执行结果】${String(d.result || text).slice(0, 1000)}`);
-            if (Array.isArray(d.steps) && d.steps.length) parts.push(`【执行步骤】\n${d.steps.map((s, i) => `${i + 1}. ${String(s).slice(0, 200)}`).join("\n").slice(0, 1500)}`);
-            if (Array.isArray(d.tools) && d.tools.length) parts.push(`【工具调用】${d.tools.map(String).join("；").slice(0, 800)}`);
-            if (d.meta && typeof d.meta === "object") {
-              const m = [];
-              if (d.meta.duration) m.push(`耗时 ${d.meta.duration}`);
-              if (Array.isArray(d.meta.files) && d.meta.files.length) m.push(`文件 ${d.meta.files.join(", ").slice(0, 300)}`);
-              if (m.length) parts.push(`【元数据】${m.join("；")}`);
-            }
-            parts.push(`【原始输出】${(text || "（dsh 无输出）").slice(0, 2000)}`);
-            return { content: [{ type: "text", text: out.ok ? parts.join("\n\n") : `【dsh 执行失败】${out.err}
-
-${parts.join("\n\n")}` }] };
-          }
-          // 未按协议输出：回退纯文本（不编造轨迹）
-          const t2 = (text || "（dsh 无输出）").slice(0, 4000);
-          return { content: [{ type: "text", text: out.ok ? `【dsh 执行结果】
-${t2}` : `【dsh 执行失败】${out.err}
-${t2}` }] };
-        } catch (e) {
-          return { content: [{ type: "text", text: `dsh 调用异常: ${String(e?.message || e).slice(0, 200)}` }] };
-        } finally {
-          dshActive--; // 无论成败都释放并发额度
-        }
-      },
-    };
-  } catch (e) {
-    console.log(`[dsh] 工具初始化失败: ${String(e?.message || e).slice(0, 100)}`);
-  }
-  return dshToolDef;
-}
+// ── 双引擎：dsh（DeepSeek Harness）执行臂工具 —— 实现已抽到 engine/dsh-tool.mjs ──
+// 模式：pi 主引擎（规划/对话/验收）→ 派单 dsh 执行（代码/沙箱/工作流）→ 结果回 pi 验收交付。
+const { initDshTool } = createDshTool({
+  cwd: CONFIG.cwd,
+  piPackage: CONFIG.piPackage,
+  loadSkillIndex,
+  skillsDir: path.join(__dirname, "skills"),
+});
 
 // 统一工具执行器：实现已抽到 engine/tools/unified-tools.mjs（大脑可移植第一步）。
 // server 侧注入：工作目录 / 工作空间路径安全 / 技能激活 / 时间引擎。
