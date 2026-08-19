@@ -1099,7 +1099,9 @@ console.log(`[pi-web] 可用模型: ${modelList.length} 个（含 ${Object.keys(
 // 用户手动选择具体模型 → 不干预（与 Cursor "手动覆盖 Auto" 同构）。环境变量 PI_AUTO_ROUTE=0 可关闭。
 // ══ opencode-go 429 自动降级（2026-08-19 修复 B）════
 // 现象：opencode-go 周额度耗尽（GoUsageLimitError 429）时，默认/Auto 路由仍优先 opencode-go → 持续 429。
-// 修复：探测到 429 后 30 分钟内 Auto 路由/默认选择/图像兕底自动避开 opencode-go，落到火山方舟/deepseek 官方，定期重探恢复。
+// 修复：探测到 429 后 30 分钟内 Auto 路由/默认选择/图像兕底自动避开 opencode-go，落到实测可用通道，定期重探恢复。
+// ⚠️ 2026-08-19 实测修正：deepseek 官方 flash 在 agent 管线不调工具/无思考流（ls 任务纯文本教命令）；
+//    火山方舟 ark-code thinking 模式空回复。两者都不作首选降级——用小米 mimo-v2.5（实测思考+工具全通）。
 let ocGoBlockedUntil = 0;
 const OCGO_BLOCK_MS = 30 * 60 * 1000;
 function isOcGoBlocked() { return Date.now() < ocGoBlockedUntil; }
@@ -1113,10 +1115,12 @@ function ocGoCandidate(re) { return isOcGoBlocked() ? undefined : modelList.find
 // defaultModel 兕底（blocked 且 defaultModel 恰为 opencode-go 时换可用通道）
 function pickFallbackDefault() {
   if (defaultModel && !(defaultModel.provider === "opencode-go" && isOcGoBlocked())) return defaultModel;
-  // ⚠️ 火山方舟 ark-code 在 pi agent 管线实测空回复（thinking 模式 content 为空），不作为首选兕底（2026-08-19）
-  return modelList.find(m => m.provider === "deepseek" && /flash/i.test(m.id))
+  // ⚠️ 实测优先级（2026-08-19 真机）：deepseek 官方 flash 不调工具/无思考、ark-code 空回复 → 都不作首选
+  // 小米 mimo-v2.5 / 阿里 qwen3.8-max：思考+工具全通，实测正常
+  return modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
+    || modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
+    || modelList.find(m => m.provider === "deepseek" && /flash/i.test(m.id))
     || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
-    || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && m.id.includes("v2.5"))
     || defaultModel;
 }
 
@@ -1172,12 +1176,16 @@ function routeForAuto(text) {
   }
   if (cl.level === "complex") {
     const pro = ocGoCandidate(/deepseek-v4-pro/i)
-      // 官方 DeepSeek 涨价，复杂任务兕底也用火山方舟 ark-code 替代
+      || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5-pro/i.test(m.id))
+      || modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
+      // 官方 DeepSeek 涨价，复杂任务兕底用火山方舟 ark-code（⚠️ thinking 空回复，最后顺位）
       || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id));
     if (pro) return { model: pro, level: "complex", score: cl.score, reasons: cl.reasons, auto: true };
   }
   const flash = ocGoCandidate(/deepseek-v4-flash/i)
-    // ⚠️ 火山方舟 ark-code 在 pi agent 管线实测空回复，不作为首选兕底（2026-08-19）；deepseek 官方 flash 稳定可用
+    // ⚠️ deepseek 官方 flash agent 管线实测不调工具/无思考（2026-08-19），小米/阿里实测可用
+    || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
+    || modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
     || modelList.find(m => m.provider === "deepseek" && /flash/i.test(m.id))
     || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
     || pickFallbackDefault();
@@ -4216,11 +4224,14 @@ async function handleChat(req, res, body) {
     return autoRoute.model;
   })();
   entry.autoRoute = autoRoute; // 供 SSE 播报与日志
-  if (entry.agent && entry.modelKey && entry.agentModel &&
-      (entry.agentModel.provider !== entry.modelKey.provider || entry.agentModel.id !== entry.modelKey.id)) {
+  // agent 绑定模型与本次生效模型（会话级切换 或 Auto 路由实时决策）不一致 → 重建 agent
+  // ⚠️ 2026-08-19：原来只在 entry.modelKey 存在时重建，Auto 路由下 agent 仍绑创建时的 defaultModel（429 中）
+  //    → 主请求失败、兕底文本回复、无思考无工具。改为与 effModel 全量对齐。
+  if (entry.agent && effModel &&
+      (!entry.agentModel || entry.agentModel.provider !== effModel.provider || entry.agentModel.id !== effModel.id)) {
     try { entry.agent.dispose(); } catch {}
     entry.agent = null;
-    console.log(`[pi-web] 会话模型已切换，重建 agent → ${entry.modelKey.provider}/${entry.modelKey.id}`);
+    console.log(`[pi-web] 生效模型变化，重建 agent → ${effModel.provider}/${effModel.id}`);
   }
   const agent = await ensureAgent(entry, effModel);
   // Plan 模式工具级限制：agent 就绪后统一应用一次（覆盖新会话首条 /plan / 模型切换重建后的 agent）
