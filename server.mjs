@@ -130,13 +130,17 @@ let defaultModel = undefined; // 在启动模型列表构建后初始化（见�
 function scanSessionFiles() {
   const out = [];
   try {
-    // ⚠️ 2026-08-20 修复：只扫当前工作区会话目录（SESSIONS_DIR）。此前遍历 sessions/ 全部子目录，
-    // pi TUI（cwd=C:\\Users\\...）等其他工作目录的会话混入前台列表（错误文本会话名/打不开报 not found）
-    const root = SESSIONS_DIR;
-    let st; try { st = fs.statSync(root); } catch { return out; }
-    if (!st.isDirectory()) return out;
-    for (const f of fs.readdirSync(root)) {
-      if (f.endsWith(".jsonl")) out.push(path.join(root, f));
+    // ⚠️ 2026-08-20 恢复全目录扫描 + 前端按 group 分组：工作区会话一组，pi 终端会话（小语）单独一组
+    // 此前只扫当前工作区目录，外部联系小语的入口丢失；全扫后前端用 cwd 分组展示，不会混在一起
+    const root = path.join(getAgentDir(), "sessions");
+    for (const sub of fs.readdirSync(root)) {
+      if (sub.startsWith(".")) continue; // 跳过 .trash 等隐藏目录
+      const dir = path.join(root, sub);
+      let st; try { st = fs.statSync(dir); } catch { continue; }
+      if (!st.isDirectory()) continue;
+      for (const f of fs.readdirSync(dir)) {
+        if (f.endsWith(".jsonl")) out.push(path.join(dir, f));
+      }
     }
   } catch {}
   return out;
@@ -1008,6 +1012,8 @@ function listSessions() {
       messageCount: s.messageCount,
       file: s.file,
       cwd: s.cwd,
+      // 2026-08-20 分组：工作区会话 vs 其他目录（pi 终端会话，外部联系小语用）
+      group: (() => { try { return path.resolve(s.cwd || "") === path.resolve(CONFIG.cwd) ? "workspace" : "terminal"; } catch { return "terminal"; } })(),
     }));
 }
 

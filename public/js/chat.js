@@ -173,13 +173,19 @@ function renderSessions() {
     list.appendChild(empty);
     return;
   }
+  // ⚠️ 2026-08-20 分组：工作区会话（置顶/项目/临时）+ 终端会话（小语在 pi 终端，外部联系入口）
+  // 终端会话单独一组放最前（新消息优先可见），默认展开，最多展示 12 个
+  const term = sessions.filter(s => s.group === "terminal");
+  if (term.length) appendTerminalGroup(list, term);
+  const work = sessions.filter(s => s.group !== "terminal");
+  if (!work.length) return; // 只有终端会话时不再渲染空工作区
   // 置顶会话单独一组，放最前
-  const pinned = sessions.filter(s => pinnedIds.has(s.id));
+  const pinned = work.filter(s => pinnedIds.has(s.id));
   if (pinned.length) appendSessionGroup(list, "置顶", pinned, "📌");
   // 项目分组（项目内会话按更新时间倒序）
   const byProj = {};
   const validProj = new Set(projects.map(p => p.id));
-  for (const s of sessions) {
+  for (const s of work) {
     const pid = sessionProject[s.id];
     if (pid && validProj.has(pid) && !pinnedIds.has(s.id)) (byProj[pid] = byProj[pid] || []).push(s);
   }
@@ -189,7 +195,7 @@ function renderSessions() {
     appendSessionGroup(list, p.name, items, "📁", p);
   }
   // 临时会话组（未归档 + 归档到已不存在项目的孤儿会话，内部按时间子分组）
-  const temp = sessions.filter(s => {
+  const temp = work.filter(s => {
     if (pinnedIds.has(s.id)) return false;
     const pid = sessionProject[s.id];
     return !pid || !validProj.has(pid); // 孤儿映射也回临时，避免会话“消失”
@@ -199,6 +205,21 @@ function renderSessions() {
   requestAnimationFrame(() => {
     scrollParent.scrollTop = Math.min(savedScroll, scrollParent.scrollHeight);
   });
+}
+
+// 终端会话组（小语在 pi 终端 cwd=C:\\Users\\...，外部通过前台联系入口）
+function appendTerminalGroup(list, items) {
+  const gkey = "sess-小语会话";
+  const collapsed = !!collapsedGroups[gkey];
+  const g = document.createElement("div");
+  g.className = "sess-group";
+  g.innerHTML = `
+    <div class="sg-head"><span class="sg-arrow">${collapsed ? "▸" : "▾"}</span><span class="sg-name">📱 小语会话（终端）</span><span class="sg-count">${items.length}</span></div>
+    <div class="sg-body" ${collapsed ? "hidden" : ""}></div>`;
+  g.querySelector(".sg-head").addEventListener("click", () => toggleGroup(gkey));
+  const body = g.querySelector(".sg-body");
+  for (const s of items) appendSessionItem(body, s);
+  list.appendChild(g);
 }
 
 // 普通会话组（置顶 / 项目）
