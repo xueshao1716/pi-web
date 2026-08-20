@@ -42,3 +42,8 @@ android/build/
 android/app/build/
 android/local.properties
 android/capacitor-cordova-android-plugins/build/
+
+# APK 安装包（本地分发，不进公网/仓库）
+public/downloads/
+android/app-release-signed.apk
+android/release.keystore
