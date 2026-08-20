@@ -2127,15 +2127,22 @@ function json(res, code, obj) {
 
 function handleModels(res) {
   // 只返回已配置 Key 的 provider 的模型（auth.json 或环境变量），避免列出无法使用的模型
+  // 2026-08-20：附带 free/note（store 模型条目标注：免费通道/限时免费等）供前端展示种类与免费标记
+  const store = readJsonFile(MODELS_PATH);
   const list = modelList
     .filter(m => resolveAuth(m.provider))
-    .map(m => ({
-      provider: m.provider, id: m.id, name: m.name || m.id,
-      contextWindow: m.contextWindow,
-      vision: Array.isArray(m.input) && m.input.includes("image"),
-      reasoning: !!m.reasoning,
-      capabilities: m.capabilities || modelCapabilities(m.id),
-    }));
+    .map(m => {
+      const sm = (store[m.provider]?.models || []).find(x => x.id === m.id) || {};
+      return {
+        provider: m.provider, id: m.id, name: m.name || m.id,
+        contextWindow: m.contextWindow,
+        vision: Array.isArray(m.input) && m.input.includes("image"),
+        reasoning: !!m.reasoning,
+        capabilities: m.capabilities || modelCapabilities(m.id),
+        free: sm.free,       // true=免费通道（undefined=未知/付费）
+        note: sm.note || "", // 标注：限时免费 / 免费额度 等
+      };
+    });
   json(res, 200, {
     models: list,
     current: defaultModel ? { provider: defaultModel.provider, id: defaultModel.id } : null,

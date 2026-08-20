@@ -69,7 +69,11 @@ function populateModels(data) {
     for (const m of groups[prov]) {
       const opt = document.createElement("option");
       opt.value = `${m.provider}/${m.id}`;
-      opt.textContent = m.name || m.id;
+      // 2026-08-20：下拉标注种类图标 + 免费/限免标记（如 💬 商汤 Flash Lite（免费）/ 🎬 MiniMax H3（限时免费））
+      const caps = m.capabilities || {};
+      const icon = caps.video ? "🎬" : caps.image ? "🎨" : caps.tts ? "🎤" : caps.asr ? "🎧" : "💬";
+      const tag = m.free ? (m.note ? `（${m.note}）` : "（免费）") : "";
+      opt.textContent = `${icon} ${m.name || m.id}${tag}`;
       opt.dataset.provider = m.provider;
       opt.dataset.modelId = m.id;
       og.appendChild(opt);

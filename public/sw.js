@@ -1,5 +1,5 @@
 // pi-web Service Worker —— 静态资源缓存，API 不缓存
-const CACHE = "pi-web-v27"; // v22: Beautiful-UI 风格工具卡片（t-dot 状态圆点/chip）；v21: 双向同步
+const CACHE = "pi-web-v28"; // v28: 会话分组（终端小语会话）；v22: Beautiful-UI 风格工具卡片（t-dot 状态圆点/chip）；v21: 双向同步
 const STATIC = ["/", "/index.html", "/static/app.css", "/static/css/quantum.css",
   "/static/js/core.js", "/static/js/theme.js", "/static/js/chat.js",
   "/static/js/wallpaper.js", "/static/js/model.js", "/static/js/ui.js",
