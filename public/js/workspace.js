@@ -101,7 +101,7 @@ function wsItem(it, depth) {
 async function openWsFile(it) {
   const ext = (it.name.split(".").pop() || "").toLowerCase();
   // 带上 token（浏览器直接 GET 无法带 header）
-  const url = "/api/ws/file?path=" + encodeURIComponent(it.path) + "&token=" + encodeURIComponent(token);
+  const url = apiUrl("/api/ws/file?path=") + encodeURIComponent(it.path) + "&token=" + encodeURIComponent(token);
   if (["png","jpg","jpeg","gif","webp","bmp"].includes(ext)) return openWsMedia(url, "image", it.name);
   if (["wav","mp3","ogg","m4a"].includes(ext)) return openWsMedia(url, "audio", it.name);
   if (["mp4","webm","mov"].includes(ext)) return openWsMedia(url, "video", it.name);
@@ -180,7 +180,7 @@ $("fv-deliver").addEventListener("click", () => { if (currentPreviewFile) wsDeli
 // ⬇ 下载当前预览文件（带 token 鉴权）
 $("fv-download").addEventListener("click", () => {
   if (!currentPreviewFile) return;
-  const url = "/api/ws/file?path=" + encodeURIComponent(currentPreviewFile) + "&token=" + encodeURIComponent(token) + "&download=1";
+  const url = apiUrl("/api/ws/file?path=") + encodeURIComponent(currentPreviewFile) + "&token=" + encodeURIComponent(token) + "&download=1";
   const a = document.createElement("a");
   a.href = url; a.download = currentPreviewFile.split("/").pop();
   document.body.appendChild(a); a.click(); a.remove();
@@ -489,7 +489,7 @@ function wsFullItem(it, depth) {
 
 async function previewWsFull(it) {
   wsFullCurrent = it;
-  const url = "/api/ws/file?path=" + encodeURIComponent(it.path) + "&token=" + encodeURIComponent(token);
+  const url = apiUrl("/api/ws/file?path=") + encodeURIComponent(it.path) + "&token=" + encodeURIComponent(token);
   const ext = (it.name.split(".").pop() || "").toLowerCase();
   const ph = $("wsfull-ph"), pv = $("wsfull-preview");
   ph.hidden = true; pv.hidden = false;
@@ -517,7 +517,7 @@ async function previewWsFull(it) {
 }
 $("wsfull-dl").addEventListener("click", () => {
   if (!wsFullCurrent) return;
-  const url = "/api/ws/file?path=" + encodeURIComponent(wsFullCurrent.path) + "&token=" + encodeURIComponent(token) + "&download=1";
+  const url = apiUrl("/api/ws/file?path=") + encodeURIComponent(wsFullCurrent.path) + "&token=" + encodeURIComponent(token) + "&download=1";
   window.open(url, "_blank");
 });
 $("wsfull-deliver").addEventListener("click", async () => {

@@ -35,3 +35,10 @@ _gen.*
 _search_tmp*
 extensions/pi-reasonix/
 .watchdog.lock
+
+# Android 构建产物
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/capacitor-cordova-android-plugins/build/

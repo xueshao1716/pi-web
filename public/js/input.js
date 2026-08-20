@@ -312,7 +312,7 @@ $("mm-export").addEventListener("click", async () => {
   if (!currentId) return toast("当前无会话");
   // token 不走 URL（避免进浏览器历史/服务器日志/referrer），改用请求头，fetch 后 Blob 下载
   try {
-    const res = await fetch(`/api/sessions/${encodeURIComponent(currentId)}/export?format=html`, {
+    const res = await fetch(apiUrl(`/api/sessions/${encodeURIComponent(currentId)}/export?format=html`), {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

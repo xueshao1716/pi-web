@@ -1,6 +1,14 @@
 // ===== core.js（从 app.js 拆分，全局作用域，保持原逻辑不变）=====
 const $ = id => document.getElementById(id);
 let token = new URLSearchParams(location.search).get("token") || localStorage.getItem("pi_web_token") || "";
+// 2026-08-20 移动端（Capacitor 壳）：API 地址可配置——URL ?api= 或 localStorage pi_api_base
+// 壳内 web 资源是本地文件，API 必须指向远程 server（公网域名或局域网 IP）
+function apiBase() {
+  try {
+    return new URLSearchParams(location.search).get("api") || localStorage.getItem("pi_api_base") || "";
+  } catch { return localStorage.getItem("pi_api_base") || ""; }
+}
+function apiUrl(path) { return apiBase() + path; }
 let sessions = [];
 let currentId = null;
 let modelList = [];
@@ -52,7 +60,7 @@ async function api(path, opts = {}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(new Error("请求超时")), timeoutMs);
   try {
-    const r = await fetch(path, { ...opts, signal: opts.signal || ctrl.signal });
+    const r = await fetch(apiUrl(path), { ...opts, signal: opts.signal || ctrl.signal });
     const ct = r.headers.get("content-type") || "";
     const data = ct.includes("json") ? await r.json() : null;
     if (!r.ok) { const err = new Error((data && data.error) || `HTTP ${r.status}`); err.status = r.status; throw err; }

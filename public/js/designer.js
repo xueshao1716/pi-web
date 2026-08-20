@@ -15,9 +15,9 @@ async function loadWsDeliveries() {
         (it.type === "file" ? `<button class="ft-refresh" title="下载">⬇</button>` : `<button class="ft-refresh" title="打包下载">🗜</button>`);
       el.querySelector("button").addEventListener("click", (e) => {
         e.stopPropagation();
-        window.open("/api/ws/deliver/package", "_blank");
+        window.open(apiUrl("/api/ws/deliver/package"), "_blank");
         // 打包后下载
-        api("/api/ws/deliver/package", { method: "POST", body: { path: it.wsPath } }).then((r) => { if (r.url) window.open(r.url, "_blank"); });
+        api("/api/ws/deliver/package", { method: "POST", body: { path: it.wsPath } }).then((r) => { if (r.url) window.open(apiUrl(r.url), "_blank"); });
       });
       el.addEventListener("click", () => openWsFile({ name: it.name, path: it.wsPath }));
       box.appendChild(el);

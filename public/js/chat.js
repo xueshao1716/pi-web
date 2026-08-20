@@ -1,5 +1,10 @@
 // ===== chat.js（从 app.js 拆分，全局作用域，保持原逻辑不变）=====
 // ══ 登录 ══
+const savedApiBase = (() => { try { return localStorage.getItem("pi_api_base") || ""; } catch { return ""; } })();
+if (savedApiBase) {
+  const apiInput = $("api-input");
+  if (apiInput) apiInput.value = savedApiBase;
+}
 if (token) {
   // 有 token：先隐藏登录壳进入加载态，校验失败再弹登录（避免刷新/自动更新时闪现登录页）
   $("login").style.display = "none";
@@ -10,6 +15,10 @@ $("login-btn").addEventListener("click", () => {
   token = $("token-input").value.trim();
   if (!token) return;
   localStorage.setItem("pi_web_token", token);
+  const apiInput = $("api-input");
+  if (apiInput && apiInput.value.trim()) {
+    localStorage.setItem("pi_api_base", apiInput.value.trim().replace(/\/+$/, ""));
+  }
   tryLogin();
 });
 $("token-input").addEventListener("keydown", e => { if (e.key === "Enter") $("login-btn").click(); });
@@ -340,8 +349,8 @@ function addFileMsg(file, role) {
 // 构建单个文件卡片（钉钉样式：图标+文件名+大小+下载）
 function buildFileCard(file, role) {
   const isImg = (file.mime || "").startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name || "");
-  const dlUrl = "/api/ws/file?path=" + encodeURIComponent(file.path || "") + "&token=" + encodeURIComponent(token) + "&download=1";
-  const previewUrl = "/api/ws/file?path=" + encodeURIComponent(file.path || "") + "&token=" + encodeURIComponent(token);
+  const dlUrl = apiUrl("/api/ws/file?path=") + encodeURIComponent(file.path || "") + "&token=" + encodeURIComponent(token) + "&download=1";
+  const previewUrl = apiUrl("/api/ws/file?path=") + encodeURIComponent(file.path || "") + "&token=" + encodeURIComponent(token);
   const icon = isImg ? "🖼" : (file.mime || "").startsWith("audio/") ? "🎵" : (file.mime || "").startsWith("video/") ? "🎬" : "📄";
   const size = file.size ? (file.size > 1048576 ? (file.size / 1048576).toFixed(1) + "MB" : Math.max(1, Math.round(file.size / 1024)) + "KB") : "";
   const card = document.createElement("div");
@@ -548,7 +557,7 @@ function subscribeSession(sid) {
   (async () => {
     while (!ac.signal.aborted) {
       try {
-        const r = await fetch(`/api/sessions/${encodeURIComponent(sid)}/stream?after=${after}`, {
+        const r = await fetch(apiUrl(`/api/sessions/${encodeURIComponent(sid)}/stream?after=${after}`), {
           headers: { Authorization: `Bearer ${token}` }, signal: ac.signal,
         });
         if (!r.ok) throw new Error("HTTP " + r.status);
@@ -1464,7 +1473,7 @@ async function send() {
     let r = null;
     let streamingStarted = false;
     for (let attempt = 0; attempt < 6; attempt++) {
-      r = await fetch("/api/chat", {
+      r = await fetch(apiUrl("/api/chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, Accept: "text/event-stream" },
         body: JSON.stringify({
