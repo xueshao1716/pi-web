@@ -5,8 +5,8 @@ import assert from "node:assert";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { sanitizeText, sanitizeContent } from "../../sanitize.mjs";
-import { signedUrl, verifySigned, findFiles } from "../../filebox.mjs";
+import { sanitizeText, sanitizeContent } from "../../engine/sanitize.mjs";
+import { signedUrl, verifySigned, findFiles } from "../../engine/filebox.mjs";
 
 describe("sanitize.mjs 脱敏", () => {
   test("API key（sk-）被脱敏", () => {

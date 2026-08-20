@@ -35,12 +35,12 @@ import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
 import { createCodeMode } from "./code-mode/code-mode.mjs";
 import { createTimeEngine } from "./engine/time-engine.mjs";
-const memoryApi = await import("./memory.mjs");
-const emotion = await import("./emotion.mjs");
+const memoryApi = await import("./engine/memory.mjs");
+const emotion = await import("./engine/emotion.mjs");
 emotion.init(CONFIG.cwd); // 基因系统：加载人格基因 + 提案池
 // 隔离子任务执行器（P2）：注入模型适配依赖（复用系统代理栈）
 const subagent = await import("./engine/subagent.mjs");
-const workshop = await import("./workshop.mjs");
+const workshop = await import("./engine/workshop.mjs");
 const { WORKSHOP_PAGES } = workshop;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -704,7 +704,7 @@ async function initSearchTool() {
     // 用 CONFIG.piPackage（引擎入口路径，server 顶部已验证可用）解析 typebox
     const req2 = createRequire(CONFIG.piPackage);
     const { Type } = req2("typebox");
-    const fb = await import("./filebox.mjs");
+    const fb = await import("./engine/filebox.mjs");
     searchToolDef = {
       name: "search_files",
       label: "搜索工作空间文件",
@@ -2305,7 +2305,7 @@ async function saveArtifact(artifact) {
     console.log(`[pi-web] 产物已落盘: ${file}`);
     // 用签名 URL（免鉴权，24h 有效）——img 标签可直接加载，无需带 token
     try {
-      const fb = await import("./filebox.mjs");
+      const fb = await import("./engine/filebox.mjs");
       const rel = path.relative(WS_ROOT, file);
       return fb.signedUrl(rel);
     } catch {
@@ -2337,7 +2337,7 @@ async function handleWsTree(res, reqPath) {
 // GET /api/ws/file —— 提供文件（图片/音频/视频/文本；?download=1 强制下载）
 async function handleWsFile(res, req, url) {
   // 优先：签名 URL（path+exp+sig，安全防篡改、可过期，不依赖内存映射）
-  const fb = await import("./filebox.mjs");
+  const fb = await import("./engine/filebox.mjs");
   let target = null;
   if (url?.searchParams.get("sig")) {
     const v = fb.verifySigned(req);
@@ -2937,7 +2937,7 @@ except Exception as e:
 let repairBusy = false;
 
 // 修复前检查点：把修复可能触碰的源码备份到 backups/repair-<ts>/，改坏可回滚（对标 /refine 的回滚能力）
-const REPAIR_BACKUP_FILES = ["server.mjs", "config.mjs", "workshop.mjs", "memory.mjs", "emotion.mjs", "sanitize.mjs", "filebox.mjs", "browser.mjs", "search-web.mjs", "public/index.html"];
+const REPAIR_BACKUP_FILES = ["server.mjs", "config.mjs", "engine/workshop.mjs", "engine/memory.mjs", "engine/emotion.mjs", "engine/sanitize.mjs", "engine/filebox.mjs", "engine/browser.mjs", "engine/search-web.mjs", "public/index.html"];
 function createRepairCheckpoint() {
   try {
     const ts = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
@@ -4204,7 +4204,7 @@ async function handleChat(req, res, body) {
     } catch {}
     // 自动记忆：对话结束，把本轮重要信息沉淀到记忆日志
     try {
-      const mem = await import("./memory.mjs");
+      const mem = await import("./engine/memory.mjs");
       const assistLatest = (() => {
         try {
           const entries = readEntriesFromFile(entry.sm.sessionFile);
@@ -4571,7 +4571,7 @@ function escHtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt
 // 脱敏模块（自动擦除 API key/令牌/密码）
 let sanitizeContent = null;
 try {
-  ({ sanitizeContent } = await import("./sanitize.mjs"));
+  ({ sanitizeContent } = await import("./engine/sanitize.mjs"));
 } catch {}
 async function handleExport(res, id, format) {
   const found = getSessionList().find(s => s.id === id);
@@ -5047,11 +5047,11 @@ const API_ROUTES = [
   ["GET", "/api/git/status", (res) => handleGitStatus(res)],
   ["GET", "/api/git/diff", (res) => handleGitDiff(res)],
   // ── 浏览器操作（CDP 控制 Chrome）──
-  ["POST", "/api/browser/start", async (res, req) => { const b = await import("./browser.mjs"); const r = await b.startChrome(); json(res, r.error ? 500 : 200, r); }],
-  ["POST", "/api/browser/stop", async (res) => { const b = await import("./browser.mjs"); json(res, 200, b.stopChrome()); }],
-  ["POST", "/api/browser/navigate", async (res, req) => { const b = await import("./browser.mjs"); const body = await readBody(req); json(res, 200, await b.navigate(String(body.url || ""))); }],
-  ["POST", "/api/browser/screenshot", async (res) => { const b = await import("./browser.mjs"); json(res, 200, await b.screenshot()); }],
-  ["POST", "/api/browser/text", async (res) => { const b = await import("./browser.mjs"); json(res, 200, await b.pageText()); }],
+  ["POST", "/api/browser/start", async (res, req) => { const b = await import("./engine/browser.mjs"); const r = await b.startChrome(); json(res, r.error ? 500 : 200, r); }],
+  ["POST", "/api/browser/stop", async (res) => { const b = await import("./engine/browser.mjs"); json(res, 200, b.stopChrome()); }],
+  ["POST", "/api/browser/navigate", async (res, req) => { const b = await import("./engine/browser.mjs"); const body = await readBody(req); json(res, 200, await b.navigate(String(body.url || ""))); }],
+  ["POST", "/api/browser/screenshot", async (res) => { const b = await import("./engine/browser.mjs"); json(res, 200, await b.screenshot()); }],
+  ["POST", "/api/browser/text", async (res) => { const b = await import("./engine/browser.mjs"); json(res, 200, await b.pageText()); }],
   ["GET", "/api/fs", (res, req, url) => handleFsList(res, url.searchParams.get("path") || ".")],
   ["GET", "/api/fs/read", (res, req, url) => handleFsRead(res, url.searchParams.get("path") || "")],
   // ── 模型 ──
@@ -5180,7 +5180,7 @@ const server = http.createServer(async (req, res) => {
     let isSignedFile = false;
     try {
       if (url.pathname === "/api/ws/file" && url.searchParams.get("sig")) {
-        const fb = await import("./filebox.mjs");
+        const fb = await import("./engine/filebox.mjs");
         isSignedFile = fb.verifySigned(req).ok;
       }
     } catch {}

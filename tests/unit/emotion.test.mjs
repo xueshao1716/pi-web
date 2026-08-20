@@ -2,7 +2,7 @@
 // 运行：node --test tests/unit/emotion.test.mjs
 import { test, describe } from "node:test";
 import assert from "node:assert";
-import { updateEmotion, emotionPrompt, getSnapshot, clearEmotion } from "../../emotion.mjs";
+import { updateEmotion, emotionPrompt, getSnapshot, clearEmotion } from "../../engine/emotion.mjs";
 
 describe("emotion.mjs 情绪引擎", () => {
   test("用户烦躁 → 触发安抚模式指令", () => {

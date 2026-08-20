@@ -5,7 +5,7 @@ import assert from "node:assert";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { autoMemorize, loadRecentMemory, appendState } from "../../memory.mjs";
+import { autoMemorize, loadRecentMemory, appendState } from "../../engine/memory.mjs";
 
 // 临时工作空间（隔离测试，不碰真实记忆）
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "piweb-mem-test-"));

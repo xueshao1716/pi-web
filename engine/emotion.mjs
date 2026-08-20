@@ -6,8 +6,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { initGene, geneBias, updateGenes, geneDirective, geneSnapshot } from "./engine/gene.mjs";
-import { initSkillGene, bindSkillIndex, detectSkillDomain, updateSkillGene, getSkillGenes, skillDirective } from "./engine/skill-gene.mjs";
+import { initGene, geneBias, updateGenes, geneDirective, geneSnapshot } from "./gene.mjs";
+import { initSkillGene, bindSkillIndex, detectSkillDomain, updateSkillGene, getSkillGenes, skillDirective } from "./skill-gene.mjs";
 
 // 情绪状态（每个会话独立维护）
 // residue = 长期情绪残留（借鉴 xi-system EmotionResidue）：温暖/伤害/好奇会跨会话累积、慢速淡忘——
@@ -135,8 +135,8 @@ export function getSnapshot(key) {
 export function clearEmotion(key) { states.delete(key); }
 
 // ══ 组合 facade：re-export 基因 / 技能基因（server.mjs 兼容，无需改 import 侧）══
-export { geneBias, updateGenes, geneDirective, getGenome, proposeBaselineChange, approveProposal, rejectProposal, rollbackSnapshot, autoProposeFromDrift } from "./engine/gene.mjs";
-export { detectSkillDomain, updateSkillGene, getSkillGenes, skillDirective, routerSkill, bindSkillIndex } from "./engine/skill-gene.mjs";
+export { geneBias, updateGenes, geneDirective, getGenome, proposeBaselineChange, approveProposal, rejectProposal, rollbackSnapshot, autoProposeFromDrift } from "./gene.mjs";
+export { detectSkillDomain, updateSkillGene, getSkillGenes, skillDirective, routerSkill, bindSkillIndex } from "./skill-gene.mjs";
 
 function clamp(v) { return Math.max(-1, Math.min(1, v)); }
 function lerp(a, b, t) { return a + (b - a) * t; }
