@@ -14,7 +14,7 @@ export function initSelfHeal({ directChat = null, runGit = null, cwd = "", getMo
 let repairBusy = false;
 
 // 修复前检查点：把修复可能触碰的源码备份到 backups/repair-<ts>/，改坏可回滚（对标 /refine 的回滚能力）
-function createRepairCheckpoint() {
+export function createRepairCheckpoint() {
   try {
     const ts = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
     const dir = path.join(import.meta.dirname, "backups", "repair-" + ts);
@@ -44,7 +44,7 @@ function createRepairCheckpoint() {
 // ⚠️ 代理根治：本机 git 全局/系统代理可能指向未运行的 7890（死代理）→ git 全卡死。
 //    git 命令统一加 -c http.proxy= -c https.proxy= 绕过系统代理直连。
 const GIT_NO_PROXY = ["-c", "http.proxy=", "-c", "https.proxy="];
-async function handleUpdateCheck(res) {
+export async function handleUpdateCheck(res) {
   try {
     const { execFile } = await import("node:child_process");
     const run = (args) => new Promise((resolve) => {
@@ -92,7 +92,7 @@ async function handleUpdateCheck(res) {
 }
 
 // 执行更新：git fetch + pull，然后提示重启
-async function handleUpdateApply(res, body) {
+export async function handleUpdateApply(res, body) {
   try {
     const { execFile, spawn } = await import("node:child_process");
     const run = (args) => new Promise((resolve) => {
@@ -127,7 +127,7 @@ async function handleUpdateApply(res, body) {
   }
 }
 
-async function handleRepair(res, body) {
+export async function handleRepair(res, body) {
   const issue = String(body?.issue || "").trim();
   if (!issue) return json(res, 400, { error: "缺少问题描述" });
   if (repairBusy) return json(res, 409, { error: "已有修复任务进行中" });
@@ -173,7 +173,7 @@ async function handleRepair(res, body) {
 }
 
 // ══ 可视化设计器：AI 生成页面 ══
-async function handleDesignerGenerate(res, body) {
+export async function handleDesignerGenerate(res, body) {
   const promptText = String(body?.prompt || "").trim();
   if (!promptText) return json(res, 400, { error: "缺少描述" });
   try {
@@ -198,7 +198,7 @@ async function handleDesignerGenerate(res, body) {
 }
 
 // POST /api/designer/save —— 保存页面到工程
-async function handleDesignerSave(res, body) {
+export async function handleDesignerSave(res, body) {
   const { project, filename, html } = body || {};
   const clean = String(project || "").replace(/[\/:*?"<>|\s]+/g, "-").slice(0, 60);
   const fname = String(filename || "index.html").replace(/[\/:*?"<>|]+/g, "-").slice(0, 60);
@@ -213,7 +213,7 @@ async function handleDesignerSave(res, body) {
 }
 
 // 多模型对比（借鉴 Open WebUI：同一问题同时问多个模型，结果并排展示）
-async function handleCompare(res, body) {
+export async function handleCompare(res, body) {
   const message = String(body?.message || "").trim();
   const models = Array.isArray(body?.models) ? body.models.slice(0, 12) : [];
   if (!message) return json(res, 400, { error: "消息不能为空" });
