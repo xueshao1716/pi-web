@@ -15,7 +15,9 @@ export function initModelRouter({ getModelList, getDefaultModel, configModel = "
 // ── 模型健康冷却（原 opencode-go 429 机制的泛化，2026-08-20）──
 // 任何 provider 的 401/402/403/429/529 错误都可标记；冷却期内候选链自动避开。
 // 典型场景：千问 token 计划 403 → 不标记的话每次简单任务都先撞一次墙再靠复读守卫救。
-const modelBlockedUntil = new Map(); // "provider/id" → { until, reason }
+const modelBlockedUntil = new Map();
+// 2026-08-21 冷却计数（改进提案数据源）：provider → 命中次数+最近原因
+export const cooldownHits = new Map(); // "provider/id" → { until, reason }
 let ocGoBlockedUntil = 0; // opencode-go 走全 provider 屏蔽（它的 flash/pro 都在同一套餐里）
 const BLOCK_MS_DEFAULT = 30 * 60 * 1000;
 
@@ -43,12 +45,21 @@ export function markModelBlocked(m, { ms = BLOCK_MS_DEFAULT, reason = "" } = {})
   const cur = modelBlockedUntil.get(key);
   if (cur && Date.now() < cur.until) return; // 已标记，不重复刷日志
   modelBlockedUntil.set(key, { until: Date.now() + ms, reason });
+  const hp = cooldownHits.get(m.provider) || { count: 0, reasons: [] };
+  hp.count += 1;
+  if (hp.reasons.length < 5 && !hp.reasons.includes(reason)) hp.reasons.push(reason);
+  cooldownHits.set(m.provider, hp);
   console.log(`[router] ⛔ ${key} 冷却 ${ms / 60000} 分钟（${String(reason).slice(0, 60)}）`);
 }
 // 重置全部健康状态（模型清单刷新/重新探测后调用，给所有模型一次新机会）
 export function resetModelHealth() {
   modelBlockedUntil.clear();
   ocGoBlockedUntil = 0;
+}
+
+// 冷却统计（供改进提案分析）
+export function getCooldownHits() {
+  return [...cooldownHits.entries()].map(([provider, h]) => ({ provider, count: h.count, reasons: h.reasons }));
 }
 
 // ── opencode-go 兼容导出（server.mjs 既有调用点继续可用）──

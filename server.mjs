@@ -41,6 +41,7 @@ import { initDshKeys, dshResolveBin, handleDshStatus, handleDshWebStart, handleK
 import { initStatsApi, handleGlobalStats, handleProviderStats, safeSessionStats, handleStats, handleCompact, listBuiltinSkills, handleSkills, handleSkillRead, handleParseFile, escHtml, handleExport, resolveFsPath, handleFsList, handleFsRead, handleRename } from "./engine/stats-api.mjs";
 import { initModelClient, directChat, handleThink, handleDirectChat, maybeCompactHistory } from "./engine/model-client.mjs";
 import { initSelfHeal, createRepairCheckpoint, handleUpdateCheck, handleUpdateApply, handleRepair, handleDesignerGenerate, handleDesignerSave, handleCompare } from "./engine/self-heal.mjs";
+import { initImproveApi, analyzeImprovements, openImprovements, setImprovementStatus } from "./engine/improve-api.mjs";
 import { initSessionManager, createSession, evictInactiveSessions, slimSessionImages, compactSession, openSession, initSearchTool, initShareTool, createSessionAgent, ensureAgent, isFirstTurn, deleteSession } from "./engine/session-manager.mjs";
 import { initUnifiedChat, unifiedChat, engineCurrentModel, initEngine, toolBindingDesc, toolBindingArgs, toolBindingArgsObj, handleNotices, handleUnifiedChat, touchTask, clearTask, handleAgentEventIn, handleAgentEventOut } from "./engine/unified-chat.mjs";
 import { initRefineApi, readRefineJson, runRefineScript, handleRefineStatus, handleRefineList, detectSkillDomain, handleRefineFeedback, handleRefineGenes, handleRefinePlan, handleRefineApprove, handleRefineReject, handleRefineRollback } from "./engine/refine-api.mjs";
@@ -218,6 +219,7 @@ initDshKeys({ dshWebPort: 3080, readJsonFile, writeJsonFile, authPath: AUTH_PATH
 initStatsApi({ getAgentDir, cwd: CONFIG.cwd, DefaultResourceLoader }); // 统计/技能/导出注入
 initModelClient({ readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, resolveAuth, getModelList: () => modelList, getDefaultModel: () => defaultModel, unifiedChat, detectMediaIntents, generateMediaAsync, extractMediaPrompt, readEntriesFromFile, createSseWriter }); // 直调模型客户端注入
 initSelfHeal({ directChat, runGit, cwd: CONFIG.cwd, getModelList: () => modelList, getDefaultModel: () => defaultModel }); // 自愈/更新/设计器注入（REPAIR_BACKUP_FILES 已随块迁入模块）
+initImproveApi({ root: CONFIG.cwd, statsProvider: null, healProvider: null }); // 自我改进提案（2026-08-21）
 // 启动时构建模型列表：原生 provider（pi 内置目录）+ store 自定义，只显示配置过 Key 的
 {
   const store = readJsonFile(MODELS_PATH);
@@ -1455,6 +1457,9 @@ const API_ROUTES = [
   ["DELETE", /^\/api\/sessions\/([^/]+)$/, async (res, req, url, m) => { await deleteSession(decodeURIComponent(m[1])); return json(res, 200, { ok: true }); }],
   ["GET", /^\/api\/sessions\/([^/]+)\/export$/, (res, req, url, m) => handleExport(res, decodeURIComponent(m[1]), url.searchParams.get("format") || "html")],
   ["GET", "/api/stats/global", (res) => handleGlobalStats(res)],
+  ["GET", "/api/improvements", (res) => json(res, 200, { improvements: openImprovements() })],
+  ["POST", "/api/improvements/analyze", (res) => json(res, 200, { improvements: analyzeImprovements() })],
+  ["POST", /^\/api\/improvements\/([^/]+)\/status$/, async (res, req, url, m) => json(res, 200, setImprovementStatus(decodeURIComponent(m[1]), (await readBody(req)).status || "dismissed"))],
   ["GET", "/api/stats/providers", (res) => handleProviderStats(res)],
   ["GET", "/api/sessions", (res) => json(res, 200, { sessions: getSessionList() })],
   ["POST", "/api/sessions", async (res, req) => { const body = await readBody(req); const id = await createSession(body.name); return json(res, 200, { id, name: body.name || "新会话" }); }],
