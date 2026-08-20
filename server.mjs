@@ -25,7 +25,7 @@ import { safeJoin } from "./engine/tools/security.mjs";
 import { createDshTool } from "./engine/dsh-tool.mjs";
 
 // ── 模型路由层（拆模块）：429 降级 / 复杂度分类 / Auto 路由 / pro 候选 ──
-import { initModelRouter, isOcGoBlocked, markModelBlocked, markOcGoBlocked, ocGoCandidate, pickFallbackDefault, pickFallbackExcluding, resetModelHealth, isAutoModel, routeForAuto, routeProCandidate, ROUTER_AUTO } from "./engine/model-router.mjs";
+import { initModelRouter, isOcGoBlocked, markModelBlocked, markOcGoBlocked, ocGoCandidate, pickFallbackDefault, pickFallbackExcluding, resetModelHealth, isAutoModel, routeForAuto, routeProCandidate, ROUTER_AUTO, isAuthErrorStatus } from "./engine/model-router.mjs";
 // ── 模型能力探测与发现（拆模块）：能力推断 / 真实API探测(24h缓存) / 自定义 provider 发现 ──
 import { modelCapabilities, probeModelCapabilities, discoverCustomModels } from "./engine/model-probe.mjs";
 import { CONFIG } from "./config.mjs";
@@ -2732,7 +2732,7 @@ async function unifiedChat(model, messages, opts = {}) {
     if (!r.ok) {
       const errBody = await r.text().catch(() => "");
       // 健康冷却（2026-08-20 泛化）：401/402/403/429/529 标记 30 分钟，Auto 路由与兜底链自动避开该模型
-      if ([401, 402, 403, 429, 529].includes(r.status)) markModelBlocked(model, { reason: `HTTP ${r.status} ${String(errBody).slice(0, 60)}` });
+      if (isAuthErrorStatus(r.status)) markModelBlocked(model, { reason: `HTTP ${r.status} ${String(errBody).slice(0, 60)}` });
       else if (model.provider === "opencode-go" && /GoUsageLimit/i.test(errBody)) markModelBlocked(model, { reason: errBody });
       return { error: `HTTP ${r.status}: ${String(errBody).slice(0, 150)}` };
     }
@@ -3194,7 +3194,7 @@ async function directChat(model, message, history = []) {
       let rr = await mkResp(`${baseNoV1}/v1/responses`);
       if (rr.status === 404) rr = await mkResp(`${baseNoV1}/responses`);
       if (!rr.ok) {
-        if ([401, 402, 403, 429, 529].includes(rr.status)) markModelBlocked(model, { reason: `HTTP ${rr.status} (responses)` });
+        if (isAuthErrorStatus(rr.status)) markModelBlocked(model, { reason: `HTTP ${rr.status} (responses)` });
         return null;
       }
       const rd = await rr.json();
@@ -3219,7 +3219,7 @@ async function directChat(model, message, history = []) {
     let r = await mkReq(`${baseNoV1}/v1/chat/completions`);
     if (r.status === 404) r = await mkReq(`${baseNoV1}/chat/completions`);
     if (!r.ok) {
-      if ([401, 402, 403, 429, 529].includes(r.status)) markModelBlocked(model, { reason: `HTTP ${r.status} (directChat)` });
+      if (isAuthErrorStatus(r.status)) markModelBlocked(model, { reason: `HTTP ${r.status} (directChat)` });
       return null;
     }
     const data = await r.json();

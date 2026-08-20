@@ -20,6 +20,11 @@ let ocGoBlockedUntil = 0; // opencode-go 走全 provider 屏蔽（它的 flash/p
 const BLOCK_MS_DEFAULT = 30 * 60 * 1000;
 
 export function modelKey(m) { return m ? `${m.provider}/${m.id}` : ""; }
+
+// 2026-08-20 收敛：server.mjs 三处重复的"权限/额度错误 → 标记冷却"判定统一到这里
+// （401/402/403/429/529：无权限/余额不足/Access denied/额度耗尽/服务过载 → 一律冷却 30 分钟避开）
+export const AUTH_ERROR_CODES = [401, 402, 403, 429, 529];
+export function isAuthErrorStatus(status) { return AUTH_ERROR_CODES.includes(Number(status)); }
 export function isModelBlocked(m) {
   if (!m) return false;
   if (m.provider === "opencode-go" && Date.now() < ocGoBlockedUntil) return true;
