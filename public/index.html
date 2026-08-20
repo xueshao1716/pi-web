@@ -549,13 +549,44 @@
 <script src="/static/js/input.js?v=222"></script>
 <script src="/static/js/workshop.js"></script>
 <script>
-// dsh 引擎切换：本地/外网自适应（新窗口打开 dsh 独立前台）
+// dsh 引擎切换：本地/外网自适应 + 状态探测（未启动时点击一键拉起，不再跳死页）
 (function () {
   const el = document.getElementById("dsh-switch");
   if (!el) return;
   const host = location.hostname;
   const isLocal = host === "127.0.0.1" || host === "localhost";
-  el.href = isLocal ? "http://127.0.0.1:3080" : "https://d.myxinyu.xin";
+  const dshUrl = isLocal ? "http://127.0.0.1:3080" : "https://d.myxinyu.xin";
+  el.href = dshUrl;
+  if (!isLocal || typeof api !== "function") return; // 外网模式保持直链
+
+  let dshState = null; // { installed, webUp, keyOk }
+  const render = () => {
+    if (!dshState) return;
+    if (!dshState.installed) { el.title = "dsh 引擎未安装（npm i -g @deepseek-ai/dsh）"; el.style.opacity = .45; }
+    else if (dshState.webUp) { el.title = "dsh 引擎前台在线 → " + dshUrl; el.style.opacity = 1; el.textContent = "⇄ dsh"; }
+    else { el.title = "dsh 已安装·前台未启动（点击拉起）"; el.style.opacity = .75; el.textContent = "⇄ dsh⁺"; }
+  };
+  api("/api/dsh/status").then((s) => { dshState = s; render(); }).catch(() => {});
+  // 状态探测每 60s 刷新（拉起后自动变绿）
+  setInterval(() => api("/api/dsh/status").then((s) => { dshState = s; render(); }).catch(() => {}), 60000);
+
+  el.addEventListener("click", async (e) => {
+    if (dshState?.webUp) return; // 在线则默认行为开新窗
+    e.preventDefault();
+    if (!dshState?.installed) { alert("dsh 引擎未安装：请运行 npm i -g @deepseek-ai/dsh"); return; }
+    el.textContent = "⇄ 启动中…";
+    try {
+      const r = await api("/api/dsh/web/start", { method: "POST" });
+      if (r.url) { window.open(r.url, "_blank"); }
+      if (r.pending) el.title = "dsh web 冷启动中，稍后自动就绪";
+      // 轮询把状态刷绿
+      const t = setInterval(() => api("/api/dsh/status").then((s) => { dshState = s; render(); if (s.webUp) clearInterval(t); }).catch(() => {}), 3000);
+      setTimeout(() => clearInterval(t), 30000);
+    } catch (err) {
+      el.textContent = "⇄ dsh⁺";
+      alert("dsh 启动失败: " + (err?.message || err));
+    }
+  });
 })();
 </script>
 </body>

@@ -1668,6 +1668,66 @@ async function handleModelsAdd(res, body) {
   }
 }
 
+// ── dsh 引擎适配层：探测（安装/版本/密钥/web 前台在线）+ 一键拉起 web ──
+// 背景：⇄ dsh 链接是硬编码 3080，dsh web 没起时点过去是死页——前端需要真实状态。
+const DSH_WEB_PORT = 3080;
+function dshResolveBin() {
+  const cands = [
+    path.join(process.env.APPDATA || "", "npm", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
+    path.join(process.env.ProgramFiles || "", "nodejs", "node_modules", "npm", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
+  ];
+  for (const c of cands) { try { if (fs.existsSync(c)) return c; } catch {} }
+  return null;
+}
+async function handleDshStatus(res) {
+  const bin = dshResolveBin();
+  // web 前台探测：本地 3080 有响应即在线（不依赖 dsh 内部实现）
+  let webUp = false;
+  try {
+    const r = await fetch(`http://127.0.0.1:${DSH_WEB_PORT}/`, { signal: AbortSignal.timeout(1500) });
+    webUp = r.status < 500;
+  } catch {}
+  // 密钥：进程 env → 注册表（与 dsh-tool 的 resolveDshEnv 同链路）
+  let keyOk = !!process.env.DEEPSEEK_API_KEY;
+  if (!keyOk) {
+    try {
+      const out = execFileSync("reg", ["query", "HKCU\\Environment", "/v", "DEEPSEEK_API_KEY"], { encoding: "utf8", windowsHide: true, timeout: 5000 });
+      keyOk = /DEEPSEEK_API_KEY\s+REG_SZ\s+.+/.test(out);
+    } catch {}
+  }
+  if (!keyOk) { const a = readJsonFile(AUTH_PATH); keyOk = !!a?.deepseek?.key; }
+  json(res, 200, { installed: !!bin, bin, webUp, webPort: DSH_WEB_PORT, keyOk });
+}
+async function handleDshWebStart(res) {
+  const bin = dshResolveBin();
+  if (!bin) return json(res, 404, { error: "dsh 引擎未安装：npm i -g @deepseek-ai/dsh" });
+  try {
+    const probe = await fetch(`http://127.0.0.1:${DSH_WEB_PORT}/`, { signal: AbortSignal.timeout(1500) });
+    if (probe.status < 500) return json(res, 200, { ok: true, already: true, url: `http://127.0.0.1:${DSH_WEB_PORT}` });
+  } catch {}
+  // detached 拉起：独立于 pi-web 生命周期，日志落 dsh-web.log 便于排查
+  try {
+    const { resolveDshEnv } = await import("./engine/dsh-tool.mjs");
+    const logFd = fs.openSync(path.join(os.tmpdir(), "dsh-web.log"), "a");
+    const child = spawn(process.execPath, [bin, "web"], {
+      detached: true, stdio: ["ignore", logFd, logFd], windowsHide: true, env: resolveDshEnv(),
+    });
+    child.unref();
+    try { fs.closeSync(logFd); } catch {}
+  } catch (e) {
+    return json(res, 500, { error: "dsh web 启动失败: " + String(e?.message || e).slice(0, 120) });
+  }
+  // 冷启动需要数秒：轮询最多 15s 等它上线
+  for (let i = 0; i < 15; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    try {
+      const r = await fetch(`http://127.0.0.1:${DSH_WEB_PORT}/`, { signal: AbortSignal.timeout(1000) });
+      if (r.status < 500) return json(res, 200, { ok: true, url: `http://127.0.0.1:${DSH_WEB_PORT}` });
+    } catch {}
+  }
+  json(res, 202, { ok: true, pending: true, url: `http://127.0.0.1:${DSH_WEB_PORT}`, note: "dsh web 启动中（冷启动较慢），稍后刷新即可" });
+}
+
 // ── 双引擎密钥：状态查询（pi auth.json + dsh DEEPSEEK_API_KEY）──
 function handleKeysStatus(res) {
   const auth = readJsonFile(AUTH_PATH);
@@ -4982,6 +5042,8 @@ const API_ROUTES = [
   ["GET", "/api/models/manage", (res) => handleModelsManage(res)],
   ["POST", "/api/models/add", async (res, req) => handleModelsAdd(res, await readBody(req))],
   ["GET", "/api/keys/status", (res) => handleKeysStatus(res)],
+  ["GET", "/api/dsh/status", (res) => handleDshStatus(res)],
+  ["POST", "/api/dsh/web/start", (res) => handleDshWebStart(res)],
   ["GET", "/api/keys/presets", (res) => handleKeysPresets(res)],
   ["POST", "/api/keys/apply", async (res, req) => handleKeysApply(res, await readBody(req))],
   ["POST", "/api/models/remove", async (res, req) => handleModelsRemove(res, await readBody(req))],

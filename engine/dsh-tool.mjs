@@ -3,8 +3,28 @@
 // 通过工厂注入宿主上下文：cwd / piPackage（typebox 解析基准）/ loadSkillIndex / skillsDir。
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
+
+// dsh 认证环境：DEEPSEEK_API_KEY 三级解析（进程 env → 用户注册表 → pi 的 auth.json）。
+// 背景：UI 里 setx 写的 key 只对新进程生效，pi-web 长驻进程的 env 里可能没有——
+// 显式注入保证 dsh 派单时密钥链路确定可用，不依赖 dsh 内部解析。
+export function resolveDshEnv() {
+  const env = { ...process.env };
+  if (env.DEEPSEEK_API_KEY) return env;
+  try {
+    const out = execFileSync("reg", ["query", "HKCU\\Environment", "/v", "DEEPSEEK_API_KEY"],
+      { encoding: "utf8", windowsHide: true, timeout: 5000 });
+    const m = out.match(/DEEPSEEK_API_KEY\s+REG_SZ\s+(.+)/);
+    if (m?.[1]?.trim()) { env.DEEPSEEK_API_KEY = m[1].trim(); return env; }
+  } catch {}
+  try {
+    const auth = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".pi", "agent", "auth.json"), "utf8"));
+    if (auth?.deepseek?.key) env.DEEPSEEK_API_KEY = auth.deepseek.key;
+  } catch {}
+  return env;
+}
 
 // 结构化回传协议：从 dsh headless 输出中容错提取 JSON 块（结果+步骤+工具+元数据）
 // headless 是黑盒（事件不落盘、stderr 空），只能让模型按协议自报过程，解析失败则回退纯文本
@@ -57,6 +77,18 @@ function makeResolveDshBin() {
   };
 }
 
+// dsh 失败原因翻译：stderr 里才有真相（QUOTA/401…），err.message 只有命令行——
+// 不翻译的话用户只能看到 "Command failed: node.exe ..."，永远不知道为什么。
+export function friendlyDshError(rawErr, rawStderr) {
+  const raw = String(rawStderr || rawErr || "");
+  if (/heap limit|Last few GCs|FATAL ERROR|OOM|JavaScript heap/i.test(raw)) return "dsh 进程内存溢出（OOM）：多为冷启动期偶发，稍等重试即可；反复出现时调低 PI_DSH_MAX 并发上限";
+  if (/QUOTA|Insufficient Balance|402/i.test(raw)) return "dsh 引擎（DeepSeek）余额不足：请到 platform.deepseek.com 充值，或改用 pi 自带工具/其他模型通道完成本任务";
+  if (/401|Unauthorized|invalid.{0,12}key|API.?Key/i.test(raw)) return "dsh 引擎认证失败：DEEPSEEK_API_KEY 无效或未配置（可在 pi-web 模型管理勾选「同步到 dsh」重配）";
+  if (/not found|ENOENT|Cannot find module/i.test(raw)) return "dsh 引擎未安装或路径失效：请运行 npm i -g @deepseek-ai/dsh 后重试";
+  if (/timeout|TIMEDOUT/i.test(raw)) return "dsh 执行超时（180s）：任务可能过大，建议拆分子任务";
+  return String(rawStderr || rawErr || "").slice(0, 200) || "未知错误";
+}
+
 export function createDshTool({ cwd, piPackage, loadSkillIndex, skillsDir, onLog = (m) => console.log(m) }) {
   let toolDef = null;
   // dsh 并发控制：默认最多 6 个同时跑（用户定），硬上限 15，防后台进程堆积憋死电脑
@@ -102,10 +134,15 @@ export function createDshTool({ cwd, piPackage, loadSkillIndex, skillsDir, onLog
           // 并发控制：达到上限（默认 6）拒绝新任务，让 pi 稍后重试
           if (active >= max) return { content: [{ type: "text", text: `⚠️ dsh 引擎已达并发上限（${active}/${max}）。请稍后重试，或改用自带工具完成。` }] };
           // 清理残留：先回收异常退出/超时遗留的 dsh headless 进程（防内存堆积）
+          // ⚠️ 2026-08-20 修复自毁竞态：原为 fire-and-forget，CIM 枚举 1-3s 后才执行 Stop-Process，
+          // 此时刚 spawn 的 dsh 已注册且命中 'dsh.*headless' 模式 → 被自己人杀掉（stderr 截断、报错失真）。
+          // 必须 await 清理完成后再 spawn。
           try {
-            execFile("powershell", ["-NoProfile", "-Command",
-              "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'dsh.*headless' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
-            ], { timeout: 8000, windowsHide: true }, () => {});
+            await new Promise((r) => {
+              execFile("powershell", ["-NoProfile", "-Command",
+                "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'dsh.*headless' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+              ], { timeout: 8000, windowsHide: true }, () => r());
+            });
           } catch {}
           active++;
           if (onUpdate) onUpdate({ type: "status", content: [{ type: "text", text: `⏳ 已派单 dsh 引擎执行（冷启动约 5-20s，当前并发 ${active}/${max}）…` }] });
@@ -115,7 +152,13 @@ export function createDshTool({ cwd, piPackage, loadSkillIndex, skillsDir, onLog
             const out = await new Promise((resolve) => {
               execFile(process.execPath, [resolveDshBin(), "--profile", "headless", task + skillContext() + structReq], {
                 cwd, encoding: "utf8", timeout: 180000, windowsHide: true, maxBuffer: 8 * 1024 * 1024,
-              }, (err, stdout) => resolve({ ok: !err, out: String(stdout || "").trim(), err: String(err?.message || "").slice(0, 200) }));
+                env: resolveDshEnv(), // 显式注入 DEEPSEEK_API_KEY（env→注册表→auth.json 三级解析）
+              }, (err, stdout, stderr) => resolve({
+                ok: !err,
+                out: String(stdout || "").trim(),
+                err: String(err?.message || "").slice(0, 200),
+                stderr: String(stderr || "").trim().slice(0, 300),
+              }));
             });
             const text = (out.out || "").trim();
             const parsed = extractStructuredOut(text);
@@ -132,11 +175,11 @@ export function createDshTool({ cwd, piPackage, loadSkillIndex, skillsDir, onLog
                 if (m.length) parts.push(`【元数据】${m.join("；")}`);
               }
               parts.push(`【原始输出】${(text || "（dsh 无输出）").slice(0, 2000)}`);
-              return { content: [{ type: "text", text: out.ok ? parts.join("\n\n") : `【dsh 执行失败】${out.err}\n\n${parts.join("\n\n")}` }] };
+              return { content: [{ type: "text", text: out.ok ? parts.join("\n\n") : `【dsh 执行失败】${friendlyDshError(out.err, out.stderr)}\n\n${parts.join("\n\n")}` }] };
             }
             // 未按协议输出：回退纯文本（不编造轨迹）
             const t2 = (text || "（dsh 无输出）").slice(0, 4000);
-            return { content: [{ type: "text", text: out.ok ? `【dsh 执行结果】\n${t2}` : `【dsh 执行失败】${out.err}\n${t2}` }] };
+            return { content: [{ type: "text", text: out.ok ? `【dsh 执行结果】\n${t2}` : `【dsh 执行失败】${friendlyDshError(out.err, out.stderr)}\n${t2}` }] };
           } catch (e) {
             return { content: [{ type: "text", text: `dsh 调用异常: ${String(e?.message || e).slice(0, 200)}` }] };
           } finally {
