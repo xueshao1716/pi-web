@@ -44,6 +44,8 @@ import { initSelfHeal, createRepairCheckpoint, handleUpdateCheck, handleUpdateAp
 import { initSessionManager, createSession, evictInactiveSessions, slimSessionImages, compactSession, openSession, initSearchTool, initShareTool, createSessionAgent, ensureAgent, isFirstTurn, deleteSession } from "./engine/session-manager.mjs";
 import { initUnifiedChat, unifiedChat, engineCurrentModel, initEngine, toolBindingDesc, toolBindingArgs, toolBindingArgsObj, handleNotices, handleUnifiedChat, touchTask, clearTask, handleAgentEventIn, handleAgentEventOut } from "./engine/unified-chat.mjs";
 import { initRefineApi, readRefineJson, runRefineScript, handleRefineStatus, handleRefineList, detectSkillDomain, handleRefineFeedback, handleRefineGenes, handleRefinePlan, handleRefineApprove, handleRefineReject, handleRefineRollback } from "./engine/refine-api.mjs";
+import { initMcpServer, handleMcp } from "./engine/mcp-server.mjs";
+import { initMcpChat } from "./engine/mcp-chat.mjs";
 import { startShare, stopShareSync, handleShare, handleShareStatus, handleShareStop } from "./engine/share-api.mjs";
 import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
@@ -658,6 +660,8 @@ const executeUnifiedTool = createUnifiedToolExecutor({
 initSessionManager({ cwd: CONFIG.cwd, sessionsDir: SESSIONS_DIR, tools: CONFIG.tools, createAgentSessionServices, createAgentSessionFromServices, getModelRuntime: () => modelRuntime, getModelList: () => modelList, getDefaultModel: () => defaultModel, activeSessions, SessionManager, SettingsManager, DefaultResourceLoader, getAgentDir, readJsonFile, writeJsonFile, isExternalThinking, THINK_TOOL, modelCapabilities, bindOutputGuardDeps, extractMessages, createSseWriter, unifiedChat }); // 会话管理注入
 initUnifiedChat({ executeUnifiedTool, findKeyByEntry, readJsonFile, getModelList: () => modelList, getDefaultModel: () => defaultModel, authPath: AUTH_PATH, modelsPath: MODELS_PATH, cwd: CONFIG.cwd, piPackage: CONFIG.piPackage, UNIFIED_TOOLS }); // 统一对话通道注入
 initRefineApi({ cwd: CONFIG.cwd }); // 经验沉淀台注入
+initMcpServer({ modelRouter: (await import("./engine/model-router.mjs")), memoryApi: memoryApi, emotion, getDefaultModel: () => defaultModel, wsRoot: () => CONFIG.cwd, json }); // MCP 认知层注入
+initMcpChat({ handleChat }); // MCP 对话注入
 
 
 // ── 双引擎：dsh（DeepSeek Harness）执行臂工具 —— 实现已抽到 engine/dsh-tool.mjs ──
@@ -1647,6 +1651,19 @@ const API_ROUTES = [
   ["DELETE", "/api/time/tasks", async (res, req) => {
     const u = new URL(req.url, "http://x");
     json(res, 200, timeEngine ? timeEngine.remove(u.searchParams.get("id") || "") : { removed: false });
+  }],
+  // ── MCP 认知层（NomiFun 等客户端接入，2026-08-20）──
+  ["POST", "/mcp", async (res, req) => {
+    const ctx = {
+      api: async (path, opts = {}) => {
+        const r = await fetch("http://127.0.0.1:" + CONFIG.port + path, {
+          ...opts,
+          headers: { Authorization: "Bearer " + CONFIG.token, "Content-Type": "application/json", ...(opts.headers || {}) },
+        });
+        return r;
+      },
+    };
+    return handleMcp(req, res, ctx);
   }],
 ];
 
