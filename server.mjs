@@ -4663,6 +4663,7 @@ async function handleRename(res, id, body) {
   if (!entry) return json(res, 404, { error: "会话不存在" });
   const name = String(body.name || "").slice(0, 60) || "新会话";
   try { entry.sm.appendSessionInfo(name); } catch {}
+  invalidateSessionCache(); // 2026-08-20 修复：重命名后会话列表立即刷新（否则缓存里还是旧名）
   json(res, 200, { ok: true, name });
 }
 
