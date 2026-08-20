@@ -45,7 +45,12 @@ export class HttpModelAdapter {
     const baseNoV1 = base.endsWith("/v1") ? base.slice(0, -3) : base;
 
     const history = [...messages];
-    const toolDefs = opts.tools === false ? undefined : (opts.tools || []);
+    // tools 语义归一：false/空 → 不发 tools 字段（2026-08-20 修复：原实现 tools:false 时
+    // 仍发 tools:[] + tool_choice:"auto"，严格校验的 API 如 agnes 直接 400）
+    const rawTools = opts.tools === false
+      ? undefined
+      : (Array.isArray(opts.tools) ? opts.tools : (typeof opts.tools?.list === "function" ? opts.tools.list() : opts.tools));
+    const toolDefs = rawTools?.length ? rawTools : undefined;
     // 按模型声明的能力统一适配（不按厂商特判）
     const isReasoning = mdef?.reasoning === true || model.reasoning === true;
     const compat = mdef?.compat || model.compat || {};
