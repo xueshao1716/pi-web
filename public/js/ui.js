@@ -645,22 +645,3 @@ async function loadSkills() {
 $("sk-refresh").addEventListener("click", loadSkills);
 
 
-// ══ 移动端底部 TabBar（cumora MobileTabBar 借鉴，2026-08-20）══
-// chat → 回到聊天主视图；workspace/activity → 打开对应侧栏面板；me → 会话/设置
-document.querySelectorAll(".mtab").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".mtab").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    const tab = btn.dataset.tab;
-    if (tab === "chat") {
-      closeSidebar();
-      return;
-    }
-    // 切换侧栏面板视图
-    const target = btn.dataset.target;
-    if (target === "panel-workspace") switchView("workspace");
-    else if (target === "panel-activity") switchView("activity");
-    else if (target === "panel-sessions") switchView("sessions");
-    openSidebar();
-  });
-});

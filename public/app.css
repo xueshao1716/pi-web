@@ -2324,47 +2324,31 @@ html[data-theme="linear"] #login {
   }
 }
 
-/* ══ 移动端 TabBar（cumora MobileTabBar 借鉴，2026-08-20）══ */
-.mobile-tabbar {
-  display: none;
-  position: fixed;
-  bottom: 0; left: 0; right: 0;
-  z-index: 900;
-  background: color-mix(in srgb, var(--sidebar) 92%, transparent);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-top: 1px solid var(--hairline-strong);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-  grid-template-columns: repeat(4, 1fr);
-}
-.mtab {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  padding: 8px 0 6px;
-  background: none; border: none; color: var(--dim);
-  font-size: 10px; cursor: pointer;
-  transition: color .15s;
-}
-.mtab-ico { font-size: 20px; line-height: 1; filter: grayscale(.4); transition: filter .15s, transform .15s; }
-.mtab.active { color: var(--accent); }
-.mtab.active .mtab-ico { filter: none; transform: translateY(-1px); }
-
-/* 移动端：TabBar 显示 + 主区留出底部空间 + 侧栏变抽屉 */
+/* ══ 移动端：干净聊天 App（2026-08-20 v2——聚焦聊天，砍桌面杂物）══ */
 @media (max-width: 768px) {
-  .mobile-tabbar { display: grid; }
-  #app { padding-bottom: 56px; }
+  /* ── 隐藏桌面杂物（移动端不需要的面板/入口）── */
+  .side-view, .side-foot { display: none !important; }
+  #panel-workspace, #panel-code, #panel-engine, #panel-skills, #panel-activity { display: none !important; }
+  #model-manage, #theme-edit, #dsh-switch { display: none !important; }
+  #more-btn { display: none !important; }
+
+  /* ── 侧栏：纯会话列表抽屉 ── */
   #sidebar {
     width: 82vw; max-width: 340px;
     transform: translateX(-100%);
-    transition: transform .24s cubic-bezier(.4,0,.2,1);
+    transition: transform .26s cubic-bezier(.4,0,.2,1);
     box-shadow: 0 0 40px rgba(0,0,0,.5);
+    z-index: 950;
   }
   #sidebar.open { transform: translateX(0); }
-  .side-backdrop { background: rgba(0,0,0,.5); backdrop-filter: blur(2px); }
+  .side-backdrop { background: rgba(0,0,0,.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+  .side-head { padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 10px; }
+  .side-body { padding-bottom: 12px; }
 
-  /* 会话卡片升级（cumora ConversationsPane 风格：间距/圆角/状态） */
+  /* ── 会话列表卡片 ── */
   .session-item {
-    margin: 0 8px 4px;
-    padding: 10px 12px;
+    margin: 0 10px 5px;
+    padding: 11px 13px;
     border-radius: 14px;
     background: var(--panel);
     border: 1px solid var(--hairline);
@@ -2378,22 +2362,42 @@ html[data-theme="linear"] #login {
     width: 36px; height: 36px; border-radius: 50%;
     display: grid; place-items: center;
     background: color-mix(in srgb, var(--accent) 18%, var(--panel));
-    color: var(--accent); font-size: 16px; font-weight: 600;
+    color: var(--accent); font-size: 15px; font-weight: 600;
   }
-  .s-name { font-size: 14px; }
+  .s-name { font-size: 14px; font-weight: 500; }
   .s-date { font-size: 11px; }
+  .sess-group { margin: 4px 10px 10px; }
+  .sg-head { padding: 10px 6px 6px; font-size: 11px; color: var(--dim-2); text-transform: uppercase; letter-spacing: .8px; }
+  .new-session { margin: 12px 14px; border-radius: 14px; padding: 12px; font-size: 14px; }
 
-  .sess-group { margin: 4px 8px 10px; }
-  .sg-head {
-    padding: 10px 6px 6px;
-    font-size: 11px; color: var(--dim-2); text-transform: uppercase; letter-spacing: .8px;
+  /* ── 聊天主区：顶部简化 + 消息全屏 + 底部输入固定 ── */
+  .main-top {
+    padding: calc(8px + env(safe-area-inset-top, 0px)) 12px 8px;
+    border-bottom: 1px solid var(--hairline);
+    background: color-mix(in srgb, var(--bg) 90%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
   }
-  .new-session {
-    margin: 10px 12px;
-    border-radius: 14px;
-    padding: 12px;
-    font-size: 14px;
+  .main-top .tool-btn, .main-top .emo-pill { display: none; }
+  #session-name { font-size: 16px; font-weight: 600; }
+
+  #main {
+    padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+    height: 100dvh;
   }
-  .side-head, .side-foot { padding: 12px 14px; }
-  .side-foot { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+  #messages { padding: 12px 12px 8px; }
+  #messages .msg { max-width: 86%; }
+  #messages .msg.user { margin-left: auto; }
+
+  #inputbar {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 800;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+    background: color-mix(in srgb, var(--sidebar) 94%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-top: 1px solid var(--hairline);
+  }
+  #input { font-size: 16px; } /* 防 iOS 聚焦缩放 */
 }
