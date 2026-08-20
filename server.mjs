@@ -4008,11 +4008,11 @@ async function handleChat(req, res, body) {
       const curM = entry.agentModel || (defaultModel ? { provider: defaultModel.provider, id: defaultModel.id } : null);
       const curSupportsVision = curM && (modelList.find(m => m.provider === curM.provider && m.id === curM.id)?.input?.includes("image"));
       if (!curSupportsVision) {
-        // 兜底优先级：opencode-go 套餐内图像模型 → xiaomi 免费 token 计划 → openrouter 图像模型
-        const fallbackIds = ["mimo-v2.5", "minimax-m3", "qwen3.8-max", "kimi-k3", "gpt-5.6-luna"];
-        visionModel = (isOcGoBlocked() ? undefined : modelList.find(m => m.provider === "opencode-go" && fallbackIds.includes(m.id) && m.input?.includes("image")))
-          || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && m.input?.includes("image"))
-          || modelList.find(m => m.provider === "openrouter" && m.input?.includes("image"));
+        // 兜底优先级：⚠️ 2026-08-20 修正——原 fallbackIds（mimo-v2.5/minimax-m3/qwen3.8-max/kimi-k3/gpt-5.6-luna）全是 opencode-go 套餐模型，
+        // 清单瘦身(464→22)后已不存在，第一层永远落空。改为直接候选支持 image 的免费通道：xiaomi mimo-v2.5 → 商汤 flash-lite
+        // （默认主力商汤本身就支持 image，一般不会走到这里）
+        visionModel = modelList.find(m => m.provider === "xiaomi-token-plan-cn" && m.input?.includes("image"))
+          || modelList.find(m => m.provider === "sensenova" && m.input?.includes("image"));
         if (visionModel) {
           try {
             origAgentModel = entry.agentModel || (defaultModel ? { provider: defaultModel.provider, id: defaultModel.id } : null);
