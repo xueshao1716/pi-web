@@ -130,15 +130,13 @@ let defaultModel = undefined; // 在启动模型列表构建后初始化（见�
 function scanSessionFiles() {
   const out = [];
   try {
-    const root = path.join(getAgentDir(), "sessions");
-    for (const sub of fs.readdirSync(root)) {
-      if (sub.startsWith(".")) continue; // 跳过 .trash 等隐藏目录
-      const dir = path.join(root, sub);
-      let st; try { st = fs.statSync(dir); } catch { continue; }
-      if (!st.isDirectory()) continue;
-      for (const f of fs.readdirSync(dir)) {
-        if (f.endsWith(".jsonl")) out.push(path.join(dir, f));
-      }
+    // ⚠️ 2026-08-20 修复：只扫当前工作区会话目录（SESSIONS_DIR）。此前遍历 sessions/ 全部子目录，
+    // pi TUI（cwd=C:\\Users\\...）等其他工作目录的会话混入前台列表（错误文本会话名/打不开报 not found）
+    const root = SESSIONS_DIR;
+    let st; try { st = fs.statSync(root); } catch { return out; }
+    if (!st.isDirectory()) return out;
+    for (const f of fs.readdirSync(root)) {
+      if (f.endsWith(".jsonl")) out.push(path.join(root, f));
     }
   } catch {}
   return out;
