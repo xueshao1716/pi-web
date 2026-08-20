@@ -6,13 +6,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// 从 server.mjs 提取 createSseWriter（保持测试与实现单一来源）
+// 从 engine/sse.mjs 提取 createSseWriter（2026-08-20 拆模块：server.mjs → engine/sse.mjs）
 const serverSrc = fs.readFileSync(
-  path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "server.mjs"),
+  path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "engine", "sse.mjs"),
   "utf8"
 );
 const fnMatch = serverSrc.match(/function createSseWriter[\s\S]*?\n}/);
-if (!fnMatch) throw new Error("server.mjs 中未找到 createSseWriter");
+if (!fnMatch) throw new Error("engine/sse.mjs 中未找到 createSseWriter");
 // ESM 里 eval 不进模块作用域 → 用 indirect eval（global scope）定义
 (0, eval)(fnMatch[0] + "\nglobalThis.__createSseWriter = createSseWriter;");
 const createSseWriter = globalThis.__createSseWriter;

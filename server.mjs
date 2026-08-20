@@ -31,6 +31,7 @@ import { modelCapabilities, probeModelCapabilities, discoverCustomModels } from 
 import { CONFIG } from "./config.mjs";
 // ── Gateway 2.0 插件化引擎 + Code Mode（dsh 设计沉淀）──
 import { createGateway } from "./engine/gateway.mjs";
+import { sseWrite, createSseWriter, startSseHeartbeat } from "./engine/sse.mjs";
 import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
 import { createCodeMode } from "./code-mode/code-mode.mjs";
@@ -2048,60 +2049,6 @@ async function handleSessionStream(res, req, url, id) {
   req.on("close", () => { clearInterval(hb); b.subs.delete(sub); });
 }
 
-// ── SSE ────────────────────────────────────────────────────────────
-function sseWrite(res, event, data) {
-  res.write(`event: ${event}\n`);
-  res.write(`data: ${JSON.stringify(data)}\n\n`);
-}
-
-// SSE 写入器（带背压控制，对标 pi EventStream queue 思想）
-// 问题：res.write 在内核缓冲满时返回 false，直接硬写会堆积内存（公网慢网络长回复）
-// 方案：检测返回值 → 进入 draining 模式，后续事件入队，等 drain 事件再按序 flush
-// 与 EventStream 一致：生产者 push 永不阻塞、事件不丢，消费速度由内核 drain 节流
-function createSseWriter(res) {
-  const pending = [];
-  let draining = false;
-  let closed = false;
-  let waitResolve = null;
-
-  function drain() {
-    draining = false;
-    while (pending.length && !closed) {
-      const chunk = pending.shift(); // 先出队：write 返回 false 时数据也已进入内核缓冲（Node 语义，不丢）
-      let ok = true;
-      try { ok = res.write(chunk); } catch { closed = true; break; }
-      if (!ok) {
-        // 内核缓冲已满 → 暂停写，等 drain 事件再继续（防止内存堆积）
-        draining = true;
-        res.once("drain", drain);
-        break;
-      }
-    }
-    if (waitResolve && !pending.length && !draining) {
-      const r = waitResolve; waitResolve = null; r();
-    }
-  }
-
-  return {
-    push(event, data) {
-      if (closed) return;
-      const chunk = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-      if (draining) { pending.push(chunk); return; }
-      let ok = true;
-      try { ok = res.write(chunk); } catch { closed = true; return; }
-      if (!ok) { draining = true; res.once("drain", drain); }
-    },
-    // 等待所有已入队事件写完（供 finally 收尾时确保 flush 完再 res.end）
-    async flush() {
-      if (!pending.length && !draining) return;
-      if (pending.length && draining) {
-        await new Promise(r => { waitResolve = r; });
-      }
-    },
-    close() { closed = true; pending.length = 0; },
-  };
-}
-
 // ── 路由 ───────────────────────────────────────────────────────────
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -3160,12 +3107,6 @@ async function handleCompare(res, body) {
 }
 
 // SSE 心跳：每 20s 发注释行保持连接活跃（对抗公网隧道/代理的 idle 超时）
-function startSseHeartbeat(res) {
-  const hb = setInterval(() => {
-    try { res.write(": ping\n\n"); } catch {}
-  }, 20000);
-  return hb;
-}
 
 // 直调模型接口拿文本（绕过 agent，稳定快速）
 async function directChat(model, message, history = []) {
