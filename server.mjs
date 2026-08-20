@@ -579,8 +579,8 @@ async function compactSession(file, model, force = false, focus = "") {
     const inputText = parts.join("\n").slice(0, 60000).replace(/[\uD800-\uDFFF]/g, "") + (focus ? "[\n压缩焦点：" + focus + "]" : "");
     if (!inputText.trim()) return { skip: true, reason: "无可压缩的文本内容" };
     // 用 token 计划免费模型生成摘要（2026-08-19 用户定：deepseek 官方涨价贵，日常不用）；失败回退默认模型
-    let summaryModel = modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
-      || modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id));
+    let summaryModel = modelList.find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id))
+      || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id));
     const prompt = `你是会话摘要助手。以下是 AI 助手与用户的一段早期对话记录。请生成结构化摘要，按下列六类保留关键信息：
 1. 用户的核心诉求与任务目标
 2. 已完成的事项与关键决策
@@ -1058,13 +1058,13 @@ const MODELS_PATH = path.join(AGENT_DIR, "models-store.json");
     return true;
   });
 }
-// 默认模型：优先 CONFIG.model，其次千问 qwen3.8-max（2026-08-19 用户定：免费 token 计划优先，deepseek/go 套餐涨价受限不用），
+// 默认模型：优先 CONFIG.model，其次商汤 flash-lite（2026-08-20 千问下架后主力，免费实测可用），
 // 再回退小米/火山等免费通道，最后第一个
 if (CONFIG.model) {
   defaultModel = modelList.find(m => `${m.provider}/${m.id}` === CONFIG.model) || undefined;
 }
 if (!defaultModel) {
-  defaultModel = modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
+  defaultModel = modelList.find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id))
     || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
     || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
     || modelList[0];
@@ -1145,7 +1145,7 @@ try {
     modelReader: () => readJsonFile(MODELS_PATH),
     resolveAuth,
     getDefaultModel: () => defaultModel,
-    getFlashModel: () => modelList.find(m => m.provider === "aliyun-bailian" && /qwen3\.8-max/i.test(m.id))
+    getFlashModel: () => modelList.find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id))
       || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
       || defaultModel,
   });

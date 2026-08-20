@@ -63,25 +63,23 @@ function findLive(provider, re) {
 
 // defaultModel 兜底（blocked 且 defaultModel 恰为 opencode-go 时换可用通道）
 // ⚠️ 成本策略（2026-08-19 用户定）：deepseek 官方涨价贵不用——降级链全走 token 计划免费通道
-// 2026-08-20：候选链全部改为 findLive（跳过冷却中的模型），末位兜底从「裸 defaultModel」改为「活的模型」
+// ⚠️ 2026-08-20 用户指令：阿里千问下架（403 无权限），flash 主力改商汤；nvidia 兜底换 llama-3.1-8b（gemma 系被 NVIDIA 下架 404）
 export function pickFallbackDefault() {
   const defaultModel = _getDefaultModel();
   if (defaultModel && !isModelBlocked(defaultModel)) return defaultModel;
-  // ⚠️ 2026-08-19 用户指令：mimo（xiaomi-token-plan-cn）从自动路由摘除，只留千问→商汤→NVIDIA→ark
-  return findLive("aliyun-bailian", /qwen3\.8-max/i)
-    || findLive("sensenova", /flash-lite/i)
-    || findLive("nvidia", /gemma-3-12b/i)
+  return findLive("sensenova", /flash-lite/i)
+    || findLive("nvidia", /llama-3\.1-8b/i)
     || findLive("volces-ark", /ark-code/i)
     || defaultModel; // 全部冷却时仍返回 defaultModel（宁可重试已知模型，不可无模型可用）
 }
 
-// ⚠️ 2026-08-19 修复：复读守卫的兜底必须**排除出问题的模型**（否则千问复读→兜底还是千问，切换无效）。
+// ⚠️ 2026-08-19 修复：复读守卫的兜底必须**排除出问题的模型**（否则复读→兜底还是同款，切换无效）。
 // 2026-08-20 修正残留：末位兜底 pickFallbackDefault() 也可能返回被排除模型——现在全链过滤。
 export function pickFallbackExcluding(excludeModel) {
   const excludeKey = modelKey(excludeModel);
   const cands = [
     findLive("sensenova", /flash-lite/i),
-    findLive("nvidia", /gemma-3-12b/i),
+    findLive("nvidia", /llama-3\.1-8b/i),
     findLive("volces-ark", /ark-code/i),
   ].filter(Boolean).filter(m => modelKey(m) !== excludeKey);
   if (cands[0]) return cands[0];
@@ -120,11 +118,11 @@ export function classifyTaskComplexity(text) {
   return { level: complex ? "complex" : "simple", score, reasons: reasons.slice(0, 5) };
 }
 
-// flash 主力候选：千问（免费 token 计划主力）→ ocGo flash → sensenova → ark（mimo 已摘除）
+// flash 主力候选：商汤（免费·2026-08-20 千问下架后升主力）→ ocGo flash → nvidia → ark（mimo 已摘除）
 function flashCandidate() {
-  return findLive("aliyun-bailian", /qwen3\.8-max/i)
+  return findLive("sensenova", /flash-lite/i)
     || ocGoCandidate(/deepseek-v4-flash/i)
-    || findLive("sensenova", /flash-lite/i)
+    || findLive("nvidia", /llama-3\.1-8b/i)
     || findLive("volces-ark", /ark-code/i)
     || pickFallbackDefault();
 }
