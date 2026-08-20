@@ -17,7 +17,7 @@ WS_ROOT = _wsRoot || WS_ROOT;
 // 智能文件查找：按关键词 + 类型匹配工作空间文件（供交付时精准定位）
 // 关键词来自用户请求（如"酒店的ppt"→关键词"酒店"+类型 ppt）；无关键词则按最近/成品优先
 const WS_SKIP_DIRS = new Set(["node_modules", ".git", ".thumbs", "backups", ".cache", "temp", "tmp", "__pycache__", ".venv"]);
-function findWorkspaceFiles({ keyword = "", types = null, max = 8, maxDepth = 4 } = {}) {
+export function findWorkspaceFiles({ keyword = "", types = null, max = 8, maxDepth = 4 } = {}) {
   try {
     const root = WS_ROOT;
     if (!fs.existsSync(root)) return [];
@@ -66,11 +66,11 @@ function findWorkspaceFiles({ keyword = "", types = null, max = 8, maxDepth = 4 
   } catch { return []; }
 }
 // 路径安全原语已抽到 engine/tools/security.mjs；此处保留同名薄封装，15+ 调用点零改动
-function wsSafePath(p) {
+export function wsSafePath(p) {
   return safeJoin(WS_ROOT, p);
 }
 // 媒体产物落盘：远程 URL 下载 / data URL 保存 → 返回本地可访问路径
-async function saveArtifact(artifact) {
+export async function saveArtifact(artifact) {
   try {
     const date = new Date().toISOString().slice(0, 10);
     const typeDir = artifact.type === "image" ? "图片" : artifact.type === "audio" ? "音频" : "视频";
@@ -106,7 +106,7 @@ async function saveArtifact(artifact) {
 }
 
 // GET /api/ws/tree —— 工作空间目录树
-async function handleWsTree(res, reqPath) {
+export async function handleWsTree(res, reqPath) {
   const safe = wsSafePath(reqPath || "");
   if (!safe) return json(res, 403, { error: "路径越权" });
   const items = [];
@@ -123,7 +123,7 @@ async function handleWsTree(res, reqPath) {
 }
 
 // GET /api/ws/file —— 提供文件（图片/音频/视频/文本；?download=1 强制下载）
-async function handleWsFile(res, req, url) {
+export async function handleWsFile(res, req, url) {
   // 优先：签名 URL（path+exp+sig，安全防篡改、可过期，不依赖内存映射）
   const fb = await import("./engine/filebox.mjs");
   let target = null;
@@ -171,7 +171,7 @@ async function handleWsFile(res, req, url) {
 }
 
 // GET /api/ws/read —— 读文本文件内容
-async function handleWsRead(res, reqPath) {
+export async function handleWsRead(res, reqPath) {
   const safe = wsSafePath(reqPath);
   if (!safe || !fs.existsSync(safe) || fs.statSync(safe).isDirectory()) return json(res, 404, { error: "文件不存在" });
   try {
@@ -181,7 +181,7 @@ async function handleWsRead(res, reqPath) {
 }
 
 // POST /api/ws/write —— 写文件
-async function handleWsWrite(res, body) {
+export async function handleWsWrite(res, body) {
   const { path: p, content } = body || {};
   const safe = wsSafePath(p);
   if (!safe) return json(res, 403, { error: "路径越权" });
@@ -193,7 +193,7 @@ async function handleWsWrite(res, body) {
 }
 
 // GET /api/ws/artifacts —— 生成物列表（按类型/日期）
-async function handleWsArtifacts(res) {
+export async function handleWsArtifacts(res) {
   const out = [];
   const genDir = path.join(WS_ROOT, "生成物");
   try {
@@ -219,7 +219,7 @@ async function handleWsArtifacts(res) {
 }
 
 // ══ 成品交付 ══
-function wsNextVersion(name) {
+export function wsNextVersion(name) {
   const deliverDir = path.join(WS_ROOT, "交付");
   try { fs.mkdirSync(deliverDir, { recursive: true }); } catch {}
   let v = 1;
@@ -231,7 +231,7 @@ function wsNextVersion(name) {
   return v;
 }
 // 递归复制目录
-function wsCopyDir(src, dst) {
+export function wsCopyDir(src, dst) {
   fs.mkdirSync(dst, { recursive: true });
   for (const it of fs.readdirSync(src, { withFileTypes: true })) {
     const s = path.join(src, it.name), d = path.join(dst, it.name);
@@ -240,7 +240,7 @@ function wsCopyDir(src, dst) {
   }
 }
 // POST /api/ws/deliver —— 一键交付：复制源到 交付目录（name-vN）
-async function handleWsDeliver(res, body) {
+export async function handleWsDeliver(res, body) {
   const { sourcePath, name } = body || {};
   const safe = wsSafePath(sourcePath);
   if (!safe || !fs.existsSync(safe)) return json(res, 404, { error: "源不存在" });
@@ -254,7 +254,7 @@ async function handleWsDeliver(res, body) {
   } catch (e) { json(res, 500, { error: String(e?.message || e).slice(0, 100) }); }
 }
 // POST /api/ws/deliver/package —— 打包 zip（powershell Compress-Archive）
-async function handleWsPackage(res, body) {
+export async function handleWsPackage(res, body) {
   const { path: p } = body || {};
   const safe = wsSafePath(p);
   if (!safe || !fs.existsSync(safe)) return json(res, 404, { error: "源不存在" });
@@ -268,7 +268,7 @@ async function handleWsPackage(res, body) {
   } catch (e) { json(res, 500, { error: "打包失败: " + String(e?.message || e).slice(0, 80) }); }
 }
 // GET /api/ws/deliveries —— 交付列表
-async function handleWsDeliveries(res) {
+export async function handleWsDeliveries(res) {
   const out = [];
   const deliverDir = path.join(WS_ROOT, "交付");
   try {
@@ -288,7 +288,7 @@ async function handleWsDeliveries(res) {
 }
 
 // POST /api/ws/rename —— 重命名
-async function handleWsRename(res, body) {
+export async function handleWsRename(res, body) {
   const { oldPath, newName } = body || {};
   const safeOld = wsSafePath(oldPath);
   const safeNew = safeOld ? wsSafePath(path.join(path.dirname(safeOld), String(newName || ""))) : null;
@@ -300,7 +300,7 @@ async function handleWsRename(res, body) {
   } catch (e) { json(res, 500, { error: String(e?.message || e).slice(0, 100) }); }
 }
 // POST /api/ws/delete —— 删除（工作空间内）
-async function handleWsDelete(res, body) {
+export async function handleWsDelete(res, body) {
   const { path: p, confirmed } = body || {};
   const safe = wsSafePath(p);
   if (!safe || !fs.existsSync(safe)) return json(res, 404, { error: "不存在" });
@@ -321,7 +321,7 @@ async function handleWsDelete(res, body) {
   } catch (e) { json(res, 500, { error: String(e?.message || e).slice(0, 100) }); }
 }
 // GET /api/ws/search?q= —— 递归文件名搜索
-async function handleWsSearch(res, q) {
+export async function handleWsSearch(res, q) {
   const out = [];
   const walk = (dir, depth) => {
     if (depth > 6) return;
@@ -341,7 +341,7 @@ async function handleWsSearch(res, q) {
   json(res, 200, { results: out.slice(0, 100) });
 }
 // POST /api/ws/projects —— 新建项目
-async function handleWsProjectCreate(res, body) {
+export async function handleWsProjectCreate(res, body) {
   const { name } = body || {};
   const clean = String(name || "").replace(/[\/:*?"<>|\s]+/g, "-").slice(0, 60);
   if (!clean) return json(res, 400, { error: "缺少项目名" });
@@ -358,7 +358,7 @@ async function handleWsProjectCreate(res, body) {
   } catch (e) { json(res, 500, { error: String(e?.message || e).slice(0, 100) }); }
 }
 // POST /api/ws/convert —— 文档转换（docx/xlsx → markdown 文本）
-async function handleWsConvert(res, body) {
+export async function handleWsConvert(res, body) {
   const { path: p } = body || {};
   const safe = wsSafePath(p);
   if (!safe || !fs.existsSync(safe)) return json(res, 404, { error: "不存在" });
