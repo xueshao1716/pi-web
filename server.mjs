@@ -16,6 +16,7 @@ import { bindOutputGuardDeps, classifyAnomaly, isRepeatReply, normReply, recordR
 import { shrinkToolResult, NEEDS_PRO_RE, scavengeToolCalls } from "./engine/reasonix-tools.mjs";
 // ── 会话解析纯函数（拆模块）：消息/文本/图片/文件提取 ──
 import { extractMessages, extractText, extractImages, extractFiles } from "./engine/session-utils.mjs";
+import { initSessionFiles, scanSessionFiles, parseSessionFile, parseSessionFileCached, readEntriesFromFile, getSessionList, invalidateSessionCache, extractMessageFiles, extractMessageImages } from "./engine/session-files.mjs";
 // ── 统一 HTTP 客户端（拆模块）：原生 fetch + 自动系统代理（env → Windows 注册表），替代 python 子进程 ──
 import { httpJsonFetch, httpBufferFetch } from "./engine/http.mjs";
 // ── 统一工具集（拆模块）：schema + 执行器；安全线（deny/危险命令/受保护路径/路径越权）在 engine/tools/security.mjs ──
@@ -32,6 +33,8 @@ import { CONFIG } from "./config.mjs";
 // ── Gateway 2.0 插件化引擎 + Code Mode（dsh 设计沉淀）──
 import { createGateway } from "./engine/gateway.mjs";
 import { sseWrite, createSseWriter, startSseHeartbeat } from "./engine/sse.mjs";
+import { json, readBody } from "./engine/http-utils.mjs";
+import { initWorkspaceApi, WS_ROOT, findWorkspaceFiles, wsSafePath, saveArtifact, handleWsTree, handleWsFile, handleWsRead, handleWsWrite, handleWsArtifacts, wsNextVersion, wsCopyDir, handleWsDeliver, handleWsPackage, handleWsDeliveries, handleWsRename, handleWsDelete, handleWsSearch, handleWsProjectCreate, handleWsConvert } from "./engine/workspace-api.mjs";
 import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
 import { createCodeMode } from "./code-mode/code-mode.mjs";
@@ -62,6 +65,8 @@ function encodeCwdDir(cwd) {
   return `--${safe}--`;
 }
 const SESSIONS_DIR = path.join(getAgentDir(), "sessions", encodeCwdDir(CONFIG.cwd));
+initSessionFiles({ sessionsDir: SESSIONS_DIR, workspaceCwd: CONFIG.cwd }); // 会话文件层外部依赖注入
+initWorkspaceApi({ wsRoot: path.resolve(CONFIG.cwd) }); // 工作空间根注入
 console.log(`[pi-web] 会话目录: ${SESSIONS_DIR}`);
 
 console.log("[pi-web] 正在初始化模型运行时…");
@@ -126,61 +131,6 @@ const KEEP_MODELS = new Set([
 ]);
 
 let defaultModel = undefined; // 在启动模型列表构建后初始化（见下）
-
-// ── 会话文件扫描（pi 会话格式 jsonl，跨所有 cwd 目录）──────────────
-function scanSessionFiles() {
-  const out = [];
-  try {
-    // ⚠️ 2026-08-20 恢复全目录扫描 + 前端按 group 分组：工作区会话一组，pi 终端会话（小语）单独一组
-    // 此前只扫当前工作区目录，外部联系小语的入口丢失；全扫后前端用 cwd 分组展示，不会混在一起
-    const root = path.join(getAgentDir(), "sessions");
-    for (const sub of fs.readdirSync(root)) {
-      if (sub.startsWith(".")) continue; // 跳过 .trash 等隐藏目录
-      const dir = path.join(root, sub);
-      let st; try { st = fs.statSync(dir); } catch { continue; }
-      if (!st.isDirectory()) continue;
-      for (const f of fs.readdirSync(dir)) {
-        if (f.endsWith(".jsonl")) out.push(path.join(dir, f));
-      }
-    }
-  } catch {}
-  return out;
-}
-function parseSessionFile(file) {
-  const info = { id: null, createdAt: null, updatedAt: null, name: null, preview: "", messageCount: 0, file, cwd: null };
-  try {
-    const lines = fs.readFileSync(file, "utf8").split("\n").filter(Boolean);
-    for (const line of lines) {
-      let e; try { e = JSON.parse(line); } catch { continue; }
-      if (!e || typeof e !== "object") continue;
-      if (!info.id && e.type === "session") {
-        info.id = e.id; info.createdAt = e.timestamp; info.updatedAt = e.timestamp; info.cwd = e.cwd;
-        continue;
-      }
-      if (e.timestamp && (!info.updatedAt || e.timestamp > info.updatedAt)) info.updatedAt = e.timestamp;
-      if (e.type === "session_info" && e.name) info.name = e.name;
-      if (e.type === "message" && e.message?.role === "user") {
-        info.messageCount++;
-        if (!info.preview) {
-          const t = extractText(e.message.content);
-          if (t) info.preview = t.slice(0, 60);
-        }
-      }
-    }
-  } catch {}
-  // 兜底：header 可能被重写丢失，从文件名 <ts>_<sessionId>.jsonl 提取
-  if (!info.id) {
-    const base = path.basename(file, ".jsonl");
-    const m = base.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
-    if (m) info.id = m[0];
-  }
-  if (!info.cwd) info.cwd = CONFIG.cwd;
-  if (!info.createdAt && info.id) {
-    const t = path.basename(file, ".jsonl").split("_")[0];
-    if (t) info.createdAt = t.replace(/-/g, ":").replace(".", ":");
-  }
-  return info;
-}
 
 // ── 会话管理 ───────────────────────────────────────────────────────
 const activeSessions = new Map();   // id -> { agent, sm, busy }
@@ -886,40 +836,6 @@ async function deleteSession(id) {
 // 从消息 content 提取文本（type: text 的块）——已拆到 engine/session-utils.mjs
 
 // 从会话最新 assistant 消息提取文件附件（供 SSE 实时推送）
-function extractMessageFiles(sm, baselineLines = 0) {
-  try {
-    const file = sm.sessionFile;
-    if (!file || !fs.existsSync(file)) return [];
-    const entries = readEntriesFromFile(file);
-    // 只提取本次对话开始之后（baselineLines 之后）新增的 assistant 消息中的 file 块
-    // 避免历史文件每次对话都被重新捞出来推送
-    for (let i = entries.length - 1; i >= baselineLines; i--) {
-      const e = entries[i];
-      if (e?.type !== "message" || e?.message?.role !== "assistant") continue;
-      const c = e.message.content;
-      const files = extractFiles(c);
-      if (files.length) return files;
-    }
-    return [];
-  } catch { return []; }
-}
-
-// 从会话最新 assistant 消息提取图片附件（供 SSE 实时推送）
-function extractMessageImages(sm) {
-  try {
-    const file = sm.sessionFile;
-    if (!file || !fs.existsSync(file)) return [];
-    const entries = readEntriesFromFile(file);
-    for (let i = entries.length - 1; i >= 0; i--) {
-      const e = entries[i];
-      if (e?.type !== "message" || e?.message?.role !== "assistant") continue;
-      const images = extractImages(e.message.content);
-      if (images.length) return images;
-    }
-    return [];
-  } catch { return []; }
-}
-
 // 扫描工作空间里最近被工具创建/修改的文件（本轮产物），供前端展示文件卡片
 // 排除：隐藏目录、node_modules、.git、backups、临时文件
 const SCAN_EXCLUDE = /(^|[\\/])(node_modules|\.git|\.cache|backups?|temp|tmp|\.token)([\\/]|$)/i;
@@ -975,61 +891,6 @@ function scanRecentArtifacts(withinMs = 2 * 60 * 1000, max = 10) {
     };
     return out.sort((a, b) => priority(a.name) - priority(b.name) || (b.mtimeMs || 0) - (a.mtimeMs || 0)).slice(0, max);
   } catch { return []; }
-}
-
-// ── 会话解析缓存（2026-08-19 索引优化）──
-// parseSessionFile 每次读整个 jsonl（大会话几百 KB）→ 用 mtime+size 指纹做文件级缓存，
-// 文件没变不重读；文件被外部（TUI）修改时指纹自动失效，天然免疫 staleness。
-const sessionParseCache = new Map(); // file → {mtimeMs, size, info}
-function parseSessionFileCached(file) {
-  try {
-    const st = fs.statSync(file);
-    const hit = sessionParseCache.get(file);
-    if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.info;
-    const info = parseSessionFile(file);
-    // 上限 500：满了逐条淘汰最旧（插入序），不再整体 clear——避免热会话被误伤反复重解析
-    if (sessionParseCache.size >= 500) {
-      sessionParseCache.delete(sessionParseCache.keys().next().value);
-    }
-    sessionParseCache.set(file, { mtimeMs: st.mtimeMs, size: st.size, info });
-    return info;
-  } catch {
-    // 文件不存在/不可读（可能刚被删除）→ 不缓存，直接重新解析（返回默认 info）
-    return parseSessionFile(file);
-  }
-}
-
-function listSessions() {
-  const files = scanSessionFiles();
-  return files.map(parseSessionFileCached)
-    .filter(s => s.id)
-    .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))
-    .map(s => ({
-      id: s.id,
-      name: s.name || (s.preview ? s.preview.slice(0, 20) : "新会话"),
-      createdAt: s.createdAt,
-      updatedAt: s.updatedAt,
-      preview: s.preview,
-      messageCount: s.messageCount,
-      file: s.file,
-      cwd: s.cwd,
-      // 2026-08-20 分组：工作区会话 vs 其他目录（pi 终端会话，外部联系小语用）
-      group: (() => { try { return path.resolve(s.cwd || "") === path.resolve(CONFIG.cwd) ? "workspace" : "terminal"; } catch { return "terminal"; } })(),
-    }));
-}
-
-// ── 会话列表缓存（避免每次请求全量扫描+解析所有 JSONL，会话多时性能瓶颈）──
-let sessionListCache = null;
-function getSessionList() {
-  if (!sessionListCache) sessionListCache = listSessions();
-  return sessionListCache;
-}
-function invalidateSessionCache() { sessionListCache = null; }
-
-// 轻量读取会话文件 entries（只解析 JSONL 首部信息）
-function readEntriesFromFile(file) {
-  const lines = fs.readFileSync(file, "utf8").split("\n").filter(Boolean);
-  return lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
 }
 
 // 输出质量守卫依赖注入（engine/output-guard.mjs 需要读会话文件做复读基准恢复）
@@ -2067,11 +1928,6 @@ async function handleStatic(req, res) {
   return staticServer.handle(req, res);
 }
 
-function json(res, code, obj) {
-  res.writeHead(code, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(obj));
-}
-
 function handleModels(res) {
   // 只返回已配置 Key 的 provider 的模型（auth.json 或环境变量），避免列出无法使用的模型
   // 2026-08-20：附带 free/note（store 模型条目标注：免费通道/限时免费等）供前端展示种类与免费标记
@@ -2171,398 +2027,6 @@ async function syncContextAfterSwitch(entry, model) {
 
 // POST /api/chat —— SSE 流式
 // ══ 工作空间：产物落盘 + 文件服务 ══
-const WS_ROOT = path.resolve(CONFIG.cwd);  // 工作空间根（= 会话 cwd，统一反斜杠）
-
-// 智能文件查找：按关键词 + 类型匹配工作空间文件（供交付时精准定位）
-// 关键词来自用户请求（如"酒店的ppt"→关键词"酒店"+类型 ppt）；无关键词则按最近/成品优先
-const WS_SKIP_DIRS = new Set(["node_modules", ".git", ".thumbs", "backups", ".cache", "temp", "tmp", "__pycache__", ".venv"]);
-function findWorkspaceFiles({ keyword = "", types = null, max = 8, maxDepth = 4 } = {}) {
-  try {
-    const root = WS_ROOT;
-    if (!fs.existsSync(root)) return [];
-    const out = [];
-    const kw = String(keyword || "").toLowerCase().replace(/[的得了]/g, "");
-    // 宽泛词（图片/项目/文档/文件等）命中率太高，不作为匹配关键词——只匹配具体词
-    const WEAK_KW = new Set(["图片", "项目", "文档", "文件", "照片", "画", "图", "ppt", "网页", "网站", "配图", "截图", "原图"]);
-    const walk = (dir, depth) => {
-      if (depth > maxDepth || out.length >= max * 3) return;
-      let items;
-      try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-      for (const it of items) {
-        if (it.name.startsWith(".") || it.name.startsWith("_")) continue;
-        if (WS_SKIP_DIRS.has(it.name)) continue;
-        const full = path.join(dir, it.name);
-        if (it.isDirectory()) { walk(full, depth + 1); continue; }
-        const ext = path.extname(it.name).toLowerCase();
-        if (types && !types.includes(ext)) continue;
-        let st;
-        try { st = fs.statSync(full); } catch { continue; }
-        const rel = path.relative(root, full).replace(/\\/g, "/");
-        // 关键词匹配：文件名或路径含关键词（多个关键词任一命中）
-        const nameLower = it.name.toLowerCase();
-        let score = 0;
-        if (kw) {
-          const kws = kw.split(/[\s、，,]+/).filter(Boolean);
-          for (const k of kws) {
-            if (!k || WEAK_KW.has(k)) continue; // 跳过宽泛词
-            if (k && (nameLower.includes(k) || rel.toLowerCase().includes(k))) score += 2;
-          }
-          if (score === 0 && kws.some(k => k && !WEAK_KW.has(k))) continue; // 有具体词但没命中 → 跳过
-        }
-        out.push({ name: it.name, path: rel, size: st.size, mime: "", mtimeMs: st.mtimeMs, score });
-      }
-    };
-    walk(root, 0);
-    // 排序：关键词命中优先 > 成品类型优先 > 最近修改
-    const prio = (n) => {
-      const e = path.extname(n).toLowerCase();
-      if (/^\.(html?|md|pdf|png|jpe?g|gif|webp)$/.test(e)) return 0;
-      if (/^\.(pptx?|docx?|zip|mp4|svg|json)$/.test(e)) return 1;
-      if (/^\.(js|css|py|txt)$/.test(e)) return 2;
-      return 3;
-    };
-    return out.sort((a, b) => (b.score || 0) - (a.score || 0) || prio(a.name) - prio(b.name) || (b.mtimeMs || 0) - (a.mtimeMs || 0)).slice(0, max);
-  } catch { return []; }
-}
-// 路径安全原语已抽到 engine/tools/security.mjs；此处保留同名薄封装，15+ 调用点零改动
-function wsSafePath(p) {
-  return safeJoin(WS_ROOT, p);
-}
-// 媒体产物落盘：远程 URL 下载 / data URL 保存 → 返回本地可访问路径
-async function saveArtifact(artifact) {
-  try {
-    const date = new Date().toISOString().slice(0, 10);
-    const typeDir = artifact.type === "image" ? "图片" : artifact.type === "audio" ? "音频" : "视频";
-    const dir = path.join(WS_ROOT, "生成物", typeDir, date);
-    fs.mkdirSync(dir, { recursive: true });
-    const ts = new Date().toTimeString().slice(0, 5).replace(":", "");
-    const ext = artifact.type === "image" ? ".png" : artifact.type === "audio" ? ".wav" : ".mp4";
-    const file = path.join(dir, `产物_${ts}${ext}`);
-    if (artifact.url.startsWith("data:")) {
-      const b64 = artifact.url.split(",")[1];
-      fs.writeFileSync(file, Buffer.from(b64, "base64"));
-    } else if (artifact.url.startsWith("http")) {
-      // 原生 fetch 下载（自动系统代理、二进制安全；替代 python urlretrieve）
-      const r = await httpBufferFetch(artifact.url, { timeout: 60000 });
-      if (!r.ok) throw new Error(`下载失败 HTTP ${r.status}`);
-      fs.writeFileSync(file, r.buffer());
-    } else {
-      return artifact.url;
-    }
-    console.log(`[pi-web] 产物已落盘: ${file}`);
-    // 用签名 URL（免鉴权，24h 有效）——img 标签可直接加载，无需带 token
-    try {
-      const fb = await import("./engine/filebox.mjs");
-      const rel = path.relative(WS_ROOT, file);
-      return fb.signedUrl(rel);
-    } catch {
-      return `/api/ws/file?path=${encodeURIComponent(file)}`;
-    }
-  } catch (e) {
-    console.log(`[pi-web] 落盘失败: ${String(e?.message || e).slice(0, 60)}`);
-    return artifact.url;
-  }
-}
-
-// GET /api/ws/tree —— 工作空间目录树
-async function handleWsTree(res, reqPath) {
-  const safe = wsSafePath(reqPath || "");
-  if (!safe) return json(res, 403, { error: "路径越权" });
-  const items = [];
-  try {
-    for (const it of fs.readdirSync(safe, { withFileTypes: true })) {
-      items.push({
-        name: it.name,
-        type: it.isDirectory() ? "dir" : "file",
-        path: path.relative(WS_ROOT, path.join(safe, it.name)).replace(/\\/g, "/"),
-      });
-    }
-  } catch {}
-  json(res, 200, { items, current: path.relative(WS_ROOT, safe) || "." });
-}
-
-// GET /api/ws/file —— 提供文件（图片/音频/视频/文本；?download=1 强制下载）
-async function handleWsFile(res, req, url) {
-  // 优先：签名 URL（path+exp+sig，安全防篡改、可过期，不依赖内存映射）
-  const fb = await import("./engine/filebox.mjs");
-  let target = null;
-  if (url?.searchParams.get("sig")) {
-    const v = fb.verifySigned(req);
-    if (v.ok) target = wsSafePath(v.rel);
-    else return json(res, 403, { error: v.reason || "无权访问" });
-  } else if (url?.searchParams.get("path")) {
-    // 兼容旧链接（直接 path，需带 token 鉴权）
-    target = wsSafePath(url.searchParams.get("path") || "");
-  }
-  if (!target || !fs.existsSync(target)) return json(res, 404, { error: "文件不存在" });
-  const safe = target;
-  const ext = path.extname(safe).toLowerCase();
-  const mime = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".wav": "audio/wav", ".mp3": "audio/mpeg", ".mp4": "video/mp4", ".webm": "video/webm", ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8", ".json": "application/json" }[ext] || "application/octet-stream";
-  const headers = { "Content-Type": mime, "Cache-Control": "no-cache" };
-  if (url?.searchParams.get("download") === "1") {
-    headers["Content-Disposition"] = `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(safe))}`;
-  }
-  // 断点续传支持（HTTP Range，借鉴 file-transfer-go）：大文件中断后可从断点续传
-  const stat = fs.statSync(safe);
-  const total = stat.size;
-  const range = req.headers?.range || "";
-  const m = range.match(/bytes=(\d+)-(\d*)/);
-  if (m) {
-    let start = parseInt(m[1], 10);
-    let end = m[2] ? parseInt(m[2], 10) : total - 1;
-    if (isNaN(start) || start >= total) {
-      res.writeHead(416, { "Content-Range": `bytes */${total}` });
-      res.end();
-      return;
-    }
-    if (end >= total) end = total - 1;
-    headers["Content-Range"] = `bytes ${start}-${end}/${total}`;
-    headers["Accept-Ranges"] = "bytes";
-    headers["Content-Length"] = end - start + 1;
-    res.writeHead(206, headers);
-    fs.createReadStream(safe, { start, end }).pipe(res);
-    return;
-  }
-  headers["Accept-Ranges"] = "bytes";
-  headers["Content-Length"] = total;
-  res.writeHead(200, headers);
-  fs.createReadStream(safe).pipe(res);
-}
-
-// GET /api/ws/read —— 读文本文件内容
-async function handleWsRead(res, reqPath) {
-  const safe = wsSafePath(reqPath);
-  if (!safe || !fs.existsSync(safe) || fs.statSync(safe).isDirectory()) return json(res, 404, { error: "文件不存在" });
-  try {
-    const content = fs.readFileSync(safe, "utf8");
-    json(res, 200, { content, name: path.basename(safe), path: reqPath });
-  } catch { json(res, 500, { error: "读取失败（可能非文本）" }); }
-}
-
-// POST /api/ws/write —— 写文件
-async function handleWsWrite(res, body) {
-  const { path: p, content } = body || {};
-  const safe = wsSafePath(p);
-  if (!safe) return json(res, 403, { error: "路径越权" });
-  try {
-    fs.mkdirSync(path.dirname(safe), { recursive: true });
-    fs.writeFileSync(safe, content || "");
-    json(res, 200, { ok: true });
-  } catch (e) { json(res, 500, { error: String(e?.message || e).slice(0, 100) }); }
-}
-
-// GET /api/ws/artifacts —— 生成物列表（按类型/日期）
-async function handleWsArtifacts(res) {
-  const out = [];
-  const genDir = path.join(WS_ROOT, "生成物");
-  try {
-    for (const type of fs.readdirSync(genDir)) {
-      const typePath = path.join(genDir, type);
-      if (!fs.statSync(typePath).isDirectory()) continue;
-      for (const date of fs.readdirSync(typePath)) {
-        const datePath = path.join(typePath, date);
-        for (const f of fs.readdirSync(datePath)) {
-          const fp = path.join(datePath, f);
-          out.push({
-            name: f, type, date,
-            path: path.relative(WS_ROOT, fp).replace(/\\/g, "/"),
-            size: fs.statSync(fp).size,
-            url: `/api/ws/file?path=${encodeURIComponent(fp)}`,
-          });
-        }
-      }
-    }
-  } catch {}
-  out.sort((a, b) => b.date.localeCompare(a.date));
-  json(res, 200, { artifacts: out.slice(0, 200) });
-}
-
-// ══ 成品交付 ══
-function wsNextVersion(name) {
-  const deliverDir = path.join(WS_ROOT, "交付");
-  try { fs.mkdirSync(deliverDir, { recursive: true }); } catch {}
-  let v = 1;
-  while (true) {
-    const target = path.join(deliverDir, `${name}-v${v}`);
-    if (!fs.existsSync(target) && !fs.existsSync(target + ".zip")) break;
-    v++;
-  }
-  return v;
-}
-// 递归复制目录
-function wsCopyDir(src, dst) {
-  fs.mkdirSync(dst, { recursive: true });
-  for (const it of fs.readdirSync(src, { withFileTypes: true })) {
-    const s = path.join(src, it.name), d = path.join(dst, it.name);
-    if (it.isDirectory()) wsCopyDir(s, d);
-    else fs.copyFileSync(s, d);
-  }
-}
-// POST /api/ws/deliver —— 一键交付：复制源到 交付目录（name-vN）
-async function handleWsDeliver(res, body) {
-  const { sourcePath, name } = body || {};
-  const safe = wsSafePath(sourcePath);
-  if (!safe || !fs.existsSync(safe)) return json(res, 404, { error: "源不存在" });
-  const base = (name || path.basename(safe)).replace(/[\/:*?"<>|\s]+/g, "-").slice(0, 60) || "交付物";
-  const v = wsNextVersion(base);
-  const target = path.join(WS_ROOT, "交付", `${base}-v${v}`);
-  try {
-    if (fs.statSync(safe).isDirectory()) wsCopyDir(safe, target);
-    else { fs.mkdirSync(path.dirname(target), { recursive: true }); fs.copyFileSync(safe, target + path.extname(safe)); }
-    json(res, 200, { ok: true, path: `交付/${base}-v${v}`, version: v });
-  } catch (e) { json(res, 500, { error: String(e?.message || e).slice(0, 100) }); }
-}
-// POST /api/ws/deliver/package —— 打包 zip（powershell Compress-Archive）
-async function handleWsPackage(res, body) {
-  const { path: p } = body || {};
-  const safe = wsSafePath(p);
-  if (!safe || !fs.existsSync(safe)) return json(res, 404, { error: "源不存在" });
-  const zipName = (path.basename(safe) || "交付物").replace(/[\/:*?"<>|\s]+/g, "-") + ".zip";
-  const zipPath = path.join(WS_ROOT, "交付", zipName);
-  try {
-    const src = fs.statSync(safe).isDirectory() ? path.join(safe, "*") : safe;
-    const ps = `Compress-Archive -Path '${src.replace(/'/g, "''")}' -DestinationPath '${zipPath.replace(/'/g, "''")}' -Force`;
-    await new Promise((resolve, reject) => execFile("powershell", ["-NoProfile", "-Command", ps], { timeout: 120000, windowsHide: true }, (err) => err ? reject(err) : resolve()));
-    json(res, 200, { ok: true, path: `交付/${zipName}`, url: `/api/ws/file?path=${encodeURIComponent(zipPath)}` });
-  } catch (e) { json(res, 500, { error: "打包失败: " + String(e?.message || e).slice(0, 80) }); }
-}
-// GET /api/ws/deliveries —— 交付列表
-async function handleWsDeliveries(res) {
-  const out = [];
-  const deliverDir = path.join(WS_ROOT, "交付");
-  try {
-    for (const it of fs.readdirSync(deliverDir, { withFileTypes: true })) {
-      const fp = path.join(deliverDir, it.name);
-      out.push({
-        name: it.name,
-        type: it.isDirectory() ? "dir" : "file",
-        size: fs.statSync(fp).size,
-        url: `/api/ws/file?path=${encodeURIComponent(fp)}`,
-        wsPath: `交付/${it.name}`,
-      });
-    }
-  } catch {}
-  out.sort((a, b) => (a.type === "dir" ? 0 : 1) - (b.type === "dir" ? 0 : 1));
-  json(res, 200, { deliveries: out });
-}
-
-// POST /api/ws/rename —— 重命名
-async function handleWsRename(res, body) {
-  const { oldPath, newName } = body || {};
-  const safeOld = wsSafePath(oldPath);
-  const safeNew = safeOld ? wsSafePath(path.join(path.dirname(safeOld), String(newName || ""))) : null;
-  if (!safeOld || !safeNew || !fs.existsSync(safeOld)) return json(res, 404, { error: "源不存在" });
-  if (!newName || /[\/:*?"<>|]/.test(newName)) return json(res, 400, { error: "非法名称" });
-  try {
-    fs.renameSync(safeOld, safeNew);
-    json(res, 200, { ok: true, path: path.relative(WS_ROOT, safeNew).replace(/\\/g, "/") });
-  } catch (e) { json(res, 500, { error: String(e?.message || e).slice(0, 100) }); }
-}
-// POST /api/ws/delete —— 删除（工作空间内）
-async function handleWsDelete(res, body) {
-  const { path: p, confirmed } = body || {};
-  const safe = wsSafePath(p);
-  if (!safe || !fs.existsSync(safe)) return json(res, 404, { error: "不存在" });
-  // 双保险：前端已 confirm 后必须带 confirmed:true（防 CSRF / 误调）；且禁止删除工作空间根目录
-  if (!confirmed) return json(res, 400, { error: "需要确认" });
-  if (safe === WS_ROOT) return json(res, 400, { error: "不能删除工作空间根目录" });
-  // TOCTOU 防护：解析真实路径（符号链接可能把校验后的路径指到工作空间外），再次确认在范围内
-  try {
-    const real = fs.realpathSync(safe);
-    const rootReal = fs.realpathSync(WS_ROOT);
-    if (real !== rootReal && !real.startsWith(rootReal + path.sep)) {
-      return json(res, 400, { error: "路径超出工作空间范围" });
-    }
-  } catch { return json(res, 400, { error: "路径解析失败" }); }
-  try {
-    fs.rmSync(safe, { recursive: true, force: true });
-    json(res, 200, { ok: true });
-  } catch (e) { json(res, 500, { error: String(e?.message || e).slice(0, 100) }); }
-}
-// GET /api/ws/search?q= —— 递归文件名搜索
-async function handleWsSearch(res, q) {
-  const out = [];
-  const walk = (dir, depth) => {
-    if (depth > 6) return;
-    for (const it of fs.readdirSync(dir, { withFileTypes: true })) {
-      const fp = path.join(dir, it.name);
-      const rel = path.relative(WS_ROOT, fp).replace(/\\/g, "/");
-      if (it.isDirectory()) {
-        if (it.name === "node_modules" || it.name === ".git" || it.name === "AppData") continue;
-        walk(fp, depth + 1);
-      } else if (it.name.toLowerCase().includes(String(q || "").toLowerCase())) {
-        out.push({ name: it.name, path: rel, type: "file", size: fs.statSync(fp).size });
-      }
-    }
-  };
-  try { walk(WS_ROOT, 0); } catch {}
-  out.sort((a, b) => a.path.localeCompare(b.path));
-  json(res, 200, { results: out.slice(0, 100) });
-}
-// POST /api/ws/projects —— 新建项目
-async function handleWsProjectCreate(res, body) {
-  const { name } = body || {};
-  const clean = String(name || "").replace(/[\/:*?"<>|\s]+/g, "-").slice(0, 60);
-  if (!clean) return json(res, 400, { error: "缺少项目名" });
-  const safe = wsSafePath(path.join("工程", clean));
-  if (!safe) return json(res, 403, { error: "路径越权" });
-  if (fs.existsSync(safe)) return json(res, 400, { error: "项目已存在" });
-  try {
-    fs.mkdirSync(safe, { recursive: true });
-    fs.writeFileSync(path.join(safe, "README.md"), `# ${clean}
-
-新建项目，用对话描述需求开始开发。
-`);
-    json(res, 200, { ok: true, path: "工程/" + clean });
-  } catch (e) { json(res, 500, { error: String(e?.message || e).slice(0, 100) }); }
-}
-// POST /api/ws/convert —— 文档转换（docx/xlsx → markdown 文本）
-async function handleWsConvert(res, body) {
-  const { path: p } = body || {};
-  const safe = wsSafePath(p);
-  if (!safe || !fs.existsSync(safe)) return json(res, 404, { error: "不存在" });
-  const ext = path.extname(safe).toLowerCase();
-  const tmp = safe.replace(/\\/g, "\\\\");
-  let script;
-  if (ext === ".docx") {
-    script = `import docx, sys, io, json
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
-d = docx.Document(sys.argv[1])
-out = []
-for p in d.paragraphs:
-    t = p.text.strip()
-    if not t: continue
-    st = (p.style.name or "").lower() if p.style else ""
-    if "heading 1" in st: out.append("# " + t)
-    elif "heading 2" in st: out.append("## " + t)
-    elif "heading 3" in st: out.append("### " + t)
-    else: out.append(t)
-for tb in d.tables:
-    out.append("")
-    for row in tb.rows:
-        out.append("| " + " | ".join(c.text.strip() for c in row.cells) + " |")
-    out.append("")
-print("
-".join(out))`;
-  } else if (ext === ".xlsx") {
-    script = `import openpyxl, sys, io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
-wb = openpyxl.load_workbook(sys.argv[1], read_only=True)
-for ws in wb.worksheets:
-    print("## " + ws.title)
-    for row in ws.iter_rows(values_only=True):
-        vals = [str(c) if c is not None else "" for c in row]
-        if any(vals): print("| " + " | ".join(vals) + " |")
-    print("")`;
-  } else return json(res, 400, { error: "仅支持 docx/xlsx 转 markdown" });
-  try {
-    const text = await new Promise((resolve, reject) => {
-      execFile("python", ["-c", script, tmp], { timeout: 60000, windowsHide: true, encoding: "utf8" }, (err, stdout) => err ? reject(err) : resolve(stdout));
-    });
-    json(res, 200, { ok: true, markdown: text });
-  } catch (e) { json(res, 500, { error: "转换失败: " + String(e?.message || e).slice(0, 100) }); }
-}
-
 // ══ 统一模型接入层：所有模型一视同仁（对话 + 工具循环 + 思考提取）══
 // 基础工具 schema（bash/read/write/edit/web_search）已抽到 engine/tools/unified-tools.mjs；
 // 此处组合 server 特有的工具（技能激活 + 外部思考）
@@ -5169,18 +4633,6 @@ const server = http.createServer(async (req, res) => {
     } catch {}
   }
 });
-
-function readBody(req, maxMB = 2) {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    const max = maxMB * 1024 * 1024;
-    req.on("data", (c) => { data += c; if (data.length > max) { reject(new Error(`body too large (limit ${maxMB}MB)`)); req.destroy(); } });
-    req.on("end", () => {
-      try { resolve(JSON.parse(data || "{}")); } catch { reject(new Error("invalid JSON")); }
-    });
-    req.on("error", reject);
-  });
-}
 
 // ── 启动时每日备份配置 ─────────────────────────────────────────────
 try {
