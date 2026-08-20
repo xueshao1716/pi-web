@@ -7,6 +7,7 @@
 //     代理通过 undici ProxyAgent 实现（动态导入；未安装 undici 时退回直连）。
 
 import { execFile } from "node:child_process";
+import net from "node:net";
 
 let proxyResolved = false;
 let proxyUrl = null; // null = 无代理，直连
@@ -58,7 +59,32 @@ async function ensureProxyResolved() {
 }
 
 let dispatcherCache = null;
+
+// 代理活性探测：env/注册表里的代理可能已死（Clash 退出/崩溃但 env 残留是常态）——
+// 盲信死代理 = 全部外联请求 fetch failed（2026-08-20 真机事故：env 代理指向已关闭的 7890）。
+// TCP 探测代理端口，1.2s 不通即判死，60s 内缓存结论；死了自动降级直连（境内 API 本就直连可达）。
+let proxyLiveness = { key: "", at: 0, alive: false };
+function probeProxyAlive(urlStr) {
+  let u;
+  try { u = new URL(urlStr); } catch { return Promise.resolve(false); }
+  const host = u.hostname;
+  const port = parseInt(u.port, 10) || (u.protocol.startsWith("https") ? 443 : 80);
+  const key = `${host}:${port}`;
+  if (proxyLiveness.key === key && Date.now() - proxyLiveness.at < 60000) {
+    return Promise.resolve(proxyLiveness.alive);
+  }
+  return new Promise((resolve) => {
+    const sock = net.connect({ host, port, timeout: 1200 });
+    sock.once("connect", () => { sock.destroy(); proxyLiveness = { key, at: Date.now(), alive: true }; resolve(true); });
+    sock.once("error", () => { sock.destroy(); proxyLiveness = { key, at: Date.now(), alive: false }; resolve(false); });
+    sock.once("timeout", () => { sock.destroy(); proxyLiveness = { key, at: Date.now(), alive: false }; resolve(false); });
+  });
+}
+let deadProxyLogged = false;
+
 async function getProxyDispatcher(urlObj) {
+  // 显式逃生口：PI_WEB_FORCE_DIRECT=1 强制全部直连
+  if (process.env.PI_WEB_FORCE_DIRECT === "1") return null;
   // 回环/内网地址永远直连（no_proxy 基本语义；也保证本地服务调用不被系统代理劫持）
   const host = urlObj?.hostname || "";
   if (host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]") return null;
@@ -66,6 +92,14 @@ async function getProxyDispatcher(urlObj) {
   if (noProxy.some((p) => host === p || host.endsWith(p.startsWith(".") ? p : "." + p))) return null;
   await ensureProxyResolved();
   if (!proxyUrl) return null;
+  const alive = await probeProxyAlive(proxyUrl);
+  if (!alive) {
+    if (!deadProxyLogged) {
+      deadProxyLogged = true;
+      console.log(`[http] ⚠️ 代理 ${proxyUrl} 不可达，自动降级直连（60s 内不重试代理）`);
+    }
+    return null;
+  }
   if (dispatcherCache) return dispatcherCache;
   try {
     const undici = await import("undici");

@@ -1090,6 +1090,7 @@ initModelRouter({ getModelList: () => modelList, getDefaultModel: () => defaultM
 async function retryRepeatWithFallback(message, sessionKey, writer, busEmit, currentModel) {
   // ⚠️ 2026-08-19 修复：兜底必须排除出问题的模型（否则千问复读→兜底还是千问，切换无效）
   const fbModel = pickFallbackExcluding(currentModel);
+  if (!fbModel) return null; // 无可用备用通道（全链冷却/清单缺模型）
   const note = `⚠️ 检测到模型复读（回复与上一条完全相同），已自动切换 ${fbModel.provider}/${fbModel.id} 重新生成…`;
   try { writer.push("note", { text: note }); if (busEmit) busEmit("note", { text: note }); } catch {}
   const fb = await directChat(fbModel, message);
@@ -3509,13 +3510,17 @@ async function handleUnifiedChat(res, entry, message, sessionId, params, signal,
   if (anomaly.type !== "none") {
     console.log(`[pi-web] 输出守卫(${anomaly.type}): ${chatModel.provider}/${chatModel.id} ${anomaly.reason} → 自动切换重试`);
     const fbModel = pickFallbackExcluding(chatModel);
-    writer.push("note", { text: `⚠️ ${anomaly.reason}，自动切换 ${fbModel.provider}/${fbModel.id} 重试…` });
-    const fb = await directChat(fbModel, message);
-    if (fb?.text) {
-      text = fb.text;
-      recordReply(rkU, text);
+    if (fbModel) {
+      writer.push("note", { text: `⚠️ ${anomaly.reason}，自动切换 ${fbModel.provider}/${fbModel.id} 重试…` });
+      const fb = await directChat(fbModel, message);
+      if (fb?.text) {
+        text = fb.text;
+        recordReply(rkU, text);
+      } else {
+        writer.push("note", { text: "⚠️ 输出守卫触发，但备用模型也无回复（请手动切换模型或重试）" });
+      }
     } else {
-      writer.push("note", { text: "⚠️ 输出守卫触发，但备用模型也无回复（请手动切换模型或重试）" });
+      writer.push("note", { text: `⚠️ ${anomaly.reason}，且无可用备用通道（全链冷却），请稍后重试或手动切换模型` });
     }
   } else {
     recordReply(rkU, text);
@@ -4044,14 +4049,14 @@ async function handleChat(req, res, body) {
     if (!sawDelta) {
       // 修复 B：空回复兕底用安全模型（避开 opencode-go 429 且排除当前模型，不再死磕 defaultModel）
       const fbModel = pickFallbackExcluding(effModel);
-      const fallback = await directChat(fbModel, message);
+      const fallback = fbModel ? await directChat(fbModel, message) : null;
       if (fallback?.text) {
         writer.push("delta", { text: fallback.text });
         console.log(`[pi-web] 空回复兜底成功: ${fbModel.provider}/${fbModel.id}`);
       } else {
-        console.log(`[pi-web] 空回复兜底失败: ${fbModel.provider}/${fbModel.id}`);
-        // 明确提示（API Key 失效 / 模型异常），避免用户以为卡死
-        try { writer.push("error", { message: `模型 ${fbModel.provider}/${fbModel.id} 无回复——API Key 可能失效或额度不足，请到模型管理中重新配置` }); } catch {}
+        console.log(`[pi-web] 空回复兜底失败: ${fbModel?.provider}/${fbModel?.id}`);
+        // 明确提示：报用户选定的模型（兜底链模型只是替死鬼，报它会让用户莫名其妙）
+        try { writer.push("error", { message: `模型 ${effModel?.provider}/${effModel?.id} 无回复（已自动尝试备用通道 ${fbModel?.provider}/${fbModel?.id} 也失败）——可能是 API Key 失效/额度不足/网络代理问题，请到模型管理检查配置` }); } catch {}
       }
     }
     // 输出质量守卫：主模型输出异常（复读/纯标记/空回复）→ 自动切 fallback 重试

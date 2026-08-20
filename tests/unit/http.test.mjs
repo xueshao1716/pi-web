@@ -76,6 +76,21 @@ test("http.mjs 统一 HTTP 客户端", async (t) => {
     await assert.rejects(() => httpJsonFetch("http://127.0.0.1:1/x", { timeout: 2000 }));
   });
 
+  await t.test("死代理自动降级直连：env 代理指向不存在的端口仍能请求成功", async () => {
+    // 复刻 2026-08-20 真机事故：Clash 退出后 https_proxy 残留 → 全量 fetch failed
+    // （本测试进程没有代理 env，直接注入再验证本地服务可达——活性探测 1.2s 内判死，降级直连）
+    process.env.PI_WEB_TEST_FORCE_PROXY = "http://127.0.0.1:1"; // 端口 1 必然不通
+    const origHttps = process.env.HTTPS_PROXY;
+    process.env.HTTPS_PROXY = "http://127.0.0.1:1";
+    try {
+      const r = await httpJsonFetch(`${base}/json`, { timeout: 8000 });
+      assert.equal(r.status, 200); // 走了直连而不是死代理
+    } finally {
+      process.env.HTTPS_PROXY = origHttps;
+      delete process.env.PI_WEB_TEST_FORCE_PROXY;
+    }
+  });
+
   await t.test("二进制版：字节完整（不走文本 decode）", async () => {
     const r = await httpBufferFetch(`${base}/bin`);
     assert.equal(r.status, 200);
