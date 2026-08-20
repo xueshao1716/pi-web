@@ -3,6 +3,7 @@
 import { json } from "./http-utils.mjs";
 import { httpJsonFetch } from "./http.mjs";
 import { modelCapabilities } from "./model-probe.mjs";
+import { saveArtifact } from "./workspace-api.mjs"; // saveArtifact 定义在 workspace-api（工作空间块拆分时随走）
 
 let _resolveAuth = null, _readJsonFile = null, _modelsPath = "", _authPath = "", _getModelList = () => [];
 export function initMediaApi({ resolveAuth = null, readJsonFile = null, modelsPath = "", authPath = "", getModelList = null } = {}) {
