@@ -5281,7 +5281,8 @@ function startServer() {
           body: JSON.stringify({ model: oc.id, messages: [{ role: "user", content: "hi" }], max_tokens: 1 }),
           timeout: 25000,
         });
-        if (probe.status === 429 || /GoUsageLimit/i.test(await probe.text().catch(() => ""))) markOcGoBlocked(`启动预探测 HTTP ${probe.status}`);
+        // 2026-08-20 加固：403(Access denied)/401/402/429 都标记——opencode-go 账号无资格也是不可用态，Auto 路由应全程避开（此前只认 429，403 时每次请求都撞墙）
+        if ([401, 402, 403, 429].includes(probe.status) || /GoUsageLimit/i.test(await probe.text().catch(() => ""))) markOcGoBlocked(`启动预探测 HTTP ${probe.status}`);
       } catch {}
     }, 3000);
     // 记忆自维护（启动后后台执行，不阻塞）：归档过期状态节；偏好提炼走提案制不自动写（改记忆需审批）
