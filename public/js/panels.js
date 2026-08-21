@@ -27,15 +27,17 @@ async function loadEngineStatus() {
     compGrid.appendChild(el("div", "eng-sec-title", "组件实现 · 全部可替换"));
     const grid = el("div", "eng-grid");
     const comps = [
-      { icon: "🧠", name: "模型适配器", value: comp.modelAdapter?.name || "—", note: "ModelAdapter" },
-      { icon: "🛠", name: "工具注册表", value: comp.toolRegistry?.name || "—", note: "ToolRegistry" },
-      { icon: "💾", name: "会话存储", value: comp.sessionStore?.name || "—", note: "SessionStore" },
-      { icon: "🔁", name: "Agent 循环", value: comp.agentLoop?.name || "—", note: "AgentLoop" },
+      { icon: "brain", name: "模型适配器", value: comp.modelAdapter?.name || "—", note: "ModelAdapter" },
+      { icon: "tool", name: "工具注册表", value: comp.toolRegistry?.name || "—", note: "ToolRegistry" },
+      { icon: "edit", name: "会话存储", value: comp.sessionStore?.name || "—", note: "SessionStore" },
+      { icon: "sync", name: "Agent 循环", value: comp.agentLoop?.name || "—", note: "AgentLoop" },
     ];
     for (const c of comps) {
       const card = el("div", "eng-card");
       const head = el("div", "eng-card-head");
-      head.appendChild(el("span", null, c.icon));
+      const iconSpan = document.createElement("span");
+      iconSpan.innerHTML = ICON(c.icon, 16);
+      head.appendChild(iconSpan);
       head.appendChild(el("span", "eng-card-name", c.name));
       card.appendChild(head);
       card.appendChild(el("div", "eng-card-value", c.value));
