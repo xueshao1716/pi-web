@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 // ── 输出质量守卫（Output Guard）：模型不可靠是默认假设（借鉴 dsh repeat-tool-reminder）──
 import { bindOutputGuardDeps, classifyAnomaly, isRepeatReply, normReply, recordReply } from "./engine/output-guard.mjs";
 import { initOutputInspector, inspectOutput } from "./engine/output-inspector.mjs";
-import { initModelProbe, probeModel, pickHealthyModel } from "./engine/model-probe.mjs";
+import { initModelProbe, probeModel, pickHealthyModel } from "./engine/model-health.mjs";
 // ── Reasonix 机制（esengine/DeepSeek-Reasonix 借鉴）：工具结果压缩 / NEEDS_PRO 自报升级 / scavenge 捞回 ──
 import { shrinkToolResult, NEEDS_PRO_RE, scavengeToolCalls } from "./engine/reasonix-tools.mjs";
 // ── 会话解析纯函数（拆模块）：消息/文本/图片/文件提取 ──
