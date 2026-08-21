@@ -134,9 +134,10 @@ export function classifyTaskComplexity(text) {
   return { level: complex ? "complex" : "simple", score, reasons: reasons.slice(0, 5) };
 }
 
-// flash 主力候选：商汤（免费·2026-08-20 千问下架后升主力）→ ocGo flash → nvidia → ark（mimo 已摘除）
+// flash 主力候选：小米 mimo（免费·100万上下文·工具调用实测正常·2026-08-21 升主力）→ 商汤 flash-lite → ocGo flash → nvidia → ark
 function flashCandidate() {
-  return findLive("sensenova", /flash-lite/i)
+  return findLive("xiaomi-token-plan-cn", /mimo-v2\.5$/i)
+    || findLive("sensenova", /flash-lite/i)
     || ocGoCandidate(/deepseek-v4-flash/i)
     || findLive("nvidia", /llama-3\.1-8b/i)
     || findLive("volces-ark", /ark-code/i)

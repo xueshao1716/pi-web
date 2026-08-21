@@ -59,14 +59,14 @@ test("isAutoModel: auto 识别", () => {
 // ── 通用健康冷却（2026-08-20）──
 test("健康冷却: 商汤主力 403 → flash 自动绕开，落到下一顺位", () => {
   resetModelHealth();
-  const st = pool[0];
+  const st = pool.find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id)) || pool[0];
   markModelBlocked(st, { reason: "HTTP 403 Access denied" });
   assert.equal(isModelBlocked(st), true);
   const r = routeForAuto("你好");
   const chosen = `${r.model.provider}/${r.model.id}`;
   console.log(`  [403] 商汤冷却后 simple→${chosen}`);
   assert.notEqual(chosen, "sensenova/sensenova-6.7-flash-lite", "403 的商汤应被绕开");
-  assert.equal(chosen, "opencode-go/deepseek-v4-flash", "落到免费链下一顺位 ocGo flash");
+  assert.equal(chosen, "xiaomi-token-plan-cn/mimo-v2.5", "落到免费链下一顺位 mimo（2026-08-21 主力升级）");
 });
 
 test("健康冷却: pro 链同样过滤冷却模型", () => {
@@ -83,9 +83,9 @@ test("排除兜底: pickFallbackExcluding 绝不返回被排除的模型", () =>
   if (fb) assert.notEqual(`${fb.provider}/${fb.id}`, "sensenova/sensenova-6.7-flash-lite", "兜底不可回到被排除模型");
 });
 
-test("健康冷却: resetModelHealth 清零后商汤恢复主力", () => {
+test("健康冷却: resetModelHealth 清零后 mimo 恢复主力", () => {
   resetModelHealth();
   assert.equal(isModelBlocked(pool[0]), false);
   const r = routeForAuto("你好");
-  assert.equal(`${r.model.provider}/${r.model.id}`, "sensenova/sensenova-6.7-flash-lite");
+  assert.equal(`${r.model.provider}/${r.model.id}`, "xiaomi-token-plan-cn/mimo-v2.5");
 });
