@@ -12,6 +12,8 @@ import { fileURLToPath } from "node:url";
 
 // ── 输出质量守卫（Output Guard）：模型不可靠是默认假设（借鉴 dsh repeat-tool-reminder）──
 import { bindOutputGuardDeps, classifyAnomaly, isRepeatReply, normReply, recordReply } from "./engine/output-guard.mjs";
+import { initOutputInspector, inspectOutput } from "./engine/output-inspector.mjs";
+import { initModelProbe, probeModel, pickHealthyModel } from "./engine/model-probe.mjs";
 // ── Reasonix 机制（esengine/DeepSeek-Reasonix 借鉴）：工具结果压缩 / NEEDS_PRO 自报升级 / scavenge 捞回 ──
 import { shrinkToolResult, NEEDS_PRO_RE, scavengeToolCalls } from "./engine/reasonix-tools.mjs";
 // ── 会话解析纯函数（拆模块）：消息/文本/图片/文件提取 ──
@@ -262,6 +264,17 @@ console.log(`[pi-web] 可用模型: ${modelList.length} 个（含 ${Object.keys(
 
 // 模型路由层依赖注入（engine/model-router.mjs）：getter 动态读取，避免值拷贝 stale
 initModelRouter({ getModelList: () => modelList, getDefaultModel: () => defaultModel, configModel: CONFIG.model });
+// 2026-08-21 AI 检测员 + 模型通断探测（用户理念：复读引导修正/故障主动探测）
+initOutputInspector({
+  directChat: (m, msg, hist, opts) => directChat(m, msg, hist, opts),
+  getInspectorModel: () => modelList.find((x) => x.provider === "sensenova" && /flash-lite/i.test(x.id)) || null,
+});
+initModelProbe({
+  httpFetch: httpJsonFetch,
+  authReader: () => { try { return JSON.parse(fs.readFileSync(AUTH_PATH, "utf8")); } catch { return {}; } },
+  modelsReader: () => { try { return JSON.parse(fs.readFileSync(MODELS_PATH, "utf8")); } catch { return {}; } },
+  getModelList: () => modelList,
+});
 
 // ══ Cursor Router 简化版（2026-08-17，对标 Cursor Router Auto / Windsurf Adaptive）══
 // 理念：默认 Auto 路由——规则分类器按任务复杂度选模型：简单→flash（日常主力），复杂→pro（强推理，带上限）。
@@ -275,15 +288,16 @@ initModelRouter({ getModelList: () => modelList, getDefaultModel: () => defaultM
 // ══ 复读检测与降级重试（2026-08-19 加固）══
 // 判定逻辑已迁移到 engine/output-guard.mjs（输出质量守卫，纯判定模块）：
 //   复读/空回复/纯思考 统一 classifyAnomaly；这里只保留"重试执行"（换 fallback 模型直调 + 播报）。
-async function retryRepeatWithFallback(message, sessionKey, writer, busEmit, currentModel) {
+async function retryRepeatWithFallback(message, sessionKey, writer, busEmit, currentModel, inspectorSuggestion = "") {
   // 2026-08-21 用户理念：复读是行为跑偏 → 植入修正话语引导方向（同模型重生成），不终止不换模型；
   // 只有真正的模型链接/资源问题（429/400/403）才主动告知用户原因并切换可用模型。
   const note = "⚠️ 检测到回复与上一条完全相同，正在引导模型修正表达…";
   try { writer.push("note", { text: note }); if (busEmit) busEmit("note", { text: note }); } catch {}
   // 修正提示：同模型重生成，明确要求换表达/推进（不终止会话、不换模型）
-  const corrected = await directChat(currentModel, message, [], {
-    systemHint: "你刚才的回复与上一条完全相同（复读）。请重新回答这条消息：换一种表达、补充更多内容、或继续推进对话，绝不能重复上一条回复。",
-  });
+  const hint = inspectorSuggestion
+    ? `AI 质检员发现你的上一条回复异常（${inspectorSuggestion}）。请重新回答这条用户消息，按此指引修正。`
+    : "你刚才的回复与上一条完全相同（复读）。请重新回答这条消息：换一种表达、补充更多内容、或继续推进对话，绝不能重复上一条回复。";
+  const corrected = await directChat(currentModel, message, [], { systemHint: hint });
   if (corrected?.text) {
     const add = `
 
@@ -1187,8 +1201,17 @@ async function handleChat(req, res, body) {
     if (sawDelta && collected) {
       const anom = classifyAnomaly({ sessionKey: rk, text: collected, think: "", sessionFile: entry.sm?.sessionFile });
       if (anom.type === "repeat" || anom.type === "marker") {
-        console.log(`[pi-web] 输出守卫(${anom.type}): ${effModel?.provider}/${effModel?.id} ${anom.reason} → 自动切换重试`);
-        await retryRepeatWithFallback(message, rk, writer, busEmit, effModel);
+        // 2026-08-21 AI 检测员复核：规则判异常后，检测员语义级确认 + 给针对性修正建议
+        console.log(`[pi-web] 输出守卫(${anom.type}): ${effModel?.provider}/${effModel?.id} ${anom.reason} → 检测员复核`);
+        const insp = await inspectOutput({ userMessage: message, output: collected, history: [] }).catch(() => null);
+        if (insp && insp.verdict === "ok") {
+          // 检测员判定正常（规则误报）→ 接受原输出
+          recordReply(rk, collected);
+          console.log(`[pi-web] 检测员判定 ok（规则误报），接受原输出`);
+        } else {
+          // 确认异常：用检测员的修正建议（或默认）引导同模型修正
+          await retryRepeatWithFallback(message, rk, writer, busEmit, effModel, insp?.suggestion);
+        }
       } else if (anom.type === "none") {
         recordReply(rk, collected);
       }
@@ -1360,17 +1383,32 @@ async function handleChat(req, res, body) {
     // 官方 agent 管线异常 → 降级到自制 unifiedChat 兑底（避免任务静默失败）
     const agentErr = String(e?.message || e);
     // 429/额度检测（修复 B）：agent 管线错误里出现 opencode-go 额度耗尽 → 标记降级，后续 Auto 路由避开
-    // 2026-08-21 用户理念：429/400 等链接/资源错误 → 主动告知用户原因 + 切换可用模型
+    // 2026-08-21 用户理念：429/400 等链接/资源错误 → 主动告知原因 + 通断探测拿好模型顶上
     const briefErr = agentErr.slice(0, 80);
     if (/GoUsageLimit|HTTP 429|status.?429/i.test(agentErr) && modelList.some(m => m.provider === "opencode-go")) {
       markOcGoBlocked(agentErr);
-      try { writer.push("note", { text: `⚠️ opencode-go 额度耗尽（429），已自动切换可用模型继续…` }); } catch {}
+      try { writer.push("note", { text: `⚠️ opencode-go 额度耗尽（429），正在探测可用模型…` }); } catch {}
+      // 主动探测：候选链里拿第一个可用的顶上（不靠冷却跳过）
+      const cands = [flashCandidate(), routeProCandidate(), defaultModel].filter(Boolean);
+      const healthy = await pickHealthyModel(cands).catch(() => null);
+      if (healthy) {
+        try { writer.push("note", { text: `✅ 探测到可用模型 ${healthy.provider}/${healthy.id}，已切换` }); } catch {}
+        console.log(`[pi-web] 通断探测 → 好模型顶上: ${healthy.provider}/${healthy.id}`);
+      }
     } else if (effModel) {
       const st = agentErr.match(/HTTP (\d{3})|status.?(\d{3})/);
       const code = st ? parseInt(st[1] || st[2], 10) : 0;
       if ([401, 402, 403, 429, 529].includes(code)) {
         markModelBlocked(effModel, { reason: `HTTP ${code} (agent管线)` });
-        try { writer.push("note", { text: `⚠️ ${effModel.provider}/${effModel.id} 报 HTTP ${code}（${code === 429 ? "额度/限流" : code === 400 ? "请求被拒" : "权限/服务问题"}），已自动切换可用模型继续…` }); } catch {}
+        const reason = code === 429 ? "额度/限流" : code === 400 ? "请求被拒" : "权限/服务问题";
+        try { writer.push("note", { text: `⚠️ ${effModel.provider}/${effModel.id} 报 HTTP ${code}（${reason}），正在探测可用模型…` }); } catch {}
+        // 主动探测候选链（排除当前坏的），拿到好模型播报
+        const cands = [flashCandidate(), routeProCandidate(), pickFallbackExcluding(effModel)].filter(Boolean);
+        const healthy = await pickHealthyModel(cands).catch(() => null);
+        if (healthy) {
+          try { writer.push("note", { text: `✅ 探测到可用模型 ${healthy.provider}/${healthy.id}，已切换` }); } catch {}
+          console.log(`[pi-web] 通断探测 → 好模型顶上: ${healthy.provider}/${healthy.id}`);
+        }
       }
     }
     console.log(`[pi-web] agent 通道异常，降级 unifiedChat: ${agentErr.slice(0, 120)}`);
