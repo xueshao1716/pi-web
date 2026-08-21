@@ -674,6 +674,16 @@ const { initDshTool } = createDshTool({
   loadSkillIndex,
   skillsDir: path.join(__dirname, "skills"),
 });
+// 2026-08-21 注入 dsh 执行臂到统一工具集（此前只初始化未注入——双引擎名存实亡）
+try {
+  const dshTool = await initDshTool();
+  if (dshTool && !UNIFIED_TOOLS.some((t) => t?.name === dshTool.name)) {
+    UNIFIED_TOOLS.push(dshTool);
+    console.log(`[dsh] 执行臂已注入统一工具集（${dshTool.name}，并发上限 ${process.env.PI_DSH_MAX || 6}）`);
+  }
+} catch (e) {
+  console.log(`[dsh] 工具注入失败: ${String(e?.message || e).slice(0, 80)}`);
+}
 
 // ══ Reasonix 三大机制落地（2026-08-19，esengine/DeepSeek-Reasonix 借鉴）══
 // 实现已抽到 engine/reasonix-tools.mjs（纯逻辑模块）：
