@@ -276,20 +276,33 @@ initModelRouter({ getModelList: () => modelList, getDefaultModel: () => defaultM
 // 判定逻辑已迁移到 engine/output-guard.mjs（输出质量守卫，纯判定模块）：
 //   复读/空回复/纯思考 统一 classifyAnomaly；这里只保留"重试执行"（换 fallback 模型直调 + 播报）。
 async function retryRepeatWithFallback(message, sessionKey, writer, busEmit, currentModel) {
-  // ⚠️ 2026-08-19 修复：兜底必须排除出问题的模型（否则千问复读→兜底还是千问，切换无效）
-  const fbModel = pickFallbackExcluding(currentModel);
-  if (!fbModel) return null; // 无可用备用通道（全链冷却/清单缺模型）
-  const note = `⚠️ 检测到模型复读（回复与上一条完全相同），已自动切换 ${fbModel.provider}/${fbModel.id} 重新生成…`;
+  // 2026-08-21 用户理念：复读是行为跑偏 → 植入修正话语引导方向（同模型重生成），不终止不换模型；
+  // 只有真正的模型链接/资源问题（429/400/403）才主动告知用户原因并切换可用模型。
+  const note = "⚠️ 检测到回复与上一条完全相同，正在引导模型修正表达…";
   try { writer.push("note", { text: note }); if (busEmit) busEmit("note", { text: note }); } catch {}
-  const fb = await directChat(fbModel, message);
-  if (fb?.text) {
-    const add = `\n\n（以下为切换模型后的新回复）\n${fb.text}`;
+  // 修正提示：同模型重生成，明确要求换表达/推进（不终止会话、不换模型）
+  const corrected = await directChat(currentModel, message, [], {
+    systemHint: "你刚才的回复与上一条完全相同（复读）。请重新回答这条消息：换一种表达、补充更多内容、或继续推进对话，绝不能重复上一条回复。",
+  });
+  if (corrected?.text) {
+    const add = `
+
+（复读修正后的新回复）
+${corrected.text}`;
     try { writer.push("delta", { text: add }); if (busEmit) busEmit("delta", { text: add }); } catch {}
-    recordReply(sessionKey, fb.text);
-    console.log(`[pi-web] 复读重试成功: ${fbModel.provider}/${fbModel.id}`);
-    return fb.text;
+    recordReply(sessionKey, corrected.text);
+    console.log(`[pi-web] 复读引导修正成功（同模型 ${currentModel?.provider}/${currentModel?.id}）`);
+    return corrected.text;
   }
-  try { writer.push("note", { text: "⚠️ 复读检测触发，但备用模型也无回复（请手动切换模型或重试）" }); } catch {}
+  // 同模型修正失败 → 才切可用模型（真正的异常才换）
+  const fbModel = pickFallbackExcluding(currentModel);
+  if (fbModel) {
+    const note2 = `⚠️ 同模型修正仍失败，已切换 ${fbModel.provider}/${fbModel.id} 重新生成…`;
+    try { writer.push("note", { text: note2 }); if (busEmit) busEmit("note", { text: note2 }); } catch {}
+    const fb = await directChat(fbModel, message);
+    if (fb?.text) { recordReply(sessionKey, fb.text); return fb.text; }
+  }
+  try { writer.push("note", { text: "⚠️ 复读修正失败且备用模型无回复（请重试或手动切换模型）" }); } catch {}
   return null;
 }
 
@@ -1347,12 +1360,18 @@ async function handleChat(req, res, body) {
     // 官方 agent 管线异常 → 降级到自制 unifiedChat 兑底（避免任务静默失败）
     const agentErr = String(e?.message || e);
     // 429/额度检测（修复 B）：agent 管线错误里出现 opencode-go 额度耗尽 → 标记降级，后续 Auto 路由避开
-    if (/GoUsageLimit|HTTP 429|status.?429/i.test(agentErr) && modelList.some(m => m.provider === "opencode-go")) markOcGoBlocked(agentErr);
-    // 健康冷却（2026-08-20 泛化）：401/402/403/529 等权限/额度错误 → 标记本次生效模型，Auto 路由后续避开
-    else if (effModel) {
+    // 2026-08-21 用户理念：429/400 等链接/资源错误 → 主动告知用户原因 + 切换可用模型
+    const briefErr = agentErr.slice(0, 80);
+    if (/GoUsageLimit|HTTP 429|status.?429/i.test(agentErr) && modelList.some(m => m.provider === "opencode-go")) {
+      markOcGoBlocked(agentErr);
+      try { writer.push("note", { text: `⚠️ opencode-go 额度耗尽（429），已自动切换可用模型继续…` }); } catch {}
+    } else if (effModel) {
       const st = agentErr.match(/HTTP (\d{3})|status.?(\d{3})/);
       const code = st ? parseInt(st[1] || st[2], 10) : 0;
-      if ([401, 402, 403, 529].includes(code)) markModelBlocked(effModel, { reason: `HTTP ${code} (agent管线)` });
+      if ([401, 402, 403, 429, 529].includes(code)) {
+        markModelBlocked(effModel, { reason: `HTTP ${code} (agent管线)` });
+        try { writer.push("note", { text: `⚠️ ${effModel.provider}/${effModel.id} 报 HTTP ${code}（${code === 429 ? "额度/限流" : code === 400 ? "请求被拒" : "权限/服务问题"}），已自动切换可用模型继续…` }); } catch {}
+      }
     }
     console.log(`[pi-web] agent 通道异常，降级 unifiedChat: ${agentErr.slice(0, 120)}`);
     try { unsubscribe(); } catch {}

@@ -17,7 +17,9 @@ export function initModelClient({ readJsonFile = null, writeJsonFile = null, aut
 }
 
 // 直调模型接口拿文本（绕过 agent，稳定快速）
-export async function directChat(model, message, history = []) {
+export async function directChat(model, message, history = [], opts = {}) {
+  // 2026-08-21 支持 systemHint：复读修正等场景注入引导（不切换模型）
+  const systemHint = opts?.systemHint || null;
   try {
     const auth = _readJsonFile(_authPath);
     const key = auth[model.provider]?.key;
@@ -30,7 +32,7 @@ export async function directChat(model, message, history = []) {
     if (!baseUrl) return null;
     const base = (baseUrl || "").replace(/\/+$/, "");
     const baseNoV1 = base.endsWith("/v1") ? base.slice(0, -3) : base;
-    const messages = [...history, { role: "user", content: message }];
+    const messages = systemHint ? [{ role: "system", content: systemHint }, ...history, { role: "user", content: message }] : [...history, { role: "user", content: message }];
     const apiType = mdef?.api || "openai-completions";
     // openai-responses 类型（grok/gpt-5.6-luna 等）：用 /responses 端点，input 数组格式
     if (apiType === "openai-responses") {
