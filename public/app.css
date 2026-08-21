@@ -2835,3 +2835,44 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   }
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   可用性修复层（ui-ux-pro-max 审查确认）——触控目标 + 键盘焦点可见性
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── 1) 小图标按钮：伪元素扩展测试命中区至 ≥24px（WCAG 触控目标），视觉不变 ── */
+.s-pin, .s-arch, .s-del,
+.main-top .tool-btn, .theme-more, .theme-edit-btn, .logout-btn,
+.btn-mini, .ft-refresh, .emo-pill, .menu-btn {
+  position: relative;
+}
+.s-pin::before, .s-arch::before, .s-del::before,
+.main-top .tool-btn::before, .theme-more::before, .theme-edit-btn::before,
+.btn-mini::before, .ft-refresh::before, .menu-btn::before {
+  content: "";
+  position: absolute;
+  /* 向外扩张命中区：中心十字放大到 24px */
+  top: 50%; left: 50%;
+  width: 24px; height: 24px;
+  transform: translate(-50%, -50%);
+  border-radius: 6px;
+  pointer-events: all; /* 命中区可点，视觉不可见 */
+}
+
+/* ── 2) 键盘焦点可见性：`:focus-visible`（键盘导航）显示清晰焦点环，
+     保留现有 `outline:none`（鼠标点击不显示，避免干扰）── */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* 输入框/文本域用容器 focus-within 已有描边，这里只补键盘操作时的强焦点环 */
+input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+  border-radius: 8px;
+}
+/* 尊重减少动态偏好：无闪烁 */
+@media (prefers-reduced-motion: reduce) {
+  :focus-visible { transition: none; }
+}
+
