@@ -93,7 +93,11 @@ export function pickFallbackDefault() {
 // 2026-08-20 修正残留：末位兜底 pickFallbackDefault() 也可能返回被排除模型——现在全链过滤。
 export function pickFallbackExcluding(excludeModel) {
   const excludeKey = modelKey(excludeModel);
+  // 2026-08-21 升级：复读/异常兜底优先 ox-alpha（OpenRouter 免费推理强）→ mimo → flash-lite
+  // （之前只有 flash-lite 兜底，mimo 复读时切去更弱的模型，体验差）
   const cands = [
+    findLive("openrouter", /ox-alpha/i),
+    findLive("xiaomi-token-plan-cn", /mimo-v2\.5$/i),
     findLive("sensenova", /flash-lite/i),
     findLive("nvidia", /llama-3\.1-8b/i),
     findLive("volces-ark", /ark-code/i),
