@@ -662,7 +662,7 @@ const executeUnifiedTool = createUnifiedToolExecutor({
 });
 
 initSessionManager({ cwd: CONFIG.cwd, sessionsDir: SESSIONS_DIR, tools: CONFIG.tools, createAgentSessionServices, createAgentSessionFromServices, getModelRuntime: () => modelRuntime, getModelList: () => modelList, getDefaultModel: () => defaultModel, activeSessions, SessionManager, SettingsManager, DefaultResourceLoader, getAgentDir, readJsonFile, writeJsonFile, isExternalThinking, THINK_TOOL, modelCapabilities, bindOutputGuardDeps, extractMessages, createSseWriter, unifiedChat }); // 会话管理注入
-initUnifiedChat({ executeUnifiedTool, findKeyByEntry, readJsonFile, getModelList: () => modelList, getDefaultModel: () => defaultModel, authPath: AUTH_PATH, modelsPath: MODELS_PATH, cwd: CONFIG.cwd, piPackage: CONFIG.piPackage, UNIFIED_TOOLS }); // 统一对话通道注入
+initUnifiedChat({ executeUnifiedTool, findKeyByEntry, readJsonFile, getModelList: () => modelList, getDefaultModel: () => defaultModel, authPath: AUTH_PATH, modelsPath: MODELS_PATH, cwd: CONFIG.cwd, piPackage: CONFIG.piPackage, UNIFIED_TOOLS, getAgentDir }); // 统一对话通道注入
 initRefineApi({ cwd: CONFIG.cwd }); // 经验沉淀台注入
 initMcpServer({ modelRouter: (await import("./engine/model-router.mjs")), memoryApi: memoryApi, emotion, getDefaultModel: () => defaultModel, wsRoot: () => CONFIG.cwd, json }); // MCP 认知层注入
 initMcpChat({ handleChat }); // MCP 对话注入
@@ -1615,7 +1615,11 @@ const API_ROUTES = [
     try {
       const body = await readBody(req, 12);
       const gw = await initEngine();
-      const r = await gw.chat(String(body?.message || ""), { history: body?.history || [], sessionId: body?.sessionId, model: body?.model, tools: body?.tools !== false, params: body?.params, system: body?.system });
+      // model 字符串 "provider/id" → 拆成 {provider, id}（engine/chat 端点此前传字符串导致 provider undefined）
+      const modelStr = String(body?.model || "");
+      const slashIdx = modelStr.indexOf("/");
+      const model = slashIdx > 0 ? { provider: modelStr.slice(0, slashIdx), id: modelStr.slice(slashIdx + 1) } : (body?.model || undefined);
+      const r = await gw.chat(String(body?.message || ""), { history: body?.history || [], sessionId: body?.sessionId, model, tools: body?.tools !== false, params: body?.params, system: body?.system });
       json(res, r.error ? 400 : 200, r);
     } catch (e) { json(res, 500, { error: String(e?.message || e) }); }
   }],

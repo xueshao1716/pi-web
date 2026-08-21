@@ -2,6 +2,7 @@
 // unifiedChat/handleUnifiedChat：对话 + 工具循环 + 思考 + 媒体 + 压缩 + 重试 + 任务进度
 // 依赖注入：initUnifiedChat({ executeUnifiedTool, findKeyByEntry, readJsonFile, getModelList, getDefaultModel, authPath, modelsPath, cwd })
 import fs from "node:fs";
+import path from "node:path";
 import { json, readBody } from "./http-utils.mjs";
 import { markModelBlocked, isAuthErrorStatus, pickFallbackDefault, pickFallbackExcluding, routeProCandidate } from "./model-router.mjs";
 import { classifyAnomaly, recordReply } from "./output-guard.mjs";
@@ -10,6 +11,8 @@ import { extractMessages, extractText } from "./session-utils.mjs";
 import { createSseWriter } from "./sse.mjs";
 import { httpJsonFetch } from "./http.mjs";
 import { createGateway } from "./gateway.mjs";
+import { CodeRuntime } from "../code-mode/code-runtime.mjs";
+import { createCodeMode } from "../code-mode/code-mode.mjs";
 import { detectMediaIntents, extractMediaPrompt, generateMediaAsync } from "./media-api.mjs";
 import { saveArtifact } from "./workspace-api.mjs";
 import { directChat, maybeCompactHistory } from "./model-client.mjs";
@@ -18,11 +21,12 @@ import { jitRulesForPath, loadProjectRules, loadMemory, shouldInjectFullMemory, 
 import { resolveAuth } from "./dsh-keys.mjs";
 import { policyDecide } from "./dsh-keys.mjs";
 
-let _executeUnifiedTool = null, _findKeyByEntry = null, _readJsonFile = null, _getModelList = () => [], _getDefaultModel = () => null, _authPath = "", _modelsPath = "", _cwd = "", _piPackage = "", _unifiedTools = [];
-export function initUnifiedChat({ executeUnifiedTool = null, findKeyByEntry = null, readJsonFile = null, getModelList = null, getDefaultModel = null, authPath = "", modelsPath = "", cwd = "", piPackage = "", UNIFIED_TOOLS = [] } = {}) {
+let _executeUnifiedTool = null, _findKeyByEntry = null, _readJsonFile = null, _getModelList = () => [], _getDefaultModel = () => null, _authPath = "", _modelsPath = "", _cwd = "", _piPackage = "", _unifiedTools = [], _getAgentDir = null;
+export function initUnifiedChat({ executeUnifiedTool = null, findKeyByEntry = null, readJsonFile = null, getModelList = null, getDefaultModel = null, authPath = "", modelsPath = "", cwd = "", piPackage = "", UNIFIED_TOOLS = [], getAgentDir = null } = {}) {
   _executeUnifiedTool = executeUnifiedTool; _findKeyByEntry = findKeyByEntry; _readJsonFile = readJsonFile;
   if (getModelList) _getModelList = getModelList; if (getDefaultModel) _getDefaultModel = getDefaultModel;
   _authPath = authPath; _modelsPath = modelsPath; _cwd = cwd; _piPackage = piPackage; _unifiedTools = UNIFIED_TOOLS;
+  if (getAgentDir) _getAgentDir = getAgentDir;
 }
 
 export async function unifiedChat(model, messages, opts = {}) {
@@ -38,7 +42,10 @@ export async function unifiedChat(model, messages, opts = {}) {
   const base = (baseUrl || "").replace(/\/+$/, "");
   const baseNoV1 = base.endsWith("/v1") ? base.slice(0, -3) : base;
   const history = [...messages];
-  const toolDefs = opts.tools === false ? undefined : (opts.tools || _unifiedTools);
+  // 2026-08-21 修复：anthropic 协议端点（glm-5.3 等）不支持 pi 的工具格式（直测 422/400）——不传 tools 做纯对话
+  // 或模型声明 compat.supportsTools:false 时同样不传
+  const noTools = mdef?.api === "anthropic-messages" || mdef?.compat?.supportsTools === false;
+  const toolDefs = opts.tools === false || noTools ? undefined : (opts.tools || _unifiedTools);
   // 官方理念：按模型声明的 reasoning/compat/thinkingLevelMap 统一适配（不按厂商特判）
   const isReasoning = mdef?.reasoning === true || model.reasoning === true;
   const compat = mdef?.compat || model.compat || {};
@@ -220,7 +227,7 @@ export async function initEngine() {
     resolveAuth: (provider) => resolveAuth(provider),
     defaultExecutor: (name, args) => _executeUnifiedTool(name, args),
     getModel: engineCurrentModel,
-    sessionDir: path.join(getAgentDir(), "engine-sessions"),
+    sessionDir: path.join((_getAgentDir ? _getAgentDir() : ""), "engine-sessions"),
   });
   // 注册 run_code 工具（Code Mode 作为引擎的一个普通工具，体现插件化）
   gateway.tools.register(codeMode.runCodeToolDef());
