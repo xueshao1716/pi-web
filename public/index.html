@@ -28,8 +28,45 @@
 </head>
 <body>
 
+<!-- ══ 内联 SVG 图标集（stroke 线性，currentColor 跟随主题色；替代界面级 emoji，提升质感）══ -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <defs>
+    <symbol id="ic-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></symbol>
+    <symbol id="ic-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="ic-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></symbol>
+    <symbol id="ic-puzzle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M19 4h-3.5a2.5 2.5 0 0 0-5 0H7a2 2 0 0 0-2 2v3.5a2.5 2.5 0 0 0 0 5V19a2 2 0 0 0 2 2h3.5a2.5 2.5 0 0 0 5 0H19a2 2 0 0 0 2-2v-3.5a2.5 2.5 0 0 0 0-5V6a2 2 0 0 0-2-2z"/></symbol>
+    <symbol id="ic-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></symbol>
+    <symbol id="ic-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></symbol>
+    <symbol id="ic-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+    <symbol id="ic-palette" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.7-.75 1.7-1.7 0-.44-.16-.83-.42-1.12-.26-.29-.42-.68-.42-1.12 0-.95.75-1.7 1.7-1.7H16a5 5 0 0 0 5-5c0-4.87-4.06-9.36-9-9.36z"/></symbol>
+    <symbol id="ic-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
+    <symbol id="ic-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+    <symbol id="ic-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+    <symbol id="ic-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+    <symbol id="ic-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+    <symbol id="ic-dots" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></symbol>
+    <symbol id="ic-branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+    <symbol id="ic-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></symbol>
+    <symbol id="ic-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></symbol>
+    <symbol id="ic-brain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-5 0V12a2.5 2.5 0 0 1-2.5-2.5V6A2.5 2.5 0 0 1 7 3.5a2.5 2.5 0 0 1 2.5-1.5z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 5 0V12a2.5 2.5 0 0 0 2.5-2.5V6A2.5 2.5 0 0 0 17 3.5a2.5 2.5 0 0 0-2.5-1.5z"/></symbol>
+    <symbol id="ic-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></symbol>
+    <symbol id="ic-git" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M6 9v6M18 9a9 9 0 0 1-9 9"/></symbol>
+    <symbol id="ic-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></symbol>
+    <symbol id="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="ic-sync" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
+    <symbol id="ic-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></symbol>
+    <symbol id="ic-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+    <symbol id="ic-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+    <symbol id="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
+    <symbol id="ic-bulb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.3h6c0-1 .4-1.8 1-2.3A7 7 0 0 0 12 2z"/></symbol>
+    <symbol id="ic-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></symbol>
+  </defs>
+</svg>
+
 <!-- 登录 -->
 <div id="login">
+  <canvas id="plasma-bg" class="plasma-canvas" aria-hidden="true"></canvas>
   <div class="login-card">
     <div class="logo">◈ 小语<span> · AI 工作台</span></div>
     <p class="sub">输入访问令牌以连接你的 AI 工作台</p>
@@ -51,14 +88,14 @@
         <a class="dsh-switch" id="dsh-switch" target="_blank" title="切换到 dsh 引擎前台">⇄ dsh</a>
       </div>
       <div class="side-view">
-        <button class="view-btn" id="view-btn">☰ 菜单 <span id="view-current" class="view-current">会话</span> <span class="caret">▾</span></button>
+        <button class="view-btn" id="view-btn"><svg class="vi" width="15" height="15"><use href="#ic-menu"/></svg> 菜单 <span id="view-current" class="view-current">会话</span> <span class="caret">▾</span></button>
         <div class="view-menu" id="view-menu" hidden>
-          <div class="view-item" data-view="sessions">☰ 会话历史</div>
-          <div class="view-item" data-view="activity">⚡ 小语活动</div>
-          <div class="view-item" data-view="skills">⚡ 技能</div>
-          <div class="view-item" data-view="engine">🧩 引擎</div>
-          <div class="view-item" data-view="code">💻 代码模式</div>
-          <div class="view-item" data-view="workspace" data-nav="/workspace">📦 工作空间</div>
+          <div class="view-item" data-view="sessions"><svg class="vi" width="15" height="15"><use href="#ic-chat"/></svg> 会话历史</div>
+          <div class="view-item" data-view="activity"><svg class="vi" width="15" height="15"><use href="#ic-bolt"/></svg> 小语活动</div>
+          <div class="view-item" data-view="skills"><svg class="vi" width="15" height="15"><use href="#ic-bolt"/></svg> 技能</div>
+          <div class="view-item" data-view="engine"><svg class="vi" width="15" height="15"><use href="#ic-puzzle"/></svg> 引擎</div>
+          <div class="view-item" data-view="code"><svg class="vi" width="15" height="15"><use href="#ic-code"/></svg> 代码模式</div>
+          <div class="view-item" data-view="workspace" data-nav="/workspace"><svg class="vi" width="15" height="15"><use href="#ic-box"/></svg> 工作空间</div>
         </div>
       </div>
       <div class="side-body">
@@ -68,20 +105,20 @@
           <div id="session-list"></div>
         </div>
         <div class="tab-panel" id="panel-activity" hidden>
-          <div class="ft-head"><span>⚡ 小语活动</span><button class="ft-refresh" id="act-refresh" title="刷新">↻</button></div>
+          <div class="ft-head"><span><svg class="vi" width="14" height="14"><use href="#ic-bolt"/></svg> 小语活动</span><button class="ft-refresh" id="act-refresh" title="刷新"><svg class="vi" width="14" height="14"><use href="#ic-refresh"/></svg></button></div>
           <div id="act-status"></div>
           <div id="act-list" style="padding-top:6px"></div>
         </div>
         <div class="tab-panel" id="panel-skills" hidden>
-          <div class="ft-head"><span>⚡ 技能</span><button class="ft-refresh" id="sk-refresh" title="刷新">↻</button></div>
+          <div class="ft-head"><span><svg class="vi" width="14" height="14"><use href="#ic-bolt"/></svg> 技能</span><button class="ft-refresh" id="sk-refresh" title="刷新"><svg class="vi" width="14" height="14"><use href="#ic-refresh"/></svg></button></div>
           <div id="skill-list"></div>
         </div>
         <div class="tab-panel" id="panel-engine" hidden>
-          <div class="ft-head"><span>🧩 插件化引擎</span><button class="ft-refresh" id="eng-refresh" title="刷新">↻</button></div>
+          <div class="ft-head"><span><svg class="vi" width="14" height="14"><use href="#ic-puzzle"/></svg> 插件化引擎</span><button class="ft-refresh" id="eng-refresh" title="刷新"><svg class="vi" width="14" height="14"><use href="#ic-refresh"/></svg></button></div>
           <div id="eng-status"></div>
         </div>
         <div class="tab-panel" id="panel-code" hidden>
-          <div class="ft-head"><span>💻 代码模式</span><button class="ft-refresh" id="code-refresh" title="刷新">↻</button></div>
+          <div class="ft-head"><span><svg class="vi" width="14" height="14"><use href="#ic-code"/></svg> 代码模式</span><button class="ft-refresh" id="code-refresh" title="刷新"><svg class="vi" width="14" height="14"><use href="#ic-refresh"/></svg></button></div>
           <div id="code-tools"></div>
           <textarea id="code-editor" spellcheck="false" placeholder="// 写一段程序编排工具，顶层 await/return 可用&#10;// 例：const r = await $tools.bash('dir'); console.log(r.text); return r.text;"></textarea>
           <div style="display:flex;gap:8px;padding:6px 0">
@@ -93,7 +130,7 @@
           <div id="code-out" class="code-out"></div>
         </div>
         <div class="tab-panel" id="panel-workspace" hidden>
-          <div class="ft-head"><span>📦 工作空间</span><span style="display:flex;gap:4px"><button class="ft-refresh" id="ws-git-btn" title="Git 状态">⎇</button><button class="ft-refresh" id="ws-full-btn" title="全屏浏览">⛶</button><button class="ft-refresh" id="ws-new-proj" title="新建项目">＋项目</button><button class="ft-refresh" id="ws-refresh" title="刷新">↻</button></span></div>
+          <div class="ft-head"><span><svg class="vi" width="14" height="14"><use href="#ic-box"/></svg> 工作空间</span><span style="display:flex;gap:4px"><button class="ft-refresh" id="ws-git-btn" title="Git 状态"><svg class="vi" width="14" height="14"><use href="#ic-git"/></svg></button><button class="ft-refresh" id="ws-full-btn" title="全屏浏览"><svg class="vi" width="14" height="14"><use href="#ic-box"/></svg></button><button class="ft-refresh" id="ws-new-proj" title="新建项目"><svg class="vi" width="14" height="14"><use href="#ic-plus"/></svg></button><button class="ft-refresh" id="ws-refresh" title="刷新"><svg class="vi" width="14" height="14"><use href="#ic-refresh"/></svg></button></span></div>
           <div class="ws-search-wrap"><input id="ws-search" placeholder="🔍 搜索工作空间文件…" autocomplete="off"></div>
           <div id="ws-search-results"></div>
           <div class="ws-del-head">📤 最近交付</div>
@@ -105,8 +142,8 @@
         <div class="sf-row">
           <div class="sf-label">模型</div>
           <span class="sf-actions">
-            <button class="theme-edit-btn" id="model-manage" title="管理模型 API">⚙</button>
-            <button class="theme-edit-btn" id="theme-edit" title="打开主题编辑器">🎨</button>
+            <button class="theme-edit-btn" id="model-manage" title="管理模型 API"><svg class="vi" width="15" height="15"><use href="#ic-gear"/></svg></button>
+            <button class="theme-edit-btn" id="theme-edit" title="打开主题编辑器"><svg class="vi" width="15" height="15"><use href="#ic-palette"/></svg></button>
           </span>
         </div>
         <div class="box">
@@ -117,7 +154,7 @@
           <span class="mlabel">主题</span>
           <button class="theme-toggle" id="theme-toggle" title="切换深色/浅色">🌙</button>
           <div class="swatches" id="swatches"></div>
-          <button class="theme-more" id="theme-more" title="更多主题">⋯</button>
+          <button class="theme-more" id="theme-more" title="更多主题"><svg class="vi" width="15" height="15"><use href="#ic-dots"/></svg></button>
         </div>
         <div class="sf-label">系统</div>
         <div class="info-row">
@@ -130,16 +167,16 @@
     <!-- 主区域 -->
     <main id="main">
       <div class="main-top">
-        <button class="menu-btn" id="menu-btn" title="菜单">☰</button>
+        <button class="menu-btn" id="menu-btn" title="菜单"><svg class="vi" width="17" height="17"><use href="#ic-menu"/></svg></button>
         <span class="session-name" id="session-name" title="点击重命名">新会话</span>
         <div class="spacer"></div>
         <div class="tool-more">
-          <button class="tool-btn" id="more-btn" title="更多">⋯</button>
+          <button class="tool-btn" id="more-btn" title="更多"><svg class="vi" width="17" height="17"><use href="#ic-dots"/></svg></button>
           <div class="tool-more-menu" id="more-menu" hidden>
-            <div class="tool-more-item" id="mm-export">⬇ 导出当前会话</div>
-            <div class="tool-more-item" id="mm-workshop">🧰 专项工作台</div>
-            <div class="tool-more-item" id="mm-notices">📋 关于 · 能力 · 更新</div>
-            <div class="tool-more-item" id="mm-repair">🛠 自愈修复</div>
+            <div class="tool-more-item" id="mm-export"><svg class="vi" width="15" height="15"><use href="#ic-download"/></svg> 导出当前会话</div>
+            <div class="tool-more-item" id="mm-workshop"><svg class="vi" width="15" height="15"><use href="#ic-puzzle"/></svg> 专项工作台</div>
+            <div class="tool-more-item" id="mm-notices"><svg class="vi" width="15" height="15"><use href="#ic-chat"/></svg> 关于 · 能力 · 更新</div>
+            <div class="tool-more-item" id="mm-repair"><svg class="vi" width="15" height="15"><use href="#ic-gear"/></svg> 自愈修复</div>
           </div>
         </div>
         <div class="emo-pill" id="emo-pill" title="小语情绪状态"><span class="emo-ico" id="emo-ico">🧘</span></div>
@@ -150,9 +187,10 @@
       <div class="compact-banner" id="compact-banner" hidden>
         <span id="compact-msg">上下文占用过高</span>
         <button id="compact-now">⚡ 立即压缩</button>
-        <button class="cb-close" id="compact-dismiss" title="忽略本次">✕</button>
+        <button class="cb-close" id="compact-dismiss" title="忽略本次"><svg class="vi" width="16" height="16"><use href="#ic-close"/></svg></button>
       </div>
 
+      <canvas id="welcome-bg" class="welcome-canvas" aria-hidden="true" hidden></canvas>
       <div id="messages">
         <div class="welcome">
           <div class="w-logo">语</div>
@@ -205,18 +243,18 @@
           <input type="file" id="local-file" multiple hidden>
           <div class="input-foot">
             <div class="attach-drop" id="attach-drop">
-              <button class="tool-btn" id="btn-more-input" title="更多">+</button>
+              <button class="tool-btn" id="btn-more-input" title="更多"><svg class="vi" width="16" height="16"><use href="#ic-plus"/></svg></button>
               <div class="attach-drop-menu" id="attach-drop-menu" hidden>
-                <div class="attach-item" id="dd-file">📎 引用文件</div>
-                <div class="attach-item" id="dd-cmd">⚡ 斜杠命令</div>
-                <div class="attach-item" id="dd-params">⚙ 模型参数</div>
-                <div class="attach-item" id="dd-voice">🎤 语音输入</div>
+                <div class="attach-item" id="dd-file"><svg class="vi" width="15" height="15"><use href="#ic-file"/></svg> 引用文件</div>
+                <div class="attach-item" id="dd-cmd"><svg class="vi" width="15" height="15"><use href="#ic-terminal"/></svg> 斜杠命令</div>
+                <div class="attach-item" id="dd-params"><svg class="vi" width="15" height="15"><use href="#ic-gear"/></svg> 模型参数</div>
+                <div class="attach-item" id="dd-voice"><svg class="vi" width="15" height="15"><use href="#ic-bolt"/></svg> 语音输入</div>
               </div>
             </div>
             <div class="spacer"></div>
-            <button class="tool-btn" id="btn-exthink" title="外部思考调试：让模型把推理草稿写出来（默认关）">🧠</button>
+            <button class="tool-btn" id="btn-exthink" title="外部思考调试：让模型把推理草稿写出来（默认关）"><svg class="vi" width="16" height="16"><use href="#ic-brain"/></svg></button>
             <button class="tool-btn model-btn" id="input-model" title="切换当前模型">◈ <span id="input-model-name">…</span></button>
-            <button id="send" title="发送（Enter）" hidden>↩</button>
+            <button id="send" title="发送（Enter）" hidden><svg class="vi" width="16" height="16"><use href="#ic-send"/></svg></button>
           </div>
         </div>
       </div>
@@ -242,7 +280,7 @@
 <!-- 主题编辑器 -->
 <div class="modal-overlay" id="theme-modal">
   <div class="modal">
-    <div class="modal-head">🎨 主题编辑器 <button class="close" id="theme-close">✕</button></div>
+    <div class="modal-head"><svg class="vi" width="17" height="17"><use href="#ic-palette"/></svg> 主题编辑器 <button class="close" id="theme-close"><svg class="vi" width="16" height="16"><use href="#ic-close"/></svg></button></div>
     <div class="modal-body">
       <div class="theme-list-col">
         <div class="tl-label">预设</div>
@@ -296,7 +334,7 @@
   <div class="modal fr-modal">
     <div class="modal-head fr-head">
       <div class="fr-title"><span class="fr-logo">🔑</span><div><div class="fr-title-main">配置模型密钥</div><div class="fr-title-sub">pi + dsh 双引擎，一次配好</div></div></div>
-      <button class="close" id="fr-close">✕</button>
+      <button class="close" id="fr-close"><svg class="vi" width="16" height="16"><use href="#ic-close"/></svg></button>
     </div>
     <div class="fv-content fr-body">
       <div class="fr-status">
@@ -348,7 +386,7 @@
 
 <div class="modal-overlay" id="model-modal">
   <div class="modal modal-model">
-    <div class="modal-head">⚙ 模型管理 <button class="close" id="mm-close">✕</button></div>
+    <div class="modal-head"><svg class="vi" width="17" height="17"><use href="#ic-gear"/></svg> 模型管理 <button class="close" id="mm-close"><svg class="vi" width="16" height="16"><use href="#ic-close"/></svg></button></div>
     <div class="mm-body">
       <div class="mm-label">已配置 API</div>
       <div id="mm-providers"></div>
@@ -377,7 +415,7 @@
 <!-- 搜索面板 -->
 <div class="modal-overlay" id="search-modal">
   <div class="modal modal-search">
-    <div class="modal-head">🔍 搜索所有会话 <button class="close" id="search-close">✕</button></div>
+    <div class="modal-head"><svg class="vi" width="17" height="17"><use href="#ic-search"/></svg> 搜索所有会话 <button class="close" id="search-close"><svg class="vi" width="16" height="16"><use href="#ic-close"/></svg></button></div>
     <input id="search-input" type="text" placeholder="输入关键词（Ctrl+K 呼出）…" autocomplete="off">
     <div id="search-results"></div>
   </div>
@@ -386,7 +424,7 @@
 <!-- Git 面板 -->
 <div class="modal-overlay" id="git-modal">
   <div class="modal modal-git">
-    <div class="modal-head">⎇ Git <button class="close" id="git-close">✕</button></div>
+    <div class="modal-head"><svg class="vi" width="17" height="17"><use href="#ic-git"/></svg> Git <button class="close" id="git-close"><svg class="vi" width="16" height="16"><use href="#ic-close"/></svg></button></div>
     <div class="git-tabs">
       <button class="git-tab active" id="git-tab-status">状态</button>
       <button class="git-tab" id="git-tab-diff">Diff</button>
@@ -398,7 +436,7 @@
 <!-- 统计面板 -->
 <div class="modal-overlay" id="stats-modal">
   <div class="modal modal-sm">
-    <div class="modal-head">📊 会话统计 <button class="close" id="stats-close">✕</button></div>
+    <div class="modal-head"><svg class="vi" width="17" height="17"><use href="#ic-chat"/></svg> 会话统计 <button class="close" id="stats-close"><svg class="vi" width="16" height="16"><use href="#ic-close"/></svg></button></div>
     <div class="stats-body" id="stats-body"></div>
   </div>
 </div>
@@ -406,7 +444,7 @@
 <!-- 全局用量看板 -->
 <div class="modal-overlay" id="gstats-modal">
   <div class="modal modal-gstats">
-    <div class="modal-head">📈 全局用量 · 所有会话 <button class="close" id="gstats-close">✕</button></div>
+    <div class="modal-head"><svg class="vi" width="17" height="17"><use href="#ic-box"/></svg> 全局用量 · 所有会话 <button class="close" id="gstats-close"><svg class="vi" width="16" height="16"><use href="#ic-close"/></svg></button></div>
     <div class="gstats-body" id="gstats-body">加载中…</div>
   </div>
 </div>
@@ -414,7 +452,7 @@
 <!-- 自定义斜杠命令管理 -->
 <div class="modal-overlay" id="slash-manage-modal">
   <div class="modal modal-slash">
-    <div class="modal-head">⚡ 自定义斜杠命令 <button class="close" id="sm-close">✕</button></div>
+    <div class="modal-head"><svg class="vi" width="17" height="17"><use href="#ic-terminal"/></svg> 自定义斜杠命令 <button class="close" id="sm-close"><svg class="vi" width="16" height="16"><use href="#ic-close"/></svg></button></div>
     <div class="sm-body">
       <div class="mm-label">我的命令（/xxx 插入到输入框）</div>
       <div id="sm-list"></div>
@@ -435,7 +473,7 @@
 <!-- 快捷键面板 -->
 <div class="modal-overlay" id="keys-modal">
   <div class="modal modal-keys">
-    <div class="modal-head">⌨️ 快捷键 <button class="close" id="keys-close">✕</button></div>
+    <div class="modal-head"><svg class="vi" width="17" height="17"><use href="#ic-code"/></svg> 快捷键 <button class="close" id="keys-close"><svg class="vi" width="16" height="16"><use href="#ic-close"/></svg></button></div>
     <div class="keys-body" id="keys-body"></div>
   </div>
 </div>
@@ -443,17 +481,17 @@
 <!-- 文件预览 -->
 <div class="modal-overlay" id="fileview-modal">
   <div class="modal modal-file">
-    <div class="modal-head"><span id="fv-title">文件</span><button class="close" id="fv-close">✕</button></div>
+    <div class="modal-head"><span id="fv-title">文件</span><button class="close" id="fv-close"><svg class="vi" width="16" height="16"><use href="#ic-close"/></svg></button></div>
     <div class="fv-meta" id="fv-meta"></div>
     <div class="fv-content" id="fv-content"></div>
     <div class="fv-actions">
-      <button id="fv-download" style="color:#4ec9b0">⬇ 下载</button>
-      <button id="fv-copy">📋 复制内容</button>
+      <button id="fv-download" style="color:#4ec9b0"><svg class="vi" width="15" height="15"><use href="#ic-download"/></svg> 下载</button>
+      <button id="fv-copy"><svg class="vi" width="15" height="15"><use href="#ic-copy"/></svg> 复制内容</button>
       <button id="fv-ref">@ 引用到对话</button>
-      <button id="fv-deliver">📦 一键交付</button>
-      <button id="fv-convert">🔄 转 Markdown</button>
-      <button id="fv-edit">✏️ 编辑</button>
-      <button id="fv-delete" style="color:#ff6b6b">🗑 删除</button>
+      <button id="fv-deliver"><svg class="vi" width="15" height="15"><use href="#ic-box"/></svg> 一键交付</button>
+      <button id="fv-convert"><svg class="vi" width="15" height="15"><use href="#ic-sync"/></svg> 转 Markdown</button>
+      <button id="fv-edit"><svg class="vi" width="15" height="15"><use href="#ic-edit"/></svg> 编辑</button>
+      <button id="fv-delete" style="color:#ff6b6b"><svg class="vi" width="15" height="15"><use href="#ic-trash"/></svg> 删除</button>
     </div>
   </div>
 </div>
@@ -465,7 +503,7 @@
       <span class="wsfull-title">📦 工作空间</span>
       <span class="spacer"></span>
       <input id="wsfull-search" class="wsfull-search" placeholder="🔍 搜索文件…">
-      <button class="close" id="wsfull-close">✕</button>
+      <button class="close" id="wsfull-close"><svg class="vi" width="16" height="16"><use href="#ic-close"/></svg></button>
     </div>
     <div class="wsfull-body">
       <div class="wsfull-side">
@@ -489,7 +527,7 @@
 <!-- 系统说明 -->
 <div class="modal-overlay" id="sysinfo-modal">
   <div class="modal modal-file" style="max-width:560px">
-    <div class="modal-head"><span id="si-title">ⓘ 关于小语</span><button class="close" id="si-close">✕</button></div>
+    <div class="modal-head"><span id="si-title">ⓘ 关于小语</span><button class="close" id="si-close"><svg class="vi" width="16" height="16"><use href="#ic-close"/></svg></button></div>
     <div class="fv-content markdown" id="si-content" style="max-height:62vh"></div>
   </div>
 </div>
@@ -497,7 +535,7 @@
 <!-- 更新与能力看板 -->
 <div class="modal-overlay" id="notices-modal">
   <div class="modal modal-file" style="max-width:600px">
-    <div class="modal-head"><span>🔔 更新与能力看板</span><button class="close" id="nt-close">✕</button></div>
+    <div class="modal-head"><span><svg class="vi" width="16" height="16"><use href="#ic-chat"/></svg> 更新与能力看板</span><button class="close" id="nt-close"><svg class="vi" width="16" height="16"><use href="#ic-close"/></svg></button></div>
     <div class="fv-content markdown" id="nt-content" style="max-height:60vh"></div>
   </div>
 </div>
@@ -505,7 +543,7 @@
 <!-- 自愈修复 -->
 <div class="modal-overlay" id="repair-modal">
   <div class="modal modal-file" style="max-width:560px">
-    <div class="modal-head"><span>🛠 自愈修复</span><button class="close" id="rp-close">✕</button></div>
+    <div class="modal-head"><span><svg class="vi" width="16" height="16"><use href="#ic-gear"/></svg> 自愈修复</span><button class="close" id="rp-close"><svg class="vi" width="16" height="16"><use href="#ic-close"/></svg></button></div>
     <div class="fv-content" id="rp-log" style="max-height:50vh;white-space:pre-wrap"></div>
   </div>
 </div>
@@ -513,7 +551,7 @@
 <!-- 技能详情 -->
 <div class="modal-overlay" id="skill-modal">
   <div class="modal modal-file">
-    <div class="modal-head"><span id="sk-title">技能</span><button class="close" id="sk-close">✕</button></div>
+    <div class="modal-head"><span id="sk-title">技能</span><button class="close" id="sk-close"><svg class="vi" width="16" height="16"><use href="#ic-close"/></svg></button></div>
     <div class="fv-meta" id="sk-meta"></div>
     <pre class="fv-content" id="sk-content"></pre>
     <div class="fv-actions">
@@ -525,7 +563,7 @@
 <!-- 通用输入/确认弹窗（替代原生 prompt/confirm，样式统一且不阻塞主线程） -->
 <div class="modal-overlay" id="app-prompt-modal">
   <div class="modal modal-file" style="width:420px;max-width:92vw">
-    <div class="modal-head"><span id="app-prompt-title">输入</span><button class="close" id="app-prompt-close">✕</button></div>
+    <div class="modal-head"><span id="app-prompt-title">输入</span><button class="close" id="app-prompt-close"><svg class="vi" width="16" height="16"><use href="#ic-close"/></svg></button></div>
     <div class="modal-body" style="padding:14px 18px;display:block">
       <div id="app-prompt-msg" style="color:var(--dim);font-size:13px;margin-bottom:10px;white-space:pre-wrap"></div>
       <input id="app-prompt-input" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel-2);color:var(--text);font-size:14px" autocomplete="off">
@@ -538,6 +576,7 @@
 </div>
 
 <script src="/static/js/core.js?v=231"></script>
+<script src="/static/js/webgl-bg.js?v=1"></script>
 <script src="/static/js/registry.js?v=230"></script>
 <script src="/static/js/theme.js?v=236"></script>
 <script src="/static/js/chat.js?v=242"></script>

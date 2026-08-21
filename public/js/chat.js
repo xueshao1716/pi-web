@@ -446,6 +446,7 @@ if (typeof document !== "undefined") {
 }
 
 function renderMessages(msgs) {
+  hideWelcomeBg();
   histMsgs = msgs || [];
   histLoaded = Math.min(HIST_PAGE, histMsgs.length);
   renderHistoryWindow();
@@ -697,6 +698,7 @@ async function newSession() {
 }
 // 新会话引导界面：说明前端是什么、能干什么、怎么操作、当前模型
 function renderWelcome() {
+  showWelcomeBg();
   const sel = $("model-select");
   const cur = sel.selectedOptions[0];
   const curModel = cur ? cur.dataset.provider + "/" + cur.dataset.modelId : "…";
@@ -719,6 +721,21 @@ function renderWelcome() {
   $("w-new").addEventListener("click", newSession);
   $("w-file").addEventListener("click", welcomeAt);
   $("w-cmd").addEventListener("click", welcomeSlash);
+}
+// ── 欢迎页 WebGL 背景控制：欢迎态显示/启动，进入会话后隐藏/停止 ──
+let welcomeBgCtrl = null;
+function showWelcomeBg() {
+  const canvas = $("welcome-bg");
+  if (!canvas) return;
+  if (!welcomeBgCtrl && window.initPlasmaBg) welcomeBgCtrl = window.initPlasmaBg(canvas, { alpha: 0.55 });
+  canvas.hidden = false;
+  if (welcomeBgCtrl) welcomeBgCtrl.start();
+  requestAnimationFrame(() => { if (welcomeBgCtrl) welcomeBgCtrl.resize(); });
+}
+function hideWelcomeBg() {
+  const canvas = $("welcome-bg");
+  if (canvas) canvas.hidden = true;
+  if (welcomeBgCtrl) welcomeBgCtrl.stop();
 }
 // 渲染最新的未命名流式会话（存在多个新会话并发时取最新）
 function renderLatestNewStream() {
@@ -846,6 +863,7 @@ function onToolEnd(sid, toolCallId, isError, output) {
 // 切换/重建视图：把数据层某个会话的进行中状态完整渲染到 #messages
 // includeUser=true 时先渲染用户消息（新会话无历史；历史会话的历史里已有）
 function renderStreamView(sid, includeUser = false) {
+  hideWelcomeBg();
   const st = streams.get(sid);
   if (!st) return;
   if (includeUser && st.userText) addUserMsg(st.userText);
