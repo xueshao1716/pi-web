@@ -49,6 +49,9 @@ export function lastReplyOf(sessionKey, sessionFile) {
 /** 复读判定：与上一条完整回复（归一化后）完全相同；短回复(<30字符)不判防误伤 */
 export function isRepeatReply(sessionKey, text, sessionFile) {
   if (!text || normReply(text).length < 30) return false;
+  // 2026-08-21 修复误判：身份类固定格式回答（"我叫小语/当前使用模型是"）天然重复（连续问"你是谁"回答一致）
+  // 不算复读——身份格式回答重复是预期行为，守卫只针对"内容循环"（复读机）
+  if (/我叫小语|当前使用模型是|当前使用模型：/.test(normReply(text))) return false;
   const last = lastReplyOf(sessionKey, sessionFile);
   return !!last && last === normReply(text);
 }
