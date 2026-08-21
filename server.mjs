@@ -1088,7 +1088,7 @@ async function handleChat(req, res, body) {
       const featText = features.length ? features.join(" · ") : "标准模型";
       const modelName = m?.name || m?.id || "未知";
       const providerName = m?.provider ? `（${m.provider}）` : "";
-      promptMsg = `（自我认知指令）用户问了身份类问题。请按固定格式回答，不要展开、不要加开场白以外的内容：
+      promptMsg = `（自我认知指令）用户问了身份类问题。请按固定格式回答。硬性要求：①完整输出下面这段格式后立即结束，不要追加任何内容；②禁止调用任何工具/搜索/读文件；③不要输出过程性文字（如"我去查"）。格式如下：
 "我叫小语，你的 AI 工作伙伴。我能干：写代码、做设计、整理文档、分析数据，并直接操作工作空间完成交付。由 pi 引擎驱动。当前使用模型是：${modelName}${providerName}。模型特色：${featText}。"
 回答完直接等用户下一步指令。
 
