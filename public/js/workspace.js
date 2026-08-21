@@ -2,6 +2,12 @@
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 // ══ 工作空间面板（目录树 + 文件预览）══
 const WS_ICONS = { "工程": "🏗", "生成物": "🖼", "文档": "📄", "交付": "📦", "外网分享": "📡", "收发文件": "📥" };
+// 工作区分类名 → sprite 图标名（文件树 innerHTML 用矢量图标）
+const WS_ICON_SPRITE = { "工程": "box", "生成物": "image", "文档": "file", "交付": "box", "外网分享": "git", "收发文件": "download" };
+function wsIcon(name, isDir) {
+  if (!isDir) return ICON("file", 14);
+  return ICON(WS_ICON_SPRITE[name] || "folder", 14);
+}
 // 分类定义：顶层面板按工作区分类分区展示（借鉴 VS Code/飞书云文档）
 const WS_CATEGORIES = [
   { name: "工程", icon: "🏗", match: (n) => n === "工程" },
@@ -71,7 +77,7 @@ function wsItem(it, depth) {
   el.className = "ft-item " + it.type;
   el.style.paddingLeft = (8 + depth * 14) + "px";
   const isDir = it.type === "dir";
-  el.innerHTML = `<span class="ft-arrow">${isDir ? "▸" : ""}</span><span class="ft-ico">${isDir ? (WS_ICONS[it.name] || "📁") : "📄"}</span><span class="ft-name">${esc(it.name)}</span>`;
+  el.innerHTML = `<span class="ft-arrow">${isDir ? "▸" : ""}</span><span class="ft-ico">${wsIcon(it.name, isDir)}</span><span class="ft-name">${esc(it.name)}</span>`;
   if (isDir) {
     const childBox = document.createElement("div");
     childBox.hidden = true;
@@ -108,7 +114,7 @@ async function openWsFile(it) {
   // PDF：浏览器原生预览（iframe）
   if (ext === "pdf") {
     currentPreviewFile = it.path;
-    $("fv-title").textContent = "📄 " + it.name;
+    $("fv-title").innerHTML = ICON("file", 14) + " " + esc(it.name);
     $("fv-meta").textContent = it.path + " · PDF";
     $("fv-content").innerHTML = `<iframe src="${url}" style="width:100%;height:60vh;border:none;border-radius:8px;background:#fff"></iframe>`;
     $("fileview-modal").classList.add("show");
@@ -117,7 +123,7 @@ async function openWsFile(it) {
   // Office：服务端解析为文本
   if (["docx","xlsx","pptx"].includes(ext)) {
     try {
-      $("fv-title").textContent = "📄 " + it.name;
+      $("fv-title").innerHTML = ICON("file", 14) + " " + esc(it.name);
       $("fv-meta").textContent = it.path + " · 解析中…";
       $("fv-content").textContent = "解析文档…";
       $("fileview-modal").classList.add("show");
@@ -133,7 +139,7 @@ async function openWsFile(it) {
   try {
     const data = await api("/api/ws/read?path=" + encodeURIComponent(it.path));
     currentPreviewFile = it.path;
-    $("fv-title").textContent = "📄 " + it.name;
+    $("fv-title").innerHTML = ICON("file", 14) + " " + esc(it.name);
     $("fv-meta").textContent = it.path + " · " + data.content.length + " 字符";
     if (ext === "md") { $("fv-content").className = "fv-content markdown"; $("fv-content").innerHTML = renderSimpleMd(data.content); }
     else { $("fv-content").className = "fv-content"; $("fv-content").textContent = data.content; }
@@ -462,7 +468,7 @@ function wsFullItem(it, depth) {
   el.className = "ft-item " + it.type;
   el.style.paddingLeft = (8 + depth * 14) + "px";
   const isDir = it.type === "dir";
-  el.innerHTML = `<span class="ft-arrow">${isDir ? "▸" : ""}</span><span class="ft-ico">${isDir ? (WS_ICONS[it.name] || "📁") : "📄"}</span><span class="ft-name">${esc(it.name)}</span>`;
+  el.innerHTML = `<span class="ft-arrow">${isDir ? "▸" : ""}</span><span class="ft-ico">${wsIcon(it.name, isDir)}</span><span class="ft-name">${esc(it.name)}</span>`;
   if (isDir) {
     const childBox = document.createElement("div");
     childBox.hidden = true;

@@ -2,15 +2,15 @@
 // ══ 会话搜索 + 命令面板（Ctrl+K，借鉴 Raycast/Linear 的命令面板）══
 let searchTimer = null;
 const PALETTE_CMDS = [
-  { icon: "＋", label: "新建会话", kbd: "Ctrl+N", run: () => { newSession(); } },
-  { icon: "🔍", label: "搜索会话…（输入关键词）", kbd: "", run: () => $("search-input").focus() },
-  { icon: "📈", label: "全局用量看板（所有会话）", kbd: "", run: () => openGlobalStats() },
-  { icon: "⚡", label: "管理自定义斜杠命令", kbd: "", run: () => openSlashManage() },
-  { icon: "🎨", label: "打开主题编辑器", kbd: "", run: () => openThemeModal() },
-  { icon: "⚙", label: "模型管理（API Key / Base URL）", kbd: "", run: () => openModelManage() },
-  { icon: "⬇", label: "导出当前会话", kbd: "", run: () => $("mm-export")?.click() },
-  { icon: "📊", label: "会话统计（token/成本）", kbd: "", run: () => openStats() },
-  { icon: "⌨️", label: "快捷键面板", kbd: "Ctrl+/", run: () => openKeysPanel() },
+  { icon: "plus", label: "新建会话", kbd: "Ctrl+N", run: () => { newSession(); } },
+  { icon: "search", label: "搜索会话…（输入关键词）", kbd: "", run: () => $("search-input").focus() },
+  { icon: "box", label: "全局用量看板（所有会话）", kbd: "", run: () => openGlobalStats() },
+  { icon: "terminal", label: "管理自定义斜杠命令", kbd: "", run: () => openSlashManage() },
+  { icon: "palette", label: "打开主题编辑器", kbd: "", run: () => openThemeModal() },
+  { icon: "gear", label: "模型管理（API Key / Base URL）", kbd: "", run: () => openModelManage() },
+  { icon: "download", label: "导出当前会话", kbd: "", run: () => $("mm-export")?.click() },
+  { icon: "chat", label: "会话统计（token/成本）", kbd: "", run: () => openStats() },
+  { icon: "code", label: "快捷键面板", kbd: "Ctrl+/", run: () => openKeysPanel() },
 ];
 function renderPaletteCommands() {
   const box = $("search-results");
@@ -22,7 +22,7 @@ function renderPaletteCommands() {
   for (const c of PALETTE_CMDS) {
     const el = document.createElement("div");
     el.className = "pal-item";
-    el.innerHTML = `<span class="pi-ico">${c.icon}</span><span>${c.label}</span>${c.kbd ? `<span class="pi-kbd">${c.kbd}</span>` : ""}`;
+    el.innerHTML = `<span class="pi-ico">${ICON(c.icon, 15)}</span><span>${c.label}</span>${c.kbd ? `<span class="pi-kbd">${c.kbd}</span>` : ""}`;
     el.addEventListener("click", () => { closeSearch(); c.run(); });
     box.appendChild(el);
   }
@@ -521,7 +521,7 @@ async function renderDir(p, container, depth) {
       el.className = "ft-item " + it.type;
       el.style.paddingLeft = (8 + depth * 14) + "px";
       const isDir = it.type === "dir";
-      el.innerHTML = `<span class="ft-arrow">${isDir ? "▸" : ""}</span><span class="ft-ico">${isDir ? "📁" : "📄"}</span><span class="ft-name">${esc(it.name)}</span>`;
+      el.innerHTML = `<span class="ft-arrow">${isDir ? "▸" : ""}</span><span class="ft-ico">${isDir ? ICON("folder", 14) : ICON("file", 14)}</span><span class="ft-name">${esc(it.name)}</span>`;
       if (isDir) {
         const childBox = document.createElement("div");
         childBox.hidden = true;
@@ -557,7 +557,7 @@ async function openFilePreview(p) {
   try {
     const data = await api("/api/fs/read?path=" + encodeURIComponent(p));
     currentPreviewFile = p;
-    $("fv-title").textContent = "📄 " + (p.split("/").pop() || p);
+    $("fv-title").innerHTML = ICON("file", 14) + " " + esc(p.split("/").pop() || p);
     $("fv-meta").textContent = p + " · " + data.content.length + " 字符";
     $("fv-content").textContent = data.content;
     // 语法诊断（借鉴 Windsurf 的实时检查）：JS/HTML/CSS 在浏览器里快速 lint

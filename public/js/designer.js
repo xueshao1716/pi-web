@@ -11,8 +11,8 @@ async function loadWsDeliveries() {
     for (const it of items) {
       const el = document.createElement("div");
       el.className = "ws-del-item";
-      el.innerHTML = `<span>${it.type === "dir" ? "📁" : "🗜"} ${esc(it.name)}</span>` +
-        (it.type === "file" ? `<button class="ft-refresh" title="下载">⬇</button>` : `<button class="ft-refresh" title="打包下载">🗜</button>`);
+      el.innerHTML = `<span>${it.type === "dir" ? ICON("folder", 13) : ICON("file", 13)} ${esc(it.name)}</span>` +
+        (it.type === "file" ? `<button class="ft-refresh" title="下载">${ICON("download", 13)}</button>` : `<button class="ft-refresh" title="打包下载">${ICON("box", 13)}</button>`);
       el.querySelector("button").addEventListener("click", (e) => {
         e.stopPropagation();
         window.open(apiUrl("/api/ws/deliver/package"), "_blank");

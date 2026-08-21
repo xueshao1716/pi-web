@@ -1,5 +1,10 @@
 // ===== core.js（从 app.js 拆分，全局作用域，保持原逻辑不变）=====
 const $ = id => document.getElementById(id);
+// ══ 内联 SVG 图标 helper：`ICON(name, size)` 返回 <svg><use href="#ic-name"> 标记，
+//    引用 index.html 顶部 sprite（同文档 #id，innerHTML 注入也有效），currentColor 跟随主题。
+function ICON(name, size = 16, extra = "") {
+  return `<svg class="vi" width="${size}" height="${size}"${extra ? ` ${extra}` : ""}><use href="#ic-${name}"/></svg>`;
+}
 // 2026-08-21 修复外网报错：localStorage 不可用（隐私模式/禁 cookie）时不能中断 core.js（否则 apiUrl 未定义）
 function safeGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
 let token = (new URLSearchParams(location.search).get("token") || safeGet("pi_web_token") || "");

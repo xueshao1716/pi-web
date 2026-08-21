@@ -293,9 +293,9 @@ function appendSessionItem(body, s) {
       <span class="s-name">${esc(s.name)}</span>
       <span class="s-date">${fmtDate(s.updatedAt)}</span>
     </div>
-    <span class="s-pin ${pinnedIds.has(s.id) ? "pinned" : ""}" title="置顶">📌</span>
-    <span class="s-arch" title="归档到项目">📁</span>
-    <span class="s-del" title="删除会话">✕</span>`;
+    <span class="s-pin ${pinnedIds.has(s.id) ? "pinned" : ""}" title="置顶">${ICON("pin", 13)}</span>
+    <span class="s-arch" title="归档到项目">${ICON("folder", 13)}</span>
+    <span class="s-del" title="删除会话">${ICON("close", 12)}</span>`;
   el.addEventListener("click", () => selectSession(s.id));
   el.querySelector(".s-pin").addEventListener("click", (e) => { e.stopPropagation(); togglePin(s.id); });
   el.querySelector(".s-arch").addEventListener("click", (e) => { e.stopPropagation(); showArchMenu(s.id, e.target); });
@@ -708,8 +708,8 @@ function renderWelcome() {
     <div class="sub">基于 pi 引擎的 AI 工作伙伴 · 会话 / 工具 / 媒体 / 工作空间</div>
     <div class="w-model">当前模型：<b>${esc(curModel)}</b></div>
     <div class="w-feats">
-      <span>💬 多模型对话</span><span>🛠 编程工具</span><span>🖼 媒体生成</span>
-      <span>📦 工作空间</span><span>📄 文档解析</span><span>🌳 会话管理</span>
+      <span>${ICON("chat", 14)} 多模型对话</span><span>${ICON("terminal", 14)} 编程工具</span><span>${ICON("image", 14)} 媒体生成</span>
+      <span>${ICON("box", 14)} 工作空间</span><span>${ICON("file", 14)} 文档解析</span><span>${ICON("tree", 14)} 会话管理</span>
     </div>
     <div class="w-hint">直接输入问题开始对话 · <code>@</code> 引用文件 · <code>/</code> 查看命令</div>
     <div class="w-actions">

@@ -21,7 +21,7 @@ async function loadFsDir(p) {
     for (const it of data.items) {
       const el = document.createElement("div");
       el.className = "fp-item";
-      el.innerHTML = `<span class="fi-ico">${it.type === "dir" ? "📁" : "📄"}</span><span class="fi-name">${esc(it.name)}</span><span class="fi-path">${it.type === "dir" ? "" : esc(it.path)}</span>`;
+      el.innerHTML = `<span class="fi-ico">${it.type === "dir" ? ICON("folder", 13) : ICON("file", 13)}</span><span class="fi-name">${esc(it.name)}</span><span class="fi-path">${it.type === "dir" ? "" : esc(it.path)}</span>`;
       el.addEventListener("click", () => {
         if (it.type === "dir") { fpNavStack.push(p); loadFsDir(it.path); }
         else pickFile(it);
