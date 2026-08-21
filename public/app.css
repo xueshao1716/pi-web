@@ -2792,3 +2792,46 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .status-pill { border-radius: var(--r-pill); }
 .status-pill.idle .dot { box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 20%, transparent); }
 
+/* ══════════════════════════════════════════════════════════════════════
+   点睛层（2026-08 精修 vanilla）——只做「高冲击加载」级别的提升，不改结构
+   ① 欢迎页 stagger 编排入场（frontend-design 强调的高冲击 moment）
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── 欢迎页：编排式入场（logo→标题→副题→能力卡→操作，逐级揭示）── */
+.welcome .w-logo,
+.welcome .big,
+.welcome .sub,
+.welcome .w-model,
+.welcome .w-feats span,
+.welcome .w-hint,
+.welcome .w-actions button {
+  opacity: 0;
+  animation: welcome-in .42s cubic-bezier(.22,.9,.26,1) forwards;
+}
+/* 逐级延迟：logo 最先，操作按钮最后 */
+.welcome .w-logo { animation-delay: .02s; }
+.welcome .big   { animation-delay: .08s; }
+.welcome .sub   { animation-delay: .14s; }
+.welcome .w-model { animation-delay: .20s; }
+.welcome .w-feats span:nth-child(1) { animation-delay: .26s; }
+.welcome .w-feats span:nth-child(2) { animation-delay: .30s; }
+.welcome .w-feats span:nth-child(3) { animation-delay: .34s; }
+.welcome .w-feats span:nth-child(4) { animation-delay: .38s; }
+.welcome .w-feats span:nth-child(5) { animation-delay: .42s; }
+.welcome .w-feats span:nth-child(6) { animation-delay: .46s; }
+.welcome .w-hint { animation-delay: .5s; }
+.welcome .w-actions button:nth-child(1) { animation-delay: .56s; }
+.welcome .w-actions button:nth-child(2) { animation-delay: .62s; }
+.welcome .w-actions button:nth-child(3) { animation-delay: .68s; }
+@keyframes welcome-in {
+  from { opacity: 0; transform: translateY(8px); filter: blur(2px); }
+  to   { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+/* 尊重减少动态偏好 */
+@media (prefers-reduced-motion: reduce) {
+  .welcome .w-logo, .welcome .big, .welcome .sub, .welcome .w-model,
+  .welcome .w-feats span, .welcome .w-hint, .welcome .w-actions button {
+    opacity: 1; animation: none;
+  }
+}
+
