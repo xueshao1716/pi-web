@@ -131,6 +131,8 @@ const KEEP_MODELS = new Set([
   "openrouter/google/gemini-2.5-pro",
   "openrouter/google/gemma-3-27b-it",
   "openrouter/deepseek/deepseek-v4-pro",
+  "openrouter/stealth/ox-alpha",
+  "bigmodel/glm-5.3",
   "openrouter/deepseek/deepseek-r1",
   "openrouter/qwen/qwen3-max",
   "openrouter/qwen/qwen3.7-max",
