@@ -477,7 +477,21 @@
     background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px;
   }
   .side-foot .box .mlabel { font-size: 11px; color: var(--dim-2); flex-shrink: 0; }
-  .side-foot select { flex: 1; background: transparent; border: none; color: var(--text); font-size: 12.5px; outline: none; cursor: pointer; }
+  /* 模型下拉：限制可用宽度 + 省略号截断 + 固定下拉箭头（避免拉伸过宽/箭头跑偏） */
+  .side-foot select {
+    flex: 1; min-width: 0; max-width: 100%;
+    background: transparent; border: none; color: var(--text); font-size: 12.5px; outline: none; cursor: pointer;
+    text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
+    appearance: none; -webkit-appearance: none; -moz-appearance: none;
+    padding-right: 22px; /* 给箭头留位 */
+  }
+  .side-foot .box { position: relative; }
+  .side-foot .box::after {
+    content: ""; position: absolute; right: 10px; top: 50%; transform: translateY(-55%);
+    width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent;
+    border-top: 5px solid var(--dim-2);
+    pointer-events: none;
+  }
   .side-foot select option { background: var(--panel-2); color: var(--text); }
 
   /* 主题色板 */
