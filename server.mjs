@@ -11,7 +11,7 @@ import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 
 // ── 输出质量守卫（Output Guard）：模型不可靠是默认假设（借鉴 dsh repeat-tool-reminder）──
-import { bindOutputGuardDeps, classifyAnomaly, isRepeatReply, normReply, recordReply } from "./engine/output-guard.mjs";
+import { bindOutputGuardDeps, classifyAnomaly, isRepeatReply, normReply, recordReply, sanitizeUndefined } from "./engine/output-guard.mjs";
 import { initOutputInspector, inspectOutput } from "./engine/output-inspector.mjs";
 import { initModelProbe, probeModel, pickHealthyModel } from "./engine/model-health.mjs";
 // ── Reasonix 机制（esengine/DeepSeek-Reasonix 借鉴）：工具结果压缩 / NEEDS_PRO 自报升级 / scavenge 捞回 ──
@@ -1200,7 +1200,16 @@ async function handleChat(req, res, body) {
     const rk = sessionId || findKeyByEntry(entry) || "new";
     if (sawDelta && collected) {
       const anom = classifyAnomaly({ sessionKey: rk, text: collected, think: "", sessionFile: entry.sm?.sessionFile });
-      if (anom.type === "repeat" || anom.type === "marker") {
+      if (anom.type === "undefined-leak") {
+        // undefined 污染：直接清理后接受（内容大部分正常，只清占位符，不打断）
+        const clean = sanitizeUndefined(collected);
+        if (clean && clean !== collected) {
+          console.log(`[pi-web] 清理 undefined 污染: ${collected.length} → ${clean.length} 字符`);
+          collected = clean;
+          try { writer.push("text", { text: clean }); } catch {}
+        }
+        recordReply(rk, collected);
+      } else if (anom.type === "repeat" || anom.type === "marker") {
         // 2026-08-21 AI 检测员复核：规则判异常后，检测员语义级确认 + 给针对性修正建议
         console.log(`[pi-web] 输出守卫(${anom.type}): ${effModel?.provider}/${effModel?.id} ${anom.reason} → 检测员复核`);
         const insp = await inspectOutput({ userMessage: message, output: collected, history: [] }).catch(() => null);

@@ -47,6 +47,20 @@ export function lastReplyOf(sessionKey, sessionFile) {
 }
 
 /** 复读判定：与上一条完整回复（归一化后）完全相同；短回复(<30字符)不判防误伤 */
+// 2026-08-21 清理模型输出里的 undefined 污染（独创好能力：模型把 JS 占位符拼进回复）
+// 只清"孤立"的 undefined（前后是空白/标点），不误删用户内容
+export function sanitizeUndefined(text) {
+  if (!text || !/undefined/.test(text)) return text;
+  return String(text)
+    // 行首/标点后的 undefined（含后跟中文的"undefined工作空间"）
+    .replace(/(^|[\s　，,。.；;：:！!？?（(）)])(undefined)(?=$|[\s　，,。.；;：:！!？?）)]|[一-鿿])/g, "$1")
+    // 中文/标点前的 undefined（"内容undefined结尾"）
+    .replace(/([一-鿿\s　，,。.；;：:！!？?（(）)])(undefined)(?=\s|$)/g, "$1")
+    // 清理可能留下的双空格
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 export function isRepeatReply(sessionKey, text, sessionFile) {
   if (!text || normReply(text).length < 30) return false;
   // 2026-08-21 修复误判：身份类固定格式回答（"我叫小语/当前使用模型是"）天然重复（连续问"你是谁"回答一致）
@@ -71,6 +85,7 @@ export function classifyAnomaly({ sessionKey, text, think = "", sessionFile }) {
     return { type: "empty", reason: "模型空回复（无任何正文）" };
   }
   if (MARKER_ONLY_RE.test(n)) return { type: "marker", reason: "回复仅为占位标记（交付文件类），正文为空" };
+  if (/undefined/.test(n)) return { type: "undefined-leak", reason: "输出含 undefined 占位符（模型拼错/异常泄漏）" };
   if (isRepeatReply(sessionKey, text, sessionFile)) return { type: "repeat", reason: "与上一条完整回复完全相同（repetition loop）" };
   return { type: "none", reason: "" };
 }
