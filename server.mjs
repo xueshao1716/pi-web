@@ -250,8 +250,8 @@ if (CONFIG.model) {
   defaultModel = modelList.find(m => `${m.provider}/${m.id}` === CONFIG.model) || undefined;
 }
 if (!defaultModel) {
-  defaultModel = modelList.find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id))
-    || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
+  defaultModel = modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
+    || modelList.find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id))
     || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
     || modelList[0];
 }
