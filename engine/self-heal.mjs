@@ -5,9 +5,9 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { json } from "./http-utils.mjs";
 
-let _directChat = null, _runGit = null, _cwd = "", _getModelList = () => [], _getDefaultModel = () => null, _repairFiles = [];
-export function initSelfHeal({ directChat = null, runGit = null, cwd = "", getModelList = null, getDefaultModel = null, _repairFiles = [] } = {}) {
-  _directChat = directChat; _runGit = runGit; _cwd = cwd; if (getModelList) _getModelList = getModelList; if (getDefaultModel) _getDefaultModel = getDefaultModel; _repairFiles = _repairFiles;
+let _directChat = null, _runGit = null, _cwd = "", _getModelList = () => [], _getDefaultModel = () => null, _repairFiles = [], _piPackage = "";
+export function initSelfHeal({ directChat = null, runGit = null, cwd = "", getModelList = null, getDefaultModel = null, _repairFiles = [], piPackage = "" } = {}) {
+  _directChat = directChat; _runGit = runGit; _cwd = cwd; if (getModelList) _getModelList = getModelList; if (getDefaultModel) _getDefaultModel = getDefaultModel; _repairFiles = _repairFiles; _piPackage = piPackage;
 }
 
 // ══ 自愈修复 ══
@@ -61,8 +61,8 @@ export async function handleUpdateCheck(res) {
     // 后端 pi 引擎版本：本地 vs npm 最新（用 CONFIG.piPackage 定位引擎包）
     let engineLocal = "", engineLatest = "";
     try {
-      if (CONFIG.piPackage) {
-        const pkgPath = path.join(path.dirname(CONFIG.piPackage), "..", "package.json");
+      if (_piPackage) {
+        const pkgPath = path.join(path.dirname(_piPackage), "..", "package.json");
         if (fs.existsSync(pkgPath)) {
           const v = JSON.parse(fs.readFileSync(pkgPath, "utf8")).version;
           if (v) engineLocal = String(v);
