@@ -1,12 +1,14 @@
 // ===== core.js（从 app.js 拆分，全局作用域，保持原逻辑不变）=====
 const $ = id => document.getElementById(id);
-let token = new URLSearchParams(location.search).get("token") || localStorage.getItem("pi_web_token") || "";
+// 2026-08-21 修复外网报错：localStorage 不可用（隐私模式/禁 cookie）时不能中断 core.js（否则 apiUrl 未定义）
+function safeGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
+let token = (new URLSearchParams(location.search).get("token") || safeGet("pi_web_token") || "");
 // 2026-08-20 移动端（Capacitor 壳）：API 地址可配置——URL ?api= 或 localStorage pi_api_base
 // 壳内 web 资源是本地文件，API 必须指向远程 server（公网域名或局域网 IP）
 function apiBase() {
   try {
-    return new URLSearchParams(location.search).get("api") || localStorage.getItem("pi_api_base") || "";
-  } catch { return localStorage.getItem("pi_api_base") || ""; }
+    return new URLSearchParams(location.search).get("api") || safeGet("pi_api_base") || "";
+  } catch { return safeGet("pi_api_base") || ""; }
 }
 function apiUrl(path) { return apiBase() + path; }
 let sessions = [];
