@@ -885,7 +885,10 @@ async function handleChat(req, res, body) {
   // ⚠️ 2026-08-19 防呆：auto/auto 是前端下拉默认显示值（未显式选择），不能覆盖用户已切过的具体会话模型
   //    ——否则用户切千问后，消息带的 stale "auto/auto" 会把 modelKey 打回 Auto → 路由乱跳（铁证：选了千问实际跑 mimo）
   if (typeof body.model === "string" && body.model.includes("/")) {
-    const [bp, bm] = body.model.split("/");
+    // 2026-08-21 修复：模型 id 可含 /（如 stealth/ox-alpha）——split 只拆第一段 provider，其余拼回 id
+    const slashIdx = body.model.indexOf("/");
+    const bp = body.model.slice(0, slashIdx);
+    const bm = body.model.slice(slashIdx + 1);
     try {
       if (bp === "auto" || /^auto(-smart)?$/i.test(bm)) {
         // 仅当会话本就处于 Auto（未切过具体模型）才保持；用户显式切过具体模型 → 不动，避免覆盖
