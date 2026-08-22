@@ -109,6 +109,11 @@ export function createUnifiedToolExecutor(deps = {}) {
 
   return async function executeUnifiedTool(name, args) {
     try {
+      // 外部注册的自定义工具（2026-08-22）：dsh_task 等 pi 格式工具的统一兜底执行入口
+      if (deps.extraExecutors?.[name]) {
+        const r = await deps.extraExecutors[name](args);
+        return typeof r === "object" && r !== null && "text" in r ? r : { text: String(r ?? "") };
+      }
       if (name === "think") {
         // 外部思考草稿：只记录返回给前端展示，不执行、不落盘（调试用）
         const content = String(args?.content || "").trim();

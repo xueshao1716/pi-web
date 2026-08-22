@@ -29,6 +29,38 @@ export function initUnifiedChat({ executeUnifiedTool = null, findKeyByEntry = nu
   if (getAgentDir) _getAgentDir = getAgentDir;
 }
 
+// ══ 工具调用消毒（2026-08-22 修复 400 "`function` is not set"）：
+// 上游返回的 tool_calls 可能缺 function 字段（流式截断/非标准格式），原样回传给 API 会 400，
+// 且坏消息留在历史里每轮重发 → 会话永久卡死。策略：能修补则修补（空 name 丢弃），缺 function 的条目剔除。
+export function sanitizeToolCallList(tcs) {
+  if (!Array.isArray(tcs)) return tcs;
+  return tcs
+    .map(tc => {
+      if (!tc || typeof tc !== "object") return null;
+      if (!tc.id || !tc.function || typeof tc.function !== "object") return null;
+      if (!tc.function.name) return null;
+      return { id: tc.id, type: "function", function: { name: tc.function.name, arguments: String(tc.function.arguments ?? "{}") } };
+    })
+    .filter(Boolean);
+}
+export function sanitizeToolCalls(messages) {
+  if (!Array.isArray(messages)) return messages;
+  const out = [];
+  for (const m of messages) {
+    if (m?.role === "assistant" && Array.isArray(m.tool_calls)) {
+      const fixed = sanitizeToolCallList(m.tool_calls);
+      if (fixed.length !== m.tool_calls.length) {
+        // 有坏条目：剔除坏条目后，若一条不剩则降级为纯文本消息（避免悬空的 tool 结果配对错误）
+        if (!fixed.length) { out.push({ role: "assistant", content: m.content ?? "" }); continue; }
+        out.push({ ...m, tool_calls: fixed });
+        continue;
+      }
+    }
+    out.push(m);
+  }
+  return out;
+}
+
 export async function unifiedChat(model, messages, opts = {}) {
   const auth = _readJsonFile(_authPath);
   const key = auth[model.provider]?.key;
@@ -41,7 +73,7 @@ export async function unifiedChat(model, messages, opts = {}) {
   if (!baseUrl) return { error: "无 baseUrl" };
   const base = (baseUrl || "").replace(/\/+$/, "");
   const baseNoV1 = base.endsWith("/v1") ? base.slice(0, -3) : base;
-  const history = [...messages];
+  const history = sanitizeToolCalls([...messages]);
   // 2026-08-21 修复：anthropic 协议端点（glm-5.3 等）不支持 pi 的工具格式（直测 422/400）——不传 tools 做纯对话
   // 或模型声明 compat.supportsTools:false 时同样不传
   const noTools = mdef?.api === "anthropic-messages" || mdef?.compat?.supportsTools === false;
@@ -57,11 +89,18 @@ export async function unifiedChat(model, messages, opts = {}) {
     if (mapped !== null && mapped !== false && mapped !== undefined) thinkingParam = mapped;
     else if (compat.supportsReasoningEffort !== false) thinkingParam = "high";
   }
+  // 工具表防御性归一化（2026-08-22）：混入扁平格式（pi 自定义工具）或缺 function 的条目会导致上游 400
+  const normTools = (defs) => (Array.isArray(defs) ? defs : [])
+    .filter(t => t && (t.function?.name || t.name))
+    .map(t => t.function ? t : {
+      type: "function",
+      function: { name: t.name, description: t.description || "", parameters: t.parameters || { type: "object", properties: {} } },
+    });
   const buildBody = (withThinking) => {
     const body = {
       model: model.id,
       messages: history,
-      ...(toolDefs ? { tools: toolDefs, tool_choice: "auto" } : {}),
+      ...(toolDefs ? { tools: normTools(toolDefs), tool_choice: "auto" } : {}),
       stream: false,
       max_tokens: Math.min(mdef?.maxTokens || 8192, 8192),
     };
@@ -115,7 +154,7 @@ export async function unifiedChat(model, messages, opts = {}) {
     }
     const data = await r.json();
     const msg = data.choices?.[0]?.message || {};
-    const tcs = msg.tool_calls;
+    const tcs = sanitizeToolCallList(msg.tool_calls);
     if (tcs && tcs.length && toolDefs) {
       history.push({ role: "assistant", content: msg.content || null, tool_calls: tcs });
       for (const tc of tcs) {

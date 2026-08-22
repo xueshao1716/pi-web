@@ -686,6 +686,16 @@ const executeUnifiedTool = createUnifiedToolExecutor({
   safePath: wsSafePath,
   activateSkill: (name) => execActivateSkill(name),
   timeEngine: () => timeEngine,
+  // 外部自定义工具执行器：dsh_task（pi 格式 execute → unified 结果格式）
+  extraExecutors: {
+    dsh_task: async (args) => {
+      const t = globalThis.__piWebDshTool;
+      if (!t?.execute) return { text: "[dsh] 执行臂未初始化", isError: true };
+      const r = await t.execute("unified-" + Date.now(), args || {});
+      const text = (r?.content || []).map((c) => c.text || "").join("\n").trim();
+      return { text: text || "（dsh 无输出）", isError: !!r?.isError };
+    },
+  },
 });
 
 initSessionManager({ cwd: CONFIG.cwd, sessionsDir: SESSIONS_DIR, tools: CONFIG.tools, createAgentSessionServices, createAgentSessionFromServices, getModelRuntime: () => modelRuntime, loadSessionModelKey, getModelList: () => modelList, getDefaultModel: () => defaultModel, activeSessions, SessionManager, SettingsManager, DefaultResourceLoader, getAgentDir, readJsonFile, writeJsonFile, isExternalThinking, THINK_TOOL, modelCapabilities, bindOutputGuardDeps, extractMessages, createSseWriter, unifiedChat }); // 会话管理注入
@@ -704,11 +714,25 @@ const { initDshTool } = createDshTool({
   skillsDir: path.join(__dirname, "skills"),
 });
 // 2026-08-21 注入 dsh 执行臂到统一工具集（此前只初始化未注入——双引擎名存实亡）
+// 全局引用：unified 兜底路径执行 dsh_task 用（2026-08-22）
+globalThis.__piWebDshTool = null;
 try {
   const dshTool = await initDshTool();
-  if (dshTool && !UNIFIED_TOOLS.some((t) => t?.name === dshTool.name)) {
-    UNIFIED_TOOLS.push(dshTool);
-    console.log(`[dsh] 执行臂已注入统一工具集（${dshTool.name}，并发上限 ${process.env.PI_DSH_MAX || 6}）`);
+  globalThis.__piWebDshTool = dshTool;
+  if (dshTool && !UNIFIED_TOOLS.some((t) => t?.name === dshTool.name || t?.function?.name === dshTool.name)) {
+    // ⚠️ 2026-08-22 修复 400 "`function` is not set"：dsh_tool 返回 pi 自定义工具格式（扁平 name/description），
+    // UNIFIED_TOOLS 是 OpenAI 格式（{type,function}）——原样 push 导致上游解析 tools[i].function=undefined 必 400，
+    // 且只要降级到 unifiedChat 兜底就稳定复现（所有模型、所有触发工具的消息）。
+    const openaiDef = dshTool.function ? dshTool : {
+      type: "function",
+      function: {
+        name: dshTool.name,
+        description: dshTool.description || "",
+        parameters: dshTool.parameters || { type: "object", properties: {} },
+      },
+    };
+    UNIFIED_TOOLS.push(openaiDef);
+    console.log(`[dsh] 执行臂已注入统一工具集（${dshTool.name}，OpenAI 格式已转换，并发上限 ${process.env.PI_DSH_MAX || 6}）`);
   }
 } catch (e) {
   console.log(`[dsh] 工具注入失败: ${String(e?.message || e).slice(0, 80)}`);

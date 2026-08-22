@@ -1,0 +1,95 @@
+import { useEffect, useState } from 'react'
+import { useApp } from '../store'
+import { SessionsApi } from '../api'
+import type { Session } from '../types'
+
+const GROUP_LABEL: Record<string, string> = {
+  workspace: '工作空间会话',
+  terminal: '终端会话',
+}
+
+export default function Sidebar() {
+  const { sessions, currentSessionId, selectSession, refreshSessions } = useApp()
+  const [renaming, setRenaming] = useState<{ sid: string; name: string } | null>(null)
+
+  const handleNew = async () => {
+    try { const d = await SessionsApi.create(); await refreshSessions(); selectSession(d.id) }
+    catch {}
+  }
+  const handleRename = async () => {
+    if (renaming?.name.trim()) { try { await SessionsApi.rename(renaming.sid, renaming.name.trim()); await refreshSessions() } catch {} }
+    setRenaming(null)
+  }
+  const handleDelete = async (s: Session) => {
+    if (!window.confirm(`删除会话「${s.name}」？`)) return
+    try { await SessionsApi.remove(s.id); await refreshSessions() } catch {}
+  }
+
+  const groups: Record<string, Session[]> = {}
+  for (const s of sessions) { const g = s.group || 'workspace'; (groups[g] = groups[g] || []).push(s) }
+
+  return (
+    <aside className="w-60 flex-shrink-0 flex flex-col glass-strong border-r border-pi-border-soft min-h-0 relative z-10">
+      {/* 品牌头 */}
+      <div className="flex items-center gap-2 px-4 h-12 border-b border-pi-border-soft flex-shrink-0">
+        <div className="w-7 h-7 rounded-pi-md avatar-grad flex items-center justify-center text-white font-bold">语</div>
+        <div className="font-semibold text-[15px]">小语</div>
+        <div className="text-pi-dim2 text-xs">·工作台</div>
+      </div>
+
+      {/* 新建 */}
+      <div className="p-3 flex-shrink-0">
+        <button className="btn-primary w-full py-2" onClick={handleNew}>
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          新建会话
+        </button>
+      </div>
+
+      {/* 会话列表 */}
+      <div className="flex-1 overflow-y-auto px-2 pb-3">
+        {Object.entries(groups).map(([g, items]) => items.length > 0 && (
+          <div key={g} className="mb-3">
+            <div className="px-2 py-1.5 text-[11px] text-pi-dim2 font-semibold uppercase tracking-wider">{GROUP_LABEL[g] || g}</div>
+            {items.map(s => (
+              <div key={s.id}
+                className={`group flex items-center gap-2.5 px-2.5 py-2 rounded-pi-md cursor-pointer mb-0.5 transition-colors duration-fast ${
+                  s.id === currentSessionId ? 'bg-pi-accent/12 border border-pi-accent/25' : 'hover:bg-pi-bg2'
+                }`}
+                onClick={() => selectSession(s.id)}>
+                <div className={`w-6 h-6 rounded-pi-sm flex items-center justify-center text-xs font-bold flex-shrink-0 ${s.id === currentSessionId ? 'bg-pi-accent text-white' : 'bg-pi-bg3 text-pi-dim'}`}>
+                  {s.name?.charAt(0) || '会'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] truncate text-pi-text">{s.name || '新会话'}</div>
+                  <div className="text-[10px] text-pi-dim2 truncate">{s.preview || ''}</div>
+                </div>
+                <div className="hidden group-hover:flex gap-1 flex-shrink-0">
+                  <button className="p-0.5 text-pi-dim2 hover:text-pi-text" onClick={(e) => { e.stopPropagation(); setRenaming({ sid: s.id, name: s.name }) }}>
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+                  </button>
+                  <button className="p-0.5 text-pi-dim2 hover:text-pi-red" onClick={(e) => { e.stopPropagation(); handleDelete(s) }}>
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* 重命名弹窗 */}
+      {renaming && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]" onClick={() => setRenaming(null)}>
+          <div className="panel p-4 w-72" onClick={e => e.stopPropagation()}>
+            <div className="text-sm font-semibold mb-3">重命名会话</div>
+            <input className="input-pi mb-3" autoFocus value={renaming.name} onChange={e => setRenaming({ ...renaming, name: e.target.value })} onKeyDown={e => e.key === 'Enter' && handleRename()} />
+            <div className="flex justify-end gap-2">
+              <button className="btn-ghost" onClick={() => setRenaming(null)}>取消</button>
+              <button className="btn-primary" onClick={handleRename}>确定</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </aside>
+  )
+}

@@ -121,8 +121,19 @@ export class HttpModelAdapter {
 }
 
 // 从模型消息里提取 { think, text } 并返回历史（供 loop 继续）
+// ⚠️ 2026-08-22 修复：tool_calls 必须消毒后再入历史——上游可能返回缺 function/空 name 的坏条目
+//   （mimo 实测：特定提示词稳定触发），原样回传下轮请求 → 上游 400 "`function` is not set"。
+//   与 unified-chat.sanitizeToolCalls 同策略：能修补则修补（补 arguments 默认值），缺 function/name 的剔除；
+//   全被剔除则降级为纯文本回复。
+function sanitizeTcsLocal(tcs) {
+  if (!Array.isArray(tcs)) return [];
+  return tcs
+    .filter(tc => tc && typeof tc === "object" && tc.id && tc.function && typeof tc.function === "object" && tc.function.name)
+    .map(tc => ({ id: tc.id, type: "function", function: { name: tc.function.name, arguments: String(tc.function.arguments ?? "{}") } }));
+}
 export function extractModelReply(msg, history) {
-  const tcs = msg.tool_calls;
+  const raw = msg.tool_calls;
+  const tcs = raw && raw.length ? sanitizeTcsLocal(raw) : null;
   if (tcs && tcs.length) {
     history.push({ role: "assistant", content: msg.content || null, tool_calls: tcs });
     return { toolCalls: tcs, history };
