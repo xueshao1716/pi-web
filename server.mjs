@@ -39,13 +39,14 @@ import { json, readBody } from "./engine/http-utils.mjs";
 import { initWorkspaceApi, WS_ROOT, findWorkspaceFiles, wsSafePath, saveArtifact, handleWsTree, handleWsFile, handleWsRead, handleWsWrite, handleWsArtifacts, wsNextVersion, wsCopyDir, handleWsDeliver, handleWsPackage, handleWsDeliveries, handleWsRename, handleWsDelete, handleWsSearch, handleWsProjectCreate, handleWsConvert } from "./engine/workspace-api.mjs";
 import { initContextLoader, makeLoader, loadExperience, readRulesWithImports, loadContextRules, jitRulesForPath, loadProjectRules, loadSkillIndex, execActivateSkill, ACTIVATE_SKILL_TOOL, WORK_PROTOCOL, loadMemory, loadMemoryIndex, loadExperienceIndex, shouldInjectFullMemory, setLastUserQuery } from "./engine/context-loader.mjs";
 import { initMediaApi, findMediaModel, detectMediaIntents, extractMediaPrompt, generateMediaAsync, generateTTS, generateImage, handleImage, handleImageWithSave, generateVideo, handleMedia } from "./engine/media-api.mjs";
+import { initAsrApi, handleAsr } from "./engine/asr-api.mjs";
 import { initDshKeys, dshResolveBin, handleDshStatus, handleDshWebStart, handleKeysStatus, loadPolicies, toolMatch, policyDecide, handleKeysApply, handleKeysPresets, refreshModelList, handleModelsManage, handleModelsAdd, KNOWN_PROVIDERS, PROVIDER_PRESETS, resolveAuth } from "./engine/dsh-keys.mjs";
 import { initStatsApi, handleGlobalStats, handleProviderStats, safeSessionStats, handleStats, handleCompact, listBuiltinSkills, handleSkills, handleSkillRead, handleParseFile, escHtml, handleExport, resolveFsPath, handleFsList, handleFsRead, handleRename } from "./engine/stats-api.mjs";
 import { initModelClient, directChat, handleThink, handleDirectChat, maybeCompactHistory } from "./engine/model-client.mjs";
 import { initSelfHeal, createRepairCheckpoint, handleUpdateCheck, handleUpdateApply, handleRepair, handleDesignerGenerate, handleDesignerSave, handleCompare } from "./engine/self-heal.mjs";
 import { initImproveApi, analyzeImprovements, openImprovements, setImprovementStatus } from "./engine/improve-api.mjs";
 import { initSessionManager, createSession, evictInactiveSessions, slimSessionImages, compactSession, openSession, initSearchTool, initShareTool, createSessionAgent, ensureAgent, isFirstTurn, deleteSession } from "./engine/session-manager.mjs";
-import { initUnifiedChat, unifiedChat, engineCurrentModel, initEngine, toolBindingDesc, toolBindingArgs, toolBindingArgsObj, handleNotices, handleUnifiedChat, touchTask, clearTask, handleAgentEventIn, handleAgentEventOut } from "./engine/unified-chat.mjs";
+import { initUnifiedChat, unifiedChat, engineCurrentModel, initEngine, getCodeRuntime, getCodeMode, toolBindingDesc, toolBindingArgs, toolBindingArgsObj, handleNotices, handleUnifiedChat, touchTask, clearTask, handleAgentEventIn, handleAgentEventOut } from "./engine/unified-chat.mjs";
 import { initRefineApi, readRefineJson, runRefineScript, handleRefineStatus, handleRefineList, detectSkillDomain, handleRefineFeedback, handleRefineGenes, handleRefinePlan, handleRefineApprove, handleRefineReject, handleRefineRollback } from "./engine/refine-api.mjs";
 import { initMcpServer, handleMcp } from "./engine/mcp-server.mjs";
 import { initMcpChat } from "./engine/mcp-chat.mjs";
@@ -219,6 +220,7 @@ const AGENT_DIR = getAgentDir();
 const AUTH_PATH = path.join(AGENT_DIR, "auth.json");
 const MODELS_PATH = path.join(AGENT_DIR, "models-store.json");
 initMediaApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, authPath: AUTH_PATH, getModelList: () => modelList }); // 媒体生成层注入
+initAsrApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, httpJsonFetch }); // 语音转文字（mimo-v2.5-asr 免费通道）
 initDshKeys({ dshWebPort: 3080, readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, ModelRuntime, refreshModelList, setModelList: (l) => { modelList = l; }, getDefaultModel: () => defaultModel, setDefaultModel: (m) => { defaultModel = m; }, setModelRuntime: (r) => { modelRuntime = r; }, getModelRuntime: () => modelRuntime, keepModels: KEEP_MODELS, resetModelHealth }); // dsh/keys/模型管理注入
 initStatsApi({ getAgentDir, cwd: CONFIG.cwd, DefaultResourceLoader }); // 统计/技能/导出注入
 initModelClient({ readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, resolveAuth, getModelList: () => modelList, getDefaultModel: () => defaultModel, unifiedChat, detectMediaIntents, generateMediaAsync, extractMediaPrompt, readEntriesFromFile, createSseWriter }); // 直调模型客户端注入
@@ -1681,6 +1683,7 @@ const API_ROUTES = [
   ["POST", "/api/model", async (res, req) => handleSwitchModel(req, res, await readBody(req))],
   // ── 媒体/对话 ──
   ["POST", "/api/think", async (res, req) => handleThink(res, await readBody(req))],
+  ["POST", "/api/asr", async (res, req) => handleAsr(res, await readBody(req, 16))], // 语音转文字
   ["POST", "/api/image", async (res, req) => handleImageWithSave(res, req, await readBody(req))],
   ["POST", "/api/media", async (res, req) => handleMedia(res, await readBody(req))],
   ["GET", "/api/tasks/active", async (res, req) => {
@@ -1731,14 +1734,18 @@ const API_ROUTES = [
   ["GET", "/api/code/tools", async (res) => {
     try {
       const gw = await initEngine();
-      json(res, 200, { bindings: Object.entries(codeRuntime.bindings).map(([n, b]) => ({ name: n, args: b.args, description: b.description })), sdk: codeMode.buildSdkText() });
+      const rt = getCodeRuntime(), cm = getCodeMode();
+      if (!rt || !cm) return json(res, 503, { error: "引擎未初始化，请先发一条消息或稍后重试" });
+      json(res, 200, { bindings: Object.entries(rt.bindings).map(([n, b]) => ({ name: n, args: b.args, description: b.description })), sdk: cm.buildSdkText() });
     } catch (e) { json(res, 500, { error: String(e?.message || e) }); }
   }],
   ["POST", "/api/code/run", async (res, req) => {
     try {
       const body = await readBody(req, 4);
       await initEngine();
-      const r = await codeRuntime.run({ program: String(body?.program || ""), timeoutMs: body?.timeoutMs });
+      const rt = getCodeRuntime();
+      if (!rt) return json(res, 503, { error: "代码运行时未就绪" });
+      const r = await rt.run({ program: String(body?.program || ""), timeoutMs: body?.timeoutMs });
       json(res, r.error ? 400 : 200, r);
     } catch (e) { json(res, 500, { error: String(e?.message || e) }); }
   }],

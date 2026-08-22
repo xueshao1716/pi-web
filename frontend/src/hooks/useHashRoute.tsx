@@ -1,8 +1,8 @@
 import { useEffect, useState, Component, ReactNode } from 'react'
 
 // ── 极轻 hash 路由（零依赖）：#/chat #/models #/assets #/tasks ──
-export type Route = 'chat' | 'models' | 'assets' | 'tasks'
-const ROUTES: Route[] = ['chat', 'models', 'assets', 'tasks']
+export type Route = 'chat' | 'models' | 'assets' | 'tasks' | 'apps'
+const ROUTES: Route[] = ['chat', 'models', 'assets', 'tasks', 'apps']
 
 function parse(): Route {
   const h = location.hash.replace(/^#\/?/, '')

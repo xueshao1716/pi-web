@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
 import WorkSpace from './components/Workspace'
 import Deliveries from './components/Deliveries'
+import TerminalPanel from './components/TerminalPanel'
 import ModelManager from './components/ModelManager'
 import ThemeSwitcher from './components/ThemeSwitcher'
 
@@ -14,6 +15,7 @@ import ThemeSwitcher from './components/ThemeSwitcher'
 const ModelHub = lazy(() => import('./pages/ModelHub'))
 const Assets = lazy(() => import('./pages/Assets'))
 const Tasks = lazy(() => import('./pages/Tasks'))
+const Apps = lazy(() => import('./pages/Apps'))
 
 // 导航项（桌面 rail / 移动 TabBar 共用语义）
 const NAV: { route: Route; icon: string; label: string }[] = [
@@ -21,6 +23,7 @@ const NAV: { route: Route; icon: string; label: string }[] = [
   { route: 'models', icon: '🧠', label: '模型' },
   { route: 'assets', icon: '🖼️', label: '资产' },
   { route: 'tasks', icon: '⏰', label: '任务' },
+  { route: 'apps', icon: '🧰', label: '应用' },
 ]
 
 function PageLoader() {
@@ -31,6 +34,7 @@ function PageBody({ route }: { route: Route }) {
   if (route === 'models') return <ModelHub />
   if (route === 'assets') return <Assets />
   if (route === 'tasks') return <Tasks />
+  if (route === 'apps') return <Apps />
   return null
 }
 
@@ -38,7 +42,7 @@ export default function AppLayout() {
   const { authed } = useApp()
   const isMobile = useIsMobile()
   const [route, nav] = useHashRoute()
-  const [rightPanel, setRightPanel] = useState<'chat' | 'workspace' | 'deliveries'>('chat')
+  const [rightPanel, setRightPanel] = useState<'chat' | 'workspace' | 'deliveries' | 'terminal'>('chat')
   const [modelOpen, setModelOpen] = useState(false)
   // 移动端：sessions 抽屉
   const [mobileDrawer, setMobileDrawer] = useState<'none' | 'sessions'>('none')
@@ -72,7 +76,7 @@ export default function AppLayout() {
               {rightPanel !== 'chat' && (
                 <div className="fixed inset-0 top-10 z-[80] glass-strong flex flex-col">
                   <div className="flex items-center gap-1 px-3 h-10 border-b border-pi-border-soft flex-shrink-0">
-                    {([['workspace', '工作空间'], ['deliveries', '交付物']] as const).map(([k, label]) => (
+                    {([['workspace', '工作空间'], ['deliveries', '交付物'], ['terminal', '终端']] as const).map(([k, label]) => (
                       <button key={k} onClick={() => setRightPanel(k)}
                         className={`text-xs px-3 py-1.5 rounded-pi-md transition-colors ${rightPanel === k ? 'bg-pi-accent/15 text-pi-accent font-medium' : 'text-pi-dim'}`}>
                         {label}
@@ -81,7 +85,7 @@ export default function AppLayout() {
                     <span className="ml-auto" />
                     <button className="btn-tool !px-2" onClick={() => setRightPanel('chat')}>✕</button>
                   </div>
-                  {rightPanel === 'workspace' ? <WorkSpace /> : <Deliveries />}
+                  {rightPanel === 'workspace' ? <WorkSpace /> : rightPanel === 'deliveries' ? <Deliveries /> : <TerminalPanel />}
                 </div>
               )}
             </div>
@@ -157,7 +161,7 @@ export default function AppLayout() {
       {route === 'chat' && rightPanel !== 'chat' && (
         <div className="w-[44%] min-w-[360px] border-l border-pi-border-soft glass flex flex-col min-h-0 relative z-10">
           <div className="flex items-center gap-1 px-3 h-10 border-b border-pi-border-soft flex-shrink-0">
-            {([['workspace', '工作空间'], ['deliveries', '交付物']] as const).map(([k, label]) => (
+            {([['workspace', '工作空间'], ['deliveries', '交付物'], ['terminal', '终端']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setRightPanel(k)}
                 className={`text-xs px-3 py-1.5 rounded-pi-md transition-colors ${rightPanel === k ? 'bg-pi-accent/15 text-pi-accent font-medium' : 'text-pi-dim hover:text-pi-text hover:bg-pi-bg3'}`}>
                 {label}
@@ -166,7 +170,7 @@ export default function AppLayout() {
             <span className="ml-auto" />
             <button className="btn-tool !px-2" title="收起右栏" onClick={() => setRightPanel('chat')}>✕</button>
           </div>
-          {rightPanel === 'workspace' ? <WorkSpace /> : <Deliveries />}
+          {rightPanel === 'workspace' ? <WorkSpace /> : rightPanel === 'deliveries' ? <Deliveries /> : <TerminalPanel />}
         </div>
       )}
 

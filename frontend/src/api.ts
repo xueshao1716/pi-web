@@ -26,7 +26,14 @@ export async function api<T = any>(path: string, opts: any = {}): Promise<T> {
     const r = await fetch(_apiBase + path, { ...opts, headers, signal: opts.signal || ctrl.signal })
     const ct = r.headers.get('content-type') || ''
     const data = ct.includes('json') ? await r.json() : null
-    if (!r.ok) { const err = new Error((data && data.error) || `HTTP ${r.status}`); (err as any).status = r.status; throw err }
+    if (!r.ok) {
+      // error 可能是字符串或对象（如 code/run 的 {kind, message}）——统一转成可读字符串
+      let emsg: string
+      if (data && typeof data.error === 'string') emsg = data.error
+      else if (data && data.error && typeof data.error === 'object') emsg = (data.error.message ? `[${data.error.kind || 'error'}] ` : '') + (data.error.message || JSON.stringify(data.error))
+      else emsg = `HTTP ${r.status}`
+      const err = new Error(emsg); (err as any).status = r.status; throw err
+    }
     return data as T
   } catch (e: any) {
     if (e?.name === 'AbortError') throw new Error('请求超时')
@@ -117,6 +124,34 @@ export function streamSession(sid: string, after = 0, onEvent: (ev: any) => void
 export const AsrApi = {
   transcribe: (data: string, format: string) =>
     api<{ text: string; model: string }>("/api/asr", { method: "POST", body: { data, format }, timeoutMs: 130000 }),
+}
+
+// ── 代码模式（终端面板）──
+export interface CodeBinding { name: string; args?: any; description: string }
+export const CodeApi = {
+  tools: () => api<{ bindings: CodeBinding[]; sdk: string }>('/api/code/tools'),
+  run: (program: string, timeoutMs?: number) =>
+    api<{ value?: any; logs?: string[]; error?: { kind: string; message: string } }>('/api/code/run', { method: 'POST', body: { program, timeoutMs }, timeoutMs: 130000 }),
+}
+
+// ── 应用中心 ──
+export const RefineApi = {
+  list: () => api<{ pending: any[]; applied: any[]; rejected: any[] }>('/api/refine/list'),
+  status: () => api<{ counts: { pending: number; applied: number; rejected: number }; lastLog?: string | null }>('/api/refine/status'),
+  plan: () => api<any>('/api/refine/plan', { method: 'POST', body: {}, timeoutMs: 190000 }),
+  approve: (id: string) => api<any>('/api/refine/approve', { method: 'POST', body: { id }, timeoutMs: 60000 }),
+  reject: (id: string) => api<any>('/api/refine/reject', { method: 'POST', body: { id } }),
+}
+export const SkillsApi = {
+  list: () => api<{ skills: { name: string; description: string; location: string }[] }>('/api/skills'),
+}
+export const PromptsApi = {
+  list: () => api<{ prompts: { name: string; description: string; content: string }[] }>('/api/prompts'),
+}
+export const ImprovementsApi = {
+  list: () => api<{ improvements: any[] }>('/api/improvements'),
+  analyze: () => api<{ improvements: any[] }>('/api/improvements/analyze', { method: 'POST' }),
+  setStatus: (id: string, status: string) => api<any>(`/api/improvements/${encodeURIComponent(id)}/status`, { method: 'POST', body: { status } }),
 }
 
 // ── 用量统计（按 provider/模型聚合）──

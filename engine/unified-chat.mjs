@@ -248,6 +248,10 @@ let gateway = null;
 let codeRuntime = null;
 let codeMode = null;
 const ENGINE_TOOL_NAMES = ["bash", "read", "write", "edit", "web_search"];
+// 访问器：codeRuntime/codeMode 是模块私有，server.mjs 路由经此取用
+//（修复拆模块遗留：原 server.mjs 裸引用 codeRuntime → ReferenceError）
+export function getCodeRuntime() { return codeRuntime; }
+export function getCodeMode() { return codeMode; }
 export function engineCurrentModel() {
   return { id: _getDefaultModel()?.id || _getModelList()[0]?.id || "", provider: _getDefaultModel()?.provider || _getModelList()[0]?.provider || "", baseUrl: _getDefaultModel()?.baseUrl || _getModelList()[0]?.baseUrl };
 }
@@ -280,7 +284,16 @@ export function toolBindingArgs(name) {
   return { bash: "command", read: "path", write: "path, content", edit: "path, oldText, newText", web_search: "query" }[name] || "...";
 }
 export function toolBindingArgsObj(name, args) {
-  return { bash: { command: args?.[0] }, read: { path: args?.[0] }, write: { path: args?.[0], content: args?.[1] }, edit: { path: args?.[0], oldText: args?.[1], newText: args?.[2] }, web_search: { query: args?.[0] } }[name] || {};
+  // 兼容三种调用形态：
+  // ① 位置式 $tools.bash("echo hi") → args=["echo hi"]
+  // ② 对象式 $tools.bash({ command }) → args=[{ command }]
+  // ③ 宿主直传对象（无 worker 包装）→ args={ command }
+  const first = Array.isArray(args) ? args[0] : args;
+  if (first !== null && typeof first === "object") {
+    if (name === "web_search" && !first.query && first.q) return { ...first, query: first.q };
+    return first;
+  }
+  return { bash: { command: first }, read: { path: first }, write: { path: args?.[0], content: args?.[1] }, edit: { path: args?.[0], oldText: args?.[1], newText: args?.[2] }, web_search: { query: first } }[name] || {};
 }
 
 // ══ 消息看板：pi 更新 + 能力看板 ══
