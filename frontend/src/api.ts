@@ -12,6 +12,13 @@ export function setToken(t: string) { _token = t; try { localStorage.setItem('pi
 export function getToken() { return _token }
 export function setApiBase(b: string) { _apiBase = b; try { localStorage.setItem('pi_api_base', b) } catch {} }
 
+// 文件 URL 补 token（<img>/<audio>/<video> 标签带不了 Authorization 头，服务端 checkAuth 接受 ?token=）
+export function withFileToken(url: string): string {
+  if (!url || !url.includes('/api/ws/file') || url.includes('sig=') || url.includes('token=')) return url
+  const sep = url.includes('?') ? '&' : '?'
+  return `${_apiBase}${url}${sep}token=${encodeURIComponent(_token)}`
+}
+
 const TIMEOUT = 30000
 
 export async function api<T = any>(path: string, opts: any = {}): Promise<T> {
@@ -124,6 +131,12 @@ export function streamSession(sid: string, after = 0, onEvent: (ev: any) => void
 export const AsrApi = {
   transcribe: (data: string, format: string) =>
     api<{ text: string; model: string }>("/api/asr", { method: "POST", body: { data, format }, timeoutMs: 130000 }),
+}
+
+// ── 出图（自动落盘生成物/图片/日期，资产库联动）──
+export const MediaApi = {
+  image: (body: { provider: string; modelId: string; prompt: string; size?: string }) =>
+    api<{ image?: string; error?: string }>('/api/image', { method: 'POST', body, timeoutMs: 190000 }),
 }
 
 // ── 代码模式（终端面板）──

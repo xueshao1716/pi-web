@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import Markdown from './Markdown'
+import { withFileToken } from '../api'
 import type { ChatMessage, RunningTool } from '../types'
 
 // 兼容两种来源：流式 RunningTool / 历史消息里的 ToolCall（无 running 态）
@@ -52,11 +53,11 @@ function Attachments({ msg }: { msg: ChatMessage }) {
     <>
       {msg.images?.map((src, i) => (
         <div key={'img' + i} className="my-1.5">
-          <img src={src} alt={`图片${i + 1}`} loading="lazy" className="max-w-[320px] max-h-[280px] rounded-pi-lg border border-pi-border-soft object-cover cursor-zoom-in" onClick={(e) => window.open((e.target as HTMLImageElement).src, '_blank')} />
+          <img src={withFileToken(src)} alt={`图片${i + 1}`} loading="lazy" className="max-w-[320px] max-h-[280px] rounded-pi-lg border border-pi-border-soft object-cover cursor-zoom-in" onClick={(e) => window.open((e.target as HTMLImageElement).src, '_blank')} />
         </div>
       ))}
       {msg.audios?.map((url, i) => (
-        <div key={'aud' + i} className="my-1.5"><audio controls src={url} className="max-w-full h-9" /></div>
+        <div key={'aud' + i} className="my-1.5"><audio controls src={withFileToken(url)} className="max-w-full h-9" /></div>
       ))}
       {msg.files?.map((f, i) => (
         <div key={'file' + i} className="my-1.5 flex items-center gap-2 px-3 py-2 rounded-pi-md border border-pi-border bg-pi-bg3 text-[12.5px]">

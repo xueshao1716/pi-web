@@ -97,7 +97,7 @@ export async function saveArtifact(artifact) {
     console.log(`[pi-web] 产物已落盘: ${file}`);
     // 用签名 URL（免鉴权，24h 有效）——img 标签可直接加载，无需带 token
     try {
-      const fb = await import("./engine/filebox.mjs");
+      const fb = await import("./filebox.mjs");
       const rel = path.relative(WS_ROOT, file);
       return fb.signedUrl(rel);
     } catch {
@@ -129,7 +129,7 @@ export async function handleWsTree(res, reqPath) {
 // GET /api/ws/file —— 提供文件（图片/音频/视频/文本；?download=1 强制下载）
 export async function handleWsFile(res, req, url) {
   // 优先：签名 URL（path+exp+sig，安全防篡改、可过期，不依赖内存映射）
-  const fb = await import("./engine/filebox.mjs");
+  const fb = await import("./filebox.mjs");
   let target = null;
   if (url?.searchParams.get("sig")) {
     const v = fb.verifySigned(req);

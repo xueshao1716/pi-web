@@ -2,6 +2,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useEffect, useRef } from 'react'
 import mermaid from 'mermaid'
+import { highlightCode, highlightAuto } from '../lib/highlight'
 
 // Mermaid 图表渲染（CDN 加载，失败回退纯文本）
 function MermaidBlock({ code }: { code: string }) {
@@ -43,7 +44,14 @@ export default function Markdown({ text }: { text: string }) {
             const content = String(children).replace(/\n$/, '')
             if (match?.[1] === 'mermaid') return <MermaidBlock code={content} />
             if (isBlock) {
-              return <pre className="bg-[#0a0c12] border border-gray-800 rounded-lg p-3 overflow-x-auto my-2"><code className={className}>{children}</code></pre>
+              const html = highlightCode(content, match?.[1]) ?? highlightAuto(content)
+              return (
+                <pre className="code-block bg-[#0a0c12] border border-gray-800 rounded-lg p-3 overflow-x-auto my-2">
+                  {html
+                    ? <code className={className} dangerouslySetInnerHTML={{ __html: html }} />
+                    : <code className={className}>{children}</code>}
+                </pre>
+              )
             }
             return <code className="bg-gray-800 rounded px-1.5 py-0.5 text-[12.5px]" {...props}>{children}</code>
           },
