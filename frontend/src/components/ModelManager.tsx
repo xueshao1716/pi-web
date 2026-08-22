@@ -1,6 +1,7 @@
 import { useEffect, useState, ReactNode } from 'react'
 import { KeysApi } from '../api'
 import { useApp } from '../store'
+import { modelLabel } from './ModelSelect'
 import { colors } from '../theme/tokens'
 
 interface ProviderInfo { provider: string; hasKey: boolean; baseUrl: string; modelCount: number; models: string[] }
@@ -63,7 +64,8 @@ export default function ModelManager({ visible, onClose }: { visible: boolean; o
           <div className="mb-3">
             <div className="text-xs text-pi-dim2 mb-2">当前模型</div>
             <select className="input-pi" value={currentModel} onChange={e => switchModel(e.target.value)}>
-              {models.map(m => <option key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>{m.name} ({m.provider})</option>)}
+              <option value="auto/auto">⚡ Auto 智能路由</option>
+              {models.map(m => <option key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>{modelLabel(m)}</option>)}
             </select>
           </div>
           <button className="btn-primary w-full py-2" onClick={() => setAddOpen(true)}>添加 API</button>

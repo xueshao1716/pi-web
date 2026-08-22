@@ -106,6 +106,10 @@ export const WsApi = {
   search: (q: string) => api<{ results?: any[] }>(`/api/ws/search?q=${encodeURIComponent(q)}`),
   artifacts: () => api<{ artifacts?: any[] }>('/api/ws/artifacts'),
   deliveries: () => api<{ deliveries?: any[] }>('/api/ws/deliveries'),
+  // 交付：把工作空间文件复制到 交付/ 目录（版本化）
+  deliver: (sourcePath: string, name?: string) => api<{ ok: boolean; path: string; version: number }>('/api/ws/deliver', { method: 'POST', body: { sourcePath, name } }),
+  // 上传：base64 写入工作空间并推送到会话（sessionId 可空）
+  upload: (name: string, data: string, sessionId?: string) => api<{ ok?: boolean; path?: string }>('/api/files/upload', { method: 'POST', body: { name, data, sessionId: sessionId || '' }, timeoutMs: 120000 }),
 }
 
 // ── 模型管理 ──

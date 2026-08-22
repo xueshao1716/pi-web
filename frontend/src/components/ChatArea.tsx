@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../store'
 import { SessionsApi, ChatApi } from '../api'
 import Message from './Message'
+import ModelSelect from './ModelSelect'
 import type { ChatMessage, RunningTool } from '../types'
 
 // 流式状态：覆盖服务端全部 SSE 事件（delta/think/think_end/tool/tool_output/
@@ -193,10 +194,10 @@ export default function ChatArea() {
   return (
     <div className="flex-1 flex flex-col min-w-0">
       {/* 顶栏 */}
-      <div className="flex items-center px-5 h-12 border-b border-pi-border-soft glass flex-shrink-0">
+      <div className="flex items-center px-5 h-12 border-b border-pi-border-soft glass flex-shrink-0 gap-2">
         <div className="font-medium text-[14px] text-pi-text">会话</div>
         <div className="ml-auto" />
-        <div className="text-pi-dim2 text-xs font-mono">{currentModel}</div>
+        <ModelSelect />
       </div>
 
       {/* 看门狗提示条 */}

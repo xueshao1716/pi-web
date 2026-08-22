@@ -560,6 +560,17 @@ const MIME = {
 };
 
 const staticServer = createStaticServer({ publicDir: PUBLIC_DIR, mime: MIME });
+// ══ React 主界面（Phase 1 转正，2026-08-22）══
+// 默认 UI = frontend/dist（React 19 + Vite 指纹资产）；旧版 vanilla 回退：/?legacy=1 或 /static/ 直达。
+// dist 缺失（未构建的全新 clone）→ 自动回落 vanilla，安装链路零破坏。
+const REACT_DIST = path.join(__dirname, "frontend", "dist");
+const reactStatic = (() => {
+  try { return fs.existsSync(path.join(REACT_DIST, "index.html")) ? createStaticServer({ publicDir: REACT_DIST, mime: MIME }) : null; }
+  catch { return null; }
+})();
+// 旧 sw.js 注销器：React 版不用 service worker；老用户浏览器里残留的 sw 会用旧缓存劫持新界面，
+// 用一个自毁 sw 覆盖注册位：清空全部 Cache + 注销自己。
+const SW_UNREGISTER = "self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k)))).then(()=>self.registration.unregister()))});";
 
 async function handleStatic(req, res) {
   return staticServer.handle(req, res);
@@ -1795,7 +1806,7 @@ const server = http.createServer(async (req, res) => {
     res.setHeader("Referrer-Policy", "no-referrer");
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
     const isStatic = (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/sw.js" || WORKSHOP_PAGES[url.pathname])) ||
-                     (req.method === "GET" && url.pathname.startsWith("/static/"));
+                     (req.method === "GET" && (url.pathname.startsWith("/static/") || url.pathname.startsWith("/assets/") || url.pathname.startsWith("/legacy/") || url.pathname === "/vite.svg"));
     // 签名文件链接（filebox 签名）免 token：签名本身是凭证
     let isSignedFile = false;
     try {
@@ -1809,7 +1820,27 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 静态资源
-    if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/sw.js")) return handleStatic(req, res);
+    // React 主界面为默认：/ 与 /index.html → frontend/dist；?legacy=1 → 旧版 vanilla
+    if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
+      if (reactStatic && !url.searchParams.has("legacy")) { req.url = "/index.html"; return reactStatic.handle(req, res); }
+      return handleStatic(req, res);
+    }
+    // sw.js：React 默认模式下发自毁脚本（清旧缓存+注销）；legacy 模式下发原版
+    if (req.method === "GET" && url.pathname === "/sw.js") {
+      if (reactStatic && !url.searchParams.has("legacy")) {
+        res.writeHead(200, { "Content-Type": "application/javascript", "Cache-Control": "no-cache" });
+        return res.end(SW_UNREGISTER);
+      }
+      return handleStatic(req, res);
+    }
+    // Vite 指纹资产
+    if (reactStatic && req.method === "GET" && (url.pathname.startsWith("/assets/") || url.pathname === "/vite.svg")) return reactStatic.handle(req, res);
+    // 旧版入口：/legacy/* → public/*
+    if (req.method === "GET" && url.pathname.startsWith("/legacy/")) {
+      req.url = url.pathname.slice("/legacy".length) || "/index.html";
+      if (!req.url.includes("?") && url.search) req.url += url.search;
+      return handleStatic(req, res);
+    }
     if (req.method === "GET" && url.pathname.startsWith("/static/")) {
       req.url = url.pathname.replace(/^\/static/, "") + (url.search || "");
       return handleStatic(req, res);

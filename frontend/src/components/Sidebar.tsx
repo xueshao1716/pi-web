@@ -5,12 +5,15 @@ import type { Session } from '../types'
 
 const GROUP_LABEL: Record<string, string> = {
   workspace: '工作空间会话',
-  terminal: '终端会话',
+  terminal: '📱 小语会话（终端）',
 }
+// 分组排序：终端会话置顶（外部可随时打开终端会话找小语，双向同步）
+const GROUP_ORDER = ['terminal', 'workspace']
 
 export default function Sidebar() {
   const { sessions, currentSessionId, selectSession, refreshSessions } = useApp()
   const [renaming, setRenaming] = useState<{ sid: string; name: string } | null>(null)
+  const [search, setSearch] = useState('')
 
   const handleNew = async () => {
     try { const d = await SessionsApi.create(); await refreshSessions(); selectSession(d.id) }
@@ -25,8 +28,16 @@ export default function Sidebar() {
     try { await SessionsApi.remove(s.id); await refreshSessions() } catch {}
   }
 
+  const kw = search.trim().toLowerCase()
+  const filtered = kw
+    ? sessions.filter(s => (s.name || '').toLowerCase().includes(kw) || (s.preview || '').toLowerCase().includes(kw))
+    : sessions
   const groups: Record<string, Session[]> = {}
-  for (const s of sessions) { const g = s.group || 'workspace'; (groups[g] = groups[g] || []).push(s) }
+  for (const s of filtered) { const g = s.group || 'workspace'; (groups[g] = groups[g] || []).push(s) }
+  const groupKeys = Object.keys(groups).sort((a, b) => {
+    const ia = GROUP_ORDER.indexOf(a), ib = GROUP_ORDER.indexOf(b)
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
+  })
 
   return (
     <aside className="w-60 flex-shrink-0 flex flex-col glass-strong border-r border-pi-border-soft min-h-0 relative z-10">
@@ -38,19 +49,25 @@ export default function Sidebar() {
       </div>
 
       {/* 新建 */}
-      <div className="p-3 flex-shrink-0">
+      <div className="p-3 pb-2 flex-shrink-0">
         <button className="btn-primary w-full py-2" onClick={handleNew}>
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           新建会话
         </button>
+        <input
+          className="input-pi mt-2 !py-1.5 text-xs"
+          placeholder="搜索会话…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
       </div>
 
       {/* 会话列表 */}
       <div className="flex-1 overflow-y-auto px-2 pb-3">
-        {Object.entries(groups).map(([g, items]) => items.length > 0 && (
+        {groupKeys.map(g => groups[g].length > 0 && (
           <div key={g} className="mb-3">
             <div className="px-2 py-1.5 text-[11px] text-pi-dim2 font-semibold uppercase tracking-wider">{GROUP_LABEL[g] || g}</div>
-            {items.map(s => (
+            {groups[g].map(s => (
               <div key={s.id}
                 className={`group flex items-center gap-2.5 px-2.5 py-2 rounded-pi-md cursor-pointer mb-0.5 transition-colors duration-fast ${
                   s.id === currentSessionId ? 'bg-pi-accent/12 border border-pi-accent/25' : 'hover:bg-pi-bg2'

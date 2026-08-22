@@ -20,6 +20,9 @@ backups/
 # Node
 node_modules/
 dist/
+# React 前端预构建产物例外（安装链路零构建）
+!frontend/dist/
+!frontend/dist/**
 *.tsbuildinfo
 
 # 系统

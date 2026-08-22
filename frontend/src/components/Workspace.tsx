@@ -1,15 +1,41 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useApp } from '../store'
 import { WsApi } from '../api'
 import Markdown from './Markdown'
 
 interface TreeNode { name: string; type: string; path: string }
 
 export default function Workspace() {
+  const { currentSessionId } = useApp()
   const [cur, setCur] = useState('')
   const [nodes, setNodes] = useState<TreeNode[]>([])
   const [selectedFile, setSelectedFile] = useState<{ name: string; path: string; content: string } | null>(null)
   const [q, setQ] = useState('')
   const [results, setResults] = useState<any[]>([])
+  const [tip, setTip] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const flash = (msg: string) => { setTip(msg); setTimeout(() => setTip(''), 3000) }
+
+  // 交付：复制到 交付/ 目录（版本化）
+  const deliver = async () => {
+    if (!selectedFile) return
+    try { const d = await WsApi.deliver(selectedFile.path, selectedFile.name); flash(`✓ 已交付 → ${d.path}`) }
+    catch (e: any) { flash(`✗ 交付失败: ${e.message}`) }
+  }
+  // 上传：base64 → /api/files/upload
+  const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]; if (!f) return
+    try {
+      const buf = await f.arrayBuffer()
+      let bin = ''; const bytes = new Uint8Array(buf)
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+      const d = await WsApi.upload(f.name, btoa(bin), currentSessionId || undefined)
+      flash(`✓ 已上传 ${f.name}${d.path ? ' → ' + d.path : ''}`)
+      loadTree(cur)
+    } catch (e: any) { flash(`✗ 上传失败: ${e.message}`) }
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
 
   const loadTree = async (p = '') => {
     try { const d = await WsApi.tree(p); setNodes(d.items || []); setCur(d.current || '') } catch {}
@@ -30,8 +56,13 @@ export default function Workspace() {
       <div className="w-56 border-r border-pi-border-soft flex flex-col">
         <div className="flex items-center gap-2 px-3 h-11 border-b border-pi-border-soft flex-shrink-0">
           <span className="text-sm font-semibold text-pi-text">工作空间</span>
-          <span className="text-[10px] text-pi-dim2 truncate">{cur}</span>
+          <span className="text-[10px] text-pi-dim2 truncate flex-1">{cur}</span>
+          <input ref={fileInputRef} type="file" className="hidden" onChange={onUpload} />
+          <button className="btn-tool !px-2" title="上传文件到工作空间" onClick={() => fileInputRef.current?.click()}>
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </button>
         </div>
+        {tip && <div className="px-3 py-1 text-[11px] bg-pi-accent/10 border-b border-pi-border-soft text-pi-dim flex-shrink-0">{tip}</div>}
         <div className="p-2 flex-shrink-0"><input className="input-pi text-xs" placeholder="搜索文件…" value={q} onChange={e => onSearch(e.target.value)} /></div>
         <div className="flex-1 overflow-y-auto px-2 pb-2">
           {q.trim().length >= 2 ? (
@@ -52,7 +83,8 @@ export default function Workspace() {
           <>
             <div className="flex items-center gap-2 mb-3 border-b border-pi-border-soft pb-2">
               <span className="font-semibold text-pi-text text-sm">{selectedFile.name}</span>
-              <span className="text-xs text-pi-dim2 truncate">{selectedFile.path}</span>
+              <span className="text-xs text-pi-dim2 truncate flex-1">{selectedFile.path}</span>
+              <button className="btn-tool text-xs" onClick={deliver} title="复制到 交付/ 目录（版本化）">📎 交付</button>
             </div>
             {/\.(md|txt)$/i.test(selectedFile.name) ? <Markdown text={selectedFile.content} /> : <pre className="whitespace-pre-wrap text-[13px] text-pi-text font-mono">{selectedFile.content}</pre>}
           </>
