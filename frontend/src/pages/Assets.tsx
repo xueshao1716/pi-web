@@ -1,0 +1,123 @@
+import { useMemo, useState } from 'react'
+import useSWR from 'swr'
+import { WsApi } from '../api'
+import type { Artifact } from '../types'
+
+// ── 资产库：生成物 + 交付物统一浏览（Phase 3）──
+// 类型筛选 + 图片网格灯箱预览；文件/视频/音频走新窗口打开
+
+const IMG_RE = /\.(png|jpe?g|gif|webp|svg)$/i
+const VID_RE = /\.(mp4|webm|mov)$/i
+const AUD_RE = /\.(mp3|wav|ogg|m4a)$/i
+
+const fmtSize = (n: number) => n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : n >= 1e3 ? (n / 1e3).toFixed(0) + ' KB' : n + ' B'
+const fmtDate = (d: string) => (d || '').slice(5).replace('-', '/')
+
+function ArtifactTile({ a, onOpen }: { a: Artifact; onOpen: () => void }) {
+  const isImg = IMG_RE.test(a.name)
+  return (
+    <div className="group panel !p-2 cursor-pointer overflow-hidden flex flex-col gap-1.5" onClick={onOpen}>
+      <div className="rounded-pi-md bg-pi-bg3/60 aspect-[4/3] overflow-hidden flex items-center justify-center">
+        {isImg
+          ? <img src={a.url} alt={a.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+          : <span className="text-3xl opacity-70">{VID_RE.test(a.name) ? '🎬' : AUD_RE.test(a.name) ? '🎵' : '📄'}</span>}
+      </div>
+      <div className="text-[11.5px] text-pi-text truncate" title={a.name}>{a.name}</div>
+      <div className="flex items-center justify-between text-[10px] text-pi-dim2">
+        <span className="truncate">{a.type}</span>
+        <span className="flex-shrink-0 ml-2">{fmtSize(a.size)} · {fmtDate(a.date)}</span>
+      </div>
+    </div>
+  )
+}
+
+export default function Assets() {
+  const [typeFilter, setTypeFilter] = useState('全部')
+  const [kw, setKw] = useState('')
+  const [viewer, setViewer] = useState<Artifact | null>(null)
+  // swr：资产清单缓存 + 聚焦重验证（生成新图后切回来自动出现）
+  const { data: artData, isLoading } = useSWR('artifacts', () => WsApi.artifacts(), { revalidateOnFocus: true, dedupingInterval: 10000 })
+  const { data: delData } = useSWR('deliveries', () => WsApi.deliveries(), { dedupingInterval: 60000 })
+
+  const types = useMemo(() => {
+    const set = new Set<string>()
+    for (const a of artData?.artifacts || []) set.add(a.type)
+    return ['全部', ...[...set].sort()]
+  }, [artData])
+
+  const list = useMemo(() => {
+    let arr = artData?.artifacts || []
+    if (typeFilter !== '全部') arr = arr.filter(a => a.type === typeFilter)
+    const k = kw.trim().toLowerCase()
+    if (k) arr = arr.filter(a => a.name.toLowerCase().includes(k))
+    return arr.slice(0, 200)
+  }, [artData, typeFilter, kw])
+
+  const deliveries = delData?.deliveries || []
+
+  return (
+    <div className="flex-1 overflow-y-auto relative z-10">
+      <div className="max-w-6xl mx-auto px-6 py-6">
+        <div className="flex items-end justify-between mb-4 flex-wrap gap-3">
+          <div>
+            <h1 className="text-xl font-bold text-pi-text">资产库</h1>
+            <p className="text-xs text-pi-dim2 mt-1">工作空间「生成物」{artData?.artifacts?.length || 0} 个 · 「交付」{deliveries.length} 个</p>
+          </div>
+          <input className="input-pi !py-1.5 text-xs w-56" placeholder="搜索资产名…" value={kw} onChange={e => setKw(e.target.value)} />
+        </div>
+
+        {/* 类型筛选 */}
+        <div className="flex gap-1.5 mb-4 flex-wrap">
+          {types.map(t => (
+            <button key={t} onClick={() => setTypeFilter(t)}
+              className={`text-xs px-3 py-1.5 rounded-pi-md transition-colors ${typeFilter === t ? 'bg-pi-accent/15 text-pi-accent font-medium' : 'text-pi-dim hover:text-pi-text hover:bg-pi-bg3'}`}>
+              {t}
+            </button>
+          ))}
+          {isLoading && <span className="text-[11px] text-pi-dim2 self-center animate-pulse">加载中…</span>}
+        </div>
+
+        {/* 网格 */}
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-3 mb-8">
+          {list.map(a => <ArtifactTile key={a.path} a={a} onOpen={() => {
+            if (IMG_RE.test(a.name)) setViewer(a)
+            else window.open(a.url, '_blank')
+          }} />)}
+        </div>
+        {!list.length && !isLoading && <div className="text-center text-pi-dim2 text-sm py-16">这个筛选下没有资产</div>}
+
+        {/* 交付物列表 */}
+        {deliveries.length > 0 && (
+          <>
+            <h2 className="text-sm font-semibold text-pi-text mb-2">📦 成品交付</h2>
+            <div className="panel !p-0 overflow-hidden mb-8">
+              {deliveries.map(d => (
+                <div key={d.wsPath} className="flex items-center gap-3 px-4 py-2.5 border-b border-pi-border-soft/50 last:border-0 hover:bg-pi-bg3/40 transition-colors cursor-pointer"
+                  onClick={() => window.open(d.url, '_blank')}>
+                  <span>{d.type === 'dir' ? '📁' : '📄'}</span>
+                  <span className="text-[12.5px] text-pi-text truncate flex-1">{d.name}</span>
+                  <span className="text-[10px] text-pi-dim2">{fmtSize(d.size)}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* 图片灯箱 */}
+      {viewer && (
+        <div className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-sm flex items-center justify-center p-8" onClick={() => setViewer(null)}>
+          <div className="max-w-[90vw] max-h-[88vh] flex flex-col gap-2" onClick={e => e.stopPropagation()}>
+            <img src={viewer.url} alt={viewer.name} className="max-w-full max-h-[78vh] object-contain rounded-pi-lg border border-pi-border" />
+            <div className="flex items-center gap-3 text-xs text-pi-dim">
+              <span className="truncate flex-1">{viewer.name}</span>
+              <span>{fmtSize(viewer.size)}</span>
+              <button className="btn-tool !py-1" onClick={() => window.open(viewer.url, '_blank')}>新窗口打开</button>
+              <button className="btn-tool !py-1" onClick={() => setViewer(null)}>✕</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

@@ -197,29 +197,43 @@ export async function handleWsWrite(res, body) {
 }
 
 // GET /api/ws/artifacts —— 生成物列表（按类型/日期）
+// 兼容两种目录结构：<type>/<date>/<file> 与 <type>/<file>（实际工作空间大多为后者）
 export async function handleWsArtifacts(res) {
   const out = [];
   const genDir = path.join(WS_ROOT, "生成物");
+  const push = (fp, type, date) => {
+    try {
+      if (!fs.statSync(fp).isFile()) return;
+      out.push({
+        name: path.basename(fp), type, date,
+        path: path.relative(WS_ROOT, fp).replace(/\\/g, "/"),
+        size: fs.statSync(fp).size,
+        url: `/api/ws/file?path=${encodeURIComponent(fp)}`,
+      });
+    } catch {}
+  };
   try {
     for (const type of fs.readdirSync(genDir)) {
       const typePath = path.join(genDir, type);
-      if (!fs.statSync(typePath).isDirectory()) continue;
-      for (const date of fs.readdirSync(typePath)) {
-        const datePath = path.join(typePath, date);
-        for (const f of fs.readdirSync(datePath)) {
-          const fp = path.join(datePath, f);
-          out.push({
-            name: f, type, date,
-            path: path.relative(WS_ROOT, fp).replace(/\\/g, "/"),
-            size: fs.statSync(fp).size,
-            url: `/api/ws/file?path=${encodeURIComponent(fp)}`,
-          });
+      let typeStat;
+      try { typeStat = fs.statSync(typePath); } catch { continue; }
+      if (!typeStat.isDirectory()) continue;
+      for (const entry of fs.readdirSync(typePath)) {
+        const entryPath = path.join(typePath, entry);
+        let es;
+        try { es = fs.statSync(entryPath); } catch { continue; }
+        if (es.isDirectory()) {
+          // 三层：<type>/<date>/<file>
+          for (const f of fs.readdirSync(entryPath)) push(path.join(entryPath, f), type, entry);
+        } else {
+          // 两层：<type>/<file>（date 取文件修改日期）
+          push(entryPath, type, es.mtime.toISOString().slice(0, 10));
         }
       }
     }
   } catch {}
   out.sort((a, b) => b.date.localeCompare(a.date));
-  json(res, 200, { artifacts: out.slice(0, 200) });
+  json(res, 200, { artifacts: out.slice(0, 500) });
 }
 
 // ══ 成品交付 ══

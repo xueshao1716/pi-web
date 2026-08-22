@@ -26,9 +26,11 @@ export interface Session {
 export interface ToolCall {
   id: string
   name: string
-  args: string
+  args?: string
+  argsText?: string // 流式态用（与 RunningTool 兼容）
   output?: string
   isError?: boolean
+  running?: boolean
 }
 
 export interface ChatMessage {
@@ -42,6 +44,16 @@ export interface ChatMessage {
   tools?: ToolCall[]
   think?: string
   ts?: string
+}
+
+// 生成物（资产库）条目
+export interface Artifact {
+  name: string
+  type: string
+  date: string
+  path: string
+  size: number
+  url: string
 }
 
 // 流式进行中的工具卡状态

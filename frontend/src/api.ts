@@ -1,4 +1,4 @@
-import type { Model, Session, ChatMessage, SessionMessages } from './types'
+import type { Model, Session, ChatMessage, SessionMessages, Artifact } from './types'
 
 // ── 鉴权 ──
 let _token = (() => {
@@ -119,13 +119,29 @@ export const AsrApi = {
     api<{ text: string; model: string }>("/api/asr", { method: "POST", body: { data, format }, timeoutMs: 130000 }),
 }
 
+// ── 用量统计（按 provider/模型聚合）──
+export interface ProviderStat { provider: string; input: number; output: number; cacheRead?: number; cost: number; messages: number }
+export const StatsApi = {
+  providers: () => api<{ providers: ProviderStat[] }>('/api/stats/providers'),
+  global: () => api<any>('/api/stats/global'),
+}
+
+// ── 定时任务（时间引擎）──
+export interface TimeTask { id: string; type: 'daily' | 'weekly' | 'once'; at: string; day?: number | null; date?: string | null; prompt: string; label: string; created: string; lastRun?: string | null; runs?: number }
+export const TasksApi = {
+  list: () => api<{ tasks: TimeTask[] }>('/api/time/tasks'),
+  create: (body: { type: string; at: string; day?: number; date?: string; prompt: string; label?: string }) =>
+    api<{ id?: string; error?: string }>('/api/time/tasks', { method: 'POST', body }),
+  remove: (id: string) => api<{ removed: boolean }>(`/api/time/tasks?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+}
+
 // ── 工作空间 ──
 export const WsApi = {
   tree: (p = '') => api<{ items: { name: string; type: string; path: string }[]; current: string }>(`/api/ws/tree?path=${encodeURIComponent(p)}`),
   read: (p: string) => api<{ content: string; name: string; path: string }>(`/api/ws/read?path=${encodeURIComponent(p)}`),
   write: (path: string, content: string) => api<{ ok: boolean }>('/api/ws/write', { method: 'POST', body: { path, content } }),
   search: (q: string) => api<{ results?: any[] }>(`/api/ws/search?q=${encodeURIComponent(q)}`),
-  artifacts: () => api<{ artifacts?: any[] }>('/api/ws/artifacts'),
+  artifacts: () => api<{ artifacts: Artifact[] }>('/api/ws/artifacts'),
   deliveries: () => api<{ deliveries?: any[] }>('/api/ws/deliveries'),
   // 交付：把工作空间文件复制到 交付/ 目录（版本化）
   deliver: (sourcePath: string, name?: string) => api<{ ok: boolean; path: string; version: number }>('/api/ws/deliver', { method: 'POST', body: { sourcePath, name } }),
