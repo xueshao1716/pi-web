@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import { RefineApi, SkillsApi, PromptsApi, ImprovementsApi } from '../api'
+import WorkshopView from '../components/WorkshopView'
 
 // ── 应用中心（Phase 3）：经验沉淀台 / 技能库 / 提示词库 / 改进提案 ──
 
-type Tab = 'refine' | 'skills' | 'prompts' | 'improve'
+type Tab = 'refine' | 'workshop' | 'skills' | 'prompts' | 'improve'
 const TABS: [Tab, string, string][] = [
   ['refine', '🧪', '经验沉淀台'],
+  ['workshop', '🏭', '专项工作台'],
   ['skills', '🧩', '技能库'],
   ['prompts', '📝', '提示词库'],
   ['improve', '📈', '改进提案'],
@@ -157,6 +159,7 @@ export default function Apps() {
           ))}
         </div>
         {tab === 'refine' && <RefineView />}
+        {tab === 'workshop' && <WorkshopView />}
         {tab === 'skills' && <SkillsView />}
         {tab === 'prompts' && <PromptsView />}
         {tab === 'improve' && <ImproveView />}

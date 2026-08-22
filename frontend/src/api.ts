@@ -139,6 +139,48 @@ export const MediaApi = {
     api<{ image?: string; error?: string }>('/api/image', { method: 'POST', body, timeoutMs: 190000 }),
 }
 
+// ── 专项工作台（SSE 长任务：PPT/小说生成，事件 note/delta/file/done/error）──
+export const WorkshopApi = {
+  run: (kind: 'ppt' | 'novel', body: any, onEvent: (ev: { type: string; data: any }) => void) => {
+    const ctrl = new AbortController()
+    ;(async () => {
+      try {
+        const r = await fetch(_apiBase + `/api/workshop/${kind}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${_token}` },
+          body: JSON.stringify(body),
+          signal: ctrl.signal,
+        })
+        if (!r.ok || !r.body) { onEvent({ type: 'error', data: { message: `HTTP ${r.status}` } }); return }
+        const reader = r.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          let idx
+          while ((idx = buffer.indexOf('\n\n')) >= 0) {
+            const chunk = buffer.slice(0, idx); buffer = buffer.slice(idx + 2)
+            let evType = 'message'; const dataLines: string[] = []
+            for (const line of chunk.split('\n')) {
+              if (line.startsWith('event:')) evType = line.slice(6).trim()
+              else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
+            }
+            const evData = dataLines.join('\n')
+            if (!evData) continue
+            try { onEvent({ type: evType, data: JSON.parse(evData) }) } catch {}
+          }
+        }
+        onEvent({ type: 'done', data: {} })
+      } catch (e: any) {
+        if (e?.name !== 'AbortError') onEvent({ type: 'error', data: { message: e.message } })
+      }
+    })()
+    return () => ctrl.abort()
+  },
+}
+
 // ── 代码模式（终端面板）──
 export interface CodeBinding { name: string; args?: any; description: string }
 export const CodeApi = {
