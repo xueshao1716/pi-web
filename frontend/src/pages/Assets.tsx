@@ -17,15 +17,20 @@ const fmtDate = (d: string) => (d || '').slice(5).replace('-', '/')
 function ArtifactTile({ a, onOpen }: { a: Artifact; onOpen: () => void }) {
   const isImg = IMG_RE.test(a.name)
   return (
-    <div className="group panel !p-2 cursor-pointer overflow-hidden flex flex-col gap-1.5" onClick={onOpen}>
-      <div className="rounded-pi-md bg-pi-bg3/60 aspect-[4/3] overflow-hidden flex items-center justify-center">
+    <div className="group panel !p-2 cursor-pointer overflow-hidden flex flex-col gap-1.5 card-hover" onClick={onOpen}>
+      <div className="relative rounded-pi-md bg-pi-bg3/60 aspect-[4/3] overflow-hidden flex items-center justify-center">
         {isImg
-          ? <img src={withFileToken(a.url)} alt={a.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+          ? <img src={withFileToken(a.url)} alt={a.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-[1.06] transition-transform duration-300" />
           : <span className="text-3xl opacity-70">{VID_RE.test(a.name) ? '🎬' : AUD_RE.test(a.name) ? '🎵' : '📄'}</span>}
+        {/* 悬浮遮罩：预览提示 */}
+        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center"
+          style={{ background: 'linear-gradient(to top, rgba(5,8,18,.72), rgba(5,8,18,.15))' }}>
+          <span className="text-[11px] text-white/90 px-2.5 py-1 rounded-pi-pill bg-white/10 backdrop-blur-sm border border-white/15">{isImg ? '🔍 预览' : '↗ 打开'}</span>
+        </div>
       </div>
       <div className="text-[11.5px] text-pi-text truncate" title={a.name}>{a.name}</div>
       <div className="flex items-center justify-between text-[10px] text-pi-dim2">
-        <span className="truncate">{a.type}</span>
+        <span className="truncate px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3">{a.type}</span>
         <span className="flex-shrink-0 ml-2">{fmtSize(a.size)} · {fmtDate(a.date)}</span>
       </div>
     </div>
@@ -60,18 +65,17 @@ export default function Assets() {
   return (
     <div className="flex-1 overflow-y-auto relative z-10">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
-        <div className="flex items-end justify-between mb-4 flex-wrap gap-3">
-          <div>
-            <h1 className="text-xl font-bold text-pi-text">资产库</h1>
-            <p className="text-xs text-pi-dim2 mt-1">工作空间「生成物」{artData?.artifacts?.length || 0} 个 · 「交付」{deliveries.length} 个</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button className={`text-xs px-3 py-1.5 rounded-pi-md transition-colors ${showGen ? 'bg-pi-accent text-white' : 'bg-pi-accent/15 text-pi-accent hover:bg-pi-accent/25'}`}
-              onClick={() => setShowGen(v => !v)}>
-              🎨 生成图片
-            </button>
-            <input className="input-pi !py-1.5 text-xs w-56" placeholder="搜索资产名…" value={kw} onChange={e => setKw(e.target.value)} />
-          </div>
+        <div className="mb-4">
+          <div className="page-eyebrow mb-1">Asset Library</div>
+          <h1 className="page-title">资产库</h1>
+          <p className="text-xs text-pi-dim2 mt-1.5">工作空间「生成物」{artData?.artifacts?.length || 0} 个 · 「交付」{deliveries.length} 个</p>
+        </div>
+        <div className="flex items-center gap-2 mb-4">
+          <button className={`text-xs px-3.5 py-1.5 rounded-full font-medium transition-all duration-150 ${showGen ? 'btn-grad text-white shadow-lg shadow-pi-accent/25' : 'bg-pi-accent/12 text-pi-accent border border-pi-accent/25 hover:bg-pi-accent/22'}`}
+            onClick={() => setShowGen(v => !v)}>
+            🎨 生成图片
+          </button>
+          <input className="input-pi !py-1.5 text-xs w-48 sm:w-56 rounded-full" placeholder="搜索资产名…" value={kw} onChange={e => setKw(e.target.value)} />
         </div>
 
         {showGen && <GeneratePanel onClose={() => setShowGen(false)} onGenerated={() => mutateArtifacts()} />}
@@ -94,7 +98,13 @@ export default function Assets() {
             else window.open(withFileToken(a.url), '_blank')
           }} />)}
         </div>
-        {!list.length && !isLoading && <div className="text-center text-pi-dim2 text-sm py-16">这个筛选下没有资产</div>}
+        {!list.length && !isLoading && (
+          <div className="empty-state py-14 mb-8 text-center">
+            <div className="text-3xl mb-2 opacity-60">🗂️</div>
+            <div className="text-sm text-pi-dim">这个筛选下没有资产</div>
+            <div className="text-[11px] text-pi-dim2 mt-1">换个类型，或点右上角生成一张新图</div>
+          </div>
+        )}
 
         {/* 交付物列表 */}
         {deliveries.length > 0 && (

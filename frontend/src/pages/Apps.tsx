@@ -66,7 +66,11 @@ function RefineView() {
         </div>
       ))}
       {!pending.length && !applied.length && !rejected.length && (
-        <div className="text-center text-pi-dim2 text-sm py-10 panel">暂无提案——点上面按钮让小语分析近期工作日志</div>
+        <div className="empty-state py-12 text-center">
+          <div className="text-3xl mb-2 opacity-60">🧪</div>
+          <div className="text-sm text-pi-dim">暂无提案</div>
+          <div className="text-[11px] text-pi-dim2 mt-1">点上方按钮，让小语分析近期工作日志、主动提出改进建议</div>
+        </div>
       )}
     </div>
   )
@@ -87,7 +91,12 @@ function SkillsView() {
           </div>
         ))}
       </div>
-      {!skills.length && <div className="text-center text-pi-dim2 text-sm py-8">没有匹配的技能</div>}
+      {!skills.length && (
+        <div className="empty-state py-12 text-center">
+          <div className="text-3xl mb-2 opacity-60">🧩</div>
+          <div className="text-sm text-pi-dim">没有匹配的技能</div>
+        </div>
+      )}
     </div>
   )
 }
@@ -112,7 +121,13 @@ function PromptsView() {
           {open === p.name && <pre className="mt-2 pt-2 border-t border-pi-border-soft text-[11.5px] text-pi-dim whitespace-pre-wrap max-h-64 overflow-auto font-mono">{p.content}</pre>}
         </div>
       ))}
-      {!prompts.length && <div className="text-center text-pi-dim2 text-sm py-8">提示词库为空</div>}
+      {!prompts.length && (
+        <div className="empty-state py-12 text-center">
+          <div className="text-3xl mb-2 opacity-60">📝</div>
+          <div className="text-sm text-pi-dim">提示词库为空</div>
+          <div className="text-[11px] text-pi-dim2 mt-1">在 ~/.pi/agent/prompts/ 放入 .md 文件即可</div>
+        </div>
+      )}
     </div>
   )
 }
@@ -138,7 +153,13 @@ function ImproveView() {
           <button className="btn-tool text-xs mt-2" onClick={() => it.id && dismiss(it.id)}>忽略</button>
         </div>
       ))}
-      {!items.length && <div className="text-center text-pi-dim2 text-sm py-10 panel">当前没有待处理的改进提案</div>}
+      {!items.length && (
+        <div className="empty-state py-12 text-center">
+          <div className="text-3xl mb-2 opacity-60">📈</div>
+          <div className="text-sm text-pi-dim">当前没有待处理的改进提案</div>
+          <div className="text-[11px] text-pi-dim2 mt-1">点上方按钮分析 provider 用量与错误率</div>
+        </div>
+      )}
     </div>
   )
 }
@@ -148,21 +169,27 @@ export default function Apps() {
   return (
     <div className="flex-1 overflow-y-auto relative z-10">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
-        <h1 className="text-xl font-bold text-pi-text mb-1">应用中心</h1>
-        <p className="text-xs text-pi-dim2 mb-4">经验沉淀 · 技能与提示词资产 · 自我改进</p>
-        <div className="flex gap-1.5 mb-5 flex-wrap">
+        <div className="mb-5">
+          <div className="page-eyebrow mb-1">Apps</div>
+          <h1 className="page-title">应用中心</h1>
+          <p className="text-xs text-pi-dim2 mt-1.5">经验沉淀 · 专项生成 · 技能与提示词资产 · 自我改进</p>
+        </div>
+        {/* 分段控件式 Tab */}
+        <div className="inline-flex p-1 rounded-pi-lg bg-pi-bg2/70 border border-pi-border-soft mb-5 max-w-full overflow-x-auto">
           {TABS.map(([k, icon, label]) => (
             <button key={k} onClick={() => setTab(k)}
-              className={`text-xs px-3 py-1.5 rounded-pi-md transition-colors ${tab === k ? 'bg-pi-accent/15 text-pi-accent font-medium' : 'text-pi-dim hover:text-pi-text hover:bg-pi-bg3'}`}>
+              className={`text-xs px-3 py-1.5 rounded-pi-md whitespace-nowrap transition-all duration-150 ${tab === k ? 'bg-pi-accent text-white font-medium shadow-md shadow-pi-accent/25' : 'text-pi-dim hover:text-pi-text'}`}>
               {icon} {label}
             </button>
           ))}
         </div>
-        {tab === 'refine' && <RefineView />}
-        {tab === 'workshop' && <WorkshopView />}
-        {tab === 'skills' && <SkillsView />}
-        {tab === 'prompts' && <PromptsView />}
-        {tab === 'improve' && <ImproveView />}
+        <div key={tab} className="page-enter">
+          {tab === 'refine' && <RefineView />}
+          {tab === 'workshop' && <WorkshopView />}
+          {tab === 'skills' && <SkillsView />}
+          {tab === 'prompts' && <PromptsView />}
+          {tab === 'improve' && <ImproveView />}
+        </div>
       </div>
     </div>
   )

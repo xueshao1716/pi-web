@@ -51,11 +51,13 @@ export default function AppLayout() {
 
   /* ── 页面容器（非 chat 路由共用）── */
   const pageArea = (route !== 'chat') && (
-    <Suspense fallback={<PageLoader />}>
-      <PageErrorBoundary page={NAV.find(n => n.route === route)?.label || route}>
-        <PageBody route={route} />
-      </PageErrorBoundary>
-    </Suspense>
+    <div key={route} className="flex-1 flex flex-col min-h-0 page-enter">
+      <Suspense fallback={<PageLoader />}>
+        <PageErrorBoundary page={NAV.find(n => n.route === route)?.label || route}>
+          <PageBody route={route} />
+        </PageErrorBoundary>
+      </Suspense>
+    </div>
   )
 
   /* ── 移动端布局：TabBar 五入口（对话/会话/资产/任务/设置；模型在对话页下拉） ── */

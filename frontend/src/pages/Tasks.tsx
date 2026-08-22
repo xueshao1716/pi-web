@@ -43,28 +43,39 @@ export default function Tasks() {
   return (
     <div className="flex-1 overflow-y-auto relative z-10">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
-        <h1 className="text-xl font-bold text-pi-text mb-1">定时任务</h1>
-        <p className="text-xs text-pi-dim2 mb-5">到点自动把指令派给小语执行 · 服务端每分钟检查，重启后自动补跑</p>
+        <div className="mb-5">
+          <div className="page-eyebrow mb-1">Scheduled Tasks</div>
+          <h1 className="page-title">定时任务</h1>
+          <p className="text-xs text-pi-dim2 mt-1.5">到点自动把指令派给小语执行 · 服务端每分钟检查，重启后自动补跑</p>
+        </div>
 
         {/* 任务列表 */}
         <div className="space-y-2.5 mb-8">
           {isLoading && <div className="text-center text-pi-dim2 text-sm py-8">加载中…</div>}
-          {!isLoading && !tasks.length && <div className="text-center text-pi-dim2 text-sm py-10 panel">还没有定时任务——用下面的表单建第一个</div>}
+          {!isLoading && !tasks.length && (
+            <div className="empty-state py-12 text-center">
+              <div className="text-3xl mb-2 opacity-60">⏰</div>
+              <div className="text-sm text-pi-dim">还没有定时任务</div>
+              <div className="text-[11px] text-pi-dim2 mt-1">用下面的表单建第一个，比如每天早上让小语整理工作空间</div>
+            </div>
+          )}
           {tasks.map(t => (
-            <div key={t.id} className="panel !p-3.5 flex items-start gap-3">
-              <div className="w-11 h-11 rounded-pi-md bg-pi-accent/12 border border-pi-accent/25 flex flex-col items-center justify-center flex-shrink-0">
-                <span className="text-[9px] text-pi-accent leading-none">{TYPE_LABEL[t.type]}</span>
-                <span className="text-[11px] font-bold text-pi-text leading-tight">{t.at}</span>
+            <div key={t.id} className="panel !p-3.5 flex items-start gap-3 card-hover group/task">
+              <div className="w-11 h-11 rounded-pi-md bg-pi-accent/12 border border-pi-accent/25 flex flex-col items-center justify-center flex-shrink-0"
+                style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,.06)' }}>
+                <span className="text-[9px] text-pi-accent leading-none font-semibold tracking-wide">{TYPE_LABEL[t.type]}</span>
+                <span className="text-[11px] font-bold text-pi-text leading-tight tabular-nums">{t.at}</span>
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-[13px] text-pi-text font-medium truncate">{t.label || t.prompt.slice(0, 30)}</div>
                 <div className="text-[11px] text-pi-dim2 mt-0.5 line-clamp-2">{t.prompt}</div>
-                <div className="text-[10px] text-pi-dim2 mt-1 flex gap-3">
-                  <span>⏰ {describe(t)}</span>
-                  <span>已跑 {t.runs || 0} 次{t.lastRun ? ` · 上次 ${new Date(t.lastRun).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}` : ''}</span>
+                <div className="text-[10px] text-pi-dim2 mt-1.5 flex gap-3 flex-wrap">
+                  <span className="px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3">⏰ {describe(t)}</span>
+                  <span className="px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3">已跑 {t.runs || 0} 次</span>
+                  {t.lastRun && <span className="px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3">上次 {new Date(t.lastRun).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</span>}
                 </div>
               </div>
-              <button title="删除任务" className="btn-tool !px-2 text-pi-dim2 hover:text-pi-red flex-shrink-0"
+              <button title="删除任务" className="btn-tool !px-2 text-pi-dim2 hover:text-pi-red flex-shrink-0 opacity-0 group-hover/task:opacity-100 transition-opacity"
                 onClick={async () => { try { await TasksApi.remove(t.id); mutate() } catch {} }}>🗑</button>
             </div>
           ))}
