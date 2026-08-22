@@ -85,3 +85,51 @@ body::before {
 .markdown-body hr { border: 0; border-top: 1px solid var(--pi-border); margin: 12px 0; }
 .markdown-body a { color: var(--pi-accent2); text-decoration: none; }
 .markdown-body a:hover { text-decoration: underline; }
+
+/* ══ 主题系统（2026-08-22 Phase2）：data-theme 覆盖 token；主色由 JS 注入 --pi-accent ══ */
+/* 墨玉黑（OLED 纯黑） */
+[data-theme="ink"] {
+  --pi-bg: #000000;
+  --pi-bg1: #0a0a0c;
+  --pi-bg2: #111114;
+  --pi-bg3: #1a1a1f;
+  --pi-border: #26262e;
+  --pi-border-soft: #1b1b22;
+  --pi-text: #eceef2;
+  --pi-dim: #9aa0ae;
+  --pi-dim2: #62666f;
+  --pi-glow: rgba(120, 120, 160, 0.18);
+}
+/* 紫夜 */
+[data-theme="violet"] {
+  --pi-bg: #0d0a1a;
+  --pi-bg1: #151030;
+  --pi-bg2: #1c1640;
+  --pi-bg3: #251d52;
+  --pi-border: #35296a;
+  --pi-border-soft: #241c50;
+  --pi-text: #f0eaff;
+  --pi-dim: #a99cd8;
+  --pi-dim2: #6f63a0;
+  --pi-glow: rgba(139, 92, 246, 0.30);
+}
+/* 晨雾（浅色） */
+[data-theme="mist"] {
+  --pi-bg: #f3f5fa;
+  --pi-bg1: #ffffff;
+  --pi-bg2: #ffffff;
+  --pi-bg3: #eef1f8;
+  --pi-border: #d8deeb;
+  --pi-border-soft: #e4e9f3;
+  --pi-text: #1c2333;
+  --pi-dim: #5a6580;
+  --pi-dim2: #9099ad;
+  --pi-green: #16a34a;
+  --pi-red: #dc4b45;
+  --pi-yellow: #d97706;
+  --pi-glow: rgba(74, 88, 250, 0.10);
+}
+[data-theme="mist"] .glass { background: rgba(255, 255, 255, 0.62); }
+[data-theme="mist"] .glass-strong { background: rgba(255, 255, 255, 0.82); }
+[data-theme="mist"] body::before,
+[data-theme="mist"] body::before { opacity: .5; }

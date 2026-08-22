@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../store'
-import { SessionsApi, ChatApi } from '../api'
+import { SessionsApi, ChatApi, streamSession } from '../api'
 import Message from './Message'
 import ModelSelect from './ModelSelect'
 import SendBox from './SendBox'
@@ -30,7 +30,7 @@ function toDataUri(raw: string, mime?: string): string {
   return raw.startsWith('data:') ? raw : `data:${mime || 'image/png'};base64,${raw}`
 }
 
-export default function ChatArea() {
+export default function ChatArea({ compactHeader }: { compactHeader?: boolean } = {}) {
   const { currentSessionId, currentModel, refreshSessions, selectSession } = useApp()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState(false)
@@ -63,6 +63,18 @@ export default function ChatArea() {
     catch {} finally { setLoading(false); nearBottomRef.current = true; scroll() }
   }
   useEffect(() => { currentSessionId ? load(currentSessionId) : (setMessages([]), setStream(null), streamRef.current = null) }, [currentSessionId])
+
+  // 多端同步：订阅会话事件流，外部（手机/其他端）新消息到达时静默刷新（本地流式中不刷）
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (!currentSessionId) return
+    const off = streamSession(currentSessionId, 0, () => {
+      if (streamRef.current) return // 本地正在生成，避免自刷新打断
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
+      syncTimerRef.current = setTimeout(() => { load(currentSessionId) }, 800)
+    })
+    return () => { off(); if (syncTimerRef.current) clearTimeout(syncTimerRef.current) }
+  }, [currentSessionId])
 
   // 更新流式状态：改 ref → 同步渲染副本
   const updStream = (fn: (p: StreamState) => StreamState | null) => {
@@ -212,7 +224,7 @@ export default function ChatArea() {
     <div className="flex-1 flex flex-col min-w-0">
       {/* 顶栏 */}
       <div className="flex items-center px-5 h-12 border-b border-pi-border-soft glass flex-shrink-0 gap-2">
-        <div className="font-medium text-[14px] text-pi-text">会话</div>
+        {!compactHeader && <div className="font-medium text-[14px] text-pi-text">会话</div>}
         <div className="ml-auto" />
         <ModelSelect />
       </div>

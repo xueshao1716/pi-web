@@ -10,7 +10,7 @@ const GROUP_LABEL: Record<string, string> = {
 // 分组排序：终端会话置顶（外部可随时打开终端会话找小语，双向同步）
 const GROUP_ORDER = ['terminal', 'workspace']
 
-export default function Sidebar() {
+export default function Sidebar({ onNavigated }: { onNavigated?: () => void } = {}) {
   const { sessions, currentSessionId, selectSession, refreshSessions } = useApp()
   const [renaming, setRenaming] = useState<{ sid: string; name: string } | null>(null)
   const [search, setSearch] = useState('')
@@ -72,7 +72,7 @@ export default function Sidebar() {
                 className={`group flex items-center gap-2.5 px-2.5 py-2 rounded-pi-md cursor-pointer mb-0.5 transition-colors duration-fast ${
                   s.id === currentSessionId ? 'bg-pi-accent/12 border border-pi-accent/25' : 'hover:bg-pi-bg2'
                 }`}
-                onClick={() => selectSession(s.id)}>
+                onClick={() => { selectSession(s.id); onNavigated?.() }}>
                 <div className={`w-6 h-6 rounded-pi-sm flex items-center justify-center text-xs font-bold flex-shrink-0 ${s.id === currentSessionId ? 'bg-pi-accent text-white' : 'bg-pi-bg3 text-pi-dim'}`}>
                   {s.name?.charAt(0) || '会'}
                 </div>
