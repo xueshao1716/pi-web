@@ -59,7 +59,7 @@ export default function Assets() {
 
   return (
     <div className="flex-1 overflow-y-auto relative z-10">
-      <div className="max-w-6xl mx-auto px-6 py-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
         <div className="flex items-end justify-between mb-4 flex-wrap gap-3">
           <div>
             <h1 className="text-xl font-bold text-pi-text">资产库</h1>

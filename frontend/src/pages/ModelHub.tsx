@@ -75,7 +75,7 @@ export default function ModelHub() {
 
   return (
     <div className="flex-1 overflow-y-auto relative z-10">
-      <div className="max-w-5xl mx-auto px-6 py-6">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
         {/* 头部概览 */}
         <div className="flex items-end justify-between mb-5 flex-wrap gap-3">
           <div>
@@ -117,7 +117,7 @@ export default function ModelHub() {
 
         {/* Provider 用量 */}
         <h2 className="text-sm font-semibold text-pi-text mb-2">Provider 用量</h2>
-        <div className="panel !p-0 overflow-hidden mb-6">
+        <div className="panel !p-0 overflow-hidden mb-6 overflow-x-auto">
           <table className="w-full text-[12px]">
             <thead>
               <tr className="text-left text-pi-dim2 border-b border-pi-border-soft">

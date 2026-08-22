@@ -145,7 +145,7 @@ export default function Apps() {
   const [tab, setTab] = useState<Tab>('refine')
   return (
     <div className="flex-1 overflow-y-auto relative z-10">
-      <div className="max-w-4xl mx-auto px-6 py-6">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
         <h1 className="text-xl font-bold text-pi-text mb-1">应用中心</h1>
         <p className="text-xs text-pi-dim2 mb-4">经验沉淀 · 技能与提示词资产 · 自我改进</p>
         <div className="flex gap-1.5 mb-5 flex-wrap">

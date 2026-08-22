@@ -42,7 +42,7 @@ export default function Tasks() {
 
   return (
     <div className="flex-1 overflow-y-auto relative z-10">
-      <div className="max-w-3xl mx-auto px-6 py-6">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
         <h1 className="text-xl font-bold text-pi-text mb-1">定时任务</h1>
         <p className="text-xs text-pi-dim2 mb-5">到点自动把指令派给小语执行 · 服务端每分钟检查，重启后自动补跑</p>
 
