@@ -91,11 +91,32 @@ export const ChatApi = {
 }
 
 // 会话实时订阅（SSE，多端同步）
-export function streamSession(sid: string, after = 0, onEvent: (ev: any) => void): () => void {
-  const es = new EventSource(`${_apiBase}/api/sessions/${encodeURIComponent(sid)}/stream?after=${after}`)
-  es.onmessage = (e: MessageEvent) => { try { onEvent(JSON.parse(e.data)) } catch {} }
-  es.addEventListener('subscribed', (e: any) => { try { onEvent(JSON.parse(e.data)) } catch {} })
-  return () => es.close()
+export function streamSession(sid: string, after = 0, onEvent: (ev: any) => void, onError?: () => void): () => void {
+  let es: EventSource | null = null
+  let closed = false
+  let retryTimer: ReturnType<typeof setTimeout> | null = null
+  const connect = () => {
+    if (closed) return
+    es = new EventSource(`${_apiBase}/api/sessions/${encodeURIComponent(sid)}/stream?after=${after}`)
+    es.onmessage = (e: MessageEvent) => { try { onEvent(JSON.parse(e.data)) } catch {} }
+    es.addEventListener('subscribed', (e: any) => { try { onEvent(JSON.parse(e.data)) } catch {} })
+    // 断线恢复：EventSource 原生会重连，但连接失败/服务重启时可能终化——监听 error 兜底重连
+    es.onerror = () => {
+      onError?.()
+      es?.close()
+      if (!closed && !retryTimer) {
+        retryTimer = setTimeout(() => { retryTimer = null; connect() }, 5000)
+      }
+    }
+  }
+  connect()
+  return () => { closed = true; if (retryTimer) clearTimeout(retryTimer); es?.close() }
+}
+
+// ── 语音转文字（录音 → 文本，后端走 mimo-v2.5-asr 免费通道）──
+export const AsrApi = {
+  transcribe: (data: string, format: string) =>
+    api<{ text: string; model: string }>("/api/asr", { method: "POST", body: { data, format }, timeoutMs: 130000 }),
 }
 
 // ── 工作空间 ──

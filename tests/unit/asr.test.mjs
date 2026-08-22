@@ -27,18 +27,20 @@ test("asr-01 缺少音频数据 → 400", async () => {
   assert.equal(res.statusCode, 400);
 });
 
-test("asr-02 不支持的格式 → 400", async () => {
+test("asr-02 不支持的格式 → 400（上游只认 wav/mp3）", async () => {
   init(okFetch);
-  const res = mockRes();
-  await handleAsr(res, { data: "aGk=", format: "exe" });
-  assert.equal(res.statusCode, 400);
+  for (const fmt of ["exe", "webm", "m4a"]) {
+    const res = mockRes();
+    await handleAsr(res, { data: "aGk=", format: fmt });
+    assert.equal(res.statusCode, 400, fmt);
+  }
 });
 
 test("asr-03 成功：返回去空格文本 + 网关 payload 只含 audio 不含 text（网关硬约定）", async () => {
   let captured = null;
   init(async (url, opts) => { captured = { url, body: JSON.parse(opts.body) }; return okFetch(); });
   const res = mockRes();
-  await handleAsr(res, { data: "aGk=", format: "webm" });
+  await handleAsr(res, { data: "aGk=", format: "wav" });
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.text, "你好，世界");
   assert.equal(res.body.model, "mimo-v2.5-asr");

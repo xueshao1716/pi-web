@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
+import useSWR from 'swr'
 import { useApp } from '../store'
-import { SessionsApi, ChatApi, streamSession } from '../api'
+import { ChatApi, SessionsApi, AsrApi, streamSession } from '../api'
 import Message from './Message'
 import ModelSelect from './ModelSelect'
 import SendBox from './SendBox'
+import TurnList from './TurnList'
 import type { FileAttachment } from './SendBox'
 import type { ChatMessage, RunningTool } from '../types'
 
@@ -32,8 +34,6 @@ function toDataUri(raw: string, mime?: string): string {
 
 export default function ChatArea({ compactHeader }: { compactHeader?: boolean } = {}) {
   const { currentSessionId, currentModel, refreshSessions, selectSession } = useApp()
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [loading, setLoading] = useState(false)
   const [stream, setStream] = useState<StreamState | null>(null)
   const [idleSeconds, setIdleSeconds] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -41,7 +41,22 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
   // ref 是唯一事实源：SSE 事件可能在一个渲染批次内全部到达，useEffect 同步会滞后导致 done 时读到旧值
   const streamRef = useRef<StreamState | null>(null)
   const lastEventAtRef = useRef(0)
-  const taRef = useRef<HTMLTextAreaElement>(null)
+
+  // ── swr 数据层：消息缓存 + 重验证（切会话自动换 key，断线恢复后 revalidate）──
+  const msgKey = currentSessionId ? ['messages', currentSessionId] : null
+  const { data: msgData, isLoading, mutate: mutateMsgs } = useSWR(msgKey,
+    ([, sid]: readonly [string, string]) => SessionsApi.messages(sid),
+    { revalidateOnFocus: false, dedupingInterval: 1500 })
+  const messages: ChatMessage[] = msgData?.messages || []
+  const loading = !!msgKey && isLoading && !msgData
+
+  // 本地乐观更新（发送/收尾/系统提示），不触发重验证
+  const updateMessages = (fn: (prev: ChatMessage[]) => ChatMessage[]) => {
+    if (!currentSessionId) return
+    mutateMsgs(prev => ({ ...(prev || { messages: [] as ChatMessage[] }), messages: fn(prev?.messages || []) }), { revalidate: false })
+  }
+
+  const reload = () => { if (currentSessionId) mutateMsgs() }
 
   // 智能滚动：用户上翻（距底 >120px）时不强制拉回
   const nearBottomRef = useRef(true)
@@ -57,24 +72,25 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
     if (el) nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
   }
 
-  const load = async (sid: string) => {
-    setLoading(true); setStream(null); streamRef.current = null; setMessages([])
-    try { const d = await SessionsApi.messages(sid); setMessages(d.messages || []) }
-    catch {} finally { setLoading(false); nearBottomRef.current = true; scroll() }
-  }
-  useEffect(() => { currentSessionId ? load(currentSessionId) : (setMessages([]), setStream(null), streamRef.current = null) }, [currentSessionId])
+  useEffect(() => { streamRef.current = null; setStream(null); nearBottomRef.current = true }, [currentSessionId])
 
-  // 多端同步：订阅会话事件流，外部（手机/其他端）新消息到达时静默刷新（本地流式中不刷）
+  // 多端同步：订阅会话事件流，外部（手机/其他端）新消息到达时静默刷新（本地流式中不刷）；
+  // 断线由 api 层自动重连（5s），重连成功后靠下一次事件刷新
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (!currentSessionId) return
+    let alive = true
     const off = streamSession(currentSessionId, 0, () => {
-      if (streamRef.current) return // 本地正在生成，避免自刷新打断
+      if (streamRef.current || !alive) return // 本地正在生成，避免自刷新打断
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
-      syncTimerRef.current = setTimeout(() => { load(currentSessionId) }, 800)
+      syncTimerRef.current = setTimeout(() => { mutateMsgs() }, 800)
+    }, () => {
+      // 连接出错：若本地也没在流式，延迟兜底重验证一次
+      if (streamRef.current || !alive) return
+      setTimeout(() => { if (alive && !streamRef.current) mutateMsgs() }, 6000)
     })
-    return () => { off(); if (syncTimerRef.current) clearTimeout(syncTimerRef.current) }
-  }, [currentSessionId])
+    return () => { alive = false; off(); if (syncTimerRef.current) clearTimeout(syncTimerRef.current) }
+  }, [currentSessionId]) // eslint-disable-line
 
   // 更新流式状态：改 ref → 同步渲染副本
   const updStream = (fn: (p: StreamState) => StreamState | null) => {
@@ -98,7 +114,7 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
     const s = streamRef.current
     if (!s) return
     if (s.text || s.think || s.tools.length || s.files.length || s.images.length || s.audios.length || s.error) {
-      setMessages(prev => [...prev, {
+      updateMessages(prev => [...prev, {
         id: 'a' + Date.now(), role: 'assistant',
         text: s.text + (s.error ? `\n\n⚠️ ${s.error}` : ''),
         think: s.think, tools: s.tools, notes: s.notes,
@@ -121,14 +137,19 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
       '/compact': '/compact 暂未接入 React 版，可到旧版界面使用（/?legacy=1）',
       '/stats': '/stats 暂未接入 React 版，可到旧版界面使用（/?legacy=1）',
     }
-    setMessages(prev => [...prev, { id: 'sys' + Date.now(), role: 'system', text: tips[cmd] || `未知命令 ${cmd}`, ts: new Date().toISOString() }])
+    updateMessages(prev => [...prev, { id: 'sys' + Date.now(), role: 'system', text: tips[cmd] || `未知命令 ${cmd}`, ts: new Date().toISOString() }])
   }
 
   const send = async (raw: string, attachFiles: FileAttachment[] = []) => {
     const content = raw.trim(); if (!content || streamRef.current) return
     let sid = currentSessionId
-    if (!sid) { try { const d = await SessionsApi.create(); sid = d.id } catch { return } }
-    setMessages(prev => [...prev, { id: 'u' + Date.now(), role: 'user', text: content, ts: new Date().toISOString() }])
+    if (!sid) {
+      // 尚无会话：先建会话并选中，等切会话的 effect 跑完（清流式态）再继续，
+      // 否则乐观更新的用户消息会落空、后续 SSE 事件会被 effect 清掉
+      try { const d = await SessionsApi.create(); await refreshSessions(); selectSession(d.id); sid = d.id } catch { return }
+      await new Promise(r => setTimeout(r, 80))
+    }
+    updateMessages(prev => [...prev, { id: 'u' + Date.now(), role: 'user', text: content, ts: new Date().toISOString() }])
     streamRef.current = emptyStream()
     setStream({ ...streamRef.current })
     nearBottomRef.current = true
@@ -208,6 +229,20 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
     finalize()
   }
 
+  // SendBox 把转写文本填进输入框的回调通道；语音输入：录音 → /api/asr 转写 → 填入输入框
+  const voiceTextRef = useRef<((t: string) => void) | null>(null)
+  const [voiceBusy, setVoiceBusy] = useState(false)
+  const handleVoice = async (dataB64: string, format: string) => {
+    setVoiceBusy(true)
+    try {
+      const d = await AsrApi.transcribe(dataB64, format)
+      if (d.text) voiceTextRef.current?.(d.text)
+      else throw new Error('未识别到内容')
+    } catch (e: any) {
+      updateMessages(prev => [...prev, { id: 'sysasr' + Date.now(), role: 'system', text: `🎙️ 语音识别失败：${e?.message || e}`, ts: new Date().toISOString() }])
+    } finally { setVoiceBusy(false) }
+  }
+
   const welcome = (
     <div className="flex items-center justify-center h-full">
       <div className="text-center">
@@ -243,16 +278,18 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
           : messages.length === 0 && !stream ? welcome
           : (
             <div className="max-w-3xl mx-auto">
-              {messages.map(m => <Message key={m.id} msg={m} onEdit={(t) => send(t)} />)}
-              {stream && (
-                <Message msg={{
-                  id: '__streaming__', role: 'assistant',
-                  text: stream.text + (stream.error ? `\n\n⚠️ ${stream.error}` : ''),
-                  think: stream.think, tools: stream.tools, notes: stream.notes,
-                  files: stream.files, images: stream.images, audios: stream.audios,
-                  streaming: true,
-                }} />
-              )}
+              <TurnList
+                messages={messages}
+                streamingNode={stream ? (
+                  <Message msg={{
+                    id: '__streaming__', role: 'assistant',
+                    text: stream.text + (stream.error ? `\n\n⚠️ ${stream.error}` : ''),
+                    think: stream.think, tools: stream.tools, notes: stream.notes,
+                    files: stream.files, images: stream.images, audios: stream.audios,
+                    streaming: true,
+                  }} />
+                ) : undefined}
+              />
             </div>
           )}
       </div>
@@ -260,7 +297,8 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
       {/* 输入栏 */}
       <div className="border-t border-pi-border-soft glass px-6 py-3 flex-shrink-0">
         <div className="max-w-3xl mx-auto">
-          <SendBox streaming={!!stream} onStop={stop} onSend={send} onCommand={runCommand} />
+          <SendBox streaming={!!stream} onStop={stop} onSend={send} onCommand={runCommand}
+            voiceBusy={voiceBusy} onVoice={handleVoice} onVoiceTextReady={fn => { voiceTextRef.current = fn }} />
         </div>
       </div>
     </div>

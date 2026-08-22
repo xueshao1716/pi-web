@@ -17,9 +17,55 @@ interface Props {
   onStop: () => void
   onSend: (text: string, files: FileAttachment[]) => void
   onCommand: (cmd: string) => void
+  // 语音输入：录音结束 → base64 交给父组件调 /api/asr；voiceBusy = 转写中
+  onVoice?: (dataB64: string, format: string) => void
+  voiceBusy?: boolean
+  onVoiceTextReady?: (fn: (t: string) => void) => void
 }
 
-export default function SendBox({ streaming, onStop, onSend, onCommand }: Props) {
+// ── 录音 → WAV base64（16kHz 单声道 PCM16，上游 ASR 只认 wav/mp3）──
+async function blobToWavBase64(blob: Blob): Promise<string> {
+  const buf = await blob.arrayBuffer()
+  const AC = window.AudioContext || (window as any).webkitAudioContext
+  const ctx = new AC()
+  let audio: AudioBuffer
+  try { audio = await ctx.decodeAudioData(buf) } finally { ctx.close().catch(() => {}) }
+  const TARGET_RATE = 16000
+  const chCount = Math.min(audio.numberOfChannels, 2)
+  // 线性插值重采样 + 多通道混合为单声道
+  const ratio = audio.sampleRate / TARGET_RATE
+  const outLen = Math.floor(audio.length / ratio)
+  const out = new Float32Array(outLen)
+  const chans: Float32Array[] = []
+  for (let c = 0; c < chCount; c++) chans.push(audio.getChannelData(c))
+  for (let i = 0; i < outLen; i++) {
+    const srcIdx = i * ratio
+    const i0 = Math.floor(srcIdx), frac = srcIdx - i0
+    const i1 = Math.min(i0 + 1, audio.length - 1)
+    let sum = 0
+    for (let c = 0; c < chCount; c++) sum += chans[c][i0] * (1 - frac) + chans[c][i1] * frac
+    out[i] = sum / chCount
+  }
+  // 编码 PCM16 WAV
+  const dataLen = out.length * 2
+  const view = new DataView(new ArrayBuffer(44 + dataLen))
+  const ws = (off: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)) }
+  ws(0, 'RIFF'); view.setUint32(4, 36 + dataLen, true); ws(8, 'WAVE')
+  ws(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true)
+  view.setUint32(24, TARGET_RATE, true); view.setUint32(28, TARGET_RATE * 2, true)
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true)
+  ws(36, 'data'); view.setUint32(40, dataLen, true)
+  for (let i = 0; i < out.length; i++) {
+    const s = Math.max(-1, Math.min(1, out[i]))
+    view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true)
+  }
+  // ArrayBuffer → base64
+  let bin = ''; const bytes = new Uint8Array(view.buffer)
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(bin)
+}
+
+export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice, voiceBusy, onVoiceTextReady }: Props) {
   const taRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [value, setValue] = useState('')
@@ -30,6 +76,67 @@ export default function SendBox({ streaming, onStop, onSend, onCommand }: Props)
   // @ 引用菜单
   const [atQuery, setAtQuery] = useState<string | null>(null)
   const [atResults, setAtResults] = useState<{ name: string; path: string }[]>([])
+  // ── 语音输入 ──
+  const [recording, setRecording] = useState(false)
+  const [recSeconds, setRecSeconds] = useState(0)
+  const recRef = useRef<{ rec: MediaRecorder; stream: MediaStream; chunks: Blob[]; mime: string } | null>(null)
+  const recTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // 转写结果填入输入框的通道（父组件持有回调）
+  useEffect(() => {
+    onVoiceTextReady?.((t) => setValue(v => (v ? v + ' ' : '') + t))
+  }, [onVoiceTextReady])
+
+  const pickMime = (): string => {
+    const cands = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
+    for (const mime of cands) {
+      try { if ((window as any).MediaRecorder?.isTypeSupported?.(mime)) return mime } catch {}
+    }
+    return ''
+  }
+
+  const startRec = async () => {
+    if (!onVoice || recording || voiceBusy) return
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mime = pickMime()
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+      const chunks: Blob[] = []
+      rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data) }
+      rec.onerror = () => stopRec(true)
+      rec.onstop = () => {
+        stream.getTracks().forEach(t => t.stop())
+        const blob = new Blob(chunks, { type: rec.mimeType || mime || 'audio/webm' })
+        if (blob.size > 800 && onVoice) {
+          ;(async () => {
+            try {
+              // ⚠️ 上游网关（mimo-v2.5-asr）只接受 wav/mp3；
+              // MediaRecorder 产出是 webm/m4a —— 浏览器端解码重采样转 WAV 再发
+              const b64 = await blobToWavBase64(blob)
+              onVoice(b64, 'wav')
+            } catch {}
+          })()
+        }
+        recRef.current = null
+      }
+      rec.start()
+      recRef.current = { rec, stream, chunks, mime }
+      setRecording(true); setRecSeconds(0)
+      recTimerRef.current = setInterval(() => setRecSeconds(s => s + 1), 1000)
+    } catch {
+      // 麦克风拒绝/不可用：静默提示一次
+      alert('无法访问麦克风，请检查浏览器权限')
+    }
+  }
+
+  const stopRec = (cancel = false) => {
+    if (recTimerRef.current) { clearInterval(recTimerRef.current); recTimerRef.current = null }
+    const r = recRef.current
+    if (!r) { setRecording(false); return }
+    if (cancel) r.rec.onstop = null as any
+    setRecording(false)
+    try { r.rec.stop() } catch {}
+  }
 
   // slash 匹配
   const slashMatches = slashQuery !== null
@@ -156,6 +263,22 @@ export default function SendBox({ streaming, onStop, onSend, onCommand }: Props)
         <div className="flex items-center px-3 pb-3 gap-1.5">
           <span className="text-pi-dim2 text-xs flex-1">Enter 发送 · Shift+Enter 换行</span>
           <input ref={fileInputRef} type="file" className="hidden" onChange={onUploadFile} />
+          {/* 语音输入：点击开始录音，再点停止并转写；转写中转圈 */}
+          {onVoice && !streaming && (
+            recording ? (
+              <button onClick={() => stopRec()}
+                className="h-8 px-3 rounded-full bg-red-500/90 text-white text-xs font-medium flex items-center gap-1.5 hover:bg-red-500 transition-colors animate-pulse"
+                title="停止录音并转写">
+                <span className="w-2 h-2 bg-white rounded-full" /> {Math.floor(recSeconds / 60)}:{String(recSeconds % 60).padStart(2, '0')} 停止
+              </button>
+            ) : voiceBusy ? (
+              <button className="btn-tool text-xs" disabled title="语音识别中…">
+                <span className="inline-block w-3 h-3 border-2 border-pi-accent border-t-transparent rounded-full animate-spin align-middle" /> 识别中
+              </button>
+            ) : (
+              <button onClick={startRec} className="btn-tool text-xs" title="语音输入（说完点停止）">🎤</button>
+            )
+          )}
           <button className="btn-tool text-xs" title="附加文件内容" onClick={() => fileInputRef.current?.click()} disabled={streaming || uploading}>
             {uploading ? '上传中…' : '📎 附加'}
           </button>

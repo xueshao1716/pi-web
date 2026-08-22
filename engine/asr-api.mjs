@@ -19,8 +19,9 @@ export function initAsrApi({ resolveAuth, readJsonFile, modelsPath, httpJsonFetc
 const PROVIDER = "xiaomi-token-plan-cn";
 const MODEL = "mimo-v2.5-asr";
 const DEFAULT_BASE = "https://token-plan-cn.xiaomimimo.com/v1";
-// 允许的音频格式（MediaRecorder 常见产物 + 常见上传格式）
-const ALLOWED_FORMATS = new Set(["webm", "wav", "mp3", "m4a", "ogg", "flac", "aac"]);
+// 上游网关（mimo-v2.5-asr）只接受 wav/mp3（webm 会被拒："must be one of: wav, mp3"）；
+// 前端负责把 MediaRecorder 产物转成 WAV 再发
+const ALLOWED_FORMATS = new Set(["wav", "mp3"]);
 const MAX_AUDIO_MB = 12;
 
 function resolveBase() {
