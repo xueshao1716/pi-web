@@ -69,11 +69,14 @@ function Attachments({ msg }: { msg: ChatMessage }) {
   )
 }
 
-export default function Message({ msg }: { msg: ChatMessage & { streaming?: boolean } }) {
+export default function Message({ msg, onEdit }: { msg: ChatMessage & { streaming?: boolean }; onEdit?: (text: string) => void } & { [k: string]: any }) {
   const isUser = msg.role === 'user'
   const streaming = !!(msg as any).streaming
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const canEdit = isUser && !!onEdit && !streaming && msg.id !== '__streaming__' && !msg.id.startsWith('sys')
   return (
-    <div className={`flex gap-3 py-2.5 ${isUser ? 'flex-row-reverse' : ''}`}>
+    <div className={`group/msg flex gap-3 py-2.5 ${isUser ? 'flex-row-reverse' : ''}`}>
       <div className={`w-8 h-8 rounded-pi-md flex items-center justify-center text-white text-sm font-bold flex-shrink-0 avatar-grad ${isUser ? 'from-pi-accent to-pi-accent-deep' : ''}`}>{isUser ? '我' : '小'}</div>
       <div className={`max-w-[80%] min-w-0 ${isUser ? 'text-right' : ''}`}>
         <div className={`rounded-pi-lg px-4 py-2.5 msg-bubble ${isUser ? 'msg-bubble-user' : ''}`}>
@@ -87,9 +90,30 @@ export default function Message({ msg }: { msg: ChatMessage & { streaming?: bool
           ) : null}
           {!isUser && msg.think && <Thinking text={msg.think} live={streaming} />}
           <Attachments msg={msg} />
-          <div className={isUser ? 'text-[13.5px] text-pi-text' : ''}>
-            {isUser ? <span className="whitespace-pre-wrap">{msg.text}</span> : <Markdown text={msg.text} />}
-          </div>
+          {editing ? (
+            <div className="w-full min-w-[280px]">
+              <textarea autoFocus rows={3} value={draft} onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); setEditing(false); if (draft.trim()) onEdit?.(draft.trim()) } if (e.key === 'Escape') setEditing(false) }}
+                className="input-pi text-[13.5px] resize-none" />
+              <div className="flex justify-end gap-2 mt-1.5">
+                <button className="btn-tool text-xs" onClick={() => setEditing(false)}>取消</button>
+                <button className="btn-primary text-xs px-3 py-1" onClick={() => { setEditing(false); if (draft.trim()) onEdit?.(draft.trim()) }}>重新发送</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className={isUser ? 'text-[13.5px] text-pi-text' : ''}>
+                {isUser ? <span className="whitespace-pre-wrap">{msg.text}</span> : <Markdown text={msg.text} />}
+              </div>
+              {/* 编辑重发：hover 显示 */}
+              {canEdit && (
+                <div className="hidden group-hover/msg:flex justify-end mt-1">
+                  <button className="text-[10px] text-pi-dim2 hover:text-pi-text" title="编辑并重新发送"
+                    onClick={() => { setDraft(msg.text); setEditing(true) }}>✎ 编辑</button>
+                </div>
+              )}
+            </>
+          )}
           {msg.tools?.map((t, i) => <ToolCard key={t.id || i} tool={t} />)}
           {streaming && <span className="animate-pulse text-pi-accent">▌</span>}
         </div>

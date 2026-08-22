@@ -3,6 +3,8 @@ import { useApp } from '../store'
 import { SessionsApi, ChatApi } from '../api'
 import Message from './Message'
 import ModelSelect from './ModelSelect'
+import SendBox from './SendBox'
+import type { FileAttachment } from './SendBox'
 import type { ChatMessage, RunningTool } from '../types'
 
 // 流式状态：覆盖服务端全部 SSE 事件（delta/think/think_end/tool/tool_output/
@@ -29,7 +31,7 @@ function toDataUri(raw: string, mime?: string): string {
 }
 
 export default function ChatArea() {
-  const { currentSessionId, currentModel } = useApp()
+  const { currentSessionId, currentModel, refreshSessions, selectSession } = useApp()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState(false)
   const [stream, setStream] = useState<StreamState | null>(null)
@@ -96,7 +98,21 @@ export default function ChatArea() {
     setStream(null)
   }
 
-  const send = async (raw: string) => {
+  const runCommand = async (cmd: string) => {
+    if (cmd === '/new') {
+      try { const d = await SessionsApi.create(); await refreshSessions(); selectSession(d.id) } catch {}
+      return
+    }
+    if (cmd === '/legacy') { window.location.href = '/?legacy=1'; return }
+    const tips: Record<string, string> = {
+      '/help': '可用命令：/new 新建会话 · /legacy 旧版界面 · /compact 压缩上下文（暂未接入） · /stats 统计（暂未接入）',
+      '/compact': '/compact 暂未接入 React 版，可到旧版界面使用（/?legacy=1）',
+      '/stats': '/stats 暂未接入 React 版，可到旧版界面使用（/?legacy=1）',
+    }
+    setMessages(prev => [...prev, { id: 'sys' + Date.now(), role: 'system', text: tips[cmd] || `未知命令 ${cmd}`, ts: new Date().toISOString() }])
+  }
+
+  const send = async (raw: string, attachFiles: FileAttachment[] = []) => {
     const content = raw.trim(); if (!content || streamRef.current) return
     let sid = currentSessionId
     if (!sid) { try { const d = await SessionsApi.create(); sid = d.id } catch { return } }
@@ -104,7 +120,11 @@ export default function ChatArea() {
     streamRef.current = emptyStream()
     setStream({ ...streamRef.current })
     nearBottomRef.current = true
-    abortRef.current = ChatApi.send({ sessionId: sid, message: content, model: currentModel === 'auto/auto' ? undefined : currentModel }, (ev) => {
+    abortRef.current = ChatApi.send({
+      sessionId: sid, message: content,
+      model: currentModel === 'auto/auto' ? undefined : currentModel,
+      files: attachFiles.length ? attachFiles : undefined,
+    }, (ev) => {
       lastEventAtRef.current = Date.now() // 任意事件都算活跃（含 delta）
       const d = ev.data || {}
       switch (ev.type) {
@@ -176,9 +196,6 @@ export default function ChatArea() {
     finalize()
   }
 
-  const doSend = () => { const v = taRef.current?.value || ''; if (!v.trim()) return; send(v); if (taRef.current) taRef.current.value = '' }
-  const onKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend() } }
-
   const welcome = (
     <div className="flex items-center justify-center h-full">
       <div className="text-center">
@@ -214,7 +231,7 @@ export default function ChatArea() {
           : messages.length === 0 && !stream ? welcome
           : (
             <div className="max-w-3xl mx-auto">
-              {messages.map(m => <Message key={m.id} msg={m} />)}
+              {messages.map(m => <Message key={m.id} msg={m} onEdit={(t) => send(t)} />)}
               {stream && (
                 <Message msg={{
                   id: '__streaming__', role: 'assistant',
@@ -231,25 +248,7 @@ export default function ChatArea() {
       {/* 输入栏 */}
       <div className="border-t border-pi-border-soft glass px-6 py-3 flex-shrink-0">
         <div className="max-w-3xl mx-auto">
-          <div className="rounded-pi-xl border border-pi-border bg-pi-bg2/50 backdrop-blur-lg focus-within:border-pi-accent focus-within:ring-1 focus-within:ring-pi-accent/30 transition-all">
-            <textarea ref={taRef} rows={2} placeholder="给小语发消息…" disabled={!!stream}
-              className="w-full bg-transparent border-none outline-none px-4 py-3 text-[13.5px] text-pi-text resize-none placeholder:text-pi-dim2 disabled:opacity-60"
-              onKeyDown={onKey} />
-            <div className="flex items-center px-3 pb-3 gap-1.5">
-              <span className="text-pi-dim2 text-xs flex-1">Enter 发送 · Shift+Enter 换行</span>
-              {stream ? (
-                <button onClick={stop}
-                  className="h-8 px-4 rounded-full bg-red-500/90 text-white text-xs font-medium flex items-center gap-1.5 hover:bg-red-500 transition-colors">
-                  <span className="w-2.5 h-2.5 bg-white rounded-[2px]" /> 停止
-                </button>
-              ) : (
-                <button onClick={doSend} title="发送"
-                  className="w-8 h-8 rounded-full bg-pi-accent text-white flex items-center justify-center hover:bg-pi-accent2 transition-colors">
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="12 19 12 5"/><polyline points="5 12 12 5 19 12"/></svg>
-                </button>
-              )}
-            </div>
-          </div>
+          <SendBox streaming={!!stream} onStop={stop} onSend={send} onCommand={runCommand} />
         </div>
       </div>
     </div>

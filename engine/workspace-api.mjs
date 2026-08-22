@@ -8,11 +8,15 @@ import { safeJoin } from "./tools/security.mjs";
 import { httpBufferFetch } from "./http.mjs";
 
 let _wsRoot = "";
-export function initWorkspaceApi({ wsRoot = "" } = {}) { _wsRoot = wsRoot; }
+export function initWorkspaceApi({ wsRoot = "" } = {}) {
+  _wsRoot = wsRoot;
+  // ⚠️ 2026-08-22 修复：必须在 init 时赋值——原"WS_ROOT = _wsRoot || WS_ROOT"写在模块顶层，
+  // 导入时 _wsRoot 还是空串且之后不再更新 → WS_ROOT 恒为 "" → 所有 ws 接口"路径越权"。
+  // ESM live binding：这里赋值后，所有 import { WS_ROOT } 的模块同步拿到新值。
+  WS_ROOT = wsRoot || WS_ROOT;
+}
 // 工作空间根（= 会话 cwd，统一反斜杠）；let 导出供外部读引用
 export let WS_ROOT = "";
-
-WS_ROOT = _wsRoot || WS_ROOT;
 
 // 智能文件查找：按关键词 + 类型匹配工作空间文件（供交付时精准定位）
 // 关键词来自用户请求（如"酒店的ppt"→关键词"酒店"+类型 ppt）；无关键词则按最近/成品优先
