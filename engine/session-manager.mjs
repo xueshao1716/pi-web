@@ -8,10 +8,10 @@ import { invalidateSessionCache, getSessionList } from "./session-files.mjs";
 let _cwd = "", _sessionsDir = "", _tools = [], _getModelList = () => [], _getDefaultModel = () => null, _activeSessions = null, _createAgentSessionServices = null, _createAgentSessionFromServices = null, _getModelRuntime = () => null,
     _SessionManager = null, _SettingsManager = null, _DefaultResourceLoader = null, _getAgentDir = () => "", _readJsonFile = null, _writeJsonFile = null,
     _initSearchTool = async () => null, _initShareTool = async () => null, _initDshTool = async () => null, _isExternalThinking = () => false, _THINK_TOOL = null,
-    _modelCapabilities = null, _bindOutputGuardDeps = null, _extractMessages = null, _createSseWriter = null, _unifiedChat = null;
-export function initSessionManager({ cwd = "", sessionsDir = "", tools = [], getModelList = null, getDefaultModel = null, activeSessions = null, SessionManager = null, SettingsManager = null, DefaultResourceLoader = null, getAgentDir = null, readJsonFile = null, writeJsonFile = null, initSearchTool = null, initShareTool = null, initDshTool = null, isExternalThinking = null, THINK_TOOL = null, modelCapabilities = null, bindOutputGuardDeps = null, extractMessages = null, createSseWriter = null, unifiedChat = null, createAgentSessionServices = null, createAgentSessionFromServices = null, getModelRuntime = null } = {}) {
+    _modelCapabilities = null, _bindOutputGuardDeps = null, _extractMessages = null, _createSseWriter = null, _unifiedChat = null, _loadSessionModelKey = null;
+export function initSessionManager({ cwd = "", sessionsDir = "", tools = [], getModelList = null, getDefaultModel = null, activeSessions = null, SessionManager = null, SettingsManager = null, DefaultResourceLoader = null, getAgentDir = null, readJsonFile = null, writeJsonFile = null, initSearchTool = null, initShareTool = null, initDshTool = null, isExternalThinking = null, THINK_TOOL = null, modelCapabilities = null, bindOutputGuardDeps = null, extractMessages = null, createSseWriter = null, unifiedChat = null, createAgentSessionServices = null, createAgentSessionFromServices = null, getModelRuntime = null, loadSessionModelKey = null } = {}) {
   _cwd = cwd; _sessionsDir = sessionsDir; _tools = tools; _activeSessions = activeSessions; _SessionManager = SessionManager; _SettingsManager = SettingsManager; _DefaultResourceLoader = DefaultResourceLoader; _readJsonFile = readJsonFile; _writeJsonFile = writeJsonFile;
-  if (createAgentSessionServices) _createAgentSessionServices = createAgentSessionServices; if (createAgentSessionFromServices) _createAgentSessionFromServices = createAgentSessionFromServices; if (getModelRuntime) _getModelRuntime = getModelRuntime;
+  if (createAgentSessionServices) _createAgentSessionServices = createAgentSessionServices; if (createAgentSessionFromServices) _createAgentSessionFromServices = createAgentSessionFromServices; if (getModelRuntime) _getModelRuntime = getModelRuntime; if (loadSessionModelKey) _loadSessionModelKey = loadSessionModelKey;
   if (getModelList) _getModelList = getModelList; if (getDefaultModel) _getDefaultModel = getDefaultModel; if (getAgentDir) _getAgentDir = getAgentDir;
   if (initSearchTool) _initSearchTool = initSearchTool; if (initShareTool) _initShareTool = initShareTool; if (initDshTool) _initDshTool = initDshTool; if (isExternalThinking) _isExternalThinking = isExternalThinking; if (THINK_TOOL) _THINK_TOOL = THINK_TOOL;
   if (modelCapabilities) _modelCapabilities = modelCapabilities; if (bindOutputGuardDeps) _bindOutputGuardDeps = bindOutputGuardDeps; if (extractMessages) _extractMessages = extractMessages; if (createSseWriter) _createSseWriter = createSseWriter; if (unifiedChat) _unifiedChat = unifiedChat;
@@ -104,7 +104,7 @@ export async function compactSession(file, model, force = false, focus = "") {
     // 只有超大会话（>3MB 或估算超阈值）才压缩，避免小会话频繁触发
     if (!force && st.size < 3 * 1024 * 1024) return;
     // 用引擎打开会话（pi-coding-agent 的 SessionManager，fileEntries 公开且完整）
-    sm = SessionManager.open(file, path.dirname(file), _cwd);
+    sm = _SessionManager.open(file, path.dirname(file), _cwd);
     const entries = sm.fileEntries || [];
     const msgs = entries.filter(e => e.type === "message");
     if (msgs.length < 8) return { skip: true, reason: "会话消息过少(或已压缩过)，无需压缩" };
@@ -241,7 +241,7 @@ export async function openSession(id) {
   }
   evictInactiveSessions();
   const found = getSessionList().find(s => s.id === id);
-  if (!found || !found.file || !fs.existsSync(found.file)) return null;
+  // DEBUG（2026-08-22 会话不存在排查）：临时日志
   // 超大会话先瘦身（避免加载 20MB+ 历史）
   await slimSessionImages(found.file);
   // 分层记忆：会话历史超阈值时压缩早期消息为摘要（pi 引擎原生支持 compaction 条目）
@@ -249,15 +249,15 @@ export async function openSession(id) {
   const sessionCwd = found.cwd || _cwd;
   let sm;
   try {
-    sm = SessionManager.open(found.file, path.dirname(found.file), sessionCwd);
-  } catch {
+    sm = _SessionManager.open(found.file, path.dirname(found.file), sessionCwd);
+  } catch (e) {
     // 会话文件损坏（历史 bug 可能产生）→ 跳过，不阻塞其他会话
-    return null;
+      return null;
   }
   const agent = await createSessionAgent(sm, _getDefaultModel());
   const entry = { agent, sm, busy: false, lastUsed: Date.now() };
   // 恢复会话级模型选择（修复 A：LRU 淘汰/服务重启后不丢用户切的模型；handleChat 检测到不一致会自动重建 agent）
-  const savedKey = loadSessionModelKey(id);
+  const savedKey = _loadSessionModelKey ? _loadSessionModelKey(id) : null;
   if (savedKey) entry.modelKey = savedKey;
   _activeSessions.set(id, entry);
   return entry;
