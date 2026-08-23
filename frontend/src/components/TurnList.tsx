@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Wrench, Package } from 'lucide-react'
 import Message from './Message'
 import type { ChatMessage } from '../types'
 
@@ -53,8 +54,8 @@ function TurnRow({ turn, index, open, onToggle }: { turn: Turn; index: number; o
           {aExcerpt && <span className="text-pi-dim2"> → {aExcerpt}</span>}
         </span>
         <span className="flex items-center gap-1.5 flex-shrink-0 text-[10px] text-pi-dim2">
-          {tools > 0 && <span title={`${tools} 次工具调用`}>🔧{tools}</span>}
-          {artifacts > 0 && <span title={`${artifacts} 个产物`}>📦{artifacts}</span>}
+          {tools > 0 && <span className="inline-flex items-center gap-0.5" title={`${tools} 次工具调用`}><Wrench className="w-3 h-3" />{tools}</span>}
+          {artifacts > 0 && <span className="inline-flex items-center gap-0.5" title={`${artifacts} 个产物`}><Package className="w-3 h-3" />{artifacts}</span>}
           {turn.user?.ts && <span className="hidden sm:inline">{new Date(turn.user.ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>}
           <span className={`transition-transform ${open ? 'rotate-90' : ''}`}>▸</span>
         </span>

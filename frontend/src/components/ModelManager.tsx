@@ -6,7 +6,6 @@ import { colors } from '../theme/tokens'
 
 interface ProviderInfo { provider: string; hasKey: boolean; baseUrl: string; modelCount: number; models: string[] }
 
-const CAP_ICON: Record<string, string> = { chat: '💬', image: '🖼', video: '🎬', tts: '🎤', asr: '🎧' }
 
 export default function ModelManager({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { models, currentModel, setCurrentModel } = useApp()

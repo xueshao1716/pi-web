@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Play, AlertTriangle, Square } from 'lucide-react'
 import useSWR from 'swr'
 import { CodeApi } from '../api'
 import type { CodeBinding } from '../api'
@@ -60,7 +61,7 @@ export default function TerminalPanel() {
           {toolsErr && (
             <button className="text-[10.5px] px-2 py-1 rounded-pi-pill bg-amber-500/10 border border-amber-500/25 text-amber-400"
               onClick={() => mutateTools()} title={String(toolsErr).slice(0, 120)}>
-              ⚠ 引擎未就绪，点此重试
+              <AlertTriangle className="w-3 h-3 inline align-middle mr-1" />引擎未就绪，点此重试
             </button>
           )}
           {bindings.map(b => (
@@ -80,8 +81,8 @@ export default function TerminalPanel() {
       {/* 运行条 */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-pi-border-soft flex-shrink-0">
         <button onClick={run} disabled={running}
-          className={`h-7 px-4 rounded-full text-xs font-medium transition-colors ${running ? 'bg-red-500/90 text-white animate-pulse' : 'bg-pi-accent text-white hover:bg-pi-accent2'}`}>
-          {running ? `运行中 ${elapsed}s` : '▶ 运行'}
+          className={`h-7 px-4 rounded-full text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${running ? 'bg-red-500/90 text-white animate-pulse' : 'bg-pi-accent text-white hover:bg-pi-accent2'}`}>
+          {running ? (<><Square className="w-3 h-3 fill-current" /> 运行中 {elapsed}s</>) : (<><Play className="w-3.5 h-3.5 fill-current" /> 运行</>)}
         </button>
         <button className="btn-tool text-xs" onClick={() => setProgram(SAMPLE)} disabled={running}>示例</button>
         <button className="btn-tool text-xs ml-auto" onClick={() => setLines([])} disabled={!lines.length}>清空输出</button>

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ImagePlus, Zap } from 'lucide-react'
 import { MediaApi, withFileToken } from '../api'
 import { useApp } from '../store'
 import type { Model } from '../types'
@@ -40,7 +41,7 @@ export default function GeneratePanel({ onClose, onGenerated }: { onClose: () =>
   return (
     <div className="panel !p-4 mb-4 space-y-3">
       <div className="flex items-center gap-2">
-        <span className="text-sm font-semibold text-pi-text">🎨 生成图片</span>
+        <span className="text-sm font-semibold text-pi-text inline-flex items-center gap-1.5"><ImagePlus className="w-4 h-4" /> 生成图片</span>
         <span className="text-[10.5px] text-pi-dim2">生成后自动存入「生成物/图片」，出现在下方列表</span>
         <button className="btn-tool !px-2 ml-auto" onClick={onClose}>✕</button>
       </div>
@@ -66,7 +67,7 @@ export default function GeneratePanel({ onClose, onGenerated }: { onClose: () =>
             value={prompt} onChange={e => setPrompt(e.target.value)} />
           <div className="flex items-center gap-3">
             <button className="btn-primary text-xs px-4 py-1.5 disabled:opacity-60" onClick={gen} disabled={busy || !prompt.trim()}>
-              {busy ? `生成中…（图像模型较慢，可能 30-120s）` : '⚡ 生成'}
+              {busy ? '生成中…（图像模型较慢，可能 30-120s）' : '生成'}
             </button>
             {err && <span className="text-xs text-pi-red truncate">{err}</span>}
           </div>

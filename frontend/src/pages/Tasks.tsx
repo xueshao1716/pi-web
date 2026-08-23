@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Trash2 } from 'lucide-react'
 import useSWR from 'swr'
 import { TasksApi } from '../api'
 import type { TimeTask } from '../api'
@@ -76,7 +77,7 @@ export default function Tasks() {
                 </div>
               </div>
               <button title="删除任务" className="btn-tool !px-2 text-pi-dim2 hover:text-pi-red flex-shrink-0 opacity-0 group-hover/task:opacity-100 transition-opacity"
-                onClick={async () => { try { await TasksApi.remove(t.id); mutate() } catch {} }}>🗑</button>
+                onClick={async () => { try { await TasksApi.remove(t.id); mutate() } catch {} }}><Trash2 className="w-4 h-4" /></button>
             </div>
           ))}
         </div>
@@ -115,7 +116,7 @@ export default function Tasks() {
               {busy ? '创建中…' : '+ 创建'}
             </button>
           </div>
-          {err && <div className="text-xs text-pi-red">⚠️ {err}</div>}
+          {err && <div className="text-xs text-pi-red">⚠ {err}</div>}
         </div>
       </div>
     </div>

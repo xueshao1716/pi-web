@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Mic, Paperclip, FileText } from 'lucide-react'
 import { WsApi } from '../api'
 
 // 斜杠命令（Claude Code 风格，对齐线上版）
@@ -240,7 +241,7 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
         <div className="flex flex-wrap gap-1.5 px-1 pb-1.5">
           {files.map(f => (
             <span key={f.path} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-pi-pill bg-pi-accent/12 border border-pi-accent/25 text-[11px] text-pi-text">
-              📄 {f.path.split('/').pop() || f.path}
+              <FileText className="w-3 h-3 flex-shrink-0" /> {f.path.split('/').pop() || f.path}
               <button className="text-pi-dim2 hover:text-pi-red ml-0.5" onClick={() => setFiles(prev => prev.filter(x => x.path !== f.path))}>✕</button>
             </span>
           ))}
@@ -276,11 +277,11 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
                 <span className="inline-block w-3 h-3 border-2 border-pi-accent border-t-transparent rounded-full animate-spin align-middle" /> 识别中
               </button>
             ) : (
-              <button onClick={startRec} className="btn-tool text-xs" title="语音输入（说完点停止）">🎤</button>
+              <button onClick={startRec} className="btn-tool" title="语音输入（说完点停止）"><Mic className="w-4 h-4" /></button>
             )
           )}
           <button className="btn-tool text-xs" title="附加文件内容" onClick={() => fileInputRef.current?.click()} disabled={streaming || uploading}>
-            {uploading ? '上传中…' : '📎 附加'}
+            {uploading ? '上传中…' : (<><Paperclip className="w-3.5 h-3.5" /> 附加</>)}
           </button>
           {streaming ? (
             <button onClick={onStop}

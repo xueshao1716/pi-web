@@ -1,4 +1,5 @@
 import { useEffect, useState, Component, ReactNode } from 'react'
+import { AlertTriangle } from 'lucide-react'
 
 // ── 极轻 hash 路由（零依赖）：#/chat #/models #/assets #/tasks ──
 export type Route = 'chat' | 'models' | 'assets' | 'tasks' | 'apps'
@@ -30,7 +31,7 @@ export class PageErrorBoundary extends Component<EBProps, { err: Error | null }>
       return (
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="panel p-6 max-w-md text-center">
-            <div className="text-2xl mb-2">⚠️</div>
+            <div className="text-amber-400 mb-2 flex justify-center"><AlertTriangle className="w-8 h-8" strokeWidth={1.6} /></div>
             <div className="font-semibold text-pi-text mb-1">{this.props.page} 页面出错了</div>
             <div className="text-xs text-pi-dim2 font-mono break-all mb-4">{this.state.err.message}</div>
             <button className="btn-primary text-xs px-4 py-1.5" onClick={() => this.setState({ err: null })}>重试</button>

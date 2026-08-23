@@ -239,16 +239,30 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
       if (d.text) voiceTextRef.current?.(d.text)
       else throw new Error('未识别到内容')
     } catch (e: any) {
-      updateMessages(prev => [...prev, { id: 'sysasr' + Date.now(), role: 'system', text: `🎙️ 语音识别失败：${e?.message || e}`, ts: new Date().toISOString() }])
+      updateMessages(prev => [...prev, { id: 'sysasr' + Date.now(), role: 'system', text: `语音识别失败：${e?.message || e}`, ts: new Date().toISOString() }])
     } finally { setVoiceBusy(false) }
   }
 
   const welcome = (
-    <div className="flex items-center justify-center h-full">
-      <div className="text-center">
-        <div className="w-16 h-16 mx-auto rounded-pi-xl bg-gradient-to-br from-pi-accent to-pi-accent-deep flex items-center justify-center text-3xl font-bold text-white mb-4 shadow-lg">语</div>
-        <div className="text-2xl font-bold text-pi-text mb-2">小语 · AI 工作台</div>
-        <div className="text-pi-dim mb-6">基于 pi 引擎的 AI 工作伙伴</div>
+    <div className="flex items-center justify-center h-full px-6">
+      <div className="text-center max-w-lg anim-enter">
+        <div className="w-20 h-20 mx-auto rounded-pi-xl bg-gradient-to-br from-pi-accent via-pi-accent2 to-purple-400 flex items-center justify-center text-4xl font-bold text-white mb-6 shadow-lg anim-enter" style={{ boxShadow: '0 8px 40px rgba(84,104,255,0.4), 0 0 80px rgba(84,104,255,0.15)' }}>语</div>
+        <div className="text-[28px] font-extrabold text-pi-text mb-2 tracking-tight anim-enter anim-enter-delay-1">小语 · AI 工作台</div>
+        <div className="text-pi-dim mb-8 text-[15px] anim-enter anim-enter-delay-2">基于 pi 引擎的 AI 工作伙伴</div>
+        <div className="grid grid-cols-2 gap-3 max-w-md mx-auto text-left anim-enter anim-enter-delay-3">
+          {[
+            { icon: '💬', label: '智能对话', desc: '多模型自由切换', chip: 'chip-blue' },
+            { icon: '🧠', label: '深度思考', desc: '过程可见可控', chip: 'chip-violet' },
+            { icon: '🛠️', label: '工具调用', desc: '代码·文件·终端', chip: 'chip-amber' },
+            { icon: '📂', label: '工作空间', desc: '文件管理一体化', chip: 'chip-green' },
+          ].map((f, i) => (
+            <div key={i} className={`rounded-pi-lg border px-4 py-3 transition-all duration-200 cursor-default anim-enter ${f.chip}`} style={{ animationDelay: `${0.2 + i * 0.06}s` }}>
+              <div className="text-lg mb-1" style={{ filter: 'drop-shadow(0 0 8px rgba(255,255,255,0.18))' }}>{f.icon}</div>
+              <div className="text-[13px] font-semibold text-pi-text">{f.label}</div>
+              <div className="text-[11px] text-pi-dim2">{f.desc}</div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -272,8 +286,7 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
       )}
 
       {/* 消息区 */}
-      <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-6 py-4 scroll-smooth"
-        style={{ backgroundImage: 'linear-gradient(to right, rgba(38,43,56,.1) 1px, transparent 1px), linear-gradient(to bottom, rgba(38,43,56,.1) 1px, transparent 1px)', backgroundSize: '48px 48px', backgroundPosition: 'center' }}>
+      <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 scroll-smooth">
         {loading ? <div className="flex justify-center py-10 text-pi-dim2">加载中…</div>
           : messages.length === 0 && !stream ? welcome
           : (
@@ -295,7 +308,7 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
       </div>
 
       {/* 输入栏 */}
-      <div className="border-t border-pi-border-soft glass px-6 py-3 flex-shrink-0">
+      <div className="border-t border-pi-border-soft glass px-4 sm:px-6 py-3 flex-shrink-0">
         <div className="max-w-3xl mx-auto">
           <SendBox streaming={!!stream} onStop={stop} onSend={send} onCommand={runCommand}
             voiceBusy={voiceBusy} onVoice={handleVoice} onVoiceTextReady={fn => { voiceTextRef.current = fn }} />

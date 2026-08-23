@@ -5,7 +5,7 @@ import type { Session } from '../types'
 
 const GROUP_LABEL: Record<string, string> = {
   workspace: '工作空间会话',
-  terminal: '📱 小语会话（终端）',
+  terminal: '小语会话（终端）',
 }
 // 分组排序：终端会话置顶（外部可随时打开终端会话找小语，双向同步）
 const GROUP_ORDER = ['terminal', 'workspace']
@@ -40,7 +40,7 @@ export default function Sidebar({ onNavigated }: { onNavigated?: () => void } = 
   })
 
   return (
-    <aside className="w-60 flex-shrink-0 flex flex-col glass-strong border-r border-pi-border-soft min-h-0 relative z-10">
+    <aside className="w-60 flex-shrink-0 flex flex-col col-sidebar glass-strong border-r border-pi-border min-h-0 relative z-10 glow-edge shimmer-hover">
       {/* 品牌头 */}
       <div className="flex items-center gap-2 px-4 h-12 border-b border-pi-border-soft flex-shrink-0">
         <div className="w-7 h-7 rounded-pi-md avatar-grad flex items-center justify-center text-white font-bold">语</div>

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { BarChart3, BookOpen, Zap, Package } from 'lucide-react'
 import { WorkshopApi, withFileToken } from '../api'
 
 // ── 专项工作台：PPT / 小说生成（SSE 长任务，收编自 vanilla）──
@@ -39,16 +40,16 @@ export default function WorkshopView() {
     abortRef.current = WorkshopApi.run(kind, body, ev => {
       const d = ev.data || {}
       switch (ev.type) {
-        case 'note': append('ℹ️ ' + (d.text || '')); break
+        case 'note': append('· ' + (d.text || '')); break
         case 'delta': break // delta 是模型全文流，量太大不进日志（产物为准）
         case 'file':
-          if (d.path) { setArtifacts(prev => [...prev, d]); append(`📦 产物：${d.name}`) }
+          if (d.path) { setArtifacts(prev => [...prev, d]); append(`[产物] ${d.name}`) }
           break
-        case 'error': append('✗ ' + (d.message || d.error || '未知错误')); break
+        case 'error': append('[错误] ' + (d.message || d.error || '未知错误')); break
         case 'done':
           sawDone = true
-          if (!d.file && !artifacts.length) append(d.ok ? '✅ 完成' : '⚠️ 流程结束，未检测到产物')
-          else append('✅ 完成')
+          if (!d.file && !artifacts.length) append(d.ok ? '[完成]' : '[警告] 流程结束，未检测到产物')
+          else append('[完成]')
           setRunning(false)
           break
       }
@@ -56,16 +57,16 @@ export default function WorkshopView() {
     })
   }
 
-  const stop = () => { abortRef.current?.(); setRunning(false); append('⏹ 已手动停止') }
+  const stop = () => { abortRef.current?.(); setRunning(false); append('[已手动停止]') }
 
   return (
     <div className="space-y-4">
       {/* 类型切换 */}
       <div className="flex rounded-pi-md overflow-hidden border border-pi-border w-fit">
-        {([['ppt', '📊 PPT 生成'], ['novel', '📖 小说工坊']] as const).map(([k, label]) => (
+        {([['ppt', BarChart3, 'PPT 生成'], ['novel', BookOpen, '小说工坊']] as const).map(([k, Icon, label]) => (
           <button key={k} onClick={() => !running && setKind(k)}
-            className={`text-xs px-4 py-2 transition-colors ${kind === k ? 'bg-pi-accent text-white' : 'bg-pi-bg2 text-pi-dim hover:text-pi-text disabled:opacity-60'}`}
-            disabled={running}>{label}</button>
+            className={`text-xs px-4 py-2 inline-flex items-center gap-1.5 transition-colors ${kind === k ? 'bg-pi-accent text-white' : 'bg-pi-bg2 text-pi-dim hover:text-pi-text disabled:opacity-60'}`}
+            disabled={running}><Icon className="w-3.5 h-3.5" strokeWidth={1.8} />{label}</button>
         ))}
       </div>
 
@@ -109,7 +110,7 @@ export default function WorkshopView() {
       <div className="flex items-center gap-2">
         {running
           ? <button className="h-8 px-4 rounded-full bg-red-500/90 text-white text-xs font-medium animate-pulse" onClick={stop}>⏹ 停止</button>
-          : <button className="btn-primary text-xs px-4 py-2" onClick={run}>{kind === 'ppt' ? '⚡ 开始生成 PPT' : '⚡ 开始创作小说'}</button>}
+          : <button className="btn-primary text-xs px-4 py-2" onClick={run}>开始{kind === 'ppt' ? '生成 PPT' : '创作小说'}</button>}
         <span className="text-[11px] text-pi-dim2">{kind === 'ppt' ? '走 ppt-generator 技能全流程，通常需要几分钟' : '走 novel-forge v10 全流程，单章可能较久'}</span>
       </div>
 
@@ -117,7 +118,7 @@ export default function WorkshopView() {
       {log.length > 0 && (
         <div className="panel !p-3 max-h-56 overflow-y-auto font-mono text-[11.5px] leading-relaxed">
           {log.map((l, i) => (
-            <div key={i} className={l.startsWith('✗') ? 'text-red-400' : l.startsWith('✅') || l.startsWith('📦') ? 'text-emerald-300' : 'text-pi-dim'}>{l}</div>
+            <div key={i} className={l.startsWith('[错误]') ? 'text-red-400' : l.startsWith('[完成]') || l.startsWith('[产物]') ? 'text-emerald-300' : l.startsWith('[警告]') ? 'text-amber-300' : 'text-pi-dim'}>{l}</div>
           ))}
         </div>
       )}
@@ -128,7 +129,7 @@ export default function WorkshopView() {
           {artifacts.map(a => (
             <a key={a.path} href={withFileToken(`/api/ws/file?path=${encodeURIComponent(a.path)}`)} target="_blank" rel="noreferrer"
               className="panel !p-3 flex items-center gap-2.5 hover:border-pi-accent/40 transition-colors">
-              <span>📦</span>
+              <Package className="w-4 h-4 flex-shrink-0" />
               <span className="text-[13px] text-pi-text flex-1 truncate">{a.name}</span>
               {a.size ? <span className="text-[10px] text-pi-dim2">{(a.size / 1024).toFixed(0)} KB</span> : null}
               <span className="text-xs text-pi-accent">下载 ↗</span>

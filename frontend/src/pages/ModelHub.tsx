@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { Image, Film, Mic, MessagesSquare, Zap } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import useSWR from 'swr'
 import { useApp } from '../store'
 import { StatsApi, KeysApi } from '../api'
@@ -11,13 +13,13 @@ import type { Model } from '../types'
 const fmtTokens = (n: number) => n >= 1e9 ? (n / 1e9).toFixed(2) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n || 0)
 const fmtCost = (n: number) => '$' + (n || 0).toFixed(2)
 
-function capIcon(m: Model): string {
+function capIcon(m: Model): LucideIcon {
   const cap = m.capabilities as any
   const keys: string[] = Array.isArray(cap) ? cap : Object.entries(cap || {}).filter(([, v]) => v).map(([k]) => k as string)
-  if (keys.includes('image')) return '🎨'
-  if (keys.includes('video')) return '🎬'
-  if (keys.includes('tts') || keys.includes('asr')) return '🎤'
-  return '💬'
+  if (keys.includes('image')) return Image
+  if (keys.includes('video')) return Film
+  if (keys.includes('tts') || keys.includes('asr')) return Mic
+  return MessagesSquare
 }
 
 function ModelCard({ m, active, switching, onUse }: { m: Model; active: boolean; switching: boolean; onUse: () => void }) {
@@ -27,7 +29,7 @@ function ModelCard({ m, active, switching, onUse }: { m: Model; active: boolean;
     <div className={`relative panel !p-3.5 flex flex-col gap-2 card-hover overflow-hidden ${active ? '!border-pi-accent/50 ring-1 ring-pi-accent/30' : ''}`}>
       {active && <div className="absolute inset-x-0 -top-8 h-20 pointer-events-none" style={{ background: 'radial-gradient(60% 100% at 80% 0%, var(--pi-glow), transparent 70%)' }} />}
       <div className="flex items-center gap-2 relative">
-        <span className={`w-7 h-7 rounded-pi-md flex items-center justify-center text-sm flex-shrink-0 ${active ? 'bg-pi-accent/25 text-pi-accent' : 'bg-pi-bg3 text-pi-dim'}`}>{capIcon(m)}</span>
+        {(() => { const CapIcon = capIcon(m); return <span className={`w-7 h-7 rounded-pi-md flex items-center justify-center flex-shrink-0 ${active ? 'bg-pi-accent/25 text-pi-accent' : 'bg-pi-bg3 text-pi-dim'}`}><CapIcon className="w-4 h-4" strokeWidth={1.8} /></span> })()}
         <span className="font-medium text-[13px] text-pi-text truncate flex-1">{m.name}</span>
         {free && <span className="text-[10px] px-1.5 py-0.5 rounded-pi-pill bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex-shrink-0">免费</span>}
       </div>
@@ -93,7 +95,7 @@ export default function ModelHub() {
         {/* Auto 路由说明条 */}
         <div className="mb-4 rounded-pi-lg border border-pi-accent/20 bg-gradient-to-r from-pi-accent/10 to-transparent px-4 py-3 flex items-start gap-3 text-[12px] text-pi-dim"
           style={{ borderLeft: '3px solid var(--pi-accent)' }}>
-          <span className="text-base leading-none mt-0.5">⚡</span>
+          <Zap className="w-4 h-4 text-pi-accent mt-0.5 flex-shrink-0" />
           <div>
             <b className="text-pi-text">Auto 智能路由</b>（默认）：服务端按任务复杂度自动选模型——简单任务走免费 flash，复杂任务升级 pro 并设 token 上限；429/故障自动探测降级。下拉选具体模型则固定不路由。
           </div>
@@ -101,7 +103,7 @@ export default function ModelHub() {
 
         {/* 筛选 */}
         <div className="flex gap-1.5 mb-4">
-          {([['all', '全部'], ['chat', '💬 对话'], ['media', '🎨 媒体']] as const).map(([k, label]) => (
+          {([['all', '全部'], ['chat', '对话'], ['media', '媒体']] as const).map(([k, label]) => (
             <button key={k} onClick={() => setFilter(k)}
               className={`text-xs px-3 py-1.5 rounded-pi-md transition-colors ${filter === k ? 'bg-pi-accent/15 text-pi-accent font-medium' : 'text-pi-dim hover:text-pi-text hover:bg-pi-bg3'}`}>
               {label}

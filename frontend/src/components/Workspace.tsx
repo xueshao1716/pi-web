@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Paperclip } from 'lucide-react'
 import { useApp } from '../store'
 import { WsApi } from '../api'
 import Markdown from './Markdown'
@@ -84,7 +85,7 @@ export default function Workspace() {
             <div className="flex items-center gap-2 mb-3 border-b border-pi-border-soft pb-2">
               <span className="font-semibold text-pi-text text-sm">{selectedFile.name}</span>
               <span className="text-xs text-pi-dim2 truncate flex-1">{selectedFile.path}</span>
-              <button className="btn-tool text-xs" onClick={deliver} title="复制到 交付/ 目录（版本化）">📎 交付</button>
+              <button className="btn-tool text-xs" onClick={deliver} title="复制到 交付/ 目录（版本化）"><Paperclip className="w-3.5 h-3.5" /> 交付</button>
             </div>
             {/\.(md|txt)$/i.test(selectedFile.name) ? <Markdown text={selectedFile.content} /> : <pre className="whitespace-pre-wrap text-[13px] text-pi-text font-mono">{selectedFile.content}</pre>}
           </>

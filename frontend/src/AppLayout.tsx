@@ -1,4 +1,5 @@
 import { Suspense, lazy, useState } from 'react'
+import { MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed } from 'lucide-react'
 import { useApp } from './store'
 import { useIsMobile } from './hooks/useIsMobile'
 import { useHashRoute, PageErrorBoundary, type Route } from './hooks/useHashRoute'
@@ -18,12 +19,12 @@ const Tasks = lazy(() => import('./pages/Tasks'))
 const Apps = lazy(() => import('./pages/Apps'))
 
 // 导航项（桌面 rail / 移动 TabBar 共用语义）
-const NAV: { route: Route; icon: string; label: string }[] = [
-  { route: 'chat', icon: '💬', label: '对话' },
-  { route: 'models', icon: '🧠', label: '模型' },
-  { route: 'assets', icon: '🖼️', label: '资产' },
-  { route: 'tasks', icon: '⏰', label: '任务' },
-  { route: 'apps', icon: '🧰', label: '应用' },
+const NAV: { route: Route; icon: typeof MessagesSquare; label: string }[] = [
+  { route: 'chat', icon: MessagesSquare, label: '对话' },
+  { route: 'models', icon: BrainCircuit, label: '模型' },
+  { route: 'assets', icon: Images, label: '资产' },
+  { route: 'tasks', icon: Clock4, label: '任务' },
+  { route: 'apps', icon: LayoutGrid, label: '应用' },
 ]
 
 function PageLoader() {
@@ -96,30 +97,20 @@ export default function AppLayout() {
 
         {/* 底部 TabBar */}
         <nav className="flex h-14 border-t border-pi-border-soft glass-strong flex-shrink-0 relative z-20 pb-[env(safe-area-inset-bottom)]">
-          <button
-            className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${route === 'chat' && mobileDrawer === 'none' ? 'text-pi-accent' : 'text-pi-dim2'}`}
-            onClick={() => { setMobileDrawer('none'); nav('chat') }}>
-            <span className="text-lg leading-none">💬</span>
-            <span className="text-[10px]">对话</span>
-          </button>
-          <button
-            className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${mobileDrawer === 'sessions' ? 'text-pi-accent' : 'text-pi-dim2'}`}
-            onClick={() => setMobileDrawer(mobileDrawer === 'sessions' ? 'none' : 'sessions')}>
-            <span className="text-lg leading-none">📂</span>
-            <span className="text-[10px]">会话</span>
-          </button>
-          {[{ route: 'assets' as Route, icon: '🖼️', label: '资产' }, { route: 'tasks' as Route, icon: '⏰', label: '任务' }].map(item => (
-            <button key={item.route}
-              className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${route === item.route && mobileDrawer === 'none' ? 'text-pi-accent' : 'text-pi-dim2'}`}
-              onClick={() => { setMobileDrawer('none'); nav(item.route) }}>
-              <span className="text-lg leading-none">{item.icon}</span>
+          {([
+            { key: 'chat', icon: MessagesSquare, label: '对话', active: route === 'chat' && mobileDrawer === 'none', onClick: () => { setMobileDrawer('none'); nav('chat') } },
+            { key: 'sessions', icon: FolderClosed, label: '会话', active: mobileDrawer === 'sessions', onClick: () => setMobileDrawer(mobileDrawer === 'sessions' ? 'none' : 'sessions') },
+            { key: 'assets', icon: Images, label: '资产', active: route === 'assets' && mobileDrawer === 'none', onClick: () => { setMobileDrawer('none'); nav('assets') } },
+            { key: 'tasks', icon: Clock4, label: '任务', active: route === 'tasks' && mobileDrawer === 'none', onClick: () => { setMobileDrawer('none'); nav('tasks') } },
+            { key: 'settings', icon: Settings2, label: '设置', active: false, onClick: () => setModelOpen(true) },
+          ] as const).map(item => (
+            <button key={item.key}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${item.active ? 'text-pi-accent' : 'text-pi-dim2'}`}
+              onClick={item.onClick}>
+              <item.icon className="w-5 h-5" strokeWidth={1.8} />
               <span className="text-[10px]">{item.label}</span>
             </button>
           ))}
-          <button className="flex-1 flex flex-col items-center justify-center gap-0.5 text-pi-dim2" onClick={() => setModelOpen(true)}>
-            <span className="text-lg leading-none">⚙️</span>
-            <span className="text-[10px]">设置</span>
-          </button>
         </nav>
 
         <ModelManager visible={modelOpen} onClose={() => setModelOpen(false)} />
@@ -134,34 +125,34 @@ export default function AppLayout() {
       <div className="absolute inset-0 pointer-events-none z-0"
         style={{ background: 'radial-gradient(720px 420px at 82% -8%, var(--pi-glow), transparent 62%), radial-gradient(560px 380px at 8% 108%, rgba(120,90,255,.14), transparent 60%)' }} />
 
-      {/* 图标导航 rail */}
-      <nav className="w-14 flex-shrink-0 flex flex-col items-center py-3 gap-1.5 glass-strong border-r border-pi-border-soft relative z-20">
+      {/* 图标导航 rail（08-23：col-sidebar 顶部天光，拉开与中栏层次） */}
+      <nav className="w-14 flex-shrink-0 flex flex-col items-center py-3 gap-1.5 col-sidebar glass-strong border-r border-pi-border relative z-20 glow-edge">
         <div className="w-8 h-8 rounded-pi-md avatar-grad flex items-center justify-center text-white font-bold mb-2">语</div>
         {NAV.map(n => (
           <button key={n.route} title={n.label}
-            className={`w-9 h-9 rounded-pi-md flex items-center justify-center text-lg transition-all duration-150 relative group/rail ${
+            className={`w-9 h-9 rounded-pi-md flex items-center justify-center relative group/rail transition-all duration-150 ${
               route === n.route ? 'bg-pi-accent/15 text-pi-accent' : 'text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3'}`}
             onClick={() => nav(n.route)}>
-            {n.icon}
+            <n.icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
             <span className="absolute left-full ml-2 px-2 py-1 rounded-pi-sm bg-pi-bg3 border border-pi-border text-[10px] text-pi-text whitespace-nowrap opacity-0 group-hover/rail:opacity-100 pointer-events-none transition-opacity z-50">{n.label}</span>
           </button>
         ))}
         <div className="mt-auto flex flex-col gap-1.5">
           <ThemeSwitcher />
-          <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-base text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-all" title="密钥与通道管理" onClick={() => setModelOpen(true)}>⚙️</button>
+          <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-all" title="密钥与通道管理" onClick={() => setModelOpen(true)}><Settings2 className="w-[18px] h-[18px]" strokeWidth={1.8} /></button>
         </div>
       </nav>
 
       {/* 会话列表：仅对话路由显示 */}
       {route === 'chat' && <Sidebar />}
 
-      <div className="flex-1 flex flex-col min-w-0 relative z-10">
+      <div className="flex-1 flex flex-col min-w-0 relative z-10 col-canvas">
         {route === 'chat' ? <ChatArea /> : pageArea}
       </div>
 
-      {/* 动态右栏（仅对话路由） */}
+      {/* 动态右栏（仅对话路由；08-23：col-right 独立亮度层） */}
       {route === 'chat' && rightPanel !== 'chat' && (
-        <div className="w-[44%] min-w-[360px] border-l border-pi-border-soft glass flex flex-col min-h-0 relative z-10">
+        <div className="w-[44%] min-w-[360px] border-l border-pi-border col-right glass glow-edge shimmer-hover flex flex-col min-h-0 relative z-10">
           <div className="flex items-center gap-1 px-3 h-10 border-b border-pi-border-soft flex-shrink-0">
             {([['workspace', '工作空间'], ['deliveries', '交付物'], ['terminal', '终端']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setRightPanel(k)}

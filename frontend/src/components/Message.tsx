@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { TOOL_COLORS, COLOR_ERROR, COLOR_TOOL_FALLBACK } from '../theme/palettes'
+import { Brain, FileText, Check, X, Pencil } from 'lucide-react'
 import Markdown from './Markdown'
 import { withFileToken } from '../api'
 import type { ChatMessage, RunningTool } from '../types'
@@ -9,8 +11,7 @@ function ToolCard({ tool }: { tool: Partial<RunningTool> & { name: string } }) {
   const running = !!(tool as any).running
   const isError = !!tool.isError
   const icon = tool.name === 'bash' ? '$' : tool.name === 'read' ? 'R' : tool.name === 'write' ? 'W' : tool.name === 'edit' ? 'E' : '⚙'
-  const color: Record<string, string> = { bash: '#34d399', read: '#38bdf8', write: '#f59e0b', edit: '#f59e0b' }
-  const tc = isError ? '#ef4444' : (color[tool.name] || '#c084fc')
+  const tc = isError ? COLOR_ERROR : (TOOL_COLORS[tool.name] || COLOR_TOOL_FALLBACK)
   let argsText = tool.argsText || ''
   try {
     const a = typeof tool.argsText === 'string' ? JSON.parse(tool.argsText) : tool.argsText
@@ -18,14 +19,16 @@ function ToolCard({ tool }: { tool: Partial<RunningTool> & { name: string } }) {
   } catch { /* 保持原文本 */ }
 
   return (
-    <div className={`my-2 rounded-pi-md border overflow-hidden text-[12.5px] ${tool.isError ? 'border-pi-red/40' : 'border-pi-border'}`}>
+    <div className={`my-2 rounded-pi-md border overflow-hidden text-[12.5px] tool-card ${tool.isError ? 'border-pi-red/40' : 'border-pi-border'}`}>
       <div className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-pi-bg3" style={{ borderLeft: `3px solid ${tc}` }} onClick={() => setOpen(!open)}>
-        <span className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0" style={{ background: tc }}>{icon}</span>
+        <span className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 font-mono" style={{ background: tc }}>{icon}</span>
         <span className="font-semibold text-pi-dim">{tool.name}</span>
         <span className="text-pi-dim2 truncate flex-1">{argsText}</span>
         {running
           ? <span className="text-pi-accent text-[10px] animate-pulse flex-shrink-0">运行中…</span>
-          : <span className={isError ? 'text-pi-red text-[10px] flex-shrink-0' : 'text-emerald-400 text-[10px] flex-shrink-0'}>{isError ? '✗ 失败' : '✓ 完成'}</span>}
+          : <span className={`${isError ? 'text-pi-red' : 'text-emerald-400'} flex-shrink-0`}>
+              {isError ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+            </span>}
         <span className="text-pi-dim2 flex-shrink-0">{open ? '▾' : '▸'}</span>
       </div>
       {open && <div className="px-3 py-2 border-t border-pi-border-soft bg-pi-bg3"><div className="font-mono text-[12px] text-pi-dim whitespace-pre-wrap max-h-48 overflow-auto">{tool.output || (running ? '(运行中…)' : '(无输出)')}</div></div>}
@@ -38,12 +41,13 @@ function Thinking({ text, live }: { text: string; live?: boolean }) {
   if (!text) return null
   return (
     <div className="my-1">
-      <div className="flex items-center gap-1 text-pi-dim text-[11px] cursor-pointer" onClick={() => setOpen(!open)}>
-        <span className="text-purple-400">💭</span>
+      <div className="inline-flex items-center gap-1.5 text-pi-dim text-[11px] cursor-pointer hover:text-pi-text transition-colors rounded-pi-pill px-2 py-0.5 -ml-2 bg-purple-500/8 border border-purple-500/15"
+        onClick={() => setOpen(!open)}>
+        <Brain className="w-3 h-3 text-purple-300" />
         <span>{live && !open ? '思考中…' : '思考过程'}</span>
         <span className="text-[9px]">{open ? '▾' : '▸'}</span>
       </div>
-      {open && <div className="pl-4 border-l border-pi-border my-1 text-pi-dim text-[12.5px] opacity-80"><Markdown text={text} /></div>}
+      {open && <div className="pl-4 border-l border-purple-500/25 my-1 text-pi-dim text-[12.5px] opacity-80"><Markdown text={text} /></div>}
     </div>
   )
 }
@@ -60,10 +64,9 @@ function Attachments({ msg }: { msg: ChatMessage }) {
         <div key={'aud' + i} className="my-1.5"><audio controls src={withFileToken(url)} className="max-w-full h-9" /></div>
       ))}
       {msg.files?.map((f, i) => (
-        <div key={'file' + i} className="my-1.5 flex items-center gap-2 px-3 py-2 rounded-pi-md border border-pi-border bg-pi-bg3 text-[12.5px]">
-          <span className="text-pi-accent">📄</span>
-          <span className="text-pi-text truncate flex-1">{f.name || f.path}</span>
-          <span className="text-pi-dim2 font-mono text-[10px] truncate max-w-[180px]">{f.path}</span>
+        <div key={'file' + i} className="my-1.5 inline-flex items-center gap-2 px-3 py-1.5 rounded-pi-md border border-pi-border bg-pi-bg3/70 text-[12.5px] max-w-full">
+          <FileText className="w-3.5 h-3.5 text-pi-accent flex-shrink-0" />
+          <span className="text-pi-text truncate">{f.name || f.path}</span>
         </div>
       ))}
     </>
@@ -72,25 +75,26 @@ function Attachments({ msg }: { msg: ChatMessage }) {
 
 export default function Message({ msg, onEdit }: { msg: ChatMessage & { streaming?: boolean }; onEdit?: (text: string) => void } & { [k: string]: any }) {
   const isUser = msg.role === 'user'
+  const isSystem = msg.role === 'system'
   const streaming = !!(msg as any).streaming
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const canEdit = isUser && !!onEdit && !streaming && msg.id !== '__streaming__' && !msg.id.startsWith('sys')
-  return (
-    <div className={`group/msg flex gap-3 py-2.5 ${isUser ? 'flex-row-reverse' : ''}`}>
-      <div className={`w-8 h-8 rounded-pi-md flex items-center justify-center text-white text-sm font-bold flex-shrink-0 avatar-grad ${isUser ? 'from-pi-accent to-pi-accent-deep' : ''}`}>{isUser ? '我' : '小'}</div>
-      <div className={`max-w-[80%] min-w-0 ${isUser ? 'text-right' : ''}`}>
-        <div className={`rounded-pi-lg px-4 py-2.5 msg-bubble ${isUser ? 'msg-bubble-user' : ''}`}>
-          {/* 系统提示条（note 事件：路由决策/降级播报等） */}
-          {msg.notes?.length ? (
-            <div className="mb-2 space-y-1">
-              {msg.notes.map((n, i) => (
-                <div key={i} className="text-[11.5px] text-sky-300/90 bg-sky-500/10 border border-sky-500/20 rounded-pi-sm px-2.5 py-1">ℹ️ {n}</div>
-              ))}
-            </div>
-          ) : null}
-          {!isUser && msg.think && <Thinking text={msg.think} live={streaming} />}
-          <Attachments msg={msg} />
+
+  // 系统提示条：独立窄条，不进气泡流
+  if (isSystem) {
+    return (
+      <div className="flex justify-center py-1.5">
+        <div className="text-[11.5px] text-sky-300/90 bg-sky-500/8 border border-sky-500/20 rounded-pi-pill px-3 py-1">ℹ️ {msg.text}</div>
+      </div>
+    )
+  }
+
+  if (isUser) {
+    // 用户：右侧玻璃气泡 + 小头像
+    return (
+      <div className="group/msg flex justify-end gap-3 py-2">
+        <div className="max-w-[82%] min-w-0 flex flex-col items-end">
           {editing ? (
             <div className="w-full min-w-[280px]">
               <textarea autoFocus rows={3} value={draft} onChange={e => setDraft(e.target.value)}
@@ -103,22 +107,50 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
             </div>
           ) : (
             <>
-              <div className={isUser ? 'text-[13.5px] text-pi-text' : ''}>
-                {isUser ? <span className="whitespace-pre-wrap">{msg.text}</span> : <Markdown text={msg.text} />}
-              </div>
-              {/* 编辑重发：hover 显示 */}
-              {canEdit && (
-                <div className="hidden group-hover/msg:flex justify-end mt-1">
-                  <button className="text-[10px] text-pi-dim2 hover:text-pi-text" title="编辑并重新发送"
-                    onClick={() => { setDraft(msg.text); setEditing(true) }}>✎ 编辑</button>
+              <Attachments msg={msg} />
+              {(msg.text || !msg.files?.length) && (
+                <div className="relative msg-bubble msg-bubble-user rounded-2xl rounded-br-md px-4 py-2.5 mt-0.5">
+                  <span className="whitespace-pre-wrap text-[13.5px] text-pi-text leading-relaxed">{msg.text}</span>
                 </div>
               )}
+              <div className="flex items-center gap-2 mt-0.5 px-1">
+                {canEdit && (
+                  <button className="hidden group-hover/msg:inline-flex items-center gap-1 text-[10px] text-pi-dim2 hover:text-pi-text transition-colors" title="编辑并重新发送"
+                    onClick={() => { setDraft(msg.text); setEditing(true) }}><Pencil className="w-3 h-3" /> 编辑</button>
+                )}
+                {msg.ts && <span className="text-[10px] text-pi-dim2 opacity-0 group-hover/msg:opacity-100 transition-opacity">{new Date(msg.ts).toLocaleTimeString('zh-CN', { hour12: false })}</span>}
+              </div>
             </>
           )}
-          {msg.tools?.map((t, i) => <ToolCard key={t.id || i} tool={t} />)}
-          {streaming && <span className="animate-pulse text-pi-accent">▌</span>}
         </div>
-        {msg.ts && <div className="text-[10px] text-pi-dim2 mt-1">{new Date(msg.ts).toLocaleTimeString('zh-CN', { hour12: false })}</div>}
+        <div className="w-7 h-7 rounded-lg bg-pi-bg3 border border-pi-border flex items-center justify-center text-pi-dim text-xs font-bold flex-shrink-0 mt-0.5">我</div>
+      </div>
+    )
+  }
+
+  // 助手：无气泡，内容全宽铺开（现代 AI 聊天惯例），左侧小标识
+  return (
+    <div className="group/msg flex gap-3 py-2.5">
+      <div className="w-7 h-7 rounded-lg avatar-grad flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5">语</div>
+      <div className="min-w-0 flex-1">
+        {msg.notes?.length ? (
+          <div className="mb-2 space-y-1">
+            {msg.notes.map((n, i) => (
+              <div key={i} className="text-[11.5px] text-sky-300/90 bg-sky-500/8 border border-sky-500/20 rounded-pi-sm px-2.5 py-1 w-fit">ℹ️ {n}</div>
+            ))}
+          </div>
+        ) : null}
+        {!streaming && <Thinking text={msg.think} live={streaming} />}
+        {streaming && msg.think && <Thinking text={msg.think} live />}
+        <Attachments msg={msg} />
+        <div className="markdown-body-wrapper">
+          <Markdown text={msg.text} />
+        </div>
+        {msg.tools?.map((t, i) => <ToolCard key={t.id || i} tool={t} />)}
+        {streaming && <span className="inline-block w-2 h-4 bg-pi-accent rounded-[1px] animate-pulse align-middle ml-0.5" />}
+        {msg.ts && !streaming && (
+          <div className="text-[10px] text-pi-dim2 mt-1 opacity-0 group-hover/msg:opacity-100 transition-opacity">{new Date(msg.ts).toLocaleTimeString('zh-CN', { hour12: false })}</div>
+        )}
       </div>
     </div>
   )

@@ -1,20 +1,6 @@
 import { useEffect, useState } from 'react'
-
-// 主题预设：data-theme 属性驱动（styles.css [data-theme] 变量覆盖）
-const THEMES = [
-  { id: 'deep', name: '深空蓝', swatch: 'linear-gradient(135deg,#080d1a,#121d36)' },
-  { id: 'ink', name: '墨玉黑', swatch: 'linear-gradient(135deg,#000,#1a1a1f)' },
-  { id: 'violet', name: '紫夜', swatch: 'linear-gradient(135deg,#0d0a1a,#251d52)' },
-  { id: 'mist', name: '晨雾', swatch: 'linear-gradient(135deg,#f3f5fa,#ffffff)', light: true },
-]
-
-const ACCENTS = [
-  { name: '靛蓝', color: '#4a58fa' },
-  { name: '紫罗兰', color: '#8b7cf6' },
-  { name: '天蓝', color: '#38bdf8' },
-  { name: '翡翠', color: '#34d399' },
-  { name: '琥珀', color: '#f59e0b' },
-]
+import { THEME_PRESETS as THEMES, ACCENT_PRESETS as ACCENTS, COLOR_ERROR, ACCENT_LIGHT } from '../theme/palettes'
+// 主题预设：data-theme 属性驱动（styles.css [data-theme] 变量覆盖）；色板定义在 theme/palettes.ts
 
 export default function ThemeSwitcher() {
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem('pi_theme') || 'deep' } catch { return 'deep' } })
@@ -31,11 +17,10 @@ export default function ThemeSwitcher() {
   }, [theme])
 
   useEffect(() => {
-    const fallback = theme === 'mist' ? '#4a58fa' : '#4a58fa'
-    const c = accent || fallback
+    const c = accent || ACCENTS[0].color
     ;(document.documentElement as any).style.setProperty('--pi-accent', c)
     // 浅色主题下 accent-deep 用原色，避免过暗
-    ;(document.documentElement as any).style.setProperty('--pi-accent2', c === '#4a58fa' ? '#6b7dff' : c)
+    ;(document.documentElement as any).style.setProperty('--pi-accent2', c === ACCENTS[0].color ? ACCENT_LIGHT : c)
     ;(document.documentElement as any).style.setProperty('--pi-accent-deep', c)
     try { localStorage.setItem('pi_accent', accent) } catch {}
   }, [accent, theme])

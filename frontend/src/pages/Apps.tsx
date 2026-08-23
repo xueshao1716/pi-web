@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { FlaskConical, Factory, Puzzle, StickyNote, TrendingUp, Zap, X, Check } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import useSWR from 'swr'
 import { RefineApi, SkillsApi, PromptsApi, ImprovementsApi } from '../api'
 import WorkshopView from '../components/WorkshopView'
@@ -6,12 +8,12 @@ import WorkshopView from '../components/WorkshopView'
 // ── 应用中心（Phase 3）：经验沉淀台 / 技能库 / 提示词库 / 改进提案 ──
 
 type Tab = 'refine' | 'workshop' | 'skills' | 'prompts' | 'improve'
-const TABS: [Tab, string, string][] = [
-  ['refine', '🧪', '经验沉淀台'],
-  ['workshop', '🏭', '专项工作台'],
-  ['skills', '🧩', '技能库'],
-  ['prompts', '📝', '提示词库'],
-  ['improve', '📈', '改进提案'],
+const TABS: [Tab, LucideIcon, string][] = [
+  ['refine', FlaskConical, '经验沉淀台'],
+  ['workshop', Factory, '专项工作台'],
+  ['skills', Puzzle, '技能库'],
+  ['prompts', StickyNote, '提示词库'],
+  ['improve', TrendingUp, '改进提案'],
 ]
 
 function RefineView() {
@@ -41,7 +43,7 @@ function RefineView() {
       <div className="panel !p-3.5 flex items-center gap-3 flex-wrap">
         <span className="text-[12px] text-pi-dim">待审 <b className="text-pi-text">{pending.length}</b> · 已采纳 <b className="text-pi-text">{applied.length}</b> · 已拒绝 <b className="text-pi-text">{rejected.length}</b></span>
         <button className="btn-primary text-xs px-3 py-1.5 ml-auto disabled:opacity-60" onClick={plan} disabled={!!busy}>
-          {busy === 'plan' ? '分析中…（可能要 1-2 分钟）' : '⚡ 从近期工作生成提案'}
+          {busy === 'plan' ? '分析中…（可能要 1-2 分钟）' : '从近期工作生成提案'}
         </button>
       </div>
       {msg && <div className="text-xs text-pi-accent px-1">{msg}</div>}
@@ -56,8 +58,8 @@ function RefineView() {
                 {(p as any).status && <div className="text-[10px] text-pi-dim2 mt-1">状态：{(p as any).status}</div>}
                 {label === '待审提案' && p.id && (
                   <div className="flex gap-2 mt-2">
-                    <button className="btn-primary text-xs px-3 py-1 disabled:opacity-60" disabled={busy === p.id} onClick={() => act('approve', p.id)}>{busy === p.id ? '处理中…' : '✓ 采纳执行'}</button>
-                    <button className="btn-tool text-xs" onClick={() => act('reject', p.id)}>✕ 拒绝</button>
+                    <button className="btn-primary text-xs px-3 py-1 disabled:opacity-60" disabled={busy === p.id} onClick={() => act('approve', p.id)}>{busy === p.id ? '处理中…' : '采纳执行'}</button>
+                    <button className="btn-tool text-xs" onClick={() => act('reject', p.id)}>拒绝</button>
                   </div>
                 )}
               </div>
@@ -67,7 +69,7 @@ function RefineView() {
       ))}
       {!pending.length && !applied.length && !rejected.length && (
         <div className="empty-state py-12 text-center">
-          <div className="text-3xl mb-2 opacity-60">🧪</div>
+          <FlaskConical className="w-9 h-9 mb-2 mx-auto opacity-40" strokeWidth={1.5} />
           <div className="text-sm text-pi-dim">暂无提案</div>
           <div className="text-[11px] text-pi-dim2 mt-1">点上方按钮，让小语分析近期工作日志、主动提出改进建议</div>
         </div>
@@ -93,7 +95,7 @@ function SkillsView() {
       </div>
       {!skills.length && (
         <div className="empty-state py-12 text-center">
-          <div className="text-3xl mb-2 opacity-60">🧩</div>
+          <Puzzle className="w-9 h-9 mb-2 mx-auto opacity-40" strokeWidth={1.5} />
           <div className="text-sm text-pi-dim">没有匹配的技能</div>
         </div>
       )}
@@ -123,7 +125,7 @@ function PromptsView() {
       ))}
       {!prompts.length && (
         <div className="empty-state py-12 text-center">
-          <div className="text-3xl mb-2 opacity-60">📝</div>
+          <StickyNote className="w-9 h-9 mb-2 mx-auto opacity-40" strokeWidth={1.5} />
           <div className="text-sm text-pi-dim">提示词库为空</div>
           <div className="text-[11px] text-pi-dim2 mt-1">在 ~/.pi/agent/prompts/ 放入 .md 文件即可</div>
         </div>
@@ -144,7 +146,7 @@ function ImproveView() {
   return (
     <div className="space-y-3">
       <button className="btn-primary text-xs px-3 py-1.5 disabled:opacity-60" onClick={analyze} disabled={busy}>
-        {busy ? '分析中…' : '⚡ 分析运行数据找改进点'}
+        {busy ? '分析中…' : '分析运行数据找改进点'}
       </button>
       {items.map((it: any, i: number) => (
         <div key={it.id || i} className="panel !p-3">
@@ -155,7 +157,7 @@ function ImproveView() {
       ))}
       {!items.length && (
         <div className="empty-state py-12 text-center">
-          <div className="text-3xl mb-2 opacity-60">📈</div>
+          <TrendingUp className="w-9 h-9 mb-2 mx-auto opacity-40" strokeWidth={1.5} />
           <div className="text-sm text-pi-dim">当前没有待处理的改进提案</div>
           <div className="text-[11px] text-pi-dim2 mt-1">点上方按钮分析 provider 用量与错误率</div>
         </div>
@@ -176,10 +178,10 @@ export default function Apps() {
         </div>
         {/* 分段控件式 Tab */}
         <div className="inline-flex p-1 rounded-pi-lg bg-pi-bg2/70 border border-pi-border-soft mb-5 max-w-full overflow-x-auto">
-          {TABS.map(([k, icon, label]) => (
+          {TABS.map(([k, Icon, label]) => (
             <button key={k} onClick={() => setTab(k)}
-              className={`text-xs px-3 py-1.5 rounded-pi-md whitespace-nowrap transition-all duration-150 ${tab === k ? 'bg-pi-accent text-white font-medium shadow-md shadow-pi-accent/25' : 'text-pi-dim hover:text-pi-text'}`}>
-              {icon} {label}
+              className={`text-xs px-3 py-1.5 rounded-pi-md whitespace-nowrap inline-flex items-center gap-1.5 transition-all duration-150 ${tab === k ? 'bg-pi-accent text-white font-medium shadow-md shadow-pi-accent/25' : 'text-pi-dim hover:text-pi-text'}`}>
+              <Icon className="w-3.5 h-3.5" strokeWidth={1.8} /> {label}
             </button>
           ))}
         </div>

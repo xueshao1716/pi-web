@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Film, Music, FileText, ImagePlus, FolderOpen, Images as ImagesIcon, Package } from 'lucide-react'
 import useSWR from 'swr'
 import { WsApi, withFileToken } from '../api'
 import GeneratePanel from '../components/GeneratePanel'
@@ -21,11 +22,11 @@ function ArtifactTile({ a, onOpen }: { a: Artifact; onOpen: () => void }) {
       <div className="relative rounded-pi-md bg-pi-bg3/60 aspect-[4/3] overflow-hidden flex items-center justify-center">
         {isImg
           ? <img src={withFileToken(a.url)} alt={a.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-[1.06] transition-transform duration-300" />
-          : <span className="text-3xl opacity-70">{VID_RE.test(a.name) ? '🎬' : AUD_RE.test(a.name) ? '🎵' : '📄'}</span>}
+          : (() => { const F = VID_RE.test(a.name) ? Film : AUD_RE.test(a.name) ? Music : FileText; return <F className="w-8 h-8 opacity-50" strokeWidth={1.5} /> })()}
         {/* 悬浮遮罩：预览提示 */}
         <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center"
           style={{ background: 'linear-gradient(to top, rgba(5,8,18,.72), rgba(5,8,18,.15))' }}>
-          <span className="text-[11px] text-white/90 px-2.5 py-1 rounded-pi-pill bg-white/10 backdrop-blur-sm border border-white/15">{isImg ? '🔍 预览' : '↗ 打开'}</span>
+          <span className="text-[11px] text-white/90 px-2.5 py-1 rounded-pi-pill bg-white/10 backdrop-blur-sm border border-white/15">{isImg ? '预览' : '打开'}</span>
         </div>
       </div>
       <div className="text-[11.5px] text-pi-text truncate" title={a.name}>{a.name}</div>
@@ -71,9 +72,9 @@ export default function Assets() {
           <p className="text-xs text-pi-dim2 mt-1.5">工作空间「生成物」{artData?.artifacts?.length || 0} 个 · 「交付」{deliveries.length} 个</p>
         </div>
         <div className="flex items-center gap-2 mb-4">
-          <button className={`text-xs px-3.5 py-1.5 rounded-full font-medium transition-all duration-150 ${showGen ? 'btn-grad text-white shadow-lg shadow-pi-accent/25' : 'bg-pi-accent/12 text-pi-accent border border-pi-accent/25 hover:bg-pi-accent/22'}`}
+          <button className={`text-xs px-3.5 py-1.5 rounded-full font-medium inline-flex items-center gap-1.5 transition-all duration-150 ${showGen ? 'btn-grad text-white shadow-lg shadow-pi-accent/25' : 'bg-pi-accent/12 text-pi-accent border border-pi-accent/25 hover:bg-pi-accent/22'}`}
             onClick={() => setShowGen(v => !v)}>
-            🎨 生成图片
+            <ImagePlus className="w-4 h-4" /> 生成图片
           </button>
           <input className="input-pi !py-1.5 text-xs w-48 sm:w-56 rounded-full" placeholder="搜索资产名…" value={kw} onChange={e => setKw(e.target.value)} />
         </div>
@@ -100,7 +101,7 @@ export default function Assets() {
         </div>
         {!list.length && !isLoading && (
           <div className="empty-state py-14 mb-8 text-center">
-            <div className="text-3xl mb-2 opacity-60">🗂️</div>
+            <ImagesIcon className="w-9 h-9 mb-2 mx-auto opacity-40" strokeWidth={1.5} />
             <div className="text-sm text-pi-dim">这个筛选下没有资产</div>
             <div className="text-[11px] text-pi-dim2 mt-1">换个类型，或点右上角生成一张新图</div>
           </div>
@@ -109,12 +110,12 @@ export default function Assets() {
         {/* 交付物列表 */}
         {deliveries.length > 0 && (
           <>
-            <h2 className="text-sm font-semibold text-pi-text mb-2">📦 成品交付</h2>
+            <h2 className="text-sm font-semibold text-pi-text mb-2 inline-flex items-center gap-1.5"><Package className="w-4 h-4" /> 成品交付</h2>
             <div className="panel !p-0 overflow-hidden mb-8">
               {deliveries.map(d => (
                 <div key={d.wsPath} className="flex items-center gap-3 px-4 py-2.5 border-b border-pi-border-soft/50 last:border-0 hover:bg-pi-bg3/40 transition-colors cursor-pointer"
                   onClick={() => window.open(withFileToken(d.url), '_blank')}>
-                  <span>{d.type === 'dir' ? '📁' : '📄'}</span>
+                  <span>{d.type === 'dir' ? <FolderOpen className="w-4 h-4" /> : <FileText className="w-4 h-4" />}</span>
                   <span className="text-[12.5px] text-pi-text truncate flex-1">{d.name}</span>
                   <span className="text-[10px] text-pi-dim2">{fmtSize(d.size)}</span>
                 </div>

@@ -46,7 +46,7 @@ export default function Markdown({ text }: { text: string }) {
             if (isBlock) {
               const html = highlightCode(content, match?.[1]) ?? highlightAuto(content)
               return (
-                <pre className="code-block bg-[#0a0c12] border border-gray-800 rounded-lg p-3 overflow-x-auto my-2">
+                <pre className="code-block bg-pi-bg1 border border-pi-border rounded-lg p-3 overflow-x-auto my-2">
                   {html
                     ? <code className={className} dangerouslySetInnerHTML={{ __html: html }} />
                     : <code className={className}>{children}</code>}
@@ -55,7 +55,7 @@ export default function Markdown({ text }: { text: string }) {
             }
             return <code className="bg-gray-800 rounded px-1.5 py-0.5 text-[12.5px]" {...props}>{children}</code>
           },
-          a({ children, href }) { return <a href={href} target="_blank" rel="noopener noreferrer" className="text-[#4a58fa] hover:underline">{children}</a> },
+          a({ children, href }) { return <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--pi-accent2)" }} className="hover:underline">{children}</a> },
           table({ children }) { return <div className="overflow-x-auto my-2"><table className="w-full border-collapse">{children}</table></div> },
           th({ children }) { return <th className="border border-gray-700 px-3 py-1.5 bg-gray-800/50 font-semibold text-left">{children}</th> },
           td({ children }) { return <td className="border border-gray-700 px-3 py-1.5">{children}</td> },

@@ -2,20 +2,19 @@ import { useApp } from '../store'
 import { KeysApi } from '../api'
 import type { Model } from '../types'
 
-// 能力图标：兼容对象/数组两种 capabilities 形态
-function capIcon(m: Model): string {
+// 能力标签：下拉 option 无法渲染 SVG，用短文字标注
+function capTag(m: Model): string {
   const cap = m.capabilities as any
   const keys: string[] = Array.isArray(cap) ? cap : Object.entries(cap || {}).filter(([, v]) => v).map(([k]) => k as string)
-  if (keys.includes('image')) return '🎨'
-  if (keys.includes('video')) return '🎬'
-  if (keys.includes('tts')) return '🎤'
-  if (keys.includes('asr')) return '🎧'
-  return '💬'
+  if (keys.includes('image')) return '[绘图] '
+  if (keys.includes('video')) return '[视频] '
+  if (keys.includes('tts') || keys.includes('asr')) return '[语音] '
+  return ''
 }
 
 export function modelLabel(m: Model): string {
   const free = m.free || (m.note || '').includes('免费')
-  return `${capIcon(m)} ${m.name}（${m.provider}）${free ? ' · 免费' : ''}`
+  return `${capTag(m)}${m.name}（${m.provider}）${free ? ' · 免费' : ''}`
 }
 
 export default function ModelSelect() {
@@ -36,7 +35,7 @@ export default function ModelSelect() {
       onChange={e => select(e.target.value)}
       title="选择模型（⚡Auto = 按任务复杂度自动路由）"
     >
-      <option value="auto/auto">⚡ Auto 智能路由</option>
+      <option value="auto/auto">Auto 智能路由</option>
       {models.map(m => {
         const mk = `${m.provider}/${m.id}`
         return <option key={mk} value={mk}>{modelLabel(m)}</option>
