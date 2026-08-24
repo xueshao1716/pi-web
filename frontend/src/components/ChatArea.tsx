@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { useApp } from '../store'
+import { MessagesSquare, BrainCircuit, Wrench, FolderClosed } from 'lucide-react'
 import { ChatApi, SessionsApi, AsrApi, streamSession } from '../api'
 import Message from './Message'
 import ModelSelect from './ModelSelect'
@@ -251,13 +252,13 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
         <div className="text-pi-dim mb-8 text-[15px] anim-enter anim-enter-delay-2">基于 pi 引擎的 AI 工作伙伴</div>
         <div className="grid grid-cols-2 gap-3 max-w-md mx-auto text-left anim-enter anim-enter-delay-3">
           {[
-            { icon: '💬', label: '智能对话', desc: '多模型自由切换', chip: 'chip-blue' },
-            { icon: '🧠', label: '深度思考', desc: '过程可见可控', chip: 'chip-violet' },
-            { icon: '🛠️', label: '工具调用', desc: '代码·文件·终端', chip: 'chip-amber' },
-            { icon: '📂', label: '工作空间', desc: '文件管理一体化', chip: 'chip-green' },
+            { Icon: MessagesSquare, label: '智能对话', desc: '多模型自由切换', chip: 'chip-blue', c: 'text-pi-accent2' },
+            { Icon: BrainCircuit, label: '深度思考', desc: '过程可见可控', chip: 'chip-violet', c: 'text-purple-300' },
+            { Icon: Wrench, label: '工具调用', desc: '代码·文件·终端', chip: 'chip-amber', c: 'text-amber-300' },
+            { Icon: FolderClosed, label: '工作空间', desc: '文件管理一体化', chip: 'chip-green', c: 'text-emerald-300' },
           ].map((f, i) => (
             <div key={i} className={`rounded-pi-lg border px-4 py-3 transition-all duration-200 cursor-default anim-enter ${f.chip}`} style={{ animationDelay: `${0.2 + i * 0.06}s` }}>
-              <div className="text-lg mb-1" style={{ filter: 'drop-shadow(0 0 8px rgba(255,255,255,0.18))' }}>{f.icon}</div>
+              <f.Icon className={`w-[18px] h-[18px] mb-1.5 ${f.c}`} strokeWidth={1.8} />
               <div className="text-[13px] font-semibold text-pi-text">{f.label}</div>
               <div className="text-[11px] text-pi-dim2">{f.desc}</div>
             </div>
