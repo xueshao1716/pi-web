@@ -248,7 +248,7 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
         </div>
       )}
 
-      <div className="rounded-pi-xl border border-pi-border bg-pi-bg2/50 backdrop-blur-lg focus-within:border-pi-accent focus-within:ring-1 focus-within:ring-pi-accent/30 transition-all">
+      <div className="sendbox-shell rounded-pi-xl border border-pi-border bg-pi-bg2/50 backdrop-blur-xl focus-within:border-pi-accent/70 focus-within:ring-2 focus-within:ring-pi-accent/20 transition-all duration-300">
         <textarea ref={taRef} rows={2} value={value} disabled={streaming}
           placeholder='给小语发消息…　"/" 命令 · "@ 引用文件'
           className="w-full bg-transparent border-none outline-none px-4 py-3 text-[13.5px] text-pi-text resize-none placeholder:text-pi-dim2 disabled:opacity-60"
@@ -268,9 +268,9 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
           {onVoice && !streaming && (
             recording ? (
               <button onClick={() => stopRec()}
-                className="h-8 px-3 rounded-full bg-red-500/90 text-white text-xs font-medium flex items-center gap-1.5 hover:bg-red-500 transition-colors animate-pulse"
+                className="h-8 px-3 rounded-full bg-red-500/90 text-white text-xs font-medium flex items-center gap-2 hover:bg-red-500 transition-colors"
                 title="停止录音并转写">
-                <span className="w-2 h-2 bg-white rounded-full" /> {Math.floor(recSeconds / 60)}:{String(recSeconds % 60).padStart(2, '0')} 停止
+                <span className="rec-wave"><i /><i /><i /><i /><i /></span> {Math.floor(recSeconds / 60)}:{String(recSeconds % 60).padStart(2, '0')} 停止
               </button>
             ) : voiceBusy ? (
               <button className="btn-tool text-xs" disabled title="语音识别中…">
@@ -290,7 +290,8 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
             </button>
           ) : (
             <button onClick={doSend} title="发送"
-              className="w-8 h-8 rounded-full bg-pi-accent text-white flex items-center justify-center hover:bg-pi-accent2 transition-colors">
+              className="press w-8 h-8 rounded-full btn-grad text-white flex items-center justify-center disabled:opacity-40"
+              disabled={!value.trim() && files.length === 0}>
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="12 19 12 5"/><polyline points="5 12 12 5 19 12"/></svg>
             </button>
           )}

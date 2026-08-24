@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Wrench, Package } from 'lucide-react'
+import { Wrench, Package, ChevronRight } from 'lucide-react'
 import Message from './Message'
 import type { ChatMessage } from '../types'
 
@@ -44,20 +44,24 @@ function TurnRow({ turn, index, open, onToggle }: { turn: Turn; index: number; o
   const q = turn.user ? excerpt(turn.user.text || '(附件消息)') : '(系统提示)'
   const answer = turn.rest.find(m => m.role === 'assistant')
   const aExcerpt = answer?.text ? excerpt(answer.text, 80) : ''
+  // 轮次状态：有错误→红 / 有回复→绿 / 无回复（被打断）→灰
+  const hasError = turn.rest.some(m => m.tools?.some(t => t.isError))
+  const status = hasError ? { c: 'bg-pi-red', t: '有工具报错' } : answer ? { c: 'bg-emerald-400', t: '已完成' } : { c: 'bg-pi-dim2', t: '无回复' }
   return (
-    <div className="my-1">
+    <div className="my-1.5">
       <button onClick={onToggle}
-        className="w-full flex items-center gap-2 px-3 py-2 rounded-pi-md border border-pi-border-soft bg-pi-bg2/40 hover:bg-pi-bg3 transition-colors text-left group/turn">
+        className="press w-full flex items-center gap-2 px-3 py-2.5 rounded-pi-lg border border-pi-border-soft bg-pi-bg2/40 hover:bg-pi-bg-hover/60 hover:border-pi-border transition-colors text-left group/turn">
+        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${status.c}`} title={status.t} />
         <span className="text-[10px] font-mono text-pi-dim2 w-7 flex-shrink-0">#{index + 1}</span>
         <span className="text-[12.5px] text-pi-dim truncate flex-1 min-w-0">
-          <span className="text-pi-text/80">{q}</span>
-          {aExcerpt && <span className="text-pi-dim2"> → {aExcerpt}</span>}
+          <span className="text-pi-text/85">{q}</span>
+          {aExcerpt && <span className="text-pi-dim2"> <span className="text-pi-accent2/60">→</span> {aExcerpt}</span>}
         </span>
         <span className="flex items-center gap-1.5 flex-shrink-0 text-[10px] text-pi-dim2">
-          {tools > 0 && <span className="inline-flex items-center gap-0.5" title={`${tools} 次工具调用`}><Wrench className="w-3 h-3" />{tools}</span>}
-          {artifacts > 0 && <span className="inline-flex items-center gap-0.5" title={`${artifacts} 个产物`}><Package className="w-3 h-3" />{artifacts}</span>}
+          {tools > 0 && <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-pi-pill bg-white/[0.04]" title={`${tools} 次工具调用`}><Wrench className="w-3 h-3" />{tools}</span>}
+          {artifacts > 0 && <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-pi-pill bg-white/[0.04]" title={`${artifacts} 个产物`}><Package className="w-3 h-3" />{artifacts}</span>}
           {turn.user?.ts && <span className="hidden sm:inline">{new Date(turn.user.ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>}
-          <span className={`transition-transform ${open ? 'rotate-90' : ''}`}>▸</span>
+          <ChevronRight className={`w-3 h-3 transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />
         </span>
       </button>
       {open && (

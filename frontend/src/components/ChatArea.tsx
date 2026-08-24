@@ -287,8 +287,20 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
 
       {/* 消息区 */}
       <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 scroll-smooth">
-        {loading ? <div className="flex justify-center py-10 text-pi-dim2">加载中…</div>
-          : messages.length === 0 && !stream ? welcome
+        {loading ? (
+          <div className="max-w-3xl w-full mx-auto px-6 py-6 space-y-5" aria-label="加载中">
+            {[520, 380, 460].map((w, i) => (
+              <div key={i} className="flex gap-3 anim-enter" style={{ animationDelay: `${i * 0.08}s` }}>
+                <div className="w-7 h-7 rounded-lg skeleton-block flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 rounded-pi-sm skeleton-block" style={{ width: `${w * 0.7}px`, maxWidth: '80%' }} />
+                  <div className="h-3 rounded-pi-sm skeleton-block" style={{ width: `${w}px`, maxWidth: '92%' }} />
+                  <div className="h-3 rounded-pi-sm skeleton-block" style={{ width: `${w * 0.55}px`, maxWidth: '65%' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : messages.length === 0 && !stream ? welcome
           : (
             <div className="max-w-3xl mx-auto">
               <TurnList

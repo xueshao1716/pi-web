@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { TOOL_COLORS, COLOR_ERROR, COLOR_TOOL_FALLBACK } from '../theme/palettes'
-import { Brain, FileText, Check, X, Pencil } from 'lucide-react'
+import { Brain, FileText, Check, X, Pencil, ChevronRight } from 'lucide-react'
 import Markdown from './Markdown'
 import { withFileToken } from '../api'
 import type { ChatMessage, RunningTool } from '../types'
@@ -19,19 +19,35 @@ function ToolCard({ tool }: { tool: Partial<RunningTool> & { name: string } }) {
   } catch { /* 保持原文本 */ }
 
   return (
-    <div className={`my-2 rounded-pi-md border overflow-hidden text-[12.5px] tool-card ${tool.isError ? 'border-pi-red/40' : 'border-pi-border'}`}>
-      <div className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-pi-bg3" style={{ borderLeft: `3px solid ${tc}` }} onClick={() => setOpen(!open)}>
-        <span className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 font-mono" style={{ background: tc }}>{icon}</span>
-        <span className="font-semibold text-pi-dim">{tool.name}</span>
-        <span className="text-pi-dim2 truncate flex-1">{argsText}</span>
-        {running
-          ? <span className="text-pi-accent text-[10px] animate-pulse flex-shrink-0">运行中…</span>
-          : <span className={`${isError ? 'text-pi-red' : 'text-emerald-400'} flex-shrink-0`}>
-              {isError ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
-            </span>}
-        <span className="text-pi-dim2 flex-shrink-0">{open ? '▾' : '▸'}</span>
+    <div className={`my-2 rounded-pi-lg border overflow-hidden text-[12.5px] bg-pi-bg1/60 transition-colors ${tool.isError ? 'border-pi-red/40' : 'border-pi-border-soft hover:border-pi-border'}`}>
+      <div
+        className="press w-full flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-pi-bg-hover/60 active:bg-pi-bg-active/50 transition-colors text-left"
+        style={{ boxShadow: `inset 3px 0 0 ${tc}` }}
+        onClick={() => setOpen(!open)}
+      >
+        <span className="w-5 h-5 rounded-pi-sm flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 font-mono" style={{ background: `linear-gradient(135deg, ${tc}, ${tc}b3)`, boxShadow: `0 0 10px ${tc}40` }}>{icon}</span>
+        <span className="font-mono font-semibold text-[11px] px-1.5 py-0.5 rounded-pi-sm flex-shrink-0" style={{ color: tc, background: `${tc}14` }}>{tool.name}</span>
+        <span className="text-pi-dim2 truncate flex-1 font-mono text-[11.5px]">{argsText}</span>
+        {running ? (
+          <span className="flex items-center gap-1.5 text-pi-accent text-[10.5px] flex-shrink-0">
+            <span className="w-3 h-3 rounded-full border-[1.5px] border-pi-accent/25 border-t-pi-accent animate-spin" />
+            运行中
+          </span>
+        ) : (
+          <span className={`${isError ? 'text-pi-red' : 'text-emerald-400'} flex-shrink-0`}>
+            {isError ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+          </span>
+        )}
+        <ChevronRight className={`w-3 h-3 text-pi-dim2 flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />
       </div>
-      {open && <div className="px-3 py-2 border-t border-pi-border-soft bg-pi-bg3"><div className="font-mono text-[12px] text-pi-dim whitespace-pre-wrap max-h-48 overflow-auto">{tool.output || (running ? '(运行中…)' : '(无输出)')}</div></div>}
+      {running && <div className="h-[2px] w-full overflow-hidden"><div className="tool-progress" /></div>}
+      {open && (
+        <div className="border-t border-pi-border-soft bg-black/20">
+          <div className="font-mono text-[11.5px] text-pi-dim whitespace-pre-wrap max-h-56 overflow-auto px-3 py-2 leading-relaxed">
+            {tool.output || (running ? '(运行中…)' : '(无输出)')}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -44,8 +60,14 @@ function Thinking({ text, live }: { text: string; live?: boolean }) {
       <div className="inline-flex items-center gap-1.5 text-pi-dim text-[11px] cursor-pointer hover:text-pi-text transition-colors rounded-pi-pill px-2 py-0.5 -ml-2 bg-purple-500/8 border border-purple-500/15"
         onClick={() => setOpen(!open)}>
         <Brain className="w-3 h-3 text-purple-300" />
+        {live && (
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-60" />
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-purple-300" />
+          </span>
+        )}
         <span>{live && !open ? '思考中…' : '思考过程'}</span>
-        <span className="text-[9px]">{open ? '▾' : '▸'}</span>
+        <ChevronRight className={`w-2.5 h-2.5 transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />
       </div>
       {open && <div className="pl-4 border-l border-purple-500/25 my-1 text-pi-dim text-[12.5px] opacity-80"><Markdown text={text} /></div>}
     </div>
@@ -93,7 +115,7 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
   if (isUser) {
     // 用户：右侧玻璃气泡 + 小头像
     return (
-      <div className="group/msg flex justify-end gap-3 py-2">
+      <div className="group/msg flex justify-end gap-3 py-3">
         <div className="max-w-[82%] min-w-0 flex flex-col items-end">
           {editing ? (
             <div className="w-full min-w-[280px]">
@@ -130,7 +152,7 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
 
   // 助手：无气泡，内容全宽铺开（现代 AI 聊天惯例），左侧小标识
   return (
-    <div className="group/msg flex gap-3 py-2.5">
+    <div className="group/msg flex gap-3 py-3 anim-enter">
       <div className="w-7 h-7 rounded-lg avatar-grad flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5">语</div>
       <div className="min-w-0 flex-1">
         {msg.notes?.length ? (
@@ -147,7 +169,7 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
           <Markdown text={msg.text} />
         </div>
         {msg.tools?.map((t, i) => <ToolCard key={t.id || i} tool={t} />)}
-        {streaming && <span className="inline-block w-2 h-4 bg-pi-accent rounded-[1px] animate-pulse align-middle ml-0.5" />}
+        {streaming && <span className="stream-caret" />}
         {msg.ts && !streaming && (
           <div className="text-[10px] text-pi-dim2 mt-1 opacity-0 group-hover/msg:opacity-100 transition-opacity">{new Date(msg.ts).toLocaleTimeString('zh-CN', { hour12: false })}</div>
         )}
