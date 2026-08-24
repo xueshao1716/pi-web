@@ -428,19 +428,37 @@ async function pollTaskAndRecover(taskKey, { maxWait = 300000 } = {}) {
   return { recovered: false };
 }
 
-// 息屏/切后台恢复可见：立即渲染积压缓冲（后台节流期间积压的文字/卡片），流断则查任务恢复
+// 息屏/切后台恢复可见（2026-08-24 加固：息屏对账机制）
+// 旧版三洞：①流恰在息屏期间结束(done)→醒来直接放弃，缺失尾巴永不补；②新会话无 taskKey→不恢复；
+// ③距末次事件<30s→误判流存活干等。修复：记录息屏时刻，醒来凡息屏超 10s 一律对账——
+// 活跃流走任务恢复链路，否则拉一次全量历史补齐缺口（顺带覆盖多端同步）。
 if (typeof document !== "undefined") {
+  let hiddenAt = 0;
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) return;
+    if (document.hidden) { hiddenAt = Date.now(); return; }
     // 1. 立即 flush 所有积压渲染缓冲（后台节流时 setTimeout 被降频，积压的文字/卡片此刻补渲染）
     try { flushNow(); } catch {}
+    const gap = Date.now() - (hiddenAt || Date.now());
     const key = currentKey();
     const st = streams.get(key);
-    if (!st || st.done) return;
-    const tk = st.taskKey || (key.startsWith("__new__") ? null : key);
-    if (!tk) return;
-    if (Date.now() - (st.lastEventAt || 0) > 30000) {
+    // 短暂切走（<10s）：维持原逻辑——仅当活跃流疑似断流才查任务
+    if (gap <= 10000) {
+      if (!st || st.done) return;
+      const tk = st.taskKey || (key.startsWith("__new__") ? null : key);
+      if (!tk) return;
+      if (Date.now() - (st.lastEventAt || 0) > 30000) {
+        pollTaskAndRecover(tk).catch(() => {});
+      }
+      return;
+    }
+    // 长时间息屏（>10s）：一律对账
+    const tk = st && !st.done ? (st.taskKey || (key.startsWith("__new__") ? null : key)) : null;
+    if (tk) {
+      // 流还在跑 → 走任务状态恢复（结束后自动拉历史）
       pollTaskAndRecover(tk).catch(() => {});
+    } else if (currentId) {
+      // 流已结束/本就没有流 + 已保存会话 → 全量对账一次，补齐息屏期间错过的消息
+      refreshMessages().catch(() => {});
     }
   });
 }

@@ -287,10 +287,28 @@ initModelProbe({
 //   pro/flash 同源问题修正——千问只作 flash 主力，pro = ocGo deepseek-v4-pro → mimo-pro → ark；
 //   ocGo 429 期间 pro 无可用 → 回落 flash 并播报真实原因（不假装升级）。
 
+// ── 会话近期历史提取（2026-08-24 修复"失忆回复"）──
+// 现象：复读守卫/降级重试走 directChat 时传空历史 → 替补模型只看到最后一句裸消息，
+// 回出"您的消息不完整/我没有工具"这类失忆话术。修复：统一从会话树取最近 N 轮真实历史。
+function recentHistory(entry, limit = 10, maxChars = 1600) {
+  try {
+    const roots = entry?.sm?.getTree?.() || [];
+    const msgs = [];
+    for (const n of roots) {
+      const m = n?.entry?.message;
+      if (!m || !["user", "assistant"].includes(m.role)) continue;
+      const t = extractText(m).trim();
+      if (!t) continue;
+      msgs.push({ role: m.role, content: t.length > maxChars ? t.slice(0, maxChars) + "…[截断]" : t });
+    }
+    return msgs.slice(-limit);
+  } catch { return []; }
+}
+
 // ══ 复读检测与降级重试（2026-08-19 加固）══
 // 判定逻辑已迁移到 engine/output-guard.mjs（输出质量守卫，纯判定模块）：
 //   复读/空回复/纯思考 统一 classifyAnomaly；这里只保留"重试执行"（换 fallback 模型直调 + 播报）。
-async function retryRepeatWithFallback(message, sessionKey, writer, busEmit, currentModel, inspectorSuggestion = "") {
+async function retryRepeatWithFallback(message, sessionKey, writer, busEmit, currentModel, inspectorSuggestion = "", history = []) {
   // 2026-08-21 用户理念：复读是行为跑偏 → 植入修正话语引导方向（同模型重生成），不终止不换模型；
   // 只有真正的模型链接/资源问题（429/400/403）才主动告知用户原因并切换可用模型。
   const note = "⚠️ 检测到回复与上一条完全相同，正在引导模型修正表达…";
@@ -299,7 +317,7 @@ async function retryRepeatWithFallback(message, sessionKey, writer, busEmit, cur
   const hint = inspectorSuggestion
     ? `AI 质检员发现你的上一条回复异常（${inspectorSuggestion}）。请重新回答这条用户消息，按此指引修正。`
     : "你刚才的回复与上一条完全相同（复读）。请重新回答这条消息：换一种表达、补充更多内容、或继续推进对话，绝不能重复上一条回复。";
-  const corrected = await directChat(currentModel, message, [], { systemHint: hint });
+  const corrected = await directChat(currentModel, message, history, { systemHint: hint });
   if (corrected?.text) {
     const add = `
 
@@ -315,7 +333,7 @@ ${corrected.text}`;
   if (fbModel) {
     const note2 = `⚠️ 同模型修正仍失败，已切换 ${fbModel.provider}/${fbModel.id} 重新生成…`;
     try { writer.push("note", { text: note2 }); if (busEmit) busEmit("note", { text: note2 }); } catch {}
-    const fb = await directChat(fbModel, message);
+    const fb = await directChat(fbModel, message, history);
     if (fb?.text) { recordReply(sessionKey, fb.text); return fb.text; }
   }
   try { writer.push("note", { text: "⚠️ 复读修正失败且备用模型无回复（请重试或手动切换模型）" }); } catch {}
@@ -562,9 +580,9 @@ const MIME = {
 };
 
 const staticServer = createStaticServer({ publicDir: PUBLIC_DIR, mime: MIME });
-// ══ React 主界面（Phase 1 转正，2026-08-22）══
-// 默认 UI = frontend/dist（React 19 + Vite 指纹资产）；旧版 vanilla 回退：/?legacy=1 或 /static/ 直达。
-// dist 缺失（未构建的全新 clone）→ 自动回落 vanilla，安装链路零破坏。
+// ══ UI 入口对调（2026-08-23 用户定）：vanilla 回归默认，React 改为体验入口 ══
+// 默认 UI = public/（旧版 vanilla，功能全量）；新版 React 预览：/?react=1。
+// dist 缺失（未构建的全新 clone）→ reactStatic 为 null，?react=1 也回落 vanilla，安装链路零破坏。
 const REACT_DIST = path.join(__dirname, "frontend", "dist");
 const reactStatic = (() => {
   try { return fs.existsSync(path.join(REACT_DIST, "index.html")) ? createStaticServer({ publicDir: REACT_DIST, mime: MIME }) : null; }
@@ -1249,14 +1267,14 @@ async function handleChat(req, res, body) {
       } else if (anom.type === "repeat" || anom.type === "marker") {
         // 2026-08-21 AI 检测员复核：规则判异常后，检测员语义级确认 + 给针对性修正建议
         console.log(`[pi-web] 输出守卫(${anom.type}): ${effModel?.provider}/${effModel?.id} ${anom.reason} → 检测员复核`);
-        const insp = await inspectOutput({ userMessage: message, output: collected, history: [] }).catch(() => null);
+        const insp = await inspectOutput({ userMessage: message, output: collected, history: recentHistory(entry) }).catch(() => null);
         if (insp && insp.verdict === "ok") {
           // 检测员判定正常（规则误报）→ 接受原输出
           recordReply(rk, collected);
           console.log(`[pi-web] 检测员判定 ok（规则误报），接受原输出`);
         } else {
           // 确认异常：用检测员的修正建议（或默认）引导同模型修正
-          await retryRepeatWithFallback(message, rk, writer, busEmit, effModel, insp?.suggestion);
+          await retryRepeatWithFallback(message, rk, writer, busEmit, effModel, insp?.suggestion, recentHistory(entry));
         }
       } else if (anom.type === "none") {
         recordReply(rk, collected);
@@ -1827,14 +1845,14 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 静态资源
-    // React 主界面为默认：/ 与 /index.html → frontend/dist；?legacy=1 → 旧版 vanilla
+    // 主界面默认 vanilla；?react=1 → 新版 React 体验入口
     if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
-      if (reactStatic && !url.searchParams.has("legacy")) { req.url = "/index.html"; return reactStatic.handle(req, res); }
+      if (reactStatic && url.searchParams.has("react")) { req.url = "/index.html"; return reactStatic.handle(req, res); }
       return handleStatic(req, res);
     }
-    // sw.js：React 默认模式下发自毁脚本（清旧缓存+注销）；legacy 模式下发原版
+    // sw.js：vanilla 模式下发原版；?react=1 下发自毁脚本（清旧缓存+注销，React 版不用 service worker）
     if (req.method === "GET" && url.pathname === "/sw.js") {
-      if (reactStatic && !url.searchParams.has("legacy")) {
+      if (reactStatic && url.searchParams.has("react")) {
         res.writeHead(200, { "Content-Type": "application/javascript", "Cache-Control": "no-cache" });
         return res.end(SW_UNREGISTER);
       }
