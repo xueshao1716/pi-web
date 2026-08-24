@@ -3,6 +3,7 @@ import remarkGfm from 'remark-gfm'
 import { useEffect, useRef } from 'react'
 import mermaid from 'mermaid'
 import { highlightCode, highlightAuto } from '../lib/highlight'
+import GenUIBlock from './GenUI'
 
 // Mermaid 图表渲染（CDN 加载，失败回退纯文本）
 function MermaidBlock({ code }: { code: string }) {
@@ -43,6 +44,7 @@ export default function Markdown({ text }: { text: string }) {
             const isBlock = (children as any)?.includes?.('\n') || match
             const content = String(children).replace(/\n$/, '')
             if (match?.[1] === 'mermaid') return <MermaidBlock code={content} />
+            if (match?.[1] === 'dsh-ui') return <GenUIBlock raw={content} />
             if (isBlock) {
               const html = highlightCode(content, match?.[1]) ?? highlightAuto(content)
               return (
