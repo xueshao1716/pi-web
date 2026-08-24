@@ -28,7 +28,7 @@ import { safeJoin } from "./engine/tools/security.mjs";
 import { createDshTool } from "./engine/dsh-tool.mjs";
 
 // ── 模型路由层（拆模块）：429 降级 / 复杂度分类 / Auto 路由 / pro 候选 ──
-import { initModelRouter, isOcGoBlocked, markModelBlocked, markOcGoBlocked, ocGoCandidate, pickFallbackDefault, pickFallbackExcluding, resetModelHealth, isAutoModel, routeForAuto, routeProCandidate, ROUTER_AUTO, isAuthErrorStatus } from "./engine/model-router.mjs";
+import { initModelRouter, isOcGoBlocked, markModelBlocked, markOcGoBlocked, ocGoCandidate, pickFallbackDefault, pickFallbackExcluding, resetModelHealth, isAutoModel, routeForAuto, routeProCandidate, markSticky, ROUTER_AUTO, isAuthErrorStatus } from "./engine/model-router.mjs";
 // ── 模型能力探测与发现（拆模块）：能力推断 / 真实API探测(24h缓存) / 自定义 provider 发现 ──
 import { modelCapabilities, probeModelCapabilities, discoverCustomModels } from "./engine/model-probe.mjs";
 import { CONFIG } from "./config.mjs";
@@ -1000,14 +1000,15 @@ async function handleChat(req, res, body) {
   let autoRoute = null;
   const effModel = (() => {
     if (entry.modelKey && isAutoModel(entry.modelKey)) {
-      autoRoute = routeForAuto(message);
+      autoRoute = routeForAuto(message, sessionId);
       return autoRoute.model;
     }
     if (entry.modelKey) return modelList.find(m => m.provider === entry.modelKey.provider && m.id === entry.modelKey.id) || defaultModel;
     // 未设置会话模型：默认走 Auto 路由（对标 Cursor 默认 Auto；PI_AUTO_ROUTE=0 可关闭）
-    autoRoute = routeForAuto(message);
+    autoRoute = routeForAuto(message, sessionId);
     return autoRoute.model;
   })();
+  if (autoRoute?.auto && autoRoute.model) markSticky(sessionId, autoRoute.model); // 会话粘性：10min 内 simple 轮不降档
   entry.autoRoute = autoRoute; // 供 SSE 播报与日志
   // agent 绑定模型与本次生效模型（会话级切换 或 Auto 路由实时决策）不一致 → 重建 agent
   // ⚠️ 2026-08-19：原来只在 entry.modelKey 存在时重建，Auto 路由下 agent 仍绑创建时的 defaultModel（429 中）

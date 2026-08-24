@@ -157,7 +157,30 @@ export function routeProCandidate() {
 
 // Auto 路由：按复杂度选 flash/pro。
 // 显式配置了 CONFIG.model → 不用 Auto，直接用该默认模型；PI_AUTO_ROUTE=0 可关。
-export function routeForAuto(text) {
+// ── 会话粘性路由（2026-08-24 补"来回甩锅"坑）──
+// 坑：每条消息独立分类，同会话上一轮 complex 用了 pro、这一轮 simple 又甩回 flash——
+// 上下文刚热就换模型，风格跳变 + prompt 缓存全失效。修复：simple 轮先查粘性窗口，
+// 10 分钟内沿用上轮模型（只防降档不防升级：complex 轮照样升 pro）。
+const stickyMap = new Map(); // sessionKey -> { key, until }
+const STICKY_MS = 10 * 60 * 1000;
+export function routeSticky(sessionKey) {
+  if (!sessionKey) return null;
+  const hit = stickyMap.get(sessionKey);
+  if (!hit) return null;
+  if (Date.now() > hit.until) { stickyMap.delete(sessionKey); return null; }
+  const [provider, ...rest] = hit.key.split("/");
+  const id = rest.join("/");
+  const m = _getModelList().find(x => x.provider === provider && x.id === id);
+  if (!m || isModelBlocked(m)) { stickyMap.delete(sessionKey); return null; }
+  return m;
+}
+export function markSticky(sessionKey, m, ms = STICKY_MS) {
+  if (!sessionKey || !m) return;
+  stickyMap.set(sessionKey, { key: modelKey(m), until: Date.now() + ms });
+  if (stickyMap.size > 500) { const now = Date.now(); for (const [k, v] of stickyMap) if (now > v.until) stickyMap.delete(k); }
+}
+
+export function routeForAuto(text, sessionKey) {
   if (_configModel) return { model: _getDefaultModel(), level: "simple", score: 0, reasons: ["显式默认模型"], auto: false };
   const cl = classifyTaskComplexity(text);
   if (process.env.PI_AUTO_ROUTE === "0") {
@@ -170,5 +193,8 @@ export function routeForAuto(text) {
     const flash = flashCandidate();
     return { model: flash, level: "complex", score: cl.score, reasons: [...cl.reasons, "pro 暂不可用(ocGo 429)，回落主力模型"], auto: true };
   }
+  // simple：粘性优先——10 分钟内沿用上轮模型，不降档不换人
+  const sticky = routeSticky(sessionKey);
+  if (sticky) return { model: sticky, level: "simple", score: cl.score, reasons: ["会话粘性(10min 内不降档)"], auto: true };
   return { model: flashCandidate(), level: cl.level, score: cl.score, reasons: cl.reasons, auto: true };
 }
