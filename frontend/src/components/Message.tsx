@@ -34,7 +34,7 @@ function ToolCard({ tool }: { tool: Partial<RunningTool> & { name: string } }) {
             运行中
           </span>
         ) : (
-          <span className={`${isError ? 'text-pi-red' : 'text-emerald-400'} flex-shrink-0`}>
+          <span className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${isError ? 'bg-pi-red/15 text-pi-red' : 'bg-emerald-500/15 text-emerald-400'}`}>
             {isError ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
           </span>
         )}
@@ -56,8 +56,8 @@ function Thinking({ text, live }: { text: string; live?: boolean }) {
   const [open, setOpen] = useState(false)
   if (!text) return null
   return (
-    <div className="my-1">
-      <div className="inline-flex items-center gap-1.5 text-pi-dim text-[11px] cursor-pointer hover:text-pi-text transition-colors rounded-pi-pill px-2 py-0.5 -ml-2 bg-purple-500/8 border border-purple-500/15"
+    <div className="my-2">
+      <div className="inline-flex items-center gap-1.5 text-purple-300/90 text-[11px] font-medium cursor-pointer transition-colors rounded-full px-2.5 py-1 -ml-1 bg-purple-500/12 border border-purple-400/25 hover:bg-purple-500/20 hover:text-purple-200"
         onClick={() => setOpen(!open)}>
         <Brain className="w-3 h-3 text-purple-300" />
         {live && (

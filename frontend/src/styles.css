@@ -556,3 +556,10 @@ body::before {
   0% { background-position: 120% 0; }
   100% { background-position: -80% 0; }
 }
+
+/* ── mimo 评审落地（08-24）：工具卡流光加辉光 ── */
+.tool-progress { filter: drop-shadow(0 0 3px var(--pi-accent)); }
+@keyframes shellBreath {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(84,104,255,0.00), 0 4px 20px rgba(0,0,0,0.25); }
+  50% { box-shadow: 0 0 32px 4px var(--pi-accent-glow), 0 4px 20px rgba(0,0,0,0.25); }
+}

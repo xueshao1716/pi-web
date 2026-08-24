@@ -248,7 +248,7 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
         </div>
       )}
 
-      <div className="sendbox-shell rounded-pi-xl border border-pi-border bg-pi-bg2/50 backdrop-blur-xl focus-within:border-pi-accent/70 focus-within:ring-2 focus-within:ring-pi-accent/20 transition-all duration-300">
+      <div className="sendbox-shell rounded-pi-xl border border-pi-border bg-pi-bg2/50 backdrop-blur-xl focus-within:border-pi-accent focus-within:ring-1 focus-within:ring-pi-accent/40 transition-all duration-300">
         <textarea ref={taRef} rows={2} value={value} disabled={streaming}
           placeholder='给小语发消息…　"/" 命令 · "@ 引用文件'
           className="w-full bg-transparent border-none outline-none px-4 py-3 text-[13.5px] text-pi-text resize-none placeholder:text-pi-dim2 disabled:opacity-60"

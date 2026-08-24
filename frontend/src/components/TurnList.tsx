@@ -51,7 +51,7 @@ function TurnRow({ turn, index, open, onToggle }: { turn: Turn; index: number; o
     <div className="my-1.5">
       <button onClick={onToggle}
         className="press w-full flex items-center gap-2 px-3 py-2.5 rounded-pi-lg border border-pi-border-soft bg-pi-bg2/40 hover:bg-pi-bg-hover/60 hover:border-pi-border transition-colors text-left group/turn">
-        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${status.c}`} title={status.t} />
+        <span className={`w-2 h-2 rounded-full flex-shrink-0 ring-2 ${status.c} ${hasError ? "ring-pi-red/20" : answer ? "ring-emerald-500/15" : "ring-white/5"}`} title={status.t} />
         <span className="text-[10px] font-mono text-pi-dim2 w-7 flex-shrink-0">#{index + 1}</span>
         <span className="text-[12.5px] text-pi-dim truncate flex-1 min-w-0">
           <span className="text-pi-text/85">{q}</span>
