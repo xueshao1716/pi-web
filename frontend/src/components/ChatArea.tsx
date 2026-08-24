@@ -270,7 +270,7 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
   const idleWarned = idleSeconds * 1000 >= IDLE_WARN_MS && streaming
 
   return (
-    <div className="flex-1 flex flex-col min-w-0">
+    <div className="flex-1 flex flex-col min-w-0 min-h-0">
       {/* 顶栏 */}
       <div className="flex items-center px-5 h-12 border-b border-pi-border-soft glass flex-shrink-0 gap-2">
         {!compactHeader && <div className="font-medium text-[14px] text-pi-text">会话</div>}
@@ -286,7 +286,7 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
       )}
 
       {/* 消息区 */}
-      <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 scroll-smooth">
+      <div ref={scrollRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-4">
         {loading ? (
           <div className="max-w-3xl w-full mx-auto px-6 py-6 space-y-5" aria-label="加载中">
             {[520, 380, 460].map((w, i) => (

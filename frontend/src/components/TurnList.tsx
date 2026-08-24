@@ -55,7 +55,7 @@ function TurnRow({ turn, index, open, onToggle }: { turn: Turn; index: number; o
         <span className="text-[10px] font-mono text-pi-dim2 w-7 flex-shrink-0">#{index + 1}</span>
         <span className="text-[12.5px] text-pi-dim truncate flex-1 min-w-0">
           <span className="text-pi-text/85">{q}</span>
-          {aExcerpt && <span className="text-pi-dim2"> <span className="text-pi-accent2/60">→</span> {aExcerpt}</span>}
+          {aExcerpt && <span className="text-pi-dim"> <span className="text-pi-accent2/60">→</span> {aExcerpt}</span>}
         </span>
         <span className="flex items-center gap-1.5 flex-shrink-0 text-[10px] text-pi-dim2">
           {tools > 0 && <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-pi-pill bg-white/[0.04]" title={`${tools} 次工具调用`}><Wrench className="w-3 h-3" />{tools}</span>}

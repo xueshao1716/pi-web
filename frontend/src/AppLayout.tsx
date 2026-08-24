@@ -74,7 +74,7 @@ export default function AppLayout() {
               <Sidebar onNavigated={() => setMobileDrawer('none')} />
             </div>
           ) : route === 'chat' ? (
-            <div className="flex-1 flex flex-col min-w-0">
+            <div className="flex-1 flex flex-col min-w-0 min-h-0">
               <ChatArea compactHeader />
               {rightPanel !== 'chat' && (
                 <div className="fixed inset-0 top-10 z-[80] glass-strong flex flex-col">
@@ -146,7 +146,7 @@ export default function AppLayout() {
       {/* 会话列表：仅对话路由显示 */}
       {route === 'chat' && <Sidebar />}
 
-      <div className="flex-1 flex flex-col min-w-0 relative z-10 col-canvas">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 relative z-10 col-canvas">
         {route === 'chat' ? <ChatArea /> : pageArea}
       </div>
 
