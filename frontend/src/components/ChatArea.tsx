@@ -270,12 +270,34 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
 
   const idleWarned = idleSeconds * 1000 >= IDLE_WARN_MS && streaming
 
+  // 心情状态：服务端 mood / 本地 fallback（情绪轮盘 8 态）
+  const [mood, setMood] = useState('🧘')
+  const [agentStatus, setAgentStatus] = useState<'idle'|'busy'|'error'>('idle')
+  // 简单的情绪映射（同老版 vibe 轮盘）
+  const moods = ['🧘','😊','💪','🤔','😴','🎉','⚙️','🫣']
+  // 派发状态（stream 存在→busy；stream.error→error；其余→idle）
+  useEffect(() => {
+    if (stream?.error) setAgentStatus('error')
+    else if (stream) setAgentStatus('busy')
+    else setAgentStatus('idle')
+  }, [stream])
+
   return (
     <div className="flex-1 flex flex-col min-w-0 min-h-0">
       {/* 顶栏 */}
       <div className="flex items-center px-5 h-12 border-b border-pi-border-soft glass flex-shrink-0 gap-2">
         {!compactHeader && <div className="font-medium text-[14px] text-pi-text">会话</div>}
         <div className="ml-auto" />
+        {/* 执行状态（对标老版 .status-pill） */}
+        <div className={`status-pill status-${agentStatus} text-[11px] text-pi-dim flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-pi-border-soft bg-pi-bg2/50`}>
+          <span className={`status-dot status-dot-${agentStatus} w-[7px] h-[7px] rounded-full flex-shrink-0`} />
+          <span>{agentStatus === 'busy' ? '执行中' : agentStatus === 'error' ? '异常' : '就绪'}</span>
+        </div>
+        {/* 心情（对标老版 .emo-pill） */}
+        <div className="emo-pill w-[30px] h-[30px] rounded-full bg-pi-bg2/60 border border-pi-border-soft flex items-center justify-center text-[15px] cursor-default hover:border-pi-accent/40 transition-colors"
+          title={`小语状态 · ${mood}`} onClick={() => setMood(moods[(moods.indexOf(mood) + 1) % moods.length])}>
+          {mood}
+        </div>
         <ModelSelect />
       </div>
 

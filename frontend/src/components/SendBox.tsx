@@ -277,11 +277,11 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
                 <span className="inline-block w-3 h-3 border-2 border-pi-accent border-t-transparent rounded-full animate-spin align-middle" /> 识别中
               </button>
             ) : (
-              <button onClick={startRec} className="btn-tool" title="语音输入（说完点停止）"><Mic className="w-4 h-4" /></button>
+              <button onClick={startRec} className="btn-tool" title="语音输入（说完点停止）"><Mic className="w-[18px] h-[18px]" strokeWidth={1.8} /></button>
             )
           )}
-          <button className="btn-tool text-xs" title="附加文件内容" onClick={() => fileInputRef.current?.click()} disabled={streaming || uploading}>
-            {uploading ? '上传中…' : (<><Paperclip className="w-3.5 h-3.5" /> 附加</>)}
+          <button className="btn-tool" title="附加文件内容" onClick={() => fileInputRef.current?.click()} disabled={streaming || uploading}>
+            {uploading ? <span className="w-[18px] h-[18px] rounded-full border-[1.5px] border-pi-accent border-t-transparent animate-spin inline-block" /> : <Paperclip className="w-[18px] h-[18px]" strokeWidth={1.8} />}
           </button>
           {streaming ? (
             <button onClick={onStop}
@@ -290,7 +290,7 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
             </button>
           ) : (
             <button onClick={doSend} title="发送"
-              className="press w-8 h-8 rounded-full btn-grad text-white flex items-center justify-center disabled:opacity-40"
+              className="press w-7 h-7 rounded-full btn-grad text-white flex items-center justify-center disabled:opacity-40"
               disabled={!value.trim() && files.length === 0}>
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="12 19 12 5"/><polyline points="5 12 12 5 19 12"/></svg>
             </button>
