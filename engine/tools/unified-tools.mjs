@@ -216,6 +216,17 @@ export function createUnifiedToolExecutor(deps = {}) {
         const p = safePath(args?.path);
         if (!p || !fs.existsSync(p)) return { text: `文件不存在: ${args?.path}`, isError: true };
         if (fs.statSync(p).isDirectory()) return { text: "这是一个目录，请指定文件", isError: true };
+        // 二进制/图片文件不能按 utf8 硬读（2026-08-24 修复"read 一直失败"）
+        const ext = path.extname(p).toLowerCase();
+        const IMG = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".ico"];
+        const BIN = [".pdf", ".wasm", ".zip", ".gz", ".mp3", ".mp4", ".wav", ".webm", ".exe", ".dll", ".apk", ".ttf", ".woff2"];
+        const kb = Math.round(fs.statSync(p).size / 1024);
+        if (IMG.includes(ext)) {
+          return { text: `[图片文件] ${path.basename(p)} · ${kb}KB。文本通道无法读取像素内容；如需看图：①让用户直接在界面看；②换支持视觉的模型后以附件方式传入；③用 bash + python PIL 提取尺寸/主色等元信息`, isError: false };
+        }
+        if (BIN.includes(ext)) {
+          return { text: `[二进制文件] ${path.basename(p)} · ${kb}KB（${ext}），不以文本读取。如需内容请用对应工具（如 pdftotext/ffmpeg/unzip）`, isError: false };
+        }
         const c = fs.readFileSync(p, "utf8");
         return { text: c.slice(0, 50000), isError: false };
       }
