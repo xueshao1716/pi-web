@@ -1875,7 +1875,7 @@ const server = http.createServer(async (req, res) => {
   try {
     // 安全响应头（CSP 限制脚本来源，防止第三方注入执行；禁 MIME 嗅探；防 clickjacking）
     // OMEGA 页需连 OpenIM(10002/10001) 与 Gateway(9000)，connect-src/worker-src 已放行本地服务
-    res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' ws: wss: http://127.0.0.1:10002 http://127.0.0.1:9000 ws://127.0.0.1:10001 ws://127.0.0.1:9000 https://fastly.jsdelivr.net https://cubism.live2d.com https://v1.hitokoto.cn; worker-src 'self' blob:; font-src 'self' data:; frame-ancestors 'none'");
+    res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' ws: wss: http://127.0.0.1:10002 http://127.0.0.1:9000 ws://127.0.0.1:10001 ws://127.0.0.1:9000 https://fastly.jsdelivr.net https://cubism.live2d.com https://v1.hitokoto.cn; worker-src 'self' blob:; font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com; frame-ancestors 'none'");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Referrer-Policy", "no-referrer");
@@ -1895,14 +1895,16 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 静态资源
-    // 主界面默认 vanilla；?react=1 → 新版 React 体验入口
+    // 主界面转正：默认 → React 版（今日大改后已成熟）；?vanilla=1 → 旧版 vanilla（保底）；?react=1 向后兼容
     if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
-      if (reactStatic && url.searchParams.has("react")) { req.url = "/index.html"; return reactStatic.handle(req, res); }
+      const wantVanilla = url.searchParams.has("vanilla");
+      const wantReact = reactStatic && (!wantVanilla || url.searchParams.has("react"));
+      if (reactStatic && !wantVanilla) { req.url = "/index.html"; return reactStatic.handle(req, res); }
       return handleStatic(req, res);
     }
-    // sw.js：vanilla 模式下发原版；?react=1 下发自毁脚本（清旧缓存+注销，React 版不用 service worker）
+    // sw.js：默认反应版下发自毁脚本（React 不用 service worker）；?vanilla=1 下发原版缓存
     if (req.method === "GET" && url.pathname === "/sw.js") {
-      if (reactStatic && url.searchParams.has("react")) {
+      if (reactStatic && !url.searchParams.has("vanilla")) {
         res.writeHead(200, { "Content-Type": "application/javascript", "Cache-Control": "no-cache" });
         return res.end(SW_UNREGISTER);
       }
