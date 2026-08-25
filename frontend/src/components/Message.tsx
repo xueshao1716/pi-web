@@ -49,7 +49,7 @@ function ToolCard({ tool }: { tool: Partial<RunningTool> & { name: string } }) {
       {open && (
         <div className="border-t border-pi-border-soft bg-black/20">
           <div className="font-mono text-[12px] text-pi-dim whitespace-pre-wrap max-h-56 overflow-auto px-3 py-2 leading-relaxed">
-            {tool.output || (running ? '(运行中…)' : '(无输出)')}
+            {tool.output || (status === 'running' ? '(运行中…)' : status === 'canceled' ? '(已停止)' : '(无输出)')}
           </div>
         </div>
       )}

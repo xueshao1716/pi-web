@@ -185,3 +185,11 @@ test('禁止内联 style 硬编码 hex 色值（改用 var(--pi-*)/color-mix）'
   }
   assert.deepEqual(offenders, [], '内联 style 硬编码 hex（改用 var(--pi-*)/color-mix）：\n' + offenders.join('\n'))
 })
+
+// ── 12. 工具卡 5 态归一（AionUi 路线，防改回 2 态 running 布尔）──
+test('工具卡为非 2 态：含 ToolStatus 归属 + canceled 分支', () => {
+  const src = readFileSync(join(ROOT, 'src/components/Message.tsx'), 'utf8')
+  const req = ['ToolStatus', "'canceled'", 'Square', '已停止']
+  const missing = req.filter(s => !src.includes(s))
+  assert.deepEqual(missing, [], '工具卡 5 态缺失（被改回 2 态？）: ' + missing.join(', '))
+})
