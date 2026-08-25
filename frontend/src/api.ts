@@ -216,6 +216,10 @@ export const ImprovementsApi = {
   analyze: () => api<{ improvements: any[] }>('/api/improvements/analyze', { method: 'POST' }),
   setStatus: (id: string, status: string) => api<any>(`/api/improvements/${encodeURIComponent(id)}/status`, { method: 'POST', body: { status } }),
 }
+// ── 记忆园丁：只报告记忆健康（重复/过时状态/膨胀），不自动写 ──
+export const MemoryApi = {
+  gardener: () => api<any>('/api/memory-gardener'),
+}
 
 // ── 用量统计（按 provider/模型聚合）──
 export interface ProviderStat { provider: string; input: number; output: number; cacheRead?: number; cost: number; messages: number }
