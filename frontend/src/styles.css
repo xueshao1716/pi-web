@@ -281,14 +281,16 @@ body::before {
 
 /* ── 消息气泡玻璃化（Phase3 加强）── */
 .msg-bubble {
-  background: rgba(22, 26, 34, 0.55);
+  /* 语义化重写：surface 层级 + color-mix 派生高光，让气泡比画布明显浮出 */
+  background: color-mix(in oklab, var(--pi-surface) 82%, transparent);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid color-mix(in oklab, var(--pi-border-hi) 60%, white 10%);
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.06),
-    0 4px 18px rgba(0,0,0,0.26),
-    0 0 0 0.5px rgba(255,255,255,0.03);
+    inset 0 1px 0 rgba(255,255,255,0.10),
+    0 6px 24px rgba(0,0,0,0.30),
+    0 0 0 0.5px rgba(255,255,255,0.05);
+  transition: box-shadow var(--pi-motion-fast), transform var(--pi-motion-fast);
 }
 .msg-bubble-user {
   background: rgba(84, 104, 255, 0.16);
