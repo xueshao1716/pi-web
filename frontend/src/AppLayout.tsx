@@ -58,9 +58,23 @@ export default function AppLayout() {
         setPaletteOpen(o => !o)
       }
     }
+    // 欢迎页快捷入口 → 面板联动
+    const onOpenPalette = () => setPaletteOpen(true)
+    const onOpenPanel = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail === 'terminal' || detail === 'workspace' || detail === 'deliveries') {
+        nav('chat'); setRightPanel(detail)
+      }
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
+    window.addEventListener('pi-open-palette', onOpenPalette)
+    window.addEventListener('pi-open-panel', onOpenPanel)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('pi-open-palette', onOpenPalette)
+      window.removeEventListener('pi-open-panel', onOpenPanel)
+    }
+  }, [nav])
   const palette = (
     <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} nav={nav}
       onRightPanel={p => setRightPanel(p)} onModelManager={() => setModelOpen(true)} />

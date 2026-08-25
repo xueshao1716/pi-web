@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { useApp } from '../store'
-import { MessagesSquare, BrainCircuit, Wrench, FolderClosed } from 'lucide-react'
+import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, LayoutGrid, Command } from 'lucide-react'
 import { ChatApi, SessionsApi, AsrApi, streamSession } from '../api'
 import Message from './Message'
 import ModelSelect from './ModelSelect'
@@ -244,24 +244,30 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
     } finally { setVoiceBusy(false) }
   }
 
+  // 桌面欢迎页：可操作快捷入口（08-25 layout：静态功能介绍 → 行动引导）
+  const newSession = async () => {
+    try { const d = await SessionsApi.create(); await refreshSessions(); selectSession(d.id) } catch {}
+  }
+  const openPanel = (p: string) => window.dispatchEvent(new CustomEvent('pi-open-panel', { detail: p }))
   const welcome = (
     <div className="flex items-center justify-center h-full px-6">
       <div className="text-center max-w-lg anim-enter">
-        <div className="w-20 h-20 mx-auto rounded-pi-xl bg-gradient-to-br from-pi-accent via-pi-accent2 to-purple-400 flex items-center justify-center text-4xl font-bold text-white mb-6 shadow-lg anim-enter" style={{ boxShadow: '0 8px 28px rgba(84,104,255,0.22)' }}>语</div>
-        <div className="text-[22px] font-extrabold text-pi-text mb-2 tracking-tight anim-enter anim-enter-delay-1">小语 · AI 工作台</div>
-        <div className="text-pi-dim mb-8 text-[15px] anim-enter anim-enter-delay-2">基于 pi 引擎的 AI 工作伙伴</div>
-        <div className="grid grid-cols-2 gap-3 max-w-md mx-auto text-left anim-enter anim-enter-delay-3">
+        <div className="w-16 h-16 mx-auto rounded-pi-xl bg-gradient-to-br from-pi-accent via-pi-accent2 to-purple-400 flex items-center justify-center text-3xl font-bold text-white mb-5 anim-enter" style={{ boxShadow: '0 8px 28px rgba(84,104,255,0.22)' }}>语</div>
+        <div className="text-[22px] font-extrabold text-pi-text mb-1.5 tracking-tight anim-enter anim-enter-delay-1">小语 · AI 工作台</div>
+        <div className="text-pi-dim mb-7 text-[13px] anim-enter anim-enter-delay-2">基于 pi 引擎的 AI 工作伙伴 · 从一个动作开始</div>
+        <div className="grid grid-cols-2 gap-2.5 max-w-md mx-auto text-left anim-enter anim-enter-delay-3">
           {[
-            { Icon: MessagesSquare, label: '智能对话', desc: '多模型自由切换', chip: 'chip-blue', c: 'text-pi-accent2' },
-            { Icon: BrainCircuit, label: '深度思考', desc: '过程可见可控', chip: 'chip-violet', c: 'text-purple-300' },
-            { Icon: Wrench, label: '工具调用', desc: '代码·文件·终端', chip: 'chip-amber', c: 'text-amber-300' },
-            { Icon: FolderClosed, label: '工作空间', desc: '文件管理一体化', chip: 'chip-green', c: 'text-emerald-300' },
-          ].map((f, i) => (
-            <div key={i} className={`rounded-pi-lg border px-4 py-3 transition-all duration-200 cursor-default anim-enter ${f.chip}`} style={{ animationDelay: `${0.2 + i * 0.06}s` }}>
+            { Icon: Plus, label: '新建会话', desc: '开一段新对话', act: newSession, chip: 'chip-blue', c: 'text-pi-accent2' },
+            { Icon: SquareTerminal, label: '终端 REPL', desc: '写代码调工具', act: () => openPanel('terminal'), chip: 'chip-green', c: 'text-emerald-300' },
+            { Icon: LayoutGrid, label: '模型中心', desc: '浏览与切换模型', act: () => { location.hash = '#/models' }, chip: 'chip-violet', c: 'text-purple-300' },
+            { Icon: Command, label: '命令面板', desc: 'Ctrl / ⌘ + K', act: () => window.dispatchEvent(new CustomEvent('pi-open-palette')), chip: 'chip-amber', c: 'text-amber-300' },
+          ].map((f) => (
+            <button key={f.label} onClick={f.act}
+              className={`rounded-pi-lg border px-4 py-3 transition-all duration-200 cursor-pointer press anim-enter text-left ${f.chip}`} style={{ animationDelay: '0.12s' }}>
               <f.Icon className={`w-[18px] h-[18px] mb-1.5 ${f.c}`} strokeWidth={1.8} />
               <div className="text-[13px] font-semibold text-pi-text">{f.label}</div>
               <div className="text-[11px] text-pi-dim2">{f.desc}</div>
-            </div>
+            </button>
           ))}
         </div>
       </div>
@@ -343,7 +349,7 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
       </div>
 
       {/* 输入栏 */}
-      <div className="border-t border-pi-border-soft glass px-4 sm:px-6 py-3 flex-shrink-0">
+      <div className="border-t border-pi-border-soft glass px-4 sm:px-6 py-2.5 flex-shrink-0">
         <div className="max-w-3xl mx-auto">
           <SendBox streaming={!!stream} onStop={stop} onSend={send} onCommand={runCommand}
             voiceBusy={voiceBusy} onVoice={handleVoice} onVoiceTextReady={fn => { voiceTextRef.current = fn }} />

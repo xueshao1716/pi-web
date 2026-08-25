@@ -253,7 +253,7 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
           role="combobox"
           aria-expanded={showSlash || showAt}
           aria-label="消息输入框"
-          className="w-full bg-transparent border-none outline-none px-4 pt-3 pb-1 text-[13px] text-pi-text resize-none placeholder:text-pi-dim2 disabled:opacity-60"
+          className="w-full bg-transparent border-none outline-none px-4 pt-2.5 pb-0.5 text-[13px] text-pi-text resize-none placeholder:text-pi-dim2 disabled:opacity-60"
           onChange={e => onChange(e.target.value)}
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -274,7 +274,7 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
           }} />
 
         {/* 底部操作栏：模型选择 + 工具按钮 */}
-        <div className="flex items-center px-3 pb-2.5 gap-1">
+        <div className="flex items-center px-3 pb-2 gap-1">
           {/* 模型选择器（嵌入输入框） */}
           <ModelSelect compact />
 
