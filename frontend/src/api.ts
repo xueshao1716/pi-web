@@ -136,6 +136,10 @@ export const AsrApi = {
 export const EmotionApi = {
   get: (sid?: string) => api<any>(`/api/emotion${sid ? `?session=${encodeURIComponent(sid)}` : ''}`),
 }
+// 全局执行状态：哪些会话的 agent 正在跑（状态灯轮询，含后台/他端发起）
+export const AgentStatusApi = {
+  get: () => api<{ busy: { id: string; since: number | null }[]; anyBusy: boolean }>('/api/agent-status'),
+}
 
 // ── 出图（自动落盘生成物/图片/日期，资产库联动）──
 export const MediaApi = {

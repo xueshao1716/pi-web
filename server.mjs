@@ -870,6 +870,7 @@ async function handleChat(req, res, body) {
   entry.gen = (entry.gen || 0) + 1;
   const thisGen = entry.gen;
   entry.busy = true;
+  entry.busySince = Date.now();
 
   // /compact 手动压缩命令（Claude Code /compact 借鉴）：强制对早前历史生成结构化摘要，不消耗模型回合
   // 用法：/compact 或 /compact focus on <主题>；压缩结果写入会话（compaction 条目），返回摘要供前端展示
@@ -1553,9 +1554,19 @@ function handleEmotion(res, url) {
   json(res, 200, emotion.getSnapshot(key));
 }
 
+// 全局执行状态：哪些会话的 agent 正在跑（前端状态灯轮询用，含后台/他端发起的执行）
+function handleAgentStatus(res) {
+  const busy = [];
+  for (const [id, e] of activeSessions) {
+    if (e.busy) busy.push({ id, since: e.busySince || null });
+  }
+  json(res, 200, { busy, anyBusy: busy.length > 0 });
+}
+
 const API_ROUTES = [
   // ── 会话 ──
   ["GET", "/api/emotion", (res, req, url) => handleEmotion(res, url)],
+  ["GET", "/api/agent-status", (res) => handleAgentStatus(res)],
   // ── 人格基因 + 提案制进化 ──
   ["GET", "/api/genome", (res) => json(res, 200, emotion.getGenome())],
   ["POST", "/api/genome/propose", async (res, req) => {

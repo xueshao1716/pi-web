@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { useApp } from '../store'
 import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, LayoutGrid, Command, ChevronDown, PanelRight } from 'lucide-react'
-import { ChatApi, SessionsApi, AsrApi, EmotionApi, streamSession } from '../api'
+import { ChatApi, SessionsApi, AsrApi, EmotionApi, AgentStatusApi, streamSession } from '../api'
 import Message from './Message'
 import SendBox from './SendBox'
 import TurnList from './TurnList'
@@ -292,12 +292,36 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   // 情绪指示器：服务端 VAD 情绪引擎的镜像（SSE emotion 事件实时推 + 切会话拉快照），不是本地可点的玩具
   const [emo, setEmo] = useState<{ state: any; meta: EmoMeta }>({ state: null, meta: { emoji: '🧘', label: '专注', cls: 'focus' } })
   const [agentStatus, setAgentStatus] = useState<'idle'|'busy'|'error'>('idle')
-  // 派发状态（stream 存在→busy；stream.error→error；其余→idle）
+  // 后台执行探测：轮询服务端 busy 会话表——本页没在流式但后台/他端在跑也要亮灯（用户靠它判断小语是否在工作）
+  const [remoteBusy, setRemoteBusy] = useState<'self' | 'other' | null>(null)
+  useEffect(() => {
+    let alive = true
+    let failCount = 0
+    const tick = async () => {
+      try {
+        const d = await AgentStatusApi.get()
+        if (!alive) return
+        failCount = 0
+        const busy = d.busy || []
+        if (!busy.length) setRemoteBusy(null)
+        else if (currentSessionId && busy.some(b => b.id === currentSessionId)) setRemoteBusy('self')
+        else setRemoteBusy('other')
+      } catch {
+        if (++failCount > 3 && alive) setRemoteBusy(null) // 连续失败按空闲显示，不误报
+      }
+    }
+    tick()
+    const t = setInterval(tick, 4000)
+    return () => { alive = false; clearInterval(t) }
+  }, [currentSessionId])
+
+  // 派发状态：本地流式 / 后台任一会话在跑 → busy（红点脉动）；stream.error → error；其余 idle
   useEffect(() => {
     if (stream?.error) setAgentStatus('error')
-    else if (stream) setAgentStatus('busy')
+    else if (stream || remoteBusy) setAgentStatus('busy')
     else setAgentStatus('idle')
-  }, [stream])
+  }, [stream, remoteBusy])
+  const busyFromBackground = !stream && remoteBusy === 'other'
 
   return (
     <div className="relative flex-1 flex flex-col min-w-0 min-h-0">
@@ -308,7 +332,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         {/* 执行状态（对标老版 .status-pill；aria-live 让屏幕阅读器感知流式开始/结束）*/}
         <div role="status" aria-live="polite" className={`status-pill status-${agentStatus} text-[11px] text-pi-dim flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-pi-border-soft bg-pi-bg2/50`}>
           <span className={`status-dot status-dot-${agentStatus} w-[7px] h-[7px] rounded-full flex-shrink-0`} />
-          <span>{agentStatus === 'busy' ? '执行中' : agentStatus === 'error' ? '异常' : '就绪'}</span>
+          <span>{agentStatus === 'busy' ? (busyFromBackground ? '后台执行中' : '执行中') : agentStatus === 'error' ? '异常' : '就绪'}</span>
         </div>
         {/* 右栏开关：紧贴状态胶囊（桌面端；原 fixed 悬浮层会遮挡头部） */}
         {onRightPanel && (

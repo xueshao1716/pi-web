@@ -545,7 +545,7 @@ body::before {
 }
 /* ── 状态点（08-24 移植老版 .status-pill）── */
 .status-dot-idle   { background: var(--pi-dim2); }
-.status-dot-busy   { background: var(--pi-yellow); animation: pulse 1s infinite; }
+.status-dot-busy   { background: var(--pi-red); box-shadow: 0 0 8px rgba(244,112,103,0.5); animation: pulse 1s infinite; }
 .status-dot-error  { background: var(--pi-red); box-shadow: 0 0 8px rgba(244,112,103,0.5); }
 .status-pill:hover { border-color: var(--pi-border-hi) !important; }
 @keyframes pulse {
