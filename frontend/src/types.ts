@@ -44,6 +44,7 @@ export interface ChatMessage {
   tools?: ToolCall[]
   think?: string
   ts?: string
+  model?: { provider: string; id: string } // provenance：实际使用的模型（Auto 路由时前端可见）
 }
 
 // 生成物（资产库）条目

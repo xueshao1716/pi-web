@@ -121,6 +121,7 @@ export async function unifiedChat(model, messages, opts = {}) {
   });
   let usedThinking = thinkingParam !== null;
   let turn = 0;
+  let usedModel = null; // provenance：记录实际使用的模型（Auto 路由/降级时前端可见）
   const jitInjected = new Set(); // 本会话 JIT 目录规则已注入集合（每目录一次）
   const seenCalls = new Map();
   while (turn < 20) {
@@ -154,6 +155,7 @@ export async function unifiedChat(model, messages, opts = {}) {
       return { error: `HTTP ${r.status}: ${String(errBody).slice(0, 150)}` };
     }
     const data = await r.json();
+    usedModel = { provider: model.provider, id: model.id }; // provenance：本轮实际模型
     const msg = data.choices?.[0]?.message || {};
     const tcs = sanitizeToolCallList(msg.tool_calls);
     if (tcs && tcs.length && toolDefs) {
@@ -233,7 +235,7 @@ export async function unifiedChat(model, messages, opts = {}) {
       if (!think) think = String(m?.[1] || "").trim();
       text = content.replace(/<think>[\s\S]*?<\/think>\s*/g, "").trim();
     }
-    return { think, text: text || null, history };
+    return { think, text: text || null, history, usedModel };
   }
   // 超过轮数上限：尽量返回中间结果（不直接丢错误）
   for (let i = history.length - 1; i >= 0; i--) {
@@ -499,9 +501,9 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     if (mr.url) mr.url = await saveArtifact(mr);
     writer.push("media", mr);
   }
-  writer.push("done", { sessionId });
+  writer.push("done", { sessionId, model: result.usedModel || { provider: chatModel.provider, id: chatModel.id } });
   clearTask(taskId, "done");
-  console.log(`[pi-web] 统一通道: ${chatModel.provider}/${chatModel.id}`);
+  console.log(`[pi-web] 统一通道: ${(result.usedModel || chatModel).provider}/${(result.usedModel || chatModel).id}`);
 }
 
 // ============================================================

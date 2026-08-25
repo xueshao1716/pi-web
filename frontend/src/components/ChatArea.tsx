@@ -123,7 +123,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     return () => clearInterval(t)
   }, [streaming])
 
-  const finalize = () => {
+  const finalize = (model?: { provider: string; id: string }) => {
     const s = streamRef.current
     if (!s) return
     if (s.text || s.think || s.tools.length || s.files.length || s.images.length || s.audios.length || s.error) {
@@ -133,6 +133,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         think: s.think, tools: s.tools, notes: s.notes,
         files: s.files, images: s.images, audios: s.audios,
         ts: new Date().toISOString(),
+        ...(model ? { model } : {}),
       }])
     }
     streamRef.current = null
@@ -223,7 +224,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
           break
         case 'done':
         case 'finish':
-          finalize()
+          finalize(d.model)
           break
         case 'error':
           // 错误后收尾：已生成内容保留，错误并入消息

@@ -172,7 +172,10 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
           <Markdown text={msg.text} />
         </div>
         {msg.ts && !streaming && (
-          <div className="hov-reveal text-[11px] text-pi-dim2 mt-1 transition-opacity">{new Date(msg.ts).toLocaleTimeString('zh-CN', { hour12: false })}</div>
+          <div className="hov-reveal text-[11px] text-pi-dim2 mt-1 transition-opacity flex items-center gap-2">
+            <span>{new Date(msg.ts).toLocaleTimeString('zh-CN', { hour12: false })}</span>
+            {msg.model && <span className="px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3 text-pi-dim2 text-[10px]" title={`${msg.model.provider}/${msg.model.id}`}>{msg.model.id}</span>}
+          </div>
         )}
       </div>
     </div>
