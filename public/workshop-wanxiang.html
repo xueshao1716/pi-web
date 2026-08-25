@@ -380,7 +380,7 @@
           <div class="ud-text">点击选择或拖拽照片到这里<br><span style="font-size:11px;color:var(--dim)">用于拉入场景 / 局部修改</span></div>
         </div>
         <div class="upload-preview" id="uploadPreview" hidden>
-          <img id="uploadImg" alt="待处理照片">
+          <img id="uploadImg" alt="待处理照片" style="display:none">
           <button class="up-remove" id="uploadRemove" title="移除">✕</button>
         </div>
         <textarea id="i2iPrompt" class="i2i-prompt" spellcheck="false" placeholder="输入场景描述，如：把人物放进古风宫殿，凤凰背景，金色光线（留空则用上方生成提示词）"></textarea>
@@ -406,7 +406,7 @@
       <div id="imgStatus" class="img-status" hidden></div>
       <div id="imgGrid" class="img-grid" hidden></div>
       <div id="imgSingle" class="img-result" hidden>
-        <div class="img-frame"><img id="imgShow" alt="生成图像"></div>
+        <div class="img-frame"><img id="imgShow" alt="生成图像" style="display:none"></div>
         <div class="img-actions">
           <a id="imgOpen" target="_blank" rel="noopener" hidden>⬇ 打开原图</a>
           <button id="imgSave" hidden>💾 保存到本地</button>
@@ -1042,6 +1042,7 @@ async function generateImageNow() {
 // 单张大图展示
 function showSingle(src) {
   $imgShow.src = src;
+  $imgShow.style.display = 'block';
   $imgSingle.hidden = false;
   const isUrl = src.startsWith('http');
   $imgOpen.hidden = !isUrl;
@@ -1180,6 +1181,7 @@ function readImageFile(file) {
     const full = String(reader.result);
     uploadedImage = full.split(',')[1] || full; // 去 data:image/png;base64, 前缀
     $uploadImg.src = full;
+    $uploadImg.style.display = 'block';
     $uploadPreview.hidden = false;
     $uploadDrop.style.display = 'none';
   };
