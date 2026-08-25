@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { useApp } from '../store'
-import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, LayoutGrid, Command, ChevronDown } from 'lucide-react'
+import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, LayoutGrid, Command, ChevronDown, PanelRight } from 'lucide-react'
 import { ChatApi, SessionsApi, AsrApi, streamSession } from '../api'
 import Message from './Message'
 import SendBox from './SendBox'
@@ -34,7 +34,12 @@ function toDataUri(raw: string, mime?: string): string {
   return raw.startsWith('data:') ? raw : `data:${mime || 'image/png'};base64,${raw}`
 }
 
-export default function ChatArea({ compactHeader }: { compactHeader?: boolean } = {}) {
+export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
+  compactHeader?: boolean
+  /** 右栏状态由 AppLayout 持有；传入则顶栏显示"右栏"开关（与状态胶囊并排，不再悬浮遮挡） */
+  rightPanel?: string
+  onRightPanel?: (p: any) => void
+} = {}) {
   const { currentSessionId, currentModel, refreshSessions, selectSession } = useApp()
   const [stream, setStream] = useState<StreamState | null>(null)
   const [idleSeconds, setIdleSeconds] = useState(0)
@@ -296,6 +301,21 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
           <span className={`status-dot status-dot-${agentStatus} w-[7px] h-[7px] rounded-full flex-shrink-0`} />
           <span>{agentStatus === 'busy' ? '执行中' : agentStatus === 'error' ? '异常' : '就绪'}</span>
         </div>
+        {/* 右栏开关：紧贴状态胶囊（桌面端；原 fixed 悬浮层会遮挡头部） */}
+        {onRightPanel && (
+          <button
+            aria-label="切换右栏"
+            title={rightPanel !== 'chat' ? '收起右栏' : '打开右栏'}
+            onClick={() => onRightPanel(rightPanel === 'chat' ? 'workspace' : 'chat')}
+            className={`text-[11px] px-2.5 py-1 rounded-full border flex items-center gap-1 flex-shrink-0 transition-all duration-150 ${
+              rightPanel && rightPanel !== 'chat'
+                ? 'bg-pi-accent text-white border-pi-accent'
+                : 'border-pi-border-soft bg-pi-bg2/60 text-pi-dim hover:text-pi-text hover:border-pi-accent/40'}`}
+          >
+            <PanelRight className="w-3 h-3" strokeWidth={2} />
+            右栏
+          </button>
+        )}
         {/* 心情（对标老版 .emo-pill） */}
         <div className="emo-pill w-[30px] h-[30px] rounded-full bg-pi-bg2/60 border border-pi-border-soft flex items-center justify-center text-[15px] cursor-default hover:border-pi-accent/40 transition-colors"
           title={`小语状态 · ${mood}`} onClick={() => setMood(moods[(moods.indexOf(mood) + 1) % moods.length])}>

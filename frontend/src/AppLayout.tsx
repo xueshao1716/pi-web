@@ -189,7 +189,7 @@ export default function AppLayout() {
       {route === 'chat' && <Sidebar />}
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0 relative z-10 col-canvas">
-        {route === 'chat' ? <ChatArea /> : pageArea}
+        {route === 'chat' ? <ChatArea rightPanel={rightPanel} onRightPanel={setRightPanel} /> : pageArea}
       </div>
 
       {/* 动态右栏（仅对话路由；08-23：col-right 独立亮度层） */}
@@ -209,14 +209,7 @@ export default function AppLayout() {
         </div>
       )}
 
-      {/* 顶栏右侧工具胶囊（仅对话路由；其他页自带头部） */}
-      {route === 'chat' && (
-        <div className="fixed top-3 right-3 z-50 flex items-center gap-1.5">
-          <div className="flex items-center gap-1 p-1 rounded-pi-md glass-strong border border-pi-border-soft">
-            <button className={`btn text-xs px-2 py-1 rounded-pi-sm transition-all duration-150 ${rightPanel !== 'chat' ? 'bg-pi-accent text-white' : 'text-pi-dim hover:text-pi-text hover:bg-pi-bg3'}`} onClick={() => setRightPanel(rightPanel === 'chat' ? 'workspace' : 'chat')}>右栏</button>
-          </div>
-        </div>
-      )}
+      {/* 右栏开关已入 ChatArea 顶栏（与状态胶囊并排，不再悬浮遮挡） */}
 
       <ModelManager visible={modelOpen} onClose={() => setModelOpen(false)} />
       {palette}
