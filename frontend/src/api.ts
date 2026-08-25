@@ -132,6 +132,10 @@ export const AsrApi = {
   transcribe: (data: string, format: string) =>
     api<{ text: string; model: string }>("/api/asr", { method: "POST", body: { data, format }, timeoutMs: 130000 }),
 }
+// 情绪快照（服务端 VAD 情绪引擎；返回裸快照，SSE emotion 事件则包在 {state} 里）
+export const EmotionApi = {
+  get: (sid?: string) => api<any>(`/api/emotion${sid ? `?session=${encodeURIComponent(sid)}` : ''}`),
+}
 
 // ── 出图（自动落盘生成物/图片/日期，资产库联动）──
 export const MediaApi = {

@@ -47,3 +47,13 @@ test('结构：样式缓动必须收敛到 token（styles.css 除 :root 定义�
     }
   }
 })
+
+test('结构：心情胶囊是服务端情绪镜像，禁止本地点击换脸', () => {
+  const chat = read('components', 'ChatArea.tsx')
+  assert.ok(!chat.includes('setMood'), '不得保留本地 setMood 点击轮换逻辑')
+  assert.ok(chat.includes('emoMeta('), '必须使用服务端 VAD→表情映射（emoMeta）')
+  assert.ok(chat.includes("case 'emotion':"), 'SSE emotion 事件必须被消费')
+  const pill = chat.match(/<div[^>]*emo-pill[\s\S]*?>/)
+  assert.ok(pill, 'emo-pill 元素必须存在')
+  assert.ok(!pill[0].includes('onClick'), 'emo-pill 元素不得绑定 onClick 换脸')
+})

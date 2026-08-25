@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { useApp } from '../store'
 import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, LayoutGrid, Command, ChevronDown, PanelRight } from 'lucide-react'
-import { ChatApi, SessionsApi, AsrApi, streamSession } from '../api'
+import { ChatApi, SessionsApi, AsrApi, EmotionApi, streamSession } from '../api'
 import Message from './Message'
 import SendBox from './SendBox'
 import TurnList from './TurnList'
 import { useAutoScroll } from '../hooks/useAutoScroll'
 import { toast } from './Toast'
+import { emoMeta, emoTooltip, type EmoMeta } from '../lib/emotion'
 import type { FileAttachment } from './SendBox'
 import type { ChatMessage, RunningTool } from '../types'
 
@@ -75,8 +76,16 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     lastFromUser: lastMsg?.role === 'user' || (!!stream && !stream.text && !stream.tools.length),
   })
 
-  // 切会话：清空流式状态（滚动状态由 useAutoScroll 按 sessionKey 自行重置）
+  // 切会话：清空流式状态 + 拉取该会话的情绪快照（滚动状态由 useAutoScroll 按 sessionKey 自行重置）
   useEffect(() => { streamRef.current = null; setStream(null) }, [currentSessionId])
+  useEffect(() => {
+    if (!currentSessionId) return
+    let alive = true
+    EmotionApi.get(currentSessionId).then((s: any) => {
+      if (alive && s && typeof s.valence !== 'undefined') setEmo({ state: s, meta: emoMeta(s) })
+    }).catch(() => {}) // 情绪拉不到就保持默认，不打扰
+    return () => { alive = false }
+  }, [currentSessionId])
 
   // 多端同步：订阅会话事件流，外部（手机/其他端）新消息到达时静默刷新（本地流式中不刷）；
   // 断线由 api 层自动重连（5s），重连成功后靠下一次事件刷新
@@ -209,7 +218,9 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
           updStream(p => ({ ...p, notes: [...p.notes, d.text || d.note || ''].filter(Boolean) }))
           break
         case 'emotion':
-          break // Phase 2 接情绪状态
+          // 服务端每轮结束推送真实情绪快照（VAD）——镜像展示，不可点改
+          if (d.state && typeof d.state.valence !== 'undefined') setEmo({ state: d.state, meta: emoMeta(d.state) })
+          break
         case 'done':
         case 'finish':
           finalize()
@@ -278,11 +289,9 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
 
   const idleWarned = idleSeconds * 1000 >= IDLE_WARN_MS && streaming
 
-  // 心情状态：服务端 mood / 本地 fallback（情绪轮盘 8 态）
-  const [mood, setMood] = useState('🧘')
+  // 情绪指示器：服务端 VAD 情绪引擎的镜像（SSE emotion 事件实时推 + 切会话拉快照），不是本地可点的玩具
+  const [emo, setEmo] = useState<{ state: any; meta: EmoMeta }>({ state: null, meta: { emoji: '🧘', label: '专注', cls: 'focus' } })
   const [agentStatus, setAgentStatus] = useState<'idle'|'busy'|'error'>('idle')
-  // 简单的情绪映射（同老版 vibe 轮盘）
-  const moods = ['🧘','😊','💪','🤔','😴','🎉','⚙️','🫣']
   // 派发状态（stream 存在→busy；stream.error→error；其余→idle）
   useEffect(() => {
     if (stream?.error) setAgentStatus('error')
@@ -316,10 +325,10 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
             右栏
           </button>
         )}
-        {/* 心情（对标老版 .emo-pill） */}
-        <div className="emo-pill w-[30px] h-[30px] rounded-full bg-pi-bg2/60 border border-pi-border-soft flex items-center justify-center text-[15px] cursor-default hover:border-pi-accent/40 transition-colors"
-          title={`小语状态 · ${mood}`} onClick={() => setMood(moods[(moods.indexOf(mood) + 1) % moods.length])}>
-          {mood}
+        {/* 心情：服务端真实情绪镜像，只展示不可点改 */}
+        <div className={`emo-pill w-[30px] h-[30px] rounded-full bg-pi-bg2/60 border border-pi-border-soft flex items-center justify-center text-[15px] cursor-default transition-colors ${emo.meta.cls !== 'focus' ? 'border-pi-accent/30' : ''}`}
+          title={emoTooltip(emo.state, emo.meta)}>
+          {emo.meta.emoji}
         </div>
       </div>
 
