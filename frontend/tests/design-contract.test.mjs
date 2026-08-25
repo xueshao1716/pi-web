@@ -84,6 +84,18 @@ test('styles.css token 区块与生成器输出一致（改 token 请改 generat
   assert.equal(regions[0].trim(), root.trim(), ':root 区与生成器不一致——跑 node scripts/generate-theme.mjs')
   assert.equal(regions[1].trim(), themes.trim(), 'data-theme 区与生成器不一致——跑 node scripts/generate-theme.mjs')
 })
+// ── 契约八：主题切换后所有必需 token 仍然存在（防某主题漏定义关键变量）──
+test('四套主题必需 token 完整（缺一个 UI 就崩）', () => {
+  const required = ['--pi-bg','--pi-text','--pi-dim','--pi-dim2','--pi-accent','--pi-border','--pi-border-soft','--pi-bg1','--pi-bg2','--pi-bg3','--pi-bg4']
+  const { themes } = emitCss()
+  const failures = []
+  for (const sel of ['ink','violet','mist']) {
+    const block = themes.split('[data-theme="' + sel + '"]')[1]?.split('}')[0] || ''
+    for (const v of required) if (!block.includes(v + ':')) failures.push(sel + ': 缺少 ' + v)
+  }
+  assert.deepEqual(failures, [], failures.join('\n'))
+})
+
 // ── 契约七：Radix 封装组件必须声明 data-slot（shadcn 结构/皮肤分离约定）──
 test('Radix 封装组件声明 data-slot 契约', () => {
   const required = [
