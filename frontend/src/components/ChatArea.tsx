@@ -247,7 +247,7 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
   const welcome = (
     <div className="flex items-center justify-center h-full px-6">
       <div className="text-center max-w-lg anim-enter">
-        <div className="w-20 h-20 mx-auto rounded-pi-xl bg-gradient-to-br from-pi-accent via-pi-accent2 to-purple-400 flex items-center justify-center text-4xl font-bold text-white mb-6 shadow-lg anim-enter" style={{ boxShadow: '0 8px 40px rgba(84,104,255,0.4), 0 0 80px rgba(84,104,255,0.15)' }}>语</div>
+        <div className="w-20 h-20 mx-auto rounded-pi-xl bg-gradient-to-br from-pi-accent via-pi-accent2 to-purple-400 flex items-center justify-center text-4xl font-bold text-white mb-6 shadow-lg anim-enter" style={{ boxShadow: '0 8px 28px rgba(84,104,255,0.22)' }}>语</div>
         <div className="text-[22px] font-extrabold text-pi-text mb-2 tracking-tight anim-enter anim-enter-delay-1">小语 · AI 工作台</div>
         <div className="text-pi-dim mb-8 text-[15px] anim-enter anim-enter-delay-2">基于 pi 引擎的 AI 工作伙伴</div>
         <div className="grid grid-cols-2 gap-3 max-w-md mx-auto text-left anim-enter anim-enter-delay-3">

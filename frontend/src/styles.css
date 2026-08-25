@@ -32,16 +32,16 @@ ul[class], ol[class] { list-style: none; margin: 0; padding: 0; }
   --pi-motion-base: .2s var(--pi-ease);
   --pi-motion-slow: .3s var(--pi-ease);
   /* UI 审美修复（08-23）：底色提亮一档，拉开三栏亮度层差（原值太黑导致层次全糊） */
-  --pi-bg: #0b101d;
-  --pi-bg1: #131a2c;
-  --pi-bg2: #1b2540;
-  --pi-bg3: #253055;
-  --pi-bg4: #313e6b;
+  --pi-bg: #0e1116;
+  --pi-bg1: #161a21;
+  --pi-bg2: #20242c;
+  --pi-bg3: #2a2f38;
+  --pi-bg4: #353b45;
   /* 交互态语义 token（08-23 对标 nomifun：hover/active 不再手写） */
-  --pi-bg-hover: #1a2340;
-  --pi-bg-active: #223060;
-  --pi-border: #2c3a5e;
-  --pi-border-soft: #1e2948;
+  --pi-bg-hover: #1f242c;
+  --pi-bg-active: #272d37;
+  --pi-border: #30363f;
+  --pi-border-soft: #232830;
   --pi-border-hi: rgba(255,255,255,0.10);
   --pi-text: #e8eef8;
   --pi-dim: #8c98b4;
@@ -78,10 +78,9 @@ body::before {
   content: "";
   position: fixed; inset: 0; z-index: 0; pointer-events: none;
   background:
-    radial-gradient(900px 500px at 85% -10%, rgba(84,104,255,0.20), transparent 55%),
-    radial-gradient(600px 400px at 5% 105%, rgba(139,92,246,0.14), transparent 55%),
-    radial-gradient(500px 350px at 50% 45%, rgba(84,104,255,0.09), transparent 55%),
-    radial-gradient(400px 300px at 30% 25%, rgba(56,189,248,0.08), transparent 55%);
+    radial-gradient(900px 500px at 85% -10%, rgba(84,104,255,0.09), transparent 55%),
+    radial-gradient(600px 400px at 5% 105%, rgba(139,92,246,0.06), transparent 55%),
+    radial-gradient(500px 350px at 50% 45%, rgba(84,104,255,0.04), transparent 55%);
 }
 #root { position: relative; z-index: 1; }
 
@@ -93,12 +92,12 @@ body::before {
 
 /* ══ 玻璃面板（Phase3 升级：更强 blur + 饱和 + 描边高光 + 分层阴影）══ */
 .glass {
-  background: rgba(12, 18, 34, 0.55);
+  background: rgba(16, 20, 27, 0.55);
   backdrop-filter: blur(24px) saturate(1.4);
   -webkit-backdrop-filter: blur(24px) saturate(1.4);
 }
 .glass-strong {
-  background: rgba(8, 12, 22, 0.72);
+  background: rgba(10, 13, 19, 0.72);
   backdrop-filter: blur(32px) saturate(1.5);
   -webkit-backdrop-filter: blur(32px) saturate(1.5);
 }
@@ -115,28 +114,28 @@ body::before {
 
 /* ── 三栏层次（08-23）：左栏微亮+顶部天光，中栏最深做画布，右栏居中 —— 拉开前中后景 */
 .col-sidebar {
-  background: linear-gradient(180deg, rgba(30,41,72,0.60), rgba(15,21,38,0.72));
+  background: linear-gradient(180deg, rgba(38,42,50,0.60), rgba(18,22,28,0.72));
 }
 .col-canvas {
-  background: linear-gradient(180deg, rgba(11,16,29,0.88), rgba(9,13,24,0.92));
+  background: linear-gradient(180deg, rgba(14,17,22,0.88), rgba(11,14,19,0.92));
 }
 .col-right {
-  background: linear-gradient(180deg, rgba(19,26,46,0.66), rgba(13,19,35,0.74));
+  background: linear-gradient(180deg, rgba(24,28,34,0.66), rgba(16,20,26,0.74));
 }
 
 /* ── 欢迎页快捷卡彩色化（08-23）：每张卡自己的强调色，拉彩色占比 */
 .chip-blue   { background: rgba(84,104,255,0.10);  border-color: rgba(123,150,255,0.28); }
-.chip-blue:hover   { background: rgba(84,104,255,0.18); box-shadow: 0 0 18px rgba(84,104,255,0.22); }
+.chip-blue:hover   { background: rgba(84,104,255,0.18); }
 .chip-green  { background: rgba(62,207,142,0.09);  border-color: rgba(62,207,142,0.26); }
-.chip-green:hover  { background: rgba(62,207,142,0.16); box-shadow: 0 0 18px rgba(62,207,142,0.20); }
+.chip-green:hover  { background: rgba(62,207,142,0.16); }
 .chip-amber  { background: rgba(245,183,89,0.09);  border-color: rgba(245,183,89,0.26); }
-.chip-amber:hover  { background: rgba(245,183,89,0.16); box-shadow: 0 0 18px rgba(245,183,89,0.20); }
+.chip-amber:hover  { background: rgba(245,183,89,0.16); }
 .chip-violet { background: rgba(167,139,250,0.10); border-color: rgba(167,139,250,0.28); }
-.chip-violet:hover { background: rgba(167,139,250,0.18); box-shadow: 0 0 18px rgba(167,139,250,0.22); }
+.chip-violet:hover { background: rgba(167,139,250,0.18); }
 
 /* 通用玻璃面板（带完整高光） */
 .panel-glass {
-  background: rgba(14, 22, 40, 0.50);
+  background: rgba(17, 21, 28, 0.50);
   backdrop-filter: blur(22px) saturate(1.35);
   -webkit-backdrop-filter: blur(22px) saturate(1.35);
   box-shadow:
@@ -165,7 +164,7 @@ body::before {
 
 /* ── 消息气泡玻璃化（Phase3 加强）── */
 .msg-bubble {
-  background: rgba(18, 29, 54, 0.55);
+  background: rgba(22, 26, 34, 0.55);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -319,7 +318,7 @@ body::before {
 .stat-card::after {
   content: ""; position: absolute; right: -30px; bottom: -55px; width: 130px; height: 130px;
   background: radial-gradient(closest-side, var(--pi-accent-glow), transparent 72%);
-  opacity: .55; pointer-events: none;
+  opacity: .28; pointer-events: none;
 }
 .stat-num { font-size: 22px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 
@@ -328,7 +327,7 @@ body::before {
 .card-hover:hover {
   transform: translateY(-2px);
   border-color: rgba(123, 150, 255, 0.38) !important;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(123, 150, 255, 0.14), 0 0 20px var(--pi-accent-glow);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32), 0 0 0 1px rgba(123, 150, 255, 0.14);
 }
 
 /* ── 彩色图标（nav/icon 悬浮时用 accent 色）── */
@@ -559,7 +558,7 @@ body::before {
 }
 
 /* ── mimo 评审落地（08-24）：工具卡流光加辉光 ── */
-.tool-progress { filter: drop-shadow(0 0 3px var(--pi-accent)); }
+.tool-progress { /* 08-25 quieter：去掉辉光滤镜，进度扫过本身就是信号 */ }
 
 /* ── GLM5.3 评审落地：流式光标内联到正文末行（不再掉行）── */
 .markdown-body-wrapper.streaming-caret > :last-child::after {
