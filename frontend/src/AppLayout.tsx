@@ -113,12 +113,12 @@ export default function AppLayout() {
                   <div className="flex items-center gap-1 px-3 h-10 border-b border-pi-border-soft flex-shrink-0">
                     {([['workspace', '工作空间'], ['deliveries', '交付物'], ['terminal', '终端']] as const).map(([k, label]) => (
                       <button key={k} onClick={() => setRightPanel(k)}
-                        className={`text-xs px-3 py-1.5 rounded-pi-md transition-colors ${rightPanel === k ? 'bg-pi-accent/15 text-pi-accent font-medium' : 'text-pi-dim'}`}>
+                        className={`touch-hit text-xs px-3 py-1.5 rounded-pi-md transition-colors ${rightPanel === k ? 'bg-pi-accent/15 text-pi-accent font-medium' : 'text-pi-dim'}`}>
                         {label}
                       </button>
                     ))}
                     <span className="ml-auto" />
-                    <button className="btn-tool !px-2" onClick={() => setRightPanel('chat')}>✕</button>
+                    <button className="btn-tool !px-2 touch-hit" onClick={() => setRightPanel('chat')}>✕</button>
                   </div>
                   {rightPanel === 'workspace' ? <WorkSpace /> : rightPanel === 'deliveries' ? <Deliveries /> : <TerminalPanel />}
                 </div>

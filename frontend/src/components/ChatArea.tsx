@@ -407,7 +407,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         <button
           aria-label="回到底部"
           onClick={() => scroll(true)}
-          className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-pi-border bg-pi-bg1/90 backdrop-blur-xl text-[12px] text-pi-dim hover:text-pi-text glow-hover shadow-xl transition-colors duration-200 anim-enter"
+          className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-pi-border bg-pi-bg1/90 backdrop-blur-xl text-[12px] text-pi-dim hover:text-pi-text glow-hover shadow-xl transition-colors duration-200 anim-enter touch-hit"
         >
           <ChevronDown className="w-3.5 h-3.5" strokeWidth={2} />
           回到底部

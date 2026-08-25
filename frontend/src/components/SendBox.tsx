@@ -295,27 +295,27 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
                 <span className="inline-block w-3 h-3 border-[1.5px] border-pi-accent border-t-transparent rounded-full animate-spin" /> 识别中
               </button>
             ) : (
-              <button onClick={startRec} className="btn-tool-sm" title="语音输入" aria-label="语音输入">
+              <button onClick={startRec} className="btn-tool-sm touch-hit" title="语音输入" aria-label="语音输入">
                 <Mic className="w-4 h-4" strokeWidth={1.8} />
               </button>
             )
           )}
 
           {/* 附件 */}
-          <button className="btn-tool-sm" title="附加文件" aria-label="附加文件" onClick={() => fileInputRef.current?.click()} disabled={streaming || uploading}>
+          <button className="btn-tool-sm touch-hit" title="附加文件" aria-label="附加文件" onClick={() => fileInputRef.current?.click()} disabled={streaming || uploading}>
             {uploading ? <span className="w-4 h-4 rounded-full border-[1.5px] border-pi-accent border-t-transparent animate-spin inline-block" /> : <Paperclip className="w-4 h-4" strokeWidth={1.8} />}
           </button>
 
           {/* 发送 / 停止 */}
           {streaming ? (
             <button onClick={onStop}
-              className="h-7 w-7 rounded-full bg-red-500/90 text-white flex items-center justify-center hover:bg-red-500 transition-colors"
+              className="h-7 w-7 rounded-full bg-red-500/90 text-white flex items-center justify-center hover:bg-red-500 transition-colors touch-hit"
               title="停止">
               <span className="w-2.5 h-2.5 bg-white rounded-[2px]" />
             </button>
           ) : (
             <button onClick={doSend} title="发送 (Enter)"
-              className="press btn-grad h-7 w-7 rounded-full text-white flex items-center justify-center disabled:opacity-40"
+              className="press btn-grad h-7 w-7 rounded-full text-white flex items-center justify-center disabled:opacity-40 touch-hit"
               disabled={!value.trim() && files.length === 0}>
               <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="12 19 12 5"/><polyline points="5 12 12 5 19 12"/></svg>
             </button>
