@@ -322,6 +322,9 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     else setAgentStatus('idle')
   }, [stream, remoteBusy])
   const busyFromBackground = !stream && remoteBusy === 'other'
+  // 四色语义：绿=就绪 红=本页执行 橙=后台执行 品红闪=异常（看颜色一眼明白）
+  const dotCls = agentStatus === 'busy' ? (busyFromBackground ? 'status-dot-bg' : 'status-dot-busy') : `status-dot-${agentStatus}`
+  const liveCls = agentStatus === 'busy' ? (busyFromBackground ? 'status-pill-live-bg' : 'status-pill-live-busy') : agentStatus === 'error' ? 'status-pill-live-error' : ''
 
   return (
     <div className="relative flex-1 flex flex-col min-w-0 min-h-0">
@@ -330,8 +333,8 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         {!compactHeader && <div className="font-medium text-[15px] text-pi-text">会话</div>}
         <div className="ml-auto" />
         {/* 执行状态（对标老版 .status-pill；aria-live 让屏幕阅读器感知流式开始/结束）*/}
-        <div role="status" aria-live="polite" className={`status-pill status-${agentStatus} text-[11px] text-pi-dim flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-pi-border-soft bg-pi-bg2/50`}>
-          <span className={`status-dot status-dot-${agentStatus} w-[7px] h-[7px] rounded-full flex-shrink-0`} />
+        <div role="status" aria-live="polite" className={`status-pill text-[11px] text-pi-dim flex items-center gap-1.5 px-2.5 py-1 rounded-full border bg-pi-bg2/50 ${liveCls}`}>
+          <span className={`status-dot ${dotCls} w-[7px] h-[7px] rounded-full flex-shrink-0`} />
           <span>{agentStatus === 'busy' ? (busyFromBackground ? '后台执行中' : '执行中') : agentStatus === 'error' ? '异常' : '就绪'}</span>
         </div>
         {/* 右栏开关：紧贴状态胶囊（桌面端；原 fixed 悬浮层会遮挡头部） */}

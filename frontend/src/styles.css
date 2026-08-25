@@ -543,11 +543,17 @@ body::before {
   box-shadow: 0 0 8px var(--pi-accent-glow);
   animation: caretBlink 1s steps(2) infinite;
 }
-/* ── 状态点（08-24 移植老版 .status-pill）── */
-.status-dot-idle   { background: var(--pi-dim2); }
+/* ── 状态点（08-24 移植老版；08-25 四色语义：绿=就绪 红=本页执行 橙=后台执行 品红闪=异常，看颜色一眼明白）── */
+.status-dot-idle   { background: var(--pi-green); box-shadow: 0 0 6px rgba(62,207,142,0.4); }
 .status-dot-busy   { background: var(--pi-red); box-shadow: 0 0 8px rgba(244,112,103,0.5); animation: pulse 1s infinite; }
-.status-dot-error  { background: var(--pi-red); box-shadow: 0 0 8px rgba(244,112,103,0.5); }
+.status-dot-bg     { background: var(--pi-yellow); box-shadow: 0 0 8px rgba(245,183,89,0.5); animation: pulse 1.4s infinite; }
+.status-dot-error  { background: #f472b6; box-shadow: 0 0 10px rgba(244,114,182,0.6); animation: statusBlink 0.5s steps(2) infinite; }
+/* 胶囊边框随状态同色微亮，余光扫过也能分辨 */
+.status-pill-live-busy  { border-color: rgba(244,112,103,0.45) !important; }
+.status-pill-live-bg    { border-color: rgba(245,183,89,0.45) !important; }
+.status-pill-live-error { border-color: rgba(244,114,182,0.5) !important; }
 .status-pill:hover { border-color: var(--pi-border-hi) !important; }
+@keyframes statusBlink { 50% { opacity: 0.25; } }
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: .45; }
