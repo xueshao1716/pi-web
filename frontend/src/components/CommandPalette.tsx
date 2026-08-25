@@ -95,6 +95,7 @@ export default function CommandPalette({ open, onClose, nav, onRightPanel, onMod
           className="fixed left-1/2 top-[12vh] -translate-x-1/2 z-[120] w-full max-w-lg px-4 sm:px-0">
           <div className="rounded-pi-xl glass-strong glass-hi overflow-hidden anim-enter" style={{ animationDuration: '.18s' }}>
             <input
+              data-slot="command-input"
               ref={inputRef}
               className="w-full bg-transparent border-none outline-none px-4 py-3.5 text-[15px] text-pi-text placeholder:text-pi-dim2 border-b border-pi-border-soft"
               placeholder="搜索命令、页面、会话…"
@@ -108,7 +109,7 @@ export default function CommandPalette({ open, onClose, nav, onRightPanel, onMod
               aria-label="搜索命令"
               aria-activedescendant={filtered[hi] ? 'cmd-' + filtered[hi].key : undefined}
             />
-            <div ref={listRef} className="max-h-80 overflow-y-auto p-1.5" role="listbox">
+            <div ref={listRef} data-slot="command-list" className="max-h-80 overflow-y-auto p-1.5" role="listbox">
               {filtered.length === 0 && <div className="px-3 py-6 text-center text-pi-dim2 text-xs">没有匹配项</div>}
               {filtered.map((it, idx) => (
                 <button

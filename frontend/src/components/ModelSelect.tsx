@@ -54,6 +54,7 @@ export default function ModelSelect({ compact = false }: { compact?: boolean }) 
     <DM.Root>
       <DM.Trigger asChild>
         <button
+          data-slot="model-trigger"
           aria-label="选择模型"
           className={`flex items-center gap-1.5 px-2 py-1 rounded-pi-md border border-pi-border-soft bg-pi-bg2/50 text-[12px] text-pi-dim hover:text-pi-text hover:border-pi-accent/40 transition-all duration-200 data-[state=open]:border-pi-accent/40 ${compact ? 'max-w-[110px]' : 'max-w-[160px]'}`}
         >
@@ -64,7 +65,7 @@ export default function ModelSelect({ compact = false }: { compact?: boolean }) 
       </DM.Trigger>
 
       <DM.Portal>
-        <DM.Content side="top" align="start" sideOffset={6}
+        <DM.Content data-slot="model-listbox" side="top" align="start" sideOffset={6}
           className="w-72 max-h-80 overflow-y-auto rounded-pi-lg border border-pi-border bg-pi-bg1/95 backdrop-blur-xl shadow-2xl shadow-black/40 z-50 anim-enter"
           style={{ animationDuration: '0.15s' }}>
           <DM.RadioGroup value={currentModel} onValueChange={select}>
@@ -83,7 +84,7 @@ export default function ModelSelect({ compact = false }: { compact?: boolean }) 
               const active = currentModel === mk
               const free = m.free || (m.note || '').includes('免费')
               return (
-                <DM.RadioItem key={mk} value={mk} className={ITEM_CLS}>
+                <DM.RadioItem key={mk} value={mk} data-slot="model-option" className={ITEM_CLS}>
                   <div className="flex-shrink-0">{capIcon(m)}</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">

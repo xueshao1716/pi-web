@@ -85,6 +85,21 @@ test('全主题 dim/dim2 文字对比度 ≥ 4.5（对 bg 和 bg2 卡片底色�
   assert.deepEqual(failures, [], failures.join('\n'))
 })
 
+// ── 契约七：Radix 封装组件必须声明 data-slot（shadcn 结构/皮肤分离约定）──
+test('Radix 封装组件声明 data-slot 契约', () => {
+  const required = [
+    ['src/components/ModelSelect.tsx', ['data-slot="model-trigger"', 'data-slot="model-listbox"', 'data-slot="model-option"']],
+    ['src/components/CommandPalette.tsx', ['data-slot="command-input"', 'data-slot="command-list"']],
+    ['src/components/Sidebar.tsx', ['data-slot="session-delete-dialog"', 'data-slot="session-rename-dialog"']],
+  ]
+  const missing = []
+  for (const [file, slots] of required) {
+    const src = readFileSync(join(ROOT, file), 'utf8')
+    for (const slot of slots) if (!src.includes(slot)) missing.push(`${file}: ${slot}`)
+  }
+  assert.deepEqual(missing, [], missing.join('\n'))
+})
+
 // ── 契约六：字阶白名单（typeset：全站只允许 7 级）──
 test('字号阶梯收敛到 7 级白名单', () => {
   const SCALE = new Set(['10', '11', '12', '13', '15', '17', '22'])
