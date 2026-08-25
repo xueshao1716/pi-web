@@ -684,12 +684,18 @@ async function handleSwitchModel(req, res, body) {
 // 那会导致模型反复读文件卡住；新模型从 pi 引擎组装的历史中自然获得上下文）
 async function syncContextAfterSwitch(entry, model) {
   try {
-    const file = entry.sm.sessionFile;
-    if (!file || !fs.existsSync(file)) return;
     const mName = model?.name || model?.id || "新模型";
-    const patch = `（提示）当前会话已切换模型为 ${mName}。请直接根据对话历史继续回答，无需重复确认。`;
-    await entry.sm.appendMessage({ role: "user", content: [{ type: "text", text: patch }] });
-    console.log(`[pi-web] 模型切换为 ${mName}，已注入简短上下文提示`);
+    // 2026-08-24 修复：不再伪造 user 消息（污染历史→模型反复输出模板回复）；
+    // 改用 customType=context 注入——不进会话历史，仅当前轮生效
+    try {
+      await entry.agent?.sendCustomMessage?.(
+        { customType: "context", content: [{ type: "text", text: "（提示）当前会话已切换模型为 " + mName + "。请直接根据对话历史继续回答，无需重复确认。" }] },
+        { deliverAs: "nextTurn" }
+      );
+    } catch {
+      // agent 未就绪时静默跳过
+    }
+    console.log(`[pi-web] 模型切换为 ${mName}，已注入上下文提示（context 注入，不污染历史）`);
   } catch {}
 }
 
@@ -1134,7 +1140,7 @@ async function handleChat(req, res, body) {
     const emoPrompt = emotion.emotionPrompt(sessKey, message);
     // 自我认知：仅当用户问"你是谁/介绍自己"等身份问题时注入固定答案（不主动开场白）
     let promptMsg = message;
-    const isIdentityAsk = /谁|介绍.*(自己|一下|你)|你是|你叫|名字|叫什么|干嘛的|干什么的|身份|自我介绍|能力/.test(message) && message.length < 80;
+    const isIdentityAsk = /^(你是谁|你叫什么|你叫啥|你是谁啊|介绍一下你|介绍下你自己|自我介绍|你是做什么|你是干什么|干嘛的|干什么的|什么身份|你有哪.{0,4}能力|你能.{0,6}做.{0,4}什么)/.test(message) && message.length < 80;
     if (isIdentityAsk) {
       const m = effModel || defaultModel;
       const features = [];
@@ -1144,11 +1150,15 @@ async function handleChat(req, res, body) {
       const featText = features.length ? features.join(" · ") : "标准模型";
       const modelName = m?.name || m?.id || "未知";
       const providerName = m?.provider ? `（${m.provider}）` : "";
-      promptMsg = `（自我认知指令）用户问了身份类问题。请按固定格式回答。硬性要求：①完整输出下面这段格式后立即结束，不要追加任何内容；②禁止调用任何工具/搜索/读文件；③不要输出过程性文字（如"我去查"）。格式如下：
-"我叫小语，你的 AI 工作伙伴。我能干：写代码、做设计、整理文档、分析数据，并直接操作工作空间完成交付。由 pi 引擎驱动。当前使用模型是：${modelName}${providerName}。模型特色：${featText}。"
-回答完直接等用户下一步指令。
-
-用户消息：${message}`;
+      // 2026-08-24 修复：不再替换 promptMsg（模型看不到原始问题），改 context 注入
+      try {
+        const identityAnswer = `（自我认知指令）用户问了身份类问题。请按固定格式回答。硬性要求：①完整输出下面这段格式后立即结束，不要追加任何内容；②禁止调用任何工具/搜索/读文件；③不要输出过程性文字（如"我去查"）。格式如下：\n"我叫小语，你的 AI 工作伙伴。我能干：写代码、做设计、整理文档、分析数据，并直接操作工作空间完成交付。由 pi 引擎驱动。当前使用模型是：${modelName}${providerName}。模型特色：${featText}。"\n回答完直接等用户下一步指令。`;
+        await entry.agent?.sendCustomMessage?.(
+          { customType: "context", content: [{ type: "text", text: identityAnswer }] },
+          { deliverAs: "nextTurn" }
+        );
+      } catch {}
+      // promptMsg 保持原始消息不变
     } else if (emoPrompt) {
       // 非身份类：情绪指令通过 nextTurn 注入（不污染会话历史）
       try {
@@ -1265,7 +1275,7 @@ async function handleChat(req, res, body) {
           try { writer.push("text", { text: clean }); } catch {}
         }
         recordReply(rk, collected);
-      } else if (anom.type === "repeat" || anom.type === "marker") {
+      } else if (anom.type === "repeat" || anom.type === "marker" || anom.type === "amnesia") {
         // 2026-08-21 AI 检测员复核：规则判异常后，检测员语义级确认 + 给针对性修正建议
         console.log(`[pi-web] 输出守卫(${anom.type}): ${effModel?.provider}/${effModel?.id} ${anom.reason} → 检测员复核`);
         const insp = await inspectOutput({ userMessage: message, output: collected, history: recentHistory(entry) }).catch(() => null);

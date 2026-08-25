@@ -85,6 +85,9 @@ export function classifyAnomaly({ sessionKey, text, think = "", sessionFile }) {
     return { type: "empty", reason: "模型空回复（无任何正文）" };
   }
   if (MARKER_ONLY_RE.test(n)) return { type: "marker", reason: "回复仅为占位标记（交付文件类），正文为空" };
+  // 失忆特征（2026-08-25）：stealth 池化模型偶发不带上下文应答——自称无记忆/新对话/报身份
+  const AMNESIA_RE = /(这是(我们)?对话的开始|没有看到之前|无法看到之前的对话|消息似乎不太完整|我是(一个)?纯文本(对话)?助手|我无法调用其他模型|(由|by)\s*(Z\.ai|OpenAI|Anthropic|Google DeepMind)\s*训练)/i;
+  if (n.length < 600 && AMNESIA_RE.test(n)) return { type: "amnesia", reason: "失忆回复：疑似池化模型未携带上下文" };
   if (/undefined/.test(n)) return { type: "undefined-leak", reason: "输出含 undefined 占位符（模型拼错/异常泄漏）" };
   if (isRepeatReply(sessionKey, text, sessionFile)) return { type: "repeat", reason: "与上一条完整回复完全相同（repetition loop）" };
   return { type: "none", reason: "" };
