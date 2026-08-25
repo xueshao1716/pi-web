@@ -62,6 +62,9 @@ test('任意 seed 下 dim2/bg2 ≥4.5、dim/bg ≥5.5、阶梯单调', () => {
   for (const [name, seed] of seeds) {
     const v = generateTheme(seed)
     if (contrast(v['--pi-dim2'], v['--pi-bg2']) < 4.5) failures.push(`${name}: dim2/bg2 ${contrast(v['--pi-dim2'], v['--pi-bg2']).toFixed(2)}`)
+    // dim2 的亮承载面不止 bg2：卡片 bg3 / 按钮 default(=bg3) 也必须 ≥4.5（复评检测器抓到 bg3 漏到 ~4.2）
+    if (contrast(v['--pi-dim2'], v['--pi-bg3']) < 4.5) failures.push(`${name}: dim2/bg3 ${contrast(v['--pi-dim2'], v['--pi-bg3']).toFixed(2)}`)
+    if (contrast(v['--pi-dim2'], v['--pi-default']) < 4.5) failures.push(`${name}: dim2/default ${contrast(v['--pi-dim2'], v['--pi-default']).toFixed(2)}`)
     if (contrast(v['--pi-dim'], v['--pi-bg']) < 5.5) failures.push(`${name}: dim/bg ${contrast(v['--pi-dim'], v['--pi-bg']).toFixed(2)}`)
     const Ls = [v['--pi-bg'], v['--pi-bg1'], v['--pi-bg2'], v['--pi-bg3'], v['--pi-bg4']].map(h => wcagLum(h))
     if (!Ls.every((x, i) => i === 0 || x > Ls[i - 1]) && !Ls.every((x, i) => i === 0 || x < Ls[i - 1])) failures.push(`${name}: 不单调`)

@@ -126,7 +126,9 @@ export function generateTheme(seed) {
     return rgbToHex(oklchToRgb(safeOklch({ L: ch.L, C, H: ch.H })))
   })()
   v['--pi-dim'] = solveLForContrast(dimBase, seed.bg, 6.0)
-  v['--pi-dim2'] = solveLForContrast(dimBase, bg2, 4.8)
+  // dim2 要在它出现的亮承载面（卡片 bg2 / 按钮 bg3=default）上≥4.8：用最亮的 bg3 求解，
+  // 否则暗背景下对 bg3/default 会漏到 ~4.2（复评检测器抓到 4.30，此前只对 bg2 求解覆盖不全）
+  v['--pi-dim2'] = solveLForContrast(dimBase, v['--pi-bg3'], 4.8)
 
   // 强调色族：accent2/accent-deep 是 accent 的亮度位移（换主色后交互态永远协调）
   v['--pi-accent'] = seed.accent

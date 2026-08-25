@@ -38,7 +38,7 @@ ul[class], ol[class] { list-style: none; margin: 0; padding: 0; }
   --pi-border-hi: rgba(255,255,255,0.10);
   --pi-text: #e8eef8;
   --pi-dim: #8891a1;
-  --pi-dim2: #8791a0;
+  --pi-dim2: #929cab;
   --pi-accent: #5468ff;
   --pi-accent2: #758eff;
   --pi-accent-deep: #3e4adf;
@@ -357,7 +357,7 @@ body::before {
   --pi-border-hi: rgba(255,255,255,0.10);
   --pi-text: #eceef2;
   --pi-dim: #858c98;
-  --pi-dim2: #7e8491;
+  --pi-dim2: #878e9a;
   --pi-accent: #5468ff;
   --pi-accent2: #758eff;
   --pi-accent-deep: #3e4adf;
@@ -412,7 +412,7 @@ body::before {
   --pi-border-hi: rgba(255,255,255,0.10);
   --pi-text: #f0eaff;
   --pi-dim: #908b9e;
-  --pi-dim2: #8c879a;
+  --pi-dim2: #9792a5;
   --pi-accent: #8b7cf6;
   --pi-accent2: #a78bfa;
   --pi-accent-deep: #6d5bd0;
@@ -467,7 +467,7 @@ body::before {
   --pi-border-hi: rgba(0,0,0,0.06);
   --pi-text: #1c2333;
   --pi-dim: #515d77;
-  --pi-dim2: #58657e;
+  --pi-dim2: #54617a;
   --pi-accent: #4a58fa;
   --pi-accent2: #677fff;
   --pi-accent-deep: #3637da;
