@@ -193,14 +193,14 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
             const argsText = typeof d.args === 'object' && d.args !== null
               ? (d.args.command || d.args.path || JSON.stringify(d.args))
               : String(d.args || '')
-            return { ...p, tools: [...p.tools, { id: d.id || 't' + Date.now(), name: d.name || 'tool', argsText, output: '', running: true }] }
+            return { ...p, tools: [...p.tools, { id: d.id || 't' + Date.now(), name: d.name || 'tool', argsText, output: '', running: true, status: 'running' }] }
           })
           break
         case 'tool_output':
           updStream(p => ({ ...p, tools: p.tools.map(t => t.id === d.id ? { ...t, output: t.output + (d.text || '') } : t) }))
           break
         case 'tool_end':
-          updStream(p => ({ ...p, tools: p.tools.map(t => t.id === d.id ? { ...t, running: false, isError: !!d.isError, output: d.output || t.output } : t) }))
+          updStream(p => ({ ...p, tools: p.tools.map(t => t.id === d.id ? { ...t, running: false, isError: !!d.isError, status: d.isError ? 'error' : 'completed', output: d.output || t.output } : t) }))
           break
         case 'turn_end':
           break
@@ -240,7 +240,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   const stop = () => {
     abortRef.current?.()
     abortRef.current = null
-    updStream(p => ({ ...p, error: p.error || '已手动停止' }))
+    updStream(p => ({ ...p, error: p.error || '已手动停止', tools: p.tools.map(t => t.status === 'running' ? { ...t, status: 'canceled' } : t) }))
     finalize()
   }
 

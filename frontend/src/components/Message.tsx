@@ -1,15 +1,16 @@
 import { useState } from 'react'
 import { TOOL_COLORS, COLOR_ERROR, COLOR_TOOL_FALLBACK } from '../theme/palettes'
-import { Brain, FileText, Check, X, Pencil, ChevronRight } from 'lucide-react'
+import { Brain, FileText, Check, X, Pencil, ChevronRight, Square } from 'lucide-react'
 import Markdown from './Markdown'
 import { withFileToken } from '../api'
-import type { ChatMessage, RunningTool } from '../types'
+import type { ChatMessage, RunningTool, ToolStatus } from '../types'
 
 // 兼容两种来源：流式 RunningTool / 历史消息里的 ToolCall（无 running 态）
 function ToolCard({ tool }: { tool: Partial<RunningTool> & { name: string } }) {
   const [open, setOpen] = useState(false)
-  const running = !!(tool as any).running
-  const isError = !!tool.isError
+  const status: ToolStatus = (tool as any).status || (tool.running ? 'running' : tool.isError ? 'error' : 'completed')
+  const running = status === 'running'
+  const isError = status === 'error'
   const icon = tool.name === 'bash' ? '$' : tool.name === 'read' ? 'R' : tool.name === 'write' ? 'W' : tool.name === 'edit' ? 'E' : '⚙'
   const tc = isError ? COLOR_ERROR : (TOOL_COLORS[tool.name] || COLOR_TOOL_FALLBACK)
   let argsText = tool.argsText || ''
@@ -28,10 +29,14 @@ function ToolCard({ tool }: { tool: Partial<RunningTool> & { name: string } }) {
         <span className="w-5 h-5 rounded-pi-sm flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 font-mono" style={{ background: `linear-gradient(135deg, ${tc}, ${tc}b3)`, boxShadow: `0 0 10px ${tc}40` }}>{icon}</span>
         <span className="font-mono font-semibold text-[11px] px-1.5 py-0.5 rounded-pi-sm flex-shrink-0" style={{ color: tc, background: `${tc}14` }}>{tool.name}</span>
         <span className="text-pi-dim truncate flex-1 font-mono text-[12px]">{argsText}</span>
-        {running ? (
+        {status === 'running' ? (
           <span className="flex items-center gap-1.5 text-pi-accent text-[11px] flex-shrink-0">
             <span className="w-3 h-3 rounded-full border-[1.5px] border-pi-accent/25 border-t-pi-accent animate-spin" />
             运行中
+          </span>
+        ) : status === 'canceled' ? (
+          <span className="flex items-center gap-1.5 text-pi-dim2 text-[11px] flex-shrink-0">
+            <Square className="w-3 h-3" /> 已停止
           </span>
         ) : (
           <span className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${isError ? 'bg-pi-red/15 text-pi-red' : 'bg-emerald-500/15 text-emerald-400'}`}>

@@ -57,6 +57,9 @@ export interface Artifact {
   url: string
 }
 
+// 工具调用 5 态归一（AionUi normalizeToolCall 路线）——前端统一状态，不直接消费上游原始态
+export type ToolStatus = 'pending' | 'running' | 'completed' | 'error' | 'canceled'
+
 // 流式进行中的工具卡状态
 export interface RunningTool {
   id: string
@@ -65,6 +68,7 @@ export interface RunningTool {
   output: string
   isError?: boolean
   running: boolean
+  status?: ToolStatus
 }
 
 export interface SessionMessages {
