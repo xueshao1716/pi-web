@@ -98,7 +98,7 @@ export default function AppLayout() {
     return (
       <div className="h-screen flex flex-col bg-pi-bg text-pi-text relative">
         <div className="absolute inset-0 pointer-events-none z-0"
-          style={{ background: 'radial-gradient(720px 420px at 82% -8%, rgba(84,104,255,0.12), transparent 62%), radial-gradient(560px 380px at 8% 108%, rgba(120,90,255,.07), transparent 60%)' }} />
+          style={{ background: 'radial-gradient(720px 420px at 82% -8%, color-mix(in oklab, var(--pi-accent) 12%, transparent), transparent 62%), radial-gradient(560px 380px at 8% 108%, color-mix(in oklab, var(--pi-accent2) 7%, transparent), transparent 60%)' }} />
         {/* 主内容层 */}
         <div className="flex-1 flex min-h-0 relative z-10">
           {mobileDrawer === 'sessions' ? (
@@ -156,7 +156,7 @@ export default function AppLayout() {
     <div className="h-screen flex bg-pi-bg text-pi-text relative">
       {/* 全局光斑背景 */}
       <div className="absolute inset-0 pointer-events-none z-0"
-        style={{ background: 'radial-gradient(720px 420px at 82% -8%, rgba(84,104,255,0.12), transparent 62%), radial-gradient(560px 380px at 8% 108%, rgba(120,90,255,.07), transparent 60%)' }} />
+        style={{ background: 'radial-gradient(720px 420px at 82% -8%, color-mix(in oklab, var(--pi-accent) 12%, transparent), transparent 62%), radial-gradient(560px 380px at 8% 108%, color-mix(in oklab, var(--pi-accent2) 7%, transparent), transparent 60%)' }} />
 
       {/* 图标导航 rail（08-23：col-sidebar 顶部天光，拉开与中栏层次） */}
       <nav className="w-14 flex-shrink-0 flex flex-col items-center py-3 gap-1.5 col-sidebar glass-strong border-r border-pi-border relative z-20">

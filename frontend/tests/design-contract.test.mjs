@@ -163,3 +163,22 @@ test('禁止 transition-all', () => {
   }
   assert.deepEqual(offenders, [], offenders.join('\n'))
 })
+
+// ── 11. 禁止内联 style 硬编码主题色 ──
+// 颜色必须走 var(--pi-*) token 或 color-mix 语义派生；把主题色写死成 hex = 换主题时不跟随（Anti-slop 抓的退化）
+// 中性遮罩（黑/白 rgba）豁免；hex 代表明确是主题色硬编码。
+test('禁止内联 style 硬编码 hex 色值（改用 var(--pi-*)/color-mix）', () => {
+  const offenders = []
+  for (const p of walkTs(join(ROOT, 'src'))) {
+    if (!p.endsWith('.tsx')) continue
+    const src = readFileSync(p, 'utf8')
+    for (const m of src.matchAll(/style=\{\{([\s\S]*?)\}\}/g)) {
+      const hit = m[1].match(/#[0-9a-fA-F]{3,8}\b/)
+      if (hit) {
+        const lineNo = src.slice(0, m.index).split('\n').length
+        offenders.push(`${p.replace(ROOT, '')}:${lineNo} (#${hit[0]})`)
+      }
+    }
+  }
+  assert.deepEqual(offenders, [], '内联 style 硬编码 hex（改用 var(--pi-*)/color-mix）：\n' + offenders.join('\n'))
+})

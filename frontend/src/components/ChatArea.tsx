@@ -266,7 +266,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   const welcome = (
     <div className="flex items-center justify-center h-full px-6">
       <div className="text-center max-w-lg anim-enter">
-        <div className="w-16 h-16 mx-auto rounded-pi-xl bg-gradient-to-br from-pi-accent via-pi-accent2 to-purple-400 flex items-center justify-center text-3xl font-bold text-white mb-5 anim-enter" style={{ boxShadow: '0 8px 28px rgba(84,104,255,0.22)' }}>语</div>
+        <div className="w-16 h-16 mx-auto rounded-pi-xl bg-gradient-to-br from-pi-accent via-pi-accent2 to-purple-400 flex items-center justify-center text-3xl font-bold text-white mb-5 anim-enter" style={{ boxShadow: '0 8px 28px color-mix(in oklab, var(--pi-accent) 22%, transparent)' }}>语</div>
         <div className="text-[22px] font-extrabold text-pi-text mb-1.5 tracking-tight anim-enter anim-enter-delay-1">小语 · AI 工作台</div>
         <div className="text-pi-dim mb-7 text-[13px] anim-enter anim-enter-delay-2">基于 pi 引擎的 AI 工作伙伴 · 从一个动作开始</div>
         <div className="grid grid-cols-2 gap-2.5 max-w-md mx-auto text-left anim-enter anim-enter-delay-3">
