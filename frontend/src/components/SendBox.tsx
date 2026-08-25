@@ -267,14 +267,14 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
                 <span className="inline-block w-3 h-3 border-[1.5px] border-pi-accent border-t-transparent rounded-full animate-spin" /> 识别中
               </button>
             ) : (
-              <button onClick={startRec} className="btn-tool-sm" title="语音输入">
+              <button onClick={startRec} className="btn-tool-sm" title="语音输入" aria-label="语音输入">
                 <Mic className="w-4 h-4" strokeWidth={1.8} />
               </button>
             )
           )}
 
           {/* 附件 */}
-          <button className="btn-tool-sm" title="附加文件" onClick={() => fileInputRef.current?.click()} disabled={streaming || uploading}>
+          <button className="btn-tool-sm" title="附加文件" aria-label="附加文件" onClick={() => fileInputRef.current?.click()} disabled={streaming || uploading}>
             {uploading ? <span className="w-4 h-4 rounded-full border-[1.5px] border-pi-accent border-t-transparent animate-spin inline-block" /> : <Paperclip className="w-4 h-4" strokeWidth={1.8} />}
           </button>
 

@@ -1,7 +1,6 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useEffect, useRef } from 'react'
-import mermaid from 'mermaid'
 import { highlightCode, highlightAuto } from '../lib/highlight'
 import GenUIBlock from './GenUI'
 
@@ -12,14 +11,17 @@ function MermaidBlock({ code }: { code: string }) {
     let cancelled = false
     const render = async () => {
       try {
+        // 动态加载（08-25 性能审计：静态 import 把 mermaid 整包打进主包）
         if (!(window as any).mermaid) {
-          await new Promise((res) => {
-            if ((window as any).mermaid) return res(null)
-            const s = document.createElement('script')
-            s.src = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js'
-            s.onload = res; s.onerror = res
-            document.head.appendChild(s)
-          })
+          try { ;(window as any).mermaid = (await import('mermaid')).default } catch {}
+          if (!(window as any).mermaid) {
+            await new Promise((res) => {
+              const s = document.createElement('script')
+              s.src = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js'
+              s.onload = res; s.onerror = res
+              document.head.appendChild(s)
+            })
+          }
         }
         if ((window as any).mermaid && ref.current) {
           ;(window as any).mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' })

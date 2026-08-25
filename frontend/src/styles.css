@@ -566,3 +566,12 @@ body::before {
   0%, 100% { opacity: 1; }
   50% { opacity: .45; }
 }
+
+/* ── 键盘焦点可见性（08-25 无障碍审计，Impeccable 五维）── */
+:focus-visible {
+  outline: 2px solid var(--pi-accent);
+  outline-offset: 2px;
+  border-radius: var(--pi-r-sm);
+}
+.btn:focus:not(:focus-visible),
+button:focus:not(:focus-visible) { outline: none; }
