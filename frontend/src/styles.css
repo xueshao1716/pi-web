@@ -323,7 +323,7 @@ body::before {
 /* ══ Markdown 排版 ══ */
 .markdown-body { font-size: 13px; line-height: 1.72; }
 .markdown-body p { margin: 8px 0; }
-.markdown-body h1, .markdown-body h2, .markdown-body h3 { margin: 12px 0 6px; font-weight: 700; letter-spacing: -.005em; font-family: var(--pi-font-display); }
+.markdown-body h1, .markdown-body h2, .markdown-body h3 { text-wrap: balance; margin: 12px 0 6px; font-weight: 700; letter-spacing: -.005em; font-family: var(--pi-font-display); }
 .markdown-body h1 { font-size: 17px; }
 .markdown-body h2 { font-size: 15px; }
 .markdown-body h3 { font-size: 13px; }
@@ -533,6 +533,7 @@ body::before {
   color: var(--pi-accent2); opacity: .9;
 }
 .page-title {
+  text-wrap: balance;
   font-family: var(--pi-font-display);
   font-size: 22px; font-weight: 800; letter-spacing: -.02em; line-height: 1.2;
   color: var(--pi-text);
