@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import * as D from '@radix-ui/react-dialog'
+import { useRestoreFocus } from '../hooks/useRestoreFocus'
 import { MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, FolderClosed, Columns3, Package, SquareTerminal, Settings2, Plus, CornerDownLeft } from 'lucide-react'
 import { useApp } from '../store'
 import { SessionsApi } from '../api'
@@ -30,6 +32,7 @@ export default function CommandPalette({ open, onClose, nav, onRightPanel, onMod
   const [hi, setHi] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  useRestoreFocus(open)
 
   // 打开时重置状态并聚焦
   useEffect(() => {
@@ -76,53 +79,59 @@ export default function CommandPalette({ open, onClose, nav, onRightPanel, onMod
     el?.scrollIntoView({ block: 'nearest' })
   }, [hi])
 
-  if (!open) return null
+  // 注意：不能用 early-return null 卸载整棵树——Radix 关闭时需要在位归还焦点，
+  // 由 D.Root 的受控 open 自行决定是否渲染（08-25 冒烟实测：early-return 导致焦点掉 body）
 
   const runItem = (i: Item) => i.run()
 
+  // Radix Dialog 提供焦点陷阱 + 关闭后焦点归还 + Esc/外点关闭；外观仍是液态玻璃
   return (
-    <div className="fixed inset-0 z-[120] flex items-start justify-center pt-[12vh] px-4 bg-black/55 backdrop-blur-sm"
-      onClick={onClose} role="dialog" aria-modal="true" aria-label="命令面板">
-      <div className="w-full max-w-lg rounded-pi-xl glass-strong glass-hi overflow-hidden anim-enter" style={{ animationDuration: '.18s' }}
-        onClick={e => e.stopPropagation()}>
-        <input
-          ref={inputRef}
-          className="w-full bg-transparent border-none outline-none px-4 py-3.5 text-[14px] text-pi-text placeholder:text-pi-dim2 border-b border-pi-border-soft"
-          placeholder="搜索命令、页面、会话…"
-          value={query}
-          onChange={e => { setQuery(e.target.value); setHi(0) }}
-          onKeyDown={e => {
-            if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => Math.min(h + 1, filtered.length - 1)) }
-            else if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => Math.max(h - 1, 0)) }
-            else if (e.key === 'Enter') { e.preventDefault(); const it = filtered[hi]; if (it) runItem(it) }
-            else if (e.key === 'Escape') { e.preventDefault(); onClose() }
-          }}
-          aria-label="搜索命令"
-          aria-activedescendant={filtered[hi] ? 'cmd-' + filtered[hi].key : undefined}
-        />
-        <div ref={listRef} className="max-h-80 overflow-y-auto p-1.5" role="listbox">
-          {filtered.length === 0 && <div className="px-3 py-6 text-center text-pi-dim2 text-xs">没有匹配项</div>}
-          {filtered.map((it, idx) => (
-            <button
-              key={it.key} id={'cmd-' + it.key} data-idx={idx}
-              role="option" aria-selected={idx === hi}
-              tabIndex={-1}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-pi-md text-left transition-colors ${idx === hi ? 'bg-pi-accent/15 text-pi-text' : 'text-pi-dim hover:bg-pi-bg-hover'}`}
-              onMouseEnter={() => setHi(idx)}
-              onClick={() => runItem(it)}
-            >
-              <it.icon className={`w-4 h-4 flex-shrink-0 ${idx === hi ? 'text-pi-accent' : ''}`} strokeWidth={1.8} />
-              <span className="flex-1 min-w-0 truncate text-[13px]">{it.label}</span>
-              {it.hint && <span className="text-[10px] text-pi-dim2 flex-shrink-0">{it.hint}</span>}
-              {idx === hi && <CornerDownLeft className="w-3 h-3 text-pi-dim2 flex-shrink-0" />}
-            </button>
-          ))}
-        </div>
-        <div className="px-4 py-2 border-t border-pi-border-soft text-[10.5px] text-pi-dim2 flex items-center gap-3">
-          <span>↑↓ 选择</span><span>Enter 执行</span><span>Esc 关闭</span>
-          <span className="ml-auto">Ctrl / ⌘ + K 随时唤起</span>
-        </div>
-      </div>
-    </div>
+    <D.Root open={open} onOpenChange={o => { if (!o) onClose() }}>
+      <D.Portal>
+        <D.Overlay className="fixed inset-0 z-[110] bg-black/55 backdrop-blur-sm" />
+        <D.Content aria-label="命令面板"
+          onOpenAutoFocus={e => { e.preventDefault(); setTimeout(() => inputRef.current?.focus(), 0) }}
+          className="fixed left-1/2 top-[12vh] -translate-x-1/2 z-[120] w-full max-w-lg px-4 sm:px-0">
+          <div className="rounded-pi-xl glass-strong glass-hi overflow-hidden anim-enter" style={{ animationDuration: '.18s' }}>
+            <input
+              ref={inputRef}
+              className="w-full bg-transparent border-none outline-none px-4 py-3.5 text-[14px] text-pi-text placeholder:text-pi-dim2 border-b border-pi-border-soft"
+              placeholder="搜索命令、页面、会话…"
+              value={query}
+              onChange={e => { setQuery(e.target.value); setHi(0) }}
+              onKeyDown={e => {
+                if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => Math.min(h + 1, filtered.length - 1)) }
+                else if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => Math.max(h - 1, 0)) }
+                else if (e.key === 'Enter') { e.preventDefault(); const it = filtered[hi]; if (it) runItem(it) }
+              }}
+              aria-label="搜索命令"
+              aria-activedescendant={filtered[hi] ? 'cmd-' + filtered[hi].key : undefined}
+            />
+            <div ref={listRef} className="max-h-80 overflow-y-auto p-1.5" role="listbox">
+              {filtered.length === 0 && <div className="px-3 py-6 text-center text-pi-dim2 text-xs">没有匹配项</div>}
+              {filtered.map((it, idx) => (
+                <button
+                  key={it.key} id={'cmd-' + it.key} data-idx={idx}
+                  role="option" aria-selected={idx === hi}
+                  tabIndex={-1}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-pi-md text-left transition-colors ${idx === hi ? 'bg-pi-accent/15 text-pi-text' : 'text-pi-dim hover:bg-pi-bg-hover'}`}
+                  onMouseEnter={() => setHi(idx)}
+                  onClick={() => runItem(it)}
+                >
+                  <it.icon className={`w-4 h-4 flex-shrink-0 ${idx === hi ? 'text-pi-accent' : ''}`} strokeWidth={1.8} />
+                  <span className="flex-1 min-w-0 truncate text-[13px]">{it.label}</span>
+                  {it.hint && <span className="text-[10px] text-pi-dim2 flex-shrink-0">{it.hint}</span>}
+                  {idx === hi && <CornerDownLeft className="w-3 h-3 text-pi-dim2 flex-shrink-0" />}
+                </button>
+              ))}
+            </div>
+            <div className="px-4 py-2 border-t border-pi-border-soft text-[10.5px] text-pi-dim2 flex items-center gap-3">
+              <span>↑↓ 选择</span><span>Enter 执行</span><span>Esc 关闭</span>
+              <span className="ml-auto">Ctrl / ⌘ + K 随时唤起</span>
+            </div>
+          </div>
+        </D.Content>
+      </D.Portal>
+    </D.Root>
   )
 }

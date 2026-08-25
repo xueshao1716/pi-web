@@ -77,7 +77,7 @@ export default function Tasks() {
                 </div>
               </div>
               {/* 08-25 评审 P1：hover 门控 → 触屏常显 */}
-              <button title="删除任务" aria-label={`删除任务 ${t.label || t.prompt.slice(0, 20)}`} className="hov-reveal btn-tool !px-2 text-pi-dim2 hover:text-pi-red flex-shrink-0"
+              <button title="删除任务" aria-label={`删除任务 ${t.label || t.prompt.slice(0, 20)}`} className="hov-reveal touch-hit btn-tool !px-2 text-pi-dim2 hover:text-pi-red flex-shrink-0"
                 onClick={async () => { try { await TasksApi.remove(t.id); mutate() } catch {} }}><Trash2 className="w-4 h-4" /></button>
             </div>
           ))}

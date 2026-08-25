@@ -69,11 +69,13 @@ export const shadows = {
   glow: '0 0 20px var(--pi-accent-glow)',
 }
 
-// ── 动效 ──
+// ── 动效（08-25 词汇表收敛：全站只允许 ease/sheet 两条曲线，与 styles.css --pi-ease* 对齐）──
+export const EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
+export const EASE_SHEET = 'cubic-bezier(0.32, 0.72, 0, 1)'
 export const motion = {
-  fast: '0.14s cubic-bezier(0.33, 1, 0.68, 1)',
-  base: '0.2s cubic-bezier(0.33, 1, 0.68, 1)',
-  slow: '0.3s cubic-bezier(0.22, 1, 0.36, 1)',
+  fast: `0.14s ${EASE}`,
+  base: `0.2s ${EASE}`,
+  slow: `0.3s ${EASE_SHEET}`,
 }
 
 // ── 全部 CSS 变量 ──

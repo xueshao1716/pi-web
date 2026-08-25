@@ -26,9 +26,11 @@ ul[class], ol[class] { list-style: none; margin: 0; padding: 0; }
 
 :root {
   /* 动效 token（与 theme/tokens.ts motion 对齐，CSS 侧统一取用）*/
-  --pi-motion-fast: .14s cubic-bezier(.33, 1, .68, 1);
-  --pi-motion-base: .2s cubic-bezier(.33, 1, .68, 1);
-  --pi-motion-slow: .3s cubic-bezier(.22, 1, .36, 1);
+  --pi-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --pi-ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  --pi-motion-fast: .14s var(--pi-ease);
+  --pi-motion-base: .2s var(--pi-ease);
+  --pi-motion-slow: .3s var(--pi-ease);
   /* UI 审美修复（08-23）：底色提亮一档，拉开三栏亮度层差（原值太黑导致层次全糊） */
   --pi-bg: #0b101d;
   --pi-bg1: #131a2c;
@@ -44,7 +46,7 @@ ul[class], ol[class] { list-style: none; margin: 0; padding: 0; }
   --pi-text: #e8eef8;
   --pi-dim: #8c98b4;
   /* 08-25 评审 P0：#586580 对深底仅 3.2:1，提到达标（≥4.5:1）；装饰性弱化请用透明度 */
-  --pi-dim2: #7d88a8;
+  --pi-dim2: #8893b3;
   --pi-accent: #5468ff;
   --pi-accent2: #7b96ff;
   --pi-accent-deep: #3c4be0;
@@ -147,7 +149,7 @@ body::before {
 
 /* ── 统一按压物理（08-23 对标 nomifun）：可点元素 hover 微浮起、active 压下 —— 手感全站一致 */
 .press {
-  transition: transform .16s cubic-bezier(.22, 1, .36, 1), box-shadow .16s ease, background-color .14s ease, border-color .14s ease, color .14s ease;
+  transition: transform .16s var(--pi-ease), box-shadow .16s ease, background-color .14s ease, border-color .14s ease, color .14s ease;
 }
 .press:hover { transform: translateY(-1px); }
 .press:active { transform: translateY(0) scale(.96); }
@@ -233,7 +235,7 @@ body::before {
   --pi-border-hi: rgba(255,255,255,0.08);
   --pi-text: #eceef2;
   --pi-dim: #9aa0ae;
-  --pi-dim2: #8a90a0;
+  --pi-dim2: #98a0b3;
   --pi-accent-glow: rgba(120, 120, 160, 0.22);
   --pi-glow-purple: rgba(120,120,160,0.12);
   --pi-glow-cyan: rgba(100,140,180,0.06);
@@ -249,7 +251,7 @@ body::before {
   --pi-border-hi: rgba(255,255,255,0.07);
   --pi-text: #f0eaff;
   --pi-dim: #a99cd8;
-  --pi-dim2: #978cc8;
+  --pi-dim2: #a89fd6;
   --pi-accent-glow: rgba(139, 92, 246, 0.32);
   --pi-glow-purple: rgba(139,92,246,0.22);
   --pi-glow-cyan: rgba(120,100,200,0.08);
@@ -294,7 +296,7 @@ body::before {
 .code-block code .hljs-strong { font-weight: 600; }
 
 /* ══ 页面精修 ══ */
-.page-enter { animation: pageIn .3s cubic-bezier(.22, 1, .36, 1) both; }
+.page-enter { animation: pageIn .3s var(--pi-ease-sheet) both; }
 @keyframes pageIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
 .page-eyebrow {
@@ -322,7 +324,7 @@ body::before {
 .stat-num { font-size: 22px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 
 /* 悬浮卡 */
-.card-hover { transition: transform .18s cubic-bezier(.22, 1, .36, 1), border-color .18s ease, box-shadow .18s ease; }
+.card-hover { transition: transform .18s var(--pi-ease), border-color .18s ease, box-shadow .18s ease; }
 .card-hover:hover {
   transform: translateY(-2px);
   border-color: rgba(123, 150, 255, 0.38) !important;
@@ -370,7 +372,7 @@ body::before {
   from { opacity: 0; transform: translateY(16px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.anim-enter { animation: fadeSlideUp 0.35s cubic-bezier(0.22,1,0.36,1) both; }
+.anim-enter { animation: fadeSlideUp 0.35s var(--pi-ease-sheet) both; }
 .anim-enter-delay-1 { animation-delay: 0.08s; }
 .anim-enter-delay-2 { animation-delay: 0.16s; }
 .anim-enter-delay-3 { animation-delay: 0.24s; }
@@ -424,7 +426,7 @@ body::before {
 
 /* ── 用户气泡升级 ── */
 .msg-bubble-user {
-  transition: box-shadow 0.2s, transform 0.15s cubic-bezier(.22,1,.36,1);
+  transition: box-shadow 0.2s, transform 0.15s var(--pi-ease);
 }
 .msg-bubble-user:hover {
   box-shadow:
@@ -458,7 +460,7 @@ body::before {
 }
 
 /* ── 发送按钮一次性旋转反馈 ── */
-.send-btn-spin { animation: sendSpin 0.6s cubic-bezier(.22,1,.36,1); }
+.send-btn-spin { animation: sendSpin 0.6s var(--pi-ease); }
 @keyframes sendSpin {
   from { transform: rotate(0deg) scale(1); }
   50% { transform: rotate(180deg) scale(0.85); }
@@ -503,6 +505,13 @@ body::before {
 [class*="group"]:focus-within .hov-reveal { opacity: 1; }
 @media (hover: none), (pointer: coarse) {
   .hov-reveal { opacity: 1; }
+}
+
+/* 触屏命中区扩展（评审 P1：18×18 目标过小）——伪元素外扩 10px，桌面指针不生效 */
+.touch-hit { position: relative; }
+.touch-hit::after { content: ""; position: absolute; inset: -10px; }
+@media (hover: hover) and (pointer: fine) {
+  .touch-hit::after { display: none; }
 }
 
 /* ── 小号工具按钮（SendBox 麦克风/附件；此前被引用 3 处但从未定义）── */

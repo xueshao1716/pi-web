@@ -12,6 +12,7 @@ import TerminalPanel from './components/TerminalPanel'
 import ModelManager from './components/ModelManager'
 import ThemeSwitcher from './components/ThemeSwitcher'
 import CommandPalette from './components/CommandPalette'
+import * as T from '@radix-ui/react-tooltip'
 
 // 页面 lazy（路线图：每路由 lazy + ErrorBoundary）
 const ModelHub = lazy(() => import('./pages/ModelHub'))
@@ -147,13 +148,22 @@ export default function AppLayout() {
       <nav className="w-14 flex-shrink-0 flex flex-col items-center py-3 gap-1.5 col-sidebar glass-strong border-r border-pi-border relative z-20 glow-edge">
         <div className="w-8 h-8 rounded-pi-md avatar-grad flex items-center justify-center text-white font-bold mb-2">语</div>
         {NAV.map(n => (
-          <button key={n.route} title={n.label} aria-label={n.label} aria-current={route === n.route ? 'page' : undefined}
-            className={`w-9 h-9 rounded-pi-md flex items-center justify-center relative group/rail transition-all duration-150 ${
-              route === n.route ? 'bg-pi-accent/15 text-pi-accent' : 'text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3'}`}
-            onClick={() => nav(n.route)}>
-            <n.icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
-            <span className="absolute left-full ml-2 px-2 py-1 rounded-pi-sm bg-pi-bg3 border border-pi-border text-[10px] text-pi-text whitespace-nowrap opacity-0 group-hover/rail:opacity-100 pointer-events-none transition-opacity z-50">{n.label}</span>
-          </button>
+          <T.Root key={n.route}>
+            <T.Trigger asChild>
+              <button aria-label={n.label} aria-current={route === n.route ? 'page' : undefined}
+                className={`w-9 h-9 rounded-pi-md flex items-center justify-center relative transition-all duration-150 ${
+                  route === n.route ? 'bg-pi-accent/15 text-pi-accent' : 'text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3'}`}
+                onClick={() => nav(n.route)}>
+                <n.icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
+              </button>
+            </T.Trigger>
+            <T.Portal>
+              <T.Content side="right" sideOffset={8}
+                className="px-2 py-1 rounded-pi-sm bg-pi-bg3 border border-pi-border text-[11px] text-pi-text whitespace-nowrap shadow-lg z-50 anim-enter" style={{ animationDuration: '.12s' }}>
+                {n.label}
+              </T.Content>
+            </T.Portal>
+          </T.Root>
         ))}
         <div className="mt-auto flex flex-col gap-1.5">
           <ThemeSwitcher />
