@@ -186,7 +186,7 @@ body::before {
 .markdown-body h3 { font-size: 14px; }
 .markdown-body ul, .markdown-body ol { padding-left: 22px; margin: 6px 0; }
 .markdown-body li { margin: 3px 0; }
-.markdown-body blockquote { border-left: 3px solid var(--pi-accent); padding-left: 12px; color: var(--pi-dim); margin: 8px 0; }
+.markdown-body blockquote { border-left: 2px solid var(--pi-border); padding-left: 12px; color: var(--pi-dim); margin: 8px 0; }
 .markdown-body code { font-family: var(--pi-font-mono); }
 .markdown-body pre { background: var(--pi-bg3); border: 1px solid var(--pi-border); border-radius: var(--pi-r-md); }
 .markdown-body table { width: 100%; border-collapse: collapse; }
@@ -278,8 +278,7 @@ body::before {
 }
 .page-title {
   font-size: 24px; font-weight: 800; letter-spacing: -.02em; line-height: 1.2;
-  background: linear-gradient(115deg, var(--pi-text) 35%, var(--pi-accent2) 90%);
-  -webkit-background-clip: text; background-clip: text; color: transparent;
+  color: var(--pi-text);
 }
 
 /* 统计卡 */
@@ -397,21 +396,6 @@ body::before {
 /* ══ Phase4 视觉层次升级 ══ */
 
 /* ── 助手消息：左侧渐变竖条 + hover 提亮 ── */
-.msg-assistant {
-  position: relative;
-  padding-left: 14px;
-}
-.msg-assistant::before {
-  content: "";
-  position: absolute;
-  left: 0; top: 6px; bottom: 6px;
-  width: 3px;
-  border-radius: 2px;
-  background: linear-gradient(180deg, var(--pi-accent) 0%, var(--pi-accent2) 50%, rgba(167,139,250,0.5) 100%);
-  opacity: 0.55;
-  transition: opacity 0.2s;
-}
-.msg-assistant:hover::before { opacity: 0.9; }
 
 /* ── 用户气泡升级 ── */
 .msg-bubble-user {
@@ -515,8 +499,6 @@ body::before {
 .message-gap-assistant { margin-bottom: 10px; }
 
 /* ── Mist 主题适配 ── */
-[data-theme="mist"] .msg-assistant::before { opacity: 0.35; }
-[data-theme="mist"] .msg-assistant:hover::before { opacity: 0.7; }
 [data-theme="mist"] .turn-content-line::before { opacity: 0.2; }
 
 /* ── SendBox 聚焦光晕呼吸（08-24 对话区打磨）── */

@@ -93,8 +93,7 @@ export default function ModelHub() {
         </div>
 
         {/* Auto 路由说明条 */}
-        <div className="mb-4 rounded-pi-lg border border-pi-accent/20 bg-gradient-to-r from-pi-accent/10 to-transparent px-4 py-3 flex items-start gap-3 text-[12px] text-pi-dim"
-          style={{ borderLeft: '3px solid var(--pi-accent)' }}>
+        <div className="mb-4 rounded-pi-lg border border-pi-accent/20 bg-gradient-to-r from-pi-accent/10 to-transparent px-4 py-3 flex items-start gap-3 text-[12px] text-pi-dim">
           <Zap className="w-4 h-4 text-pi-accent mt-0.5 flex-shrink-0" />
           <div>
             <b className="text-pi-text">Auto 智能路由</b>（默认）：服务端按任务复杂度自动选模型——简单任务走免费 flash，复杂任务升级 pro 并设 token 上限；429/故障自动探测降级。下拉选具体模型则固定不路由。
