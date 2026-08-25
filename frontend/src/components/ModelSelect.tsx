@@ -2,6 +2,7 @@ import { useApp } from '../store'
 import { KeysApi } from '../api'
 import * as DM from '@radix-ui/react-dropdown-menu'
 import { ChevronDown, Zap, Paintbrush, Video, Mic2, Cpu } from 'lucide-react'
+import { toast } from './Toast'
 import type { Model } from '../types'
 
 function capIcon(m: Model) {
@@ -35,10 +36,18 @@ export default function ModelSelect({ compact = false }: { compact?: boolean }) 
   })()
 
   const select = async (mk: string) => {
+    const prev = currentModel
     setCurrentModel(mk)
     if (mk === 'auto/auto') return
     const idx = mk.indexOf('/')
-    try { await KeysApi.switchModel({ provider: mk.slice(0, idx), modelId: mk.slice(idx + 1) }) } catch {}
+    try {
+      await KeysApi.switchModel({ provider: mk.slice(0, idx), modelId: mk.slice(idx + 1) })
+      toast('模型已切换', 'ok')
+    } catch (e: any) {
+      // 失败回滚乐观更新，不再静默吞错
+      setCurrentModel(prev)
+      toast(`模型切换失败：${e?.message || '未知错误'}`, 'error')
+    }
   }
 
   return (

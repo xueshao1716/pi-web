@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { useApp } from '../store'
-import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, LayoutGrid, Command } from 'lucide-react'
+import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, LayoutGrid, Command, ChevronDown } from 'lucide-react'
 import { ChatApi, SessionsApi, AsrApi, streamSession } from '../api'
 import Message from './Message'
 import SendBox from './SendBox'
 import TurnList from './TurnList'
 import { useAutoScroll } from '../hooks/useAutoScroll'
+import { toast } from './Toast'
 import type { FileAttachment } from './SendBox'
 import type { ChatMessage, RunningTool } from '../types'
 
@@ -61,7 +62,7 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
   // 智能滚动（nomifun useAutoScroll 模式）：用户上翻停滚、贴底恢复、仅"真新消息"才强拉底
   const lastMsg = messages[messages.length - 1]
   const streamingLen = stream ? 1 : 0 // 流式中的临时消息也计入指纹，增长由 ResizeObserver 跟随
-  const { scrollRef, scrollToBottom: scroll } = useAutoScroll({
+  const { scrollRef, scrollToBottom: scroll, atBottom } = useAutoScroll({
     sessionKey: currentSessionId,
     lastMessageKey: messages.length
       ? `${messages.length}:${lastMsg?.id ?? ''}:${streamingLen}`
@@ -126,7 +127,7 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
 
   const runCommand = async (cmd: string) => {
     if (cmd === '/new') {
-      try { const d = await SessionsApi.create(); await refreshSessions(); selectSession(d.id) } catch {}
+      try { const d = await SessionsApi.create(); await refreshSessions(); selectSession(d.id) } catch { toast('新建会话失败，请重试', 'error') }
       return
     }
     if (cmd === '/legacy') { window.location.href = '/?legacy=1'; return }
@@ -242,7 +243,7 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
 
   // 桌面欢迎页：可操作快捷入口（08-25 layout：静态功能介绍 → 行动引导）
   const newSession = async () => {
-    try { const d = await SessionsApi.create(); await refreshSessions(); selectSession(d.id) } catch {}
+    try { const d = await SessionsApi.create(); await refreshSessions(); selectSession(d.id) } catch { toast('新建会话失败，请重试', 'error') }
   }
   const openPanel = (p: string) => window.dispatchEvent(new CustomEvent('pi-open-panel', { detail: p }))
   const welcome = (
@@ -285,7 +286,7 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
   }, [stream])
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 min-h-0">
+    <div className="relative flex-1 flex flex-col min-w-0 min-h-0">
       {/* 顶栏 */}
       <div className="flex items-center px-5 h-12 border-b border-pi-border-soft glass flex-shrink-0 gap-2">
         {!compactHeader && <div className="font-medium text-[15px] text-pi-text">会话</div>}
@@ -344,6 +345,17 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
       </div>
 
       {/* 输入栏 */}
+      {/* 回到底部：用户上翻后出现（nomifun 同款交互） */}
+      {!atBottom && (
+        <button
+          aria-label="回到底部"
+          onClick={() => scroll(true)}
+          className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-pi-border bg-pi-bg1/90 backdrop-blur-xl text-[12px] text-pi-dim hover:text-pi-text hover:border-pi-accent/40 shadow-xl transition-all duration-200 anim-enter"
+        >
+          <ChevronDown className="w-3.5 h-3.5" strokeWidth={2} />
+          回到底部
+        </button>
+      )}
       <div className="border-t border-pi-border-soft glass px-4 sm:px-6 py-2.5 flex-shrink-0">
         <div className="max-w-3xl mx-auto">
           <SendBox key={currentSessionId ?? 'none'} streaming={!!stream} onStop={stop} onSend={send} onCommand={runCommand}

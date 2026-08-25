@@ -3,6 +3,7 @@ import * as D from '@radix-ui/react-dialog'
 import { useRestoreFocus } from '../hooks/useRestoreFocus'
 import { MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, FolderClosed, Columns3, Package, SquareTerminal, Settings2, Plus, CornerDownLeft } from 'lucide-react'
 import { useApp } from '../store'
+import { toast } from './Toast'
 import { SessionsApi } from '../api'
 import type { Route } from '../hooks/useHashRoute'
 
@@ -43,7 +44,7 @@ export default function CommandPalette({ open, onClose, nav, onRightPanel, onMod
     const page = (r: Route, label: string, Icon: typeof MessagesSquare): Item =>
       ({ key: 'page-' + r, icon: Icon, label, hint: '页面', run: () => { nav(r); onClose() } })
     const base: Item[] = [
-      { key: 'new', icon: Plus, label: '新建会话', hint: '动作', run: async () => { try { const d = await SessionsApi.create(); await refreshSessions(); selectSession(d.id); nav('chat') } catch {} onClose() } },
+      { key: 'new', icon: Plus, label: '新建会话', hint: '动作', run: async () => { try { const d = await SessionsApi.create(); await refreshSessions(); selectSession(d.id); nav('chat') } catch { toast('新建会话失败，请重试', 'error') } onClose() } },
       page('chat', '打开对话', MessagesSquare),
       page('models', '打开模型中心', BrainCircuit),
       page('assets', '打开资产库', Images),

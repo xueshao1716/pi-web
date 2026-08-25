@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 // 智能自动滚动（nomifun useAutoScroll 模式移植，2026-08-25）
 // 三阈值 + 三守卫状态机：用户上翻停滚、贴底恢复、仅"真新消息"才强拉底。
@@ -22,6 +22,7 @@ export function useAutoScroll(opts: AutoScrollOptions) {
   const userScrolledRef = useRef(false)
   const programmaticUntilRef = useRef(0)
   const layoutGuardUntilRef = useRef(0)
+  const [atBottom, setAtBottom] = useState(true) // 响应式贴底状态：驱动"回到底部"按钮显隐
   const optsRef = useRef(opts)
   optsRef.current = opts
 
@@ -59,6 +60,7 @@ export function useAutoScroll(opts: AutoScrollOptions) {
       const now = Date.now()
       const moved = Math.abs(el.scrollTop - lastTop) > 2 // 防亚像素抖动
       lastTop = el.scrollTop
+      setAtBottom(isNearBottom())
       if (now >= programmaticUntilRef.current && moved && !isNearBottom()) {
         userScrolledRef.current = true
       }
@@ -89,6 +91,7 @@ export function useAutoScroll(opts: AutoScrollOptions) {
         if (gap > 2) {
           el.scrollTop = el.scrollHeight
           programmaticUntilRef.current = Date.now() + PROGRAMMATIC_GUARD_MS
+          setAtBottom(true)
         }
       })
     })
@@ -115,9 +118,10 @@ export function useAutoScroll(opts: AutoScrollOptions) {
   // 会话切换：清空全部滚动状态
   useEffect(() => {
     userScrolledRef.current = false
+    setAtBottom(true)
     requestAnimationFrame(() => scrollToBottom(true))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opts.sessionKey])
 
-  return { scrollRef, scrollToBottom, isNearBottom }
+  return { scrollRef, scrollToBottom, isNearBottom, atBottom }
 }
