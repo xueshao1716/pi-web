@@ -26,7 +26,7 @@ function ModelCard({ m, active, switching, onUse }: { m: Model; active: boolean;
   const free = m.free || (m.note || '').includes('免费')
   const ctx = m.contextWindow ? (m.contextWindow >= 1000 ? Math.round(m.contextWindow / 1000) + 'K' : m.contextWindow) : ''
   return (
-    <div className={`relative panel !p-3.5 flex flex-col gap-2 card-hover overflow-hidden ${active ? '!border-pi-accent/50 ring-1 ring-pi-accent/30' : ''}`}>
+    <div className={`relative panel !p-3.5 flex flex-col gap-2 card-hover glow-hover overflow-hidden ${active ? '!border-pi-accent/50 ring-1 ring-pi-accent/30' : ''}`}>
       {active && <div className="absolute inset-x-0 -top-8 h-20 pointer-events-none" style={{ background: 'radial-gradient(60% 100% at 80% 0%, var(--pi-glow), transparent 70%)' }} />}
       <div className="flex items-center gap-2 relative">
         {(() => { const CapIcon = capIcon(m); return <span className={`w-7 h-7 rounded-pi-md flex items-center justify-center flex-shrink-0 ${active ? 'bg-pi-accent/25 text-pi-accent' : 'bg-pi-bg3 text-pi-dim'}`}><CapIcon className="w-4 h-4" strokeWidth={1.8} /></span> })()}

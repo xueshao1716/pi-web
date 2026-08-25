@@ -277,7 +277,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
             { Icon: Command, label: '命令面板', desc: 'Ctrl / ⌘ + K', act: () => window.dispatchEvent(new CustomEvent('pi-open-palette')), chip: 'chip-amber', c: 'text-amber-300' },
           ].map((f) => (
             <button key={f.label} onClick={f.act}
-              className={`rounded-pi-lg border px-4 py-3 transition-all duration-200 cursor-pointer press anim-enter text-left ${f.chip}`} style={{ animationDelay: '0.12s' }}>
+              className={`rounded-pi-lg border px-4 py-3 transition-all duration-200 cursor-pointer press anim-enter text-left accent-soft ${f.chip}`} style={{ animationDelay: '0.12s' }}>
               <f.Icon className={`w-[18px] h-[18px] mb-1.5 ${f.c}`} strokeWidth={1.8} />
               <div className="text-[13px] font-semibold text-pi-text">{f.label}</div>
               <div className="text-[11px] text-pi-dim2">{f.desc}</div>

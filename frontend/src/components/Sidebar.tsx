@@ -78,7 +78,7 @@ export default function Sidebar({ onNavigated }: { onNavigated?: () => void } = 
             {groups[g].map(s => (
               <div key={s.id}
                 className={`group flex items-center gap-2.5 px-2.5 py-2 rounded-pi-md cursor-pointer mb-0.5 transition-colors duration-fast ${
-                  s.id === currentSessionId ? 'bg-pi-accent/12 border border-pi-accent/25' : 'hover:bg-pi-bg2'
+                  s.id === currentSessionId ? 'bg-pi-accent/12 border border-pi-accent/25' : 'surface-hover'
                 }`}
                 onClick={() => { selectSession(s.id); onNavigated?.() }}>
                 <div className={`w-6 h-6 rounded-pi-sm flex items-center justify-center text-xs font-bold flex-shrink-0 ${s.id === currentSessionId ? 'bg-pi-accent text-white' : 'bg-pi-bg3 text-pi-dim'}`}>
