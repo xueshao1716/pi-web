@@ -125,7 +125,7 @@ export function generateTheme(seed) {
     return rgbToHex(oklchToRgb(safeOklch({ L: ch.L, C, H: ch.H })))
   })()
   v['--pi-dim'] = solveLForContrast(dimBase, seed.bg, 6.0)
-  v['--pi-dim2'] = solveLForContrast(dimBase, bg2, 4.6)
+  v['--pi-dim2'] = solveLForContrast(dimBase, bg2, 4.8)
 
   // 强调色族：accent2/accent-deep 是 accent 的亮度位移（换主色后交互态永远协调）
   v['--pi-accent'] = seed.accent
