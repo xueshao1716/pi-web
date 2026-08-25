@@ -483,6 +483,10 @@ body::before {
 .skeleton-line:nth-child(1) { width: 60%; animation-delay: 0.1s; }
 .skeleton-line:nth-child(2) { width: 85%; animation-delay: 0.2s; }
 .skeleton-line:nth-child(3) { width: 45%; animation-delay: 0.3s; }
+@keyframes skeletonShimmer {
+  0% { background-position: 120% 0; }
+  100% { background-position: -80% 0; }
+}
 
 /* ── 消息间距节奏 ── */
 .message-gap { margin-bottom: 6px; }
