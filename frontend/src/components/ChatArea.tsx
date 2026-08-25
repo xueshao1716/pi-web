@@ -6,6 +6,7 @@ import { ChatApi, SessionsApi, AsrApi, streamSession } from '../api'
 import Message from './Message'
 import SendBox from './SendBox'
 import TurnList from './TurnList'
+import { useAutoScroll } from '../hooks/useAutoScroll'
 import type { FileAttachment } from './SendBox'
 import type { ChatMessage, RunningTool } from '../types'
 
@@ -36,7 +37,6 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
   const { currentSessionId, currentModel, refreshSessions, selectSession } = useApp()
   const [stream, setStream] = useState<StreamState | null>(null)
   const [idleSeconds, setIdleSeconds] = useState(0)
-  const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<(() => void) | null>(null)
   // ref 是唯一事实源：SSE 事件可能在一个渲染批次内全部到达，useEffect 同步会滞后导致 done 时读到旧值
   const streamRef = useRef<StreamState | null>(null)
@@ -58,21 +58,19 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
 
   const reload = () => { if (currentSessionId) mutateMsgs() }
 
-  // 智能滚动：用户上翻（距底 >120px）时不强制拉回
-  const nearBottomRef = useRef(true)
-  const scroll = () => {
-    if (!nearBottomRef.current) return
-    requestAnimationFrame(() => {
-      const el = scrollRef.current
-      if (el) el.scrollTop = el.scrollHeight
-    })
-  }
-  const onScroll = () => {
-    const el = scrollRef.current
-    if (el) nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
-  }
+  // 智能滚动（nomifun useAutoScroll 模式）：用户上翻停滚、贴底恢复、仅"真新消息"才强拉底
+  const lastMsg = messages[messages.length - 1]
+  const streamingLen = stream ? 1 : 0 // 流式中的临时消息也计入指纹，增长由 ResizeObserver 跟随
+  const { scrollRef, scrollToBottom: scroll } = useAutoScroll({
+    sessionKey: currentSessionId,
+    lastMessageKey: messages.length
+      ? `${messages.length}:${lastMsg?.id ?? ''}:${streamingLen}`
+      : (stream ? 'stream' : null),
+    lastFromUser: lastMsg?.role === 'user' || (!!stream && !stream.text && !stream.tools.length),
+  })
 
-  useEffect(() => { streamRef.current = null; setStream(null); nearBottomRef.current = true }, [currentSessionId])
+  // 切会话：清空流式状态（滚动状态由 useAutoScroll 按 sessionKey 自行重置）
+  useEffect(() => { streamRef.current = null; setStream(null) }, [currentSessionId])
 
   // 多端同步：订阅会话事件流，外部（手机/其他端）新消息到达时静默刷新（本地流式中不刷）；
   // 断线由 api 层自动重连（5s），重连成功后靠下一次事件刷新
@@ -152,7 +150,6 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
     updateMessages(prev => [...prev, { id: 'u' + Date.now(), role: 'user', text: content, ts: new Date().toISOString() }])
     streamRef.current = emptyStream()
     setStream({ ...streamRef.current })
-    nearBottomRef.current = true
     abortRef.current = ChatApi.send({
       sessionId: sid, message: content,
       model: currentModel === 'auto/auto' ? undefined : currentModel,
@@ -313,7 +310,7 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
       )}
 
       {/* 消息区 */}
-      <div ref={scrollRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-4">
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-4">
         {loading ? (
           <div className="max-w-3xl w-full mx-auto px-6 py-6 space-y-5" aria-label="加载中">
             {[520, 380, 460].map((w, i) => (
@@ -349,7 +346,7 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
       {/* 输入栏 */}
       <div className="border-t border-pi-border-soft glass px-4 sm:px-6 py-2.5 flex-shrink-0">
         <div className="max-w-3xl mx-auto">
-          <SendBox streaming={!!stream} onStop={stop} onSend={send} onCommand={runCommand}
+          <SendBox key={currentSessionId ?? 'none'} streaming={!!stream} onStop={stop} onSend={send} onCommand={runCommand}
             voiceBusy={voiceBusy} onVoice={handleVoice} onVoiceTextReady={fn => { voiceTextRef.current = fn }} />
         </div>
       </div>

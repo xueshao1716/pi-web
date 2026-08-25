@@ -148,7 +148,7 @@ body::before {
 
 /* ── 统一按压物理（08-23 对标 nomifun）：可点元素 hover 微浮起、active 压下 —— 手感全站一致 */
 .press {
-  transition: transform .16s var(--pi-ease), box-shadow .16s ease, background-color .14s ease, border-color .14s ease, color .14s ease;
+  transition: transform var(--pi-motion-fast), box-shadow var(--pi-motion-fast), background-color var(--pi-motion-fast), border-color var(--pi-motion-fast), color var(--pi-motion-fast);
 }
 .press:hover { transform: translateY(-1px); }
 .press:active { transform: translateY(0) scale(.96); }
@@ -323,7 +323,7 @@ body::before {
 .stat-num { font-size: 22px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 
 /* 悬浮卡 */
-.card-hover { transition: transform .18s var(--pi-ease), border-color .18s ease, box-shadow .18s ease; }
+.card-hover { transition: transform var(--pi-motion-base), border-color var(--pi-motion-base), box-shadow var(--pi-motion-base); }
 .card-hover:hover {
   transform: translateY(-2px);
   border-color: rgba(123, 150, 255, 0.38) !important;
@@ -363,7 +363,7 @@ body::before {
 }
 
 /* ── 工具卡片 hover 彩色边框 ── */
-.tool-card { transition: border-color 0.2s, box-shadow 0.2s; }
+.tool-card { transition: border-color var(--pi-motion-base), box-shadow var(--pi-motion-base); }
 .tool-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.3), 0 0 0 1px rgba(123,150,255,0.2); }
 
 /* ── 入场动画 ── */
@@ -425,7 +425,7 @@ body::before {
 
 /* ── 用户气泡升级 ── */
 .msg-bubble-user {
-  transition: box-shadow 0.2s, transform 0.15s var(--pi-ease);
+  transition: box-shadow var(--pi-motion-base), transform var(--pi-motion-fast);
 }
 .msg-bubble-user:hover {
   box-shadow:
@@ -437,7 +437,7 @@ body::before {
 
 /* ── 轮次折叠行升级 ── */
 .turn-row {
-  transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s;
+  transition: background-color var(--pi-motion-fast), border-color var(--pi-motion-fast), box-shadow var(--pi-motion-fast);
 }
 .turn-row:hover {
   box-shadow: 0 2px 12px rgba(0,0,0,0.18);
