@@ -42,7 +42,7 @@ function ModelCard({ m, active, switching, onUse }: { m: Model; active: boolean;
       </div>
       {m.note && <div className="text-[11px] text-pi-dim2 line-clamp-2 relative">{m.note}</div>}
       <button onClick={onUse} disabled={active}
-        className={`mt-auto relative text-xs rounded-pi-md py-1.5 transition-all duration-150 ${active ? 'bg-pi-bg3 text-pi-dim2 cursor-default' : 'bg-pi-accent/15 text-pi-accent hover:bg-pi-accent hover:text-white hover:shadow-lg hover:shadow-pi-accent/25'}`}>
+        className={`mt-auto relative text-xs rounded-pi-md py-1.5 transition-colors duration-150 ${active ? 'bg-pi-bg3 text-pi-dim2 cursor-default' : 'bg-pi-accent/15 text-pi-accent hover:bg-pi-accent hover:text-white hover:shadow-lg hover:shadow-pi-accent/25'}`}>
         {active ? '● 使用中' : switching ? '切换中…' : '切换使用'}
       </button>
     </div>

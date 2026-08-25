@@ -180,7 +180,7 @@ export default function Apps() {
         <div className="inline-flex p-1 rounded-pi-lg bg-pi-bg2/70 border border-pi-border-soft mb-5 max-w-full overflow-x-auto">
           {TABS.map(([k, Icon, label]) => (
             <button key={k} onClick={() => setTab(k)}
-              className={`text-xs px-3 py-1.5 rounded-pi-md whitespace-nowrap inline-flex items-center gap-1.5 transition-all duration-150 ${tab === k ? 'bg-pi-accent text-white font-medium shadow-md shadow-pi-accent/25' : 'text-pi-dim hover:text-pi-text'}`}>
+              className={`text-xs px-3 py-1.5 rounded-pi-md whitespace-nowrap inline-flex items-center gap-1.5 transition-colors duration-150 ${tab === k ? 'bg-pi-accent text-white font-medium shadow-md shadow-pi-accent/25' : 'text-pi-dim hover:text-pi-text'}`}>
               <Icon className="w-3.5 h-3.5" strokeWidth={1.8} /> {label}
             </button>
           ))}

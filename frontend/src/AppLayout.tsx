@@ -165,7 +165,7 @@ export default function AppLayout() {
           <T.Root key={n.route}>
             <T.Trigger asChild>
               <button aria-label={n.label} aria-current={route === n.route ? 'page' : undefined}
-                className={`w-9 h-9 rounded-pi-md flex items-center justify-center relative transition-all duration-150 ${
+                className={`w-9 h-9 rounded-pi-md flex items-center justify-center relative transition-colors duration-150 ${
                   route === n.route ? 'bg-pi-accent/15 text-pi-accent' : 'text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3'}`}
                 onClick={() => nav(n.route)}>
                 <n.icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
@@ -181,7 +181,7 @@ export default function AppLayout() {
         ))}
         <div className="mt-auto flex flex-col gap-1.5">
           <ThemeSwitcher />
-          <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-all" title="密钥与通道管理" aria-label="密钥与通道管理" onClick={() => setModelOpen(true)}><Settings2 className="w-[18px] h-[18px]" strokeWidth={1.8} /></button>
+          <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-colors" title="密钥与通道管理" aria-label="密钥与通道管理" onClick={() => setModelOpen(true)}><Settings2 className="w-[18px] h-[18px]" strokeWidth={1.8} /></button>
         </div>
       </nav>
 

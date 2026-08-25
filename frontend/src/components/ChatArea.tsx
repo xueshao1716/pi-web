@@ -277,7 +277,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
             { Icon: Command, label: '命令面板', desc: 'Ctrl / ⌘ + K', act: () => window.dispatchEvent(new CustomEvent('pi-open-palette')), chip: 'chip-amber', c: 'text-amber-300' },
           ].map((f) => (
             <button key={f.label} onClick={f.act}
-              className={`rounded-pi-lg border px-4 py-3 transition-all duration-200 cursor-pointer press anim-enter text-left accent-soft ${f.chip}`} style={{ animationDelay: '0.12s' }}>
+              className={`rounded-pi-lg border px-4 py-3 transition-colors duration-200 cursor-pointer press anim-enter text-left accent-soft ${f.chip}`} style={{ animationDelay: '0.12s' }}>
               <f.Icon className={`w-[18px] h-[18px] mb-1.5 ${f.c}`} strokeWidth={1.8} />
               <div className="text-[13px] font-semibold text-pi-text">{f.label}</div>
               <div className="text-[11px] text-pi-dim2">{f.desc}</div>
@@ -344,7 +344,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
             aria-label="切换右栏"
             title={rightPanel !== 'chat' ? '收起右栏' : '打开右栏'}
             onClick={() => onRightPanel(rightPanel === 'chat' ? 'workspace' : 'chat')}
-            className={`text-[11px] px-2.5 py-1 rounded-full border flex items-center gap-1 flex-shrink-0 transition-all duration-150 ${
+            className={`text-[11px] px-2.5 py-1 rounded-full border flex items-center gap-1 flex-shrink-0 transition-colors duration-150 ${
               rightPanel && rightPanel !== 'chat'
                 ? 'bg-pi-accent text-white border-pi-accent'
                 : 'border-pi-border-soft bg-pi-bg2/60 text-pi-dim hover:text-pi-text hover:border-pi-accent/40'}`}
@@ -407,7 +407,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         <button
           aria-label="回到底部"
           onClick={() => scroll(true)}
-          className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-pi-border bg-pi-bg1/90 backdrop-blur-xl text-[12px] text-pi-dim hover:text-pi-text hover:border-pi-accent/40 shadow-xl transition-all duration-200 anim-enter"
+          className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-pi-border bg-pi-bg1/90 backdrop-blur-xl text-[12px] text-pi-dim hover:text-pi-text hover:border-pi-accent/40 shadow-xl transition-colors duration-200 anim-enter"
         >
           <ChevronDown className="w-3.5 h-3.5" strokeWidth={2} />
           回到底部

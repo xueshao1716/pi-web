@@ -56,7 +56,7 @@ export default function ModelSelect({ compact = false }: { compact?: boolean }) 
         <button
           data-slot="model-trigger"
           aria-label="选择模型"
-          className={`flex items-center gap-1.5 px-2 py-1 rounded-pi-md border border-pi-border-soft bg-pi-bg2/50 text-[12px] text-pi-dim hover:text-pi-text hover:border-pi-accent/40 transition-all duration-200 data-[state=open]:border-pi-accent/40 ${compact ? 'max-w-[110px]' : 'max-w-[160px]'}`}
+          className={`flex items-center gap-1.5 px-2 py-1 rounded-pi-md border border-pi-border-soft bg-pi-bg2/50 text-[12px] text-pi-dim hover:text-pi-text hover:border-pi-accent/40 transition-colors duration-200 data-[state=open]:border-pi-accent/40 ${compact ? 'max-w-[110px]' : 'max-w-[160px]'}`}
         >
           <Zap className="w-3 h-3 text-pi-accent flex-shrink-0" strokeWidth={2} />
           <span className="truncate font-medium">{currentLabel}</span>
