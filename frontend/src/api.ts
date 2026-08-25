@@ -225,12 +225,18 @@ export const StatsApi = {
 }
 
 // ── 定时任务（时间引擎）──
-export interface TimeTask { id: string; type: 'daily' | 'weekly' | 'once'; at: string; day?: number | null; date?: string | null; prompt: string; label: string; created: string; lastRun?: string | null; runs?: number }
+export interface TimeTask { id: string; type: 'daily' | 'weekly' | 'once'; at: string; day?: number | null; date?: string | null; prompt: string; label: string; created: string; lastRun?: string | null; runs?: number; state?: string; running?: boolean; history?: { queueId: string; startedAt: string; durationMs: number; status: string; result: string }[] }
 export const TasksApi = {
   list: () => api<{ tasks: TimeTask[] }>('/api/time/tasks'),
   create: (body: { type: string; at: string; day?: number; date?: string; prompt: string; label?: string }) =>
     api<{ id?: string; error?: string }>('/api/time/tasks', { method: 'POST', body }),
   remove: (id: string) => api<{ removed: boolean }>(`/api/time/tasks?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  // 任务中心 v2：状态机 / 手动执行 / 运行历史
+  setState: (id: string, action: 'pause' | 'resume' | 'archive') =>
+    api<{ ok?: boolean; state?: string; error?: string }>('/api/time/tasks', { method: 'PATCH', body: { id, action } }),
+  runNow: (id: string) => api<{ ok?: boolean; queueId?: string; error?: string }>('/api/time/tasks/run', { method: 'POST', body: { id } }),
+  stopRun: (id: string) => api<{ stopped?: boolean; error?: string }>('/api/time/tasks/stop', { method: 'POST', body: { id } }),
+  history: (id: string) => api<{ history: { queueId: string; startedAt: string; durationMs: number; status: string; result: string }[] }>(`/api/time/tasks/history?id=${encodeURIComponent(id)}`),
 }
 
 // ── 工作空间 ──
