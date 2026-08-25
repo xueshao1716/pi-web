@@ -1824,6 +1824,34 @@ const API_ROUTES = [
     const u = new URL(req.url, "http://x");
     json(res, 200, timeEngine ? timeEngine.remove(u.searchParams.get("id") || "") : { removed: false });
   }],
+
+  // 任务中心 v2（08-25）：状态机 / 手动执行 / 运行历史 / 停止
+  ["PATCH", "/api/time/tasks", async (res, req) => {
+    if (!timeEngine) return json(res, 500, { error: "时间引擎未初始化" });
+    const body = await readBody(req);
+    const fn = { pause: "pause", resume: "resume", archive: "archive" }[body?.action];
+    if (!fn || !body?.id) return json(res, 400, { error: "需要 id + action(pause|resume|archive)" });
+    return json(res, 200, timeEngine[fn](body.id));
+  }],
+  ["POST", "/api/time/tasks/run", async (res, req) => {
+    if (!timeEngine) return json(res, 500, { error: "时间引擎未初始化" });
+    const body = await readBody(req);
+    if (!body?.id) return json(res, 400, { error: "需要 id" });
+    const r = await timeEngine.runNow(body.id);
+    return json(res, 200, r);
+  }],
+  ["GET", "/api/time/tasks/history", (res, req) => {
+    const u = new URL(req.url, "http://x");
+    if (!timeEngine) return json(res, 500, { error: "时间引擎未初始化" });
+    const t = u.searchParams.get("id") ? timeEngine.find(u.searchParams.get("id")) : null;
+    return json(res, 200, { history: t?.history || [] });
+  }],
+  ["POST", "/api/time/tasks/stop", async (res, req) => {
+    if (!timeEngine) return json(res, 500, { error: "时间引擎未初始化" });
+    const body = await readBody(req);
+    if (!body?.id) return json(res, 400, { error: "需要 id" });
+    return json(res, 200, timeEngine.stopRun(body.id));
+  }],
   // ── MCP 认知层（NomiFun 等客户端接入，2026-08-20）──
   ["POST", "/mcp", async (res, req) => {
     const ctx = {
@@ -1992,22 +2020,25 @@ function startServer() {
     // 时间引擎：定时任务调度（触发时跑 unifiedChat + 结果落盘 文档/时间引擎日志.md）
     try {
       timeEngine = createTimeEngine(async (task) => {
+        let out = "(无输出)";
         try {
-          console.log(`[time-engine] 触发任务 ${task.id}: ${String(task.prompt).slice(0, 60)}`);
-          const r = await unifiedChat(defaultModel, [{ role: "user", content: `${task.prompt}\n（这是定时任务到点自动触发，请直接执行并输出结果，不要反问）` }], { tools: false });
-          const out = r?.text || r?.content || r?.error || "(无输出)";
+          console.log(`[time-engine] 触发任务 ${task.id}(${task.queueId}): ${String(task.prompt).slice(0, 60)}`);
+          const r = await unifiedChat(defaultModel, [{ role: "user", content: `${task.prompt}（这是定时任务到点自动触发，请直接执行并输出结果，不要反问）` }], { tools: false });
+          out = r?.text || r?.content || r?.error || "(无输出)";
           const logDir = path.join(CONFIG.cwd, "文档");
           try { fs.mkdirSync(logDir, { recursive: true }); } catch {}
           const logFile = path.join(logDir, "时间引擎日志.md");
           const entry = `
-### ${task.firedAt} [${task.id}] ${String(task.prompt).slice(0, 40)}
-> ${String(out).slice(0, 600).replace(/\n/g, "\n> ")}
+### ${task.firedAt} [${task.id}/${task.queueId}] ${String(task.prompt).slice(0, 40)}
+> ${String(out).slice(0, 600).replace(/\n/g, "\\n> ")}
 `;
           try { fs.appendFileSync(logFile, entry); } catch {}
           console.log(`[time-engine] 任务 ${task.id} 完成，已记录到 ${logFile}`);
         } catch (e) {
           console.log(`[time-engine] 任务 ${task.id} 异常: ${String(e?.message || e).slice(0, 100)}`);
+          throw e; // 上抛给任务中心记 error 历史
         }
+        return String(out);
       });
       timeEngine.start();
     } catch (e) { console.log("[time-engine] 启动失败:", String(e?.message || e).slice(0, 100)); }
