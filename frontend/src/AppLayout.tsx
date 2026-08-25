@@ -214,7 +214,6 @@ export default function AppLayout() {
         <div className="fixed top-3 right-3 z-50 flex items-center gap-1.5">
           <div className="flex items-center gap-1 p-1 rounded-pi-md glass-strong border border-pi-border-soft">
             <button className={`btn text-xs px-2 py-1 rounded-pi-sm transition-all duration-150 ${rightPanel !== 'chat' ? 'bg-pi-accent text-white' : 'text-pi-dim hover:text-pi-text hover:bg-pi-bg3'}`} onClick={() => setRightPanel(rightPanel === 'chat' ? 'workspace' : 'chat')}>右栏</button>
-            <button className="btn-ghost text-xs" onClick={() => setModelOpen(true)}>模型</button>
           </div>
         </div>
       )}
