@@ -4,7 +4,6 @@ import { useApp } from '../store'
 import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, LayoutGrid, Command } from 'lucide-react'
 import { ChatApi, SessionsApi, AsrApi, streamSession } from '../api'
 import Message from './Message'
-import ModelSelect from './ModelSelect'
 import SendBox from './SendBox'
 import TurnList from './TurnList'
 import type { FileAttachment } from './SendBox'
@@ -304,7 +303,6 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
           title={`小语状态 · ${mood}`} onClick={() => setMood(moods[(moods.indexOf(mood) + 1) % moods.length])}>
           {mood}
         </div>
-        <ModelSelect />
       </div>
 
       {/* 看门狗提示条 */}
