@@ -50,3 +50,11 @@ android/capacitor-cordova-android-plugins/build/
 public/downloads/
 android/app-release-signed.apk
 android/release.keystore
+
+# 本地工具/测试杂物（2026-08-25 差点把含 key 的 .test-ox.mjs 推上仓库后加防）
+.claude/
+.codex/
+.impeccable/
+.test-*.mjs
+frontend/smoke-react.png
+android/*.idsig
