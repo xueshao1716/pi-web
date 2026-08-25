@@ -95,7 +95,7 @@ export default function CommandPalette({ open, onClose, nav, onRightPanel, onMod
           <div className="rounded-pi-xl glass-strong glass-hi overflow-hidden anim-enter" style={{ animationDuration: '.18s' }}>
             <input
               ref={inputRef}
-              className="w-full bg-transparent border-none outline-none px-4 py-3.5 text-[14px] text-pi-text placeholder:text-pi-dim2 border-b border-pi-border-soft"
+              className="w-full bg-transparent border-none outline-none px-4 py-3.5 text-[15px] text-pi-text placeholder:text-pi-dim2 border-b border-pi-border-soft"
               placeholder="搜索命令、页面、会话…"
               value={query}
               onChange={e => { setQuery(e.target.value); setHi(0) }}
@@ -125,7 +125,7 @@ export default function CommandPalette({ open, onClose, nav, onRightPanel, onMod
                 </button>
               ))}
             </div>
-            <div className="px-4 py-2 border-t border-pi-border-soft text-[10.5px] text-pi-dim2 flex items-center gap-3">
+            <div className="px-4 py-2 border-t border-pi-border-soft text-[11px] text-pi-dim2 flex items-center gap-3">
               <span>↑↓ 选择</span><span>Enter 执行</span><span>Esc 关闭</span>
               <span className="ml-auto">Ctrl / ⌘ + K 随时唤起</span>
             </div>

@@ -85,6 +85,20 @@ test('全主题 dim/dim2 文字对比度 ≥ 4.5（对 bg 和 bg2 卡片底色�
   assert.deepEqual(failures, [], failures.join('\n'))
 })
 
+// ── 契约六：字阶白名单（typeset：全站只允许 7 级）──
+test('字号阶梯收敛到 7 级白名单', () => {
+  const SCALE = new Set(['10', '11', '12', '13', '15', '17', '22'])
+  const offenders = []
+  for (const p of walkTs(join(ROOT, 'src'))) {
+    if (!p.endsWith('.tsx') && !p.endsWith('.ts')) continue
+    const src = readFileSync(p, 'utf8')
+    for (const m of src.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)) {
+      if (!SCALE.has(m[1])) offenders.push(`${p.replace(ROOT, '')}: text-[${m[1]}px]`)
+    }
+  }
+  assert.deepEqual(offenders, [], '白名单外字号:\n' + offenders.join('\n'))
+})
+
 // ── 契约五：字号地板（className 里不允许 <10px 的文本）──
 test('源码不允许 <10px 字号 class（信息可读性地板）', () => {
   const offenders = []

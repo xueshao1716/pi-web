@@ -56,9 +56,15 @@ export const fonts = {
   sans: '-apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
 }
 
-// ── 字号节奏 ──
+// ── 字号阶梯（08-25 typeset：全站只允许 7 级，与契约测试同步）──
 export const fontSize = {
-  xs: 11, sm: 12.5, md: 13.5, lg: 15.5, xl: 17, xxl: 22, xxxl: 26,
+  badge: 10,  // 徽章/胶囊专用
+  xs: 11,     // 元信息/时间戳/标签
+  sm: 12,     // 辅助文本
+  md: 13,     // 正文
+  lg: 15,     // 标题
+  xl: 17,     // 区块标题
+  xxl: 22,    // 展示级（页题/欢迎语）
 }
 
 // ── 阴影（分层）──

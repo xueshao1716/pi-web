@@ -203,7 +203,7 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
   return (
     <div className="relative">
       {/* 麦克风错误提示（08-25 评审 P1：替换 alert()）*/}
-      {micErr && <div className="mb-1.5 px-3 py-1.5 rounded-pi-md bg-pi-red/12 border border-pi-red/30 text-[11.5px] text-pi-red" role="alert">⚠ {micErr}</div>}
+      {micErr && <div className="mb-1.5 px-3 py-1.5 rounded-pi-md bg-pi-red/12 border border-pi-red/30 text-[12px] text-pi-red" role="alert">⚠ {micErr}</div>}
       {/* 斜杠命令菜单 */}
       {showSlash && (
         <div className="absolute bottom-full left-0 right-0 mb-1 panel !p-1 max-h-56 overflow-y-auto z-20" role="listbox" aria-label="斜杠命令">
@@ -229,7 +229,7 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
               onMouseEnter={() => setAtHi(i)}
               onMouseDown={e => { e.preventDefault(); pickAt(r) }}>
               <div className="text-[13px] text-pi-text">{r.name}</div>
-              <div className="text-[10.5px] text-pi-dim2 font-mono truncate">{r.path}</div>
+              <div className="text-[11px] text-pi-dim2 font-mono truncate">{r.path}</div>
             </div>
           ))}
         </div>
@@ -253,7 +253,7 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
           role="combobox"
           aria-expanded={showSlash || showAt}
           aria-label="消息输入框"
-          className="w-full bg-transparent border-none outline-none px-4 pt-3 pb-1 text-[13.5px] text-pi-text resize-none placeholder:text-pi-dim2 disabled:opacity-60"
+          className="w-full bg-transparent border-none outline-none px-4 pt-3 pb-1 text-[13px] text-pi-text resize-none placeholder:text-pi-dim2 disabled:opacity-60"
           onChange={e => onChange(e.target.value)}
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.shiftKey) {

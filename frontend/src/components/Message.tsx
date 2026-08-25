@@ -19,7 +19,7 @@ function ToolCard({ tool }: { tool: Partial<RunningTool> & { name: string } }) {
   } catch { /* 保持原文本 */ }
 
   return (
-    <div className={`my-2 rounded-pi-lg border overflow-hidden text-[12.5px] bg-pi-bg1/60 transition-colors ${tool.isError ? 'border-pi-red/40' : 'border-pi-border-soft hover:border-pi-border'}`}>
+    <div className={`my-2 rounded-pi-lg border overflow-hidden text-[13px] bg-pi-bg1/60 transition-colors ${tool.isError ? 'border-pi-red/40' : 'border-pi-border-soft hover:border-pi-border'}`}>
       <div
         className="press w-full flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-pi-bg-hover/60 active:bg-pi-bg-active/50 transition-colors text-left"
         style={{ boxShadow: `inset 3px 0 0 ${tc}` }}
@@ -27,9 +27,9 @@ function ToolCard({ tool }: { tool: Partial<RunningTool> & { name: string } }) {
       >
         <span className="w-5 h-5 rounded-pi-sm flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 font-mono" style={{ background: `linear-gradient(135deg, ${tc}, ${tc}b3)`, boxShadow: `0 0 10px ${tc}40` }}>{icon}</span>
         <span className="font-mono font-semibold text-[11px] px-1.5 py-0.5 rounded-pi-sm flex-shrink-0" style={{ color: tc, background: `${tc}14` }}>{tool.name}</span>
-        <span className="text-pi-dim truncate flex-1 font-mono text-[11.5px]">{argsText}</span>
+        <span className="text-pi-dim truncate flex-1 font-mono text-[12px]">{argsText}</span>
         {running ? (
-          <span className="flex items-center gap-1.5 text-pi-accent text-[10.5px] flex-shrink-0">
+          <span className="flex items-center gap-1.5 text-pi-accent text-[11px] flex-shrink-0">
             <span className="w-3 h-3 rounded-full border-[1.5px] border-pi-accent/25 border-t-pi-accent animate-spin" />
             运行中
           </span>
@@ -43,7 +43,7 @@ function ToolCard({ tool }: { tool: Partial<RunningTool> & { name: string } }) {
       {running && <div className="h-[2px] w-full overflow-hidden"><div className="tool-progress" /></div>}
       {open && (
         <div className="border-t border-pi-border-soft bg-black/20">
-          <div className="font-mono text-[11.5px] text-pi-dim whitespace-pre-wrap max-h-56 overflow-auto px-3 py-2 leading-relaxed">
+          <div className="font-mono text-[12px] text-pi-dim whitespace-pre-wrap max-h-56 overflow-auto px-3 py-2 leading-relaxed">
             {tool.output || (running ? '(运行中…)' : '(无输出)')}
           </div>
         </div>
@@ -69,7 +69,7 @@ function Thinking({ text, live }: { text: string; live?: boolean }) {
         <span>{live && !open ? '思考中…' : '思考过程'}</span>
         <ChevronRight className={`w-2.5 h-2.5 transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />
       </div>
-      {open && <div className="pl-4 border-l border-purple-500/25 my-1 text-pi-dim text-[12.5px] opacity-80"><Markdown text={text} /></div>}
+      {open && <div className="pl-4 border-l border-purple-500/25 my-1 text-pi-dim text-[13px] opacity-80"><Markdown text={text} /></div>}
     </div>
   )
 }
@@ -86,7 +86,7 @@ function Attachments({ msg }: { msg: ChatMessage }) {
         <div key={'aud' + i} className="my-1.5"><audio controls src={withFileToken(url)} className="max-w-full h-9" /></div>
       ))}
       {msg.files?.map((f, i) => (
-        <div key={'file' + i} className="my-1.5 inline-flex items-center gap-2 px-3 py-1.5 rounded-pi-md border border-pi-border bg-pi-bg3/70 text-[12.5px] max-w-full">
+        <div key={'file' + i} className="my-1.5 inline-flex items-center gap-2 px-3 py-1.5 rounded-pi-md border border-pi-border bg-pi-bg3/70 text-[13px] max-w-full">
           <FileText className="w-3.5 h-3.5 text-pi-accent flex-shrink-0" />
           <span className="text-pi-text truncate">{f.name || f.path}</span>
         </div>
@@ -107,7 +107,7 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
   if (isSystem) {
     return (
       <div className="flex justify-center py-1.5">
-        <div className="text-[11.5px] text-sky-300/90 bg-sky-500/8 border border-sky-500/20 rounded-pi-pill px-3 py-1">ℹ️ {msg.text}</div>
+        <div className="text-[12px] text-sky-300/90 bg-sky-500/8 border border-sky-500/20 rounded-pi-pill px-3 py-1">ℹ️ {msg.text}</div>
       </div>
     )
   }
@@ -121,7 +121,7 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
             <div className="w-full min-w-[280px]">
               <textarea autoFocus rows={3} value={draft} onChange={e => setDraft(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); setEditing(false); if (draft.trim()) onEdit?.(draft.trim()) } if (e.key === 'Escape') setEditing(false) }}
-                className="input-pi text-[13.5px] resize-none" />
+                className="input-pi text-[13px] resize-none" />
               <div className="flex justify-end gap-2 mt-1.5">
                 <button className="btn-tool text-xs" onClick={() => setEditing(false)}>取消</button>
                 <button className="btn-primary text-xs px-3 py-1" onClick={() => { setEditing(false); if (draft.trim()) onEdit?.(draft.trim()) }}>重新发送</button>
@@ -132,7 +132,7 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
               <Attachments msg={msg} />
               {(msg.text || !msg.files?.length) && (
                 <div className="relative msg-bubble msg-bubble-user rounded-2xl rounded-br-md px-4 py-2.5 mt-0.5">
-                  <span className="whitespace-pre-wrap text-[13.5px] text-pi-text leading-relaxed">{msg.text}</span>
+                  <span className="whitespace-pre-wrap text-[13px] text-pi-text leading-relaxed">{msg.text}</span>
                 </div>
               )}
               <div className="flex items-center gap-2 mt-0.5 px-1">
@@ -158,7 +158,7 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
         {msg.notes?.length ? (
           <div className="mb-2 space-y-1">
             {msg.notes.map((n, i) => (
-              <div key={i} className="text-[11.5px] text-sky-300/90 bg-sky-500/8 border border-sky-500/20 rounded-pi-sm px-2.5 py-1 w-fit">ℹ️ {n}</div>
+              <div key={i} className="text-[12px] text-sky-300/90 bg-sky-500/8 border border-sky-500/20 rounded-pi-sm px-2.5 py-1 w-fit">ℹ️ {n}</div>
             ))}
           </div>
         ) : null}

@@ -54,7 +54,7 @@ function RefineView() {
             {arr.map((p: any, i: number) => (
               <div key={p.id || i} className="panel !p-3">
                 <div className="text-[13px] text-pi-text font-medium">{p.title || p.name || p.id}</div>
-                {p.rationale && <div className="text-[11.5px] text-pi-dim2 mt-1 line-clamp-3">{p.rationale}</div>}
+                {p.rationale && <div className="text-[12px] text-pi-dim2 mt-1 line-clamp-3">{p.rationale}</div>}
                 {(p as any).status && <div className="text-[10px] text-pi-dim2 mt-1">状态：{(p as any).status}</div>}
                 {label === '待审提案' && p.id && (
                   <div className="flex gap-2 mt-2">
@@ -88,8 +88,8 @@ function SkillsView() {
       <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2.5">
         {skills.map(s => (
           <div key={s.name} className="panel !p-3" title={s.location}>
-            <div className="font-mono text-[12.5px] text-pi-accent">{s.name}</div>
-            <div className="text-[11.5px] text-pi-dim mt-1 line-clamp-3">{s.description}</div>
+            <div className="font-mono text-[13px] text-pi-accent">{s.name}</div>
+            <div className="text-[12px] text-pi-dim mt-1 line-clamp-3">{s.description}</div>
           </div>
         ))}
       </div>
@@ -116,11 +116,11 @@ function PromptsView() {
       {prompts.map(p => (
         <div key={p.name} className="panel !p-3">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => setOpen(open === p.name ? null : p.name)}>
-            <span className="text-[13px] text-pi-text font-medium flex-1">{p.name}<span className="text-pi-dim2 font-normal ml-2 text-[11.5px]">{p.description}</span></span>
+            <span className="text-[13px] text-pi-text font-medium flex-1">{p.name}<span className="text-pi-dim2 font-normal ml-2 text-[12px]">{p.description}</span></span>
             <button className="btn-tool text-xs !px-2" title="复制内容" onClick={e => { e.stopPropagation(); copy(p) }}>{copied === p.name ? '✓ 已复制' : '复制'}</button>
             <span className="text-pi-dim2 text-[10px]">{open === p.name ? '▾' : '▸'}</span>
           </div>
-          {open === p.name && <pre className="mt-2 pt-2 border-t border-pi-border-soft text-[11.5px] text-pi-dim whitespace-pre-wrap max-h-64 overflow-auto font-mono">{p.content}</pre>}
+          {open === p.name && <pre className="mt-2 pt-2 border-t border-pi-border-soft text-[12px] text-pi-dim whitespace-pre-wrap max-h-64 overflow-auto font-mono">{p.content}</pre>}
         </div>
       ))}
       {!prompts.length && (
@@ -151,7 +151,7 @@ function ImproveView() {
       {items.map((it: any, i: number) => (
         <div key={it.id || i} className="panel !p-3">
           <div className="text-[13px] text-pi-text font-medium">{it.title || it.summary || it.id}</div>
-          {it.detail && <div className="text-[11.5px] text-pi-dim2 mt-1 line-clamp-4">{it.detail}</div>}
+          {it.detail && <div className="text-[12px] text-pi-dim2 mt-1 line-clamp-4">{it.detail}</div>}
           <button className="btn-tool text-xs mt-2" onClick={() => it.id && dismiss(it.id)}>忽略</button>
         </div>
       ))}

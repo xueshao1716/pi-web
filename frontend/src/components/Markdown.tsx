@@ -38,7 +38,7 @@ function MermaidBlock({ code }: { code: string }) {
 
 export default function Markdown({ text }: { text: string }) {
   return (
-    <div className="markdown-body text-[14px] leading-relaxed">
+    <div className="markdown-body text-[15px] leading-relaxed">
       <ReactMarkdown remarkPlugins={[remarkGfm]}
         components={{
           code({ className, children, ...props }: any) {
@@ -57,7 +57,7 @@ export default function Markdown({ text }: { text: string }) {
                 </pre>
               )
             }
-            return <code className="bg-gray-800 rounded px-1.5 py-0.5 text-[12.5px]" {...props}>{children}</code>
+            return <code className="bg-gray-800 rounded px-1.5 py-0.5 text-[13px]" {...props}>{children}</code>
           },
           a({ children, href }) { return <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--pi-accent2)" }} className="hover:underline">{children}</a> },
           table({ children }) { return <div className="overflow-x-auto my-2"><table className="w-full border-collapse">{children}</table></div> },

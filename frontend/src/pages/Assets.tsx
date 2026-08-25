@@ -29,7 +29,7 @@ function ArtifactTile({ a, onOpen }: { a: Artifact; onOpen: () => void }) {
           <span className="text-[11px] text-white/90 px-2.5 py-1 rounded-pi-pill bg-white/10 backdrop-blur-sm border border-white/15">{isImg ? '预览' : '打开'}</span>
         </div>
       </div>
-      <div className="text-[11.5px] text-pi-text truncate" title={a.name}>{a.name}</div>
+      <div className="text-[12px] text-pi-text truncate" title={a.name}>{a.name}</div>
       <div className="flex items-center justify-between text-[10px] text-pi-dim2">
         <span className="truncate px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3">{a.type}</span>
         <span className="flex-shrink-0 ml-2">{fmtSize(a.size)} · {fmtDate(a.date)}</span>
@@ -116,7 +116,7 @@ export default function Assets() {
                 <div key={d.wsPath} className="flex items-center gap-3 px-4 py-2.5 border-b border-pi-border-soft/50 last:border-0 hover:bg-pi-bg3/40 transition-colors cursor-pointer"
                   onClick={() => window.open(withFileToken(d.url), '_blank')}>
                   <span>{d.type === 'dir' ? <FolderOpen className="w-4 h-4" /> : <FileText className="w-4 h-4" />}</span>
-                  <span className="text-[12.5px] text-pi-text truncate flex-1">{d.name}</span>
+                  <span className="text-[13px] text-pi-text truncate flex-1">{d.name}</span>
                   <span className="text-[10px] text-pi-dim2">{fmtSize(d.size)}</span>
                 </div>
               ))}

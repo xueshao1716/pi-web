@@ -46,7 +46,7 @@ export default function ModelSelect({ compact = false }: { compact?: boolean }) 
       <DM.Trigger asChild>
         <button
           aria-label="选择模型"
-          className={`flex items-center gap-1.5 px-2 py-1 rounded-pi-md border border-pi-border-soft bg-pi-bg2/50 text-[11.5px] text-pi-dim hover:text-pi-text hover:border-pi-accent/40 transition-all duration-200 data-[state=open]:border-pi-accent/40 ${compact ? 'max-w-[110px]' : 'max-w-[160px]'}`}
+          className={`flex items-center gap-1.5 px-2 py-1 rounded-pi-md border border-pi-border-soft bg-pi-bg2/50 text-[12px] text-pi-dim hover:text-pi-text hover:border-pi-accent/40 transition-all duration-200 data-[state=open]:border-pi-accent/40 ${compact ? 'max-w-[110px]' : 'max-w-[160px]'}`}
         >
           <Zap className="w-3 h-3 text-pi-accent flex-shrink-0" strokeWidth={2} />
           <span className="truncate font-medium">{currentLabel}</span>
@@ -63,8 +63,8 @@ export default function ModelSelect({ compact = false }: { compact?: boolean }) 
             <DM.RadioItem value="auto/auto" className={ITEM_CLS}>
               <Zap className={`w-4 h-4 flex-shrink-0 ${isAuto ? 'text-pi-accent' : ''}`} strokeWidth={2} />
               <div className="flex-1 min-w-0">
-                <div className={`text-[12.5px] font-semibold ${isAuto ? 'text-pi-accent' : 'text-pi-text'}`}>Auto 智能路由</div>
-                <div className="text-[10.5px] opacity-60">按任务复杂度自动选模型</div>
+                <div className={`text-[13px] font-semibold ${isAuto ? 'text-pi-accent' : 'text-pi-text'}`}>Auto 智能路由</div>
+                <div className="text-[11px] opacity-60">按任务复杂度自动选模型</div>
               </div>
               {isAuto && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-pi-accent/20 text-pi-accent font-medium">当前</span>}
             </DM.RadioItem>
@@ -78,10 +78,10 @@ export default function ModelSelect({ compact = false }: { compact?: boolean }) 
                   <div className="flex-shrink-0">{capIcon(m)}</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <span className={`text-[12.5px] font-medium truncate ${active ? 'text-pi-accent' : 'text-pi-text'}`}>{m.name}</span>
+                      <span className={`text-[13px] font-medium truncate ${active ? 'text-pi-accent' : 'text-pi-text'}`}>{m.name}</span>
                       {free && <span className="text-[10px] px-1 py-px rounded-full bg-emerald-500/15 text-emerald-400 font-medium flex-shrink-0">免费</span>}
                     </div>
-                    <div className="text-[10.5px] text-pi-dim2 truncate">{m.provider}</div>
+                    <div className="text-[11px] text-pi-dim2 truncate">{m.provider}</div>
                   </div>
                   {active && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-pi-accent/20 text-pi-accent font-medium flex-shrink-0">当前</span>}
                 </DM.RadioItem>

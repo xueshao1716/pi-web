@@ -116,7 +116,7 @@ export default function WorkshopView() {
 
       {/* 过程日志 */}
       {log.length > 0 && (
-        <div className="panel !p-3 max-h-56 overflow-y-auto font-mono text-[11.5px] leading-relaxed">
+        <div className="panel !p-3 max-h-56 overflow-y-auto font-mono text-[12px] leading-relaxed">
           {log.map((l, i) => (
             <div key={i} className={l.startsWith('[错误]') ? 'text-red-400' : l.startsWith('[完成]') || l.startsWith('[产物]') ? 'text-emerald-300' : l.startsWith('[警告]') ? 'text-amber-300' : 'text-pi-dim'}>{l}</div>
           ))}

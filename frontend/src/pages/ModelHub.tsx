@@ -33,14 +33,14 @@ function ModelCard({ m, active, switching, onUse }: { m: Model; active: boolean;
         <span className="font-medium text-[13px] text-pi-text truncate flex-1">{m.name}</span>
         {free && <span className="text-[10px] px-1.5 py-0.5 rounded-pi-pill bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex-shrink-0">免费</span>}
       </div>
-      <div className="text-[10.5px] text-pi-dim2 font-mono truncate relative">{m.provider}/{m.id}</div>
-      <div className="flex items-center gap-2 text-[10.5px] text-pi-dim2 relative">
+      <div className="text-[11px] text-pi-dim2 font-mono truncate relative">{m.provider}/{m.id}</div>
+      <div className="flex items-center gap-2 text-[11px] text-pi-dim2 relative">
         {ctx && <span className="px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3">上下文 {ctx}</span>}
         {m.reasoning && <span className="px-1.5 py-0.5 rounded-pi-pill bg-purple-500/12 text-purple-300">推理</span>}
         {(m.capabilities as any)?.vision === true && <span className="px-1.5 py-0.5 rounded-pi-pill bg-sky-500/12 text-sky-300">视觉</span>}
         {active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-pi-green animate-pulse" title="使用中" />}
       </div>
-      {m.note && <div className="text-[10.5px] text-pi-dim2 line-clamp-2 relative">{m.note}</div>}
+      {m.note && <div className="text-[11px] text-pi-dim2 line-clamp-2 relative">{m.note}</div>}
       <button onClick={onUse} disabled={active}
         className={`mt-auto relative text-xs rounded-pi-md py-1.5 transition-all duration-150 ${active ? 'bg-pi-bg3 text-pi-dim2 cursor-default' : 'bg-pi-accent/15 text-pi-accent hover:bg-pi-accent hover:text-white hover:shadow-lg hover:shadow-pi-accent/25'}`}>
         {active ? '● 使用中' : switching ? '切换中…' : '切换使用'}
@@ -164,7 +164,7 @@ export default function ModelHub() {
         <details className="panel !p-0 overflow-hidden mb-6">
           <summary className="px-4 py-3 cursor-pointer text-sm font-semibold text-pi-text select-none flex items-center justify-between">
             Provider 用量
-            <span className="text-[10.5px] text-pi-dim2 font-normal">每 60s 刷新 · 点击展开</span>
+            <span className="text-[11px] text-pi-dim2 font-normal">每 60s 刷新 · 点击展开</span>
           </summary>
           <div className="overflow-x-auto border-t border-pi-border-soft">
             <table className="w-full text-[12px]">

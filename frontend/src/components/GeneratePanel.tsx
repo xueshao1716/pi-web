@@ -42,7 +42,7 @@ export default function GeneratePanel({ onClose, onGenerated }: { onClose: () =>
     <div className="panel !p-4 mb-4 space-y-3">
       <div className="flex items-center gap-2">
         <span className="text-sm font-semibold text-pi-text inline-flex items-center gap-1.5"><ImagePlus className="w-4 h-4" /> 生成图片</span>
-        <span className="text-[10.5px] text-pi-dim2">生成后自动存入「生成物/图片」，出现在下方列表</span>
+        <span className="text-[11px] text-pi-dim2">生成后自动存入「生成物/图片」，出现在下方列表</span>
         <button className="btn-tool !px-2 ml-auto" onClick={onClose}>✕</button>
       </div>
       {imageModels.length === 0 ? (

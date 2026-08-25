@@ -59,13 +59,13 @@ export default function TerminalPanel() {
         <div className="text-[10px] text-pi-dim2 mb-1.5">可用绑定（程序内直接 await 调用）</div>
         <div className="flex flex-wrap gap-1.5">
           {toolsErr && (
-            <button className="text-[10.5px] px-2 py-1 rounded-pi-pill bg-amber-500/10 border border-amber-500/25 text-amber-400"
+            <button className="text-[11px] px-2 py-1 rounded-pi-pill bg-amber-500/10 border border-amber-500/25 text-amber-400"
               onClick={() => mutateTools()} title={String(toolsErr).slice(0, 120)}>
               <AlertTriangle className="w-3 h-3 inline align-middle mr-1" />引擎未就绪，点此重试
             </button>
           )}
           {bindings.map(b => (
-            <span key={b.name} className="text-[10.5px] px-2 py-1 rounded-pi-pill bg-pi-accent/10 border border-pi-accent/20 text-pi-accent font-mono cursor-help" title={b.description}>
+            <span key={b.name} className="text-[11px] px-2 py-1 rounded-pi-pill bg-pi-accent/10 border border-pi-accent/20 text-pi-accent font-mono cursor-help" title={b.description}>
               await {b.name}()
             </span>
           ))}
@@ -89,7 +89,7 @@ export default function TerminalPanel() {
       </div>
 
       {/* 控制台输出 */}
-      <div ref={consoleRef} className="flex-1 overflow-y-auto px-3 py-2.5 bg-pi-bg2/50 font-mono text-[11.5px] leading-relaxed min-h-0">
+      <div ref={consoleRef} className="flex-1 overflow-y-auto px-3 py-2.5 bg-pi-bg2/50 font-mono text-[12px] leading-relaxed min-h-0">
         {!lines.length && <div className="text-pi-dim2">输出会显示在这里。绑定调用在服务端 worker 线程隔离执行。</div>}
         {lines.map((l, i) => (
           <pre key={i} className={`whitespace-pre-wrap break-all ${
