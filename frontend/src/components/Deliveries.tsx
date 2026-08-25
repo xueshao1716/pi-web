@@ -34,7 +34,7 @@ export default function Deliveries() {
           ) : (
             <div className="flex flex-col gap-1.5">
               {items.map((d, i) => (
-                <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-pi-md border border-pi-border bg-pi-bg2 hover:border-pi-accent/30 transition-colors">
+                <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-pi-md border border-pi-border bg-pi-bg2 glow-hover transition-colors">
                   <Package className="w-4 h-4 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] text-pi-text truncate">{d.name || d.path}</div>

@@ -128,7 +128,7 @@ export default function WorkshopView() {
         <div className="space-y-1.5">
           {artifacts.map(a => (
             <a key={a.path} href={withFileToken(`/api/ws/file?path=${encodeURIComponent(a.path)}`)} target="_blank" rel="noreferrer"
-              className="panel !p-3 flex items-center gap-2.5 hover:border-pi-accent/40 transition-colors">
+              className="panel !p-3 flex items-center gap-2.5 glow-hover">
               <Package className="w-4 h-4 flex-shrink-0" />
               <span className="text-[13px] text-pi-text flex-1 truncate">{a.name}</span>
               {a.size ? <span className="text-[10px] text-pi-dim2">{(a.size / 1024).toFixed(0)} KB</span> : null}

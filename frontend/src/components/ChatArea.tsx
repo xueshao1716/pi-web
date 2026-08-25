@@ -347,7 +347,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
             className={`text-[11px] px-2.5 py-1 rounded-full border flex items-center gap-1 flex-shrink-0 transition-colors duration-150 ${
               rightPanel && rightPanel !== 'chat'
                 ? 'bg-pi-accent text-white border-pi-accent'
-                : 'border-pi-border-soft bg-pi-bg2/60 text-pi-dim hover:text-pi-text hover:border-pi-accent/40'}`}
+                : 'border-pi-border-soft bg-pi-bg2/60 text-pi-dim hover:text-pi-text glow-hover'}`}
           >
             <PanelRight className="w-3 h-3" strokeWidth={2} />
             右栏
@@ -407,7 +407,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         <button
           aria-label="回到底部"
           onClick={() => scroll(true)}
-          className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-pi-border bg-pi-bg1/90 backdrop-blur-xl text-[12px] text-pi-dim hover:text-pi-text hover:border-pi-accent/40 shadow-xl transition-colors duration-200 anim-enter"
+          className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-pi-border bg-pi-bg1/90 backdrop-blur-xl text-[12px] text-pi-dim hover:text-pi-text glow-hover shadow-xl transition-colors duration-200 anim-enter"
         >
           <ChevronDown className="w-3.5 h-3.5" strokeWidth={2} />
           回到底部
