@@ -22,6 +22,17 @@ export default defineConfig({
       'pi-green': 'var(--pi-green)',
       'pi-red': 'var(--pi-red)',
       'pi-yellow': 'var(--pi-yellow)',
+      // 语义层级 token（HeroUI surface/overlay/field）
+      'pi-surface': 'var(--pi-surface)',
+      'pi-surface-fg': 'var(--pi-surface-fg)',
+      'pi-overlay': 'var(--pi-overlay)',
+      'pi-overlay-fg': 'var(--pi-overlay-fg)',
+      'pi-field': 'var(--pi-field)',
+      'pi-field-border': 'var(--pi-field-border)',
+      'pi-default': 'var(--pi-default)',
+      'pi-success': 'var(--pi-success)',
+      'pi-warning': 'var(--pi-warning)',
+      'pi-danger': 'var(--pi-danger)',
     },
     transitionDuration: {
       fast: '0.14s',
@@ -36,7 +47,7 @@ export default defineConfig({
     'btn-tool': 'btn w-7 h-7 p-0 text-pi-dim hover:text-pi-text hover:bg-pi-bg-hover active:bg-pi-bg-active rounded-pi-sm',
     'card': 'rounded-pi-lg border border-pi-border bg-pi-bg2',
     'panel': 'rounded-pi-lg glass-hi',
-    'input-pi': 'w-full px-3 py-2 rounded-pi-md bg-pi-bg3 border border-pi-border text-pi-text text-sm outline-none focus:border-pi-accent focus:ring-1 focus:ring-pi-accent/40 placeholder:text-pi-dim2 transition-colors',
+    'input-pi': 'w-full px-3 py-2 rounded-pi-md bg-pi-field border border-pi-field-border text-pi-text text-sm outline-none focus:border-pi-accent focus:ring-1 focus:ring-pi-accent/40 placeholder:text-pi-dim2 transition-colors',
   },
   rules: [
     ['rounded-pi-sm', { 'border-radius': 'var(--pi-r-sm)' }],

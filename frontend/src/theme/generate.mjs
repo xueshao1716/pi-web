@@ -140,6 +140,26 @@ export function generateTheme(seed) {
     '--pi-glow-purple': 'rgba(139,92,246,0.18)', '--pi-glow-cyan': 'rgba(56,189,248,0.10)',
   }, seed.overrides || {})
 
+  // ── 语义层级 token（HeroUI surface/overlay/field 三层体系）──
+  // surface: 抬起的面板（如卡片、侧边栏行）
+  v['--pi-surface'] = v['--pi-bg1']
+  v['--pi-surface-fg'] = seed.text
+  // overlay: 弹出层（菜单、下拉、弹窗）
+  v['--pi-overlay'] = v['--pi-bg2']
+  v['--pi-overlay-fg'] = v['--pi-dim']
+  // field: 输入框/选择器背景
+  v['--pi-field'] = v['--pi-bg1']
+  v['--pi-field-border'] = v['--pi-border-soft']
+  // default: 不活跃/默认态按钮背景
+  v['--pi-default'] = v['--pi-bg3']
+  // 语义状态色（alias 便于语义引用）
+  v['--pi-success'] = v['--pi-green']
+  v['--pi-warning'] = v['--pi-yellow']
+  v['--pi-danger'] = v['--pi-red']
+  // accent soft 背景（组件用）
+  v['--pi-accent-soft'] = mixAlpha(seed.accent, 0.12)
+  v['--pi-accent-soft-fg'] = seed.accent
+
   // 字体 / 圆角（单变量派生）/ 字阶（行高绑定单 token）
   v['--pi-font-mono'] = FONTS.mono
   v['--pi-font-sans'] = FONTS.sans

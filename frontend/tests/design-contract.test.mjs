@@ -71,7 +71,7 @@ test('任意 seed 下 dim2/bg2 ≥4.5、dim/bg ≥5.5、阶梯单调', () => {
 
 // ── 4B. styles.css 区块与生成器一致 ──
 test('styles.css token 区块与生成器一致', () => {
-  const c = readFileSync(join(ROOT, 'src/styles.css'), 'utf8')
+  const c = readFileSync(join(ROOT, 'src/styles.css'), 'utf8').replace(/\r\n/g, '\n')
   const esc = s => s.replace(/[*/]/g, '\\$&')
   const START = '/* @generated-tokens:start'
   const END = '/* @generated-tokens:end */'

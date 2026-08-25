@@ -49,6 +49,18 @@ ul[class], ol[class] { list-style: none; margin: 0; padding: 0; }
   --pi-yellow: #f5b759;
   --pi-glow-purple: rgba(139,92,246,0.18);
   --pi-glow-cyan: rgba(56,189,248,0.10);
+  --pi-surface: #181b20;
+  --pi-surface-fg: #e8eef8;
+  --pi-overlay: #22252a;
+  --pi-overlay-fg: #8891a1;
+  --pi-field: #181b20;
+  --pi-field-border: #1b1e24;
+  --pi-default: #2c2f35;
+  --pi-success: #3ecf8e;
+  --pi-warning: #f5b759;
+  --pi-danger: #f47067;
+  --pi-accent-soft: rgba(84,104,255,0.12);
+  --pi-accent-soft-fg: #5468ff;
   --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
   --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --pi-radius-base: 8px;
@@ -178,8 +190,10 @@ body::before {
   -webkit-backdrop-filter: blur(22px) saturate(1.35);
 }
 
-/* ── 颜色派生层（08-25，HeroUI OKLCH+color-mix 路线）：
-   一个 accent 自动派生出 6 个交互态，不再手调 ── */
+/* ── 颜色派生层（HeroUI OKLCH+color-mix 语义色层系统）：
+   base tokens → color-mix 派生 → 组件只引用变量 ── */
+
+/* accent soft：强调色柔化背景（用于活跃态行、选中标签等） */
 .accent-soft {
   background: color-mix(in oklab, var(--pi-accent) 12%, transparent);
   border-color: color-mix(in oklab, var(--pi-accent) 25%, transparent);
@@ -191,15 +205,55 @@ body::before {
 .accent-soft:active {
   background: color-mix(in oklab, var(--pi-accent) 15%, transparent);
 }
+
+/* surface-hover：surface 层级交互态（卡片、列表行） */
 .surface-hover {
   transition: background-color var(--pi-motion-fast), border-color var(--pi-motion-fast);
 }
 .surface-hover:hover {
-  background: color-mix(in oklab, var(--pi-bg2) 90%, var(--pi-accent) 10%);
+  background: color-mix(in oklab, var(--pi-surface) 90%, var(--pi-accent) 10%);
 }
 .surface-hover:active {
-  background: color-mix(in oklab, var(--pi-bg2) 85%, var(--pi-accent) 15%);
+  background: color-mix(in oklab, var(--pi-surface) 85%, var(--pi-accent) 15%);
 }
+
+/* overlay-hover：弹出层交互态（菜单项、下拉选项） */
+.overlay-hover {
+  transition: background-color var(--pi-motion-fast);
+}
+.overlay-hover:hover {
+  background: color-mix(in oklab, var(--pi-overlay) 88%, var(--pi-accent) 12%);
+}
+.overlay-hover:active {
+  background: color-mix(in oklab, var(--pi-overlay) 82%, var(--pi-accent) 18%);
+}
+
+/* field-container：输入框/选择器语义层（背景+边框+聚焦态） */
+.field-container {
+  background: color-mix(in oklab, var(--pi-field) 85%, transparent);
+  border: 1px solid var(--pi-field-border);
+  transition: border-color var(--pi-motion-fast), box-shadow var(--pi-motion-fast);
+}
+.field-container:hover {
+  border-color: color-mix(in oklab, var(--pi-field-border) 60%, var(--pi-accent) 40%);
+}
+.field-container:focus-within {
+  border-color: var(--pi-accent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--pi-accent) 20%, transparent);
+}
+
+/* accent-interactive：强调色交互态（强调色按钮 hover/active 亮度调整） */
+.accent-interactive {
+  transition: background-color var(--pi-motion-fast), color var(--pi-motion-fast);
+}
+.accent-interactive:hover {
+  background: color-mix(in oklab, var(--pi-accent) 88%, white 12%);
+  color: #fff;
+}
+.accent-interactive:active {
+  background: color-mix(in oklab, var(--pi-accent) 80%, white 20%);
+}
+
 /* 边框发光（hover 时 accent 描边，比固定 rgba 自然） */
 .glow-hover {
   transition: box-shadow var(--pi-motion-fast), border-color var(--pi-motion-fast);
@@ -311,6 +365,18 @@ body::before {
   --pi-yellow: #f5b759;
   --pi-glow-purple: rgba(120,120,160,0.12);
   --pi-glow-cyan: rgba(100,140,180,0.06);
+  --pi-surface: #0d0d11;
+  --pi-surface-fg: #eceef2;
+  --pi-overlay: #17171c;
+  --pi-overlay-fg: #858c98;
+  --pi-field: #0d0d11;
+  --pi-field-border: #111115;
+  --pi-default: #212226;
+  --pi-success: #3ecf8e;
+  --pi-warning: #f5b759;
+  --pi-danger: #f47067;
+  --pi-accent-soft: rgba(84,104,255,0.12);
+  --pi-accent-soft-fg: #5468ff;
   --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
   --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --pi-radius-base: 8px;
@@ -353,6 +419,18 @@ body::before {
   --pi-yellow: #f5b759;
   --pi-glow-purple: rgba(139,92,246,0.22);
   --pi-glow-cyan: rgba(120,100,200,0.08);
+  --pi-surface: #141223;
+  --pi-surface-fg: #f0eaff;
+  --pi-overlay: #1e1c2e;
+  --pi-overlay-fg: #908b9e;
+  --pi-field: #141223;
+  --pi-field-border: #171527;
+  --pi-default: #28273a;
+  --pi-success: #3ecf8e;
+  --pi-warning: #f5b759;
+  --pi-danger: #f47067;
+  --pi-accent-soft: rgba(139,124,246,0.12);
+  --pi-accent-soft-fg: #8b7cf6;
   --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
   --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --pi-radius-base: 8px;
@@ -395,6 +473,18 @@ body::before {
   --pi-yellow: #d97706;
   --pi-glow-purple: rgba(100,80,200,0.06);
   --pi-glow-cyan: rgba(56,189,248,0.04);
+  --pi-surface: #eceef3;
+  --pi-surface-fg: #1c2333;
+  --pi-overlay: #e6e8ed;
+  --pi-overlay-fg: #515d77;
+  --pi-field: #eceef3;
+  --pi-field-border: #eaecf1;
+  --pi-default: #dfe1e6;
+  --pi-success: #16a34a;
+  --pi-warning: #d97706;
+  --pi-danger: #dc4b45;
+  --pi-accent-soft: rgba(74,88,250,0.12);
+  --pi-accent-soft-fg: #4a58fa;
   --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
   --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --pi-radius-base: 8px;
@@ -653,9 +743,9 @@ body::before {
 /* ── SendBox 聚焦：静态光晕（08-25 去呼吸动画：聚焦环+光标闪烁+扫光三动画并发超载）── */
 .sendbox-shell:focus-within {
   box-shadow:
-    0 0 0 3px rgba(84,104,255,0.14),
+    0 0 0 3px color-mix(in oklab, var(--pi-accent) 14%, transparent),
     0 4px 24px rgba(0,0,0,0.25),
-    0 0 28px rgba(84,104,255,0.10);
+    0 0 28px color-mix(in oklab, var(--pi-accent) 10%, transparent);
 }
 
 /* ── 录音波形条 ── */
