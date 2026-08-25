@@ -46,7 +46,12 @@ export class FileSessionStore {
   async save(session) {
     if (!session || !session.id) throw new Error("会话必须有 id");
     this.fs.mkdirSync(this.dir, { recursive: true });
-    this.fs.writeFileSync(this._file(session.id), JSON.stringify(session, null, 2), "utf8");
+    // 原子写（08-25）：崩溃/并发不再留半截 JSON
+    const target = this._file(session.id);
+    const tmp = target + ".tmp-" + process.pid + "-" + Date.now();
+    this.fs.writeFileSync(tmp, JSON.stringify(session, null, 2), "utf8");
+    try { this.fs.renameSync(tmp, target); }
+    catch (e) { try { this.fs.unlinkSync(tmp); } catch {} throw e; }
     return session.id;
   }
 

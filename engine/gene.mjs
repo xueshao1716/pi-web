@@ -28,7 +28,15 @@ const DEFAULT_GENES = {
 function geneFile() { return path.join(wsRoot, "工程/经验库/genome.json"); }
 function propFile() { return path.join(wsRoot, "工程/经验库/proposals.json"); }
 function readJson(p, fallback) { try { if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, "utf8")); } catch {} return fallback; }
-function writeJson(p, obj) { try { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(obj, null, 2), "utf8"); return true; } catch { return false; } }
+function writeJson(p, obj) {
+  try {
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    const tmp = path.join(path.dirname(p), `.${path.basename(p)}.tmp-${process.pid}-${Date.now()}`);
+    fs.writeFileSync(tmp, JSON.stringify(obj, null, 2), "utf8");
+    try { fs.renameSync(tmp, p); } catch (e) { try { fs.unlinkSync(tmp); } catch {} throw e; }
+    return true;
+  } catch { return false; }
+}
 
 export function initGene(root) {
   wsRoot = root || wsRoot;

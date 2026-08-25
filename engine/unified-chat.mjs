@@ -20,6 +20,7 @@ import { readEntriesFromFile } from "./session-files.mjs";
 import { jitRulesForPath, loadProjectRules, loadMemory, shouldInjectFullMemory, setLastUserQuery } from "./context-loader.mjs";
 import { resolveAuth } from "./dsh-keys.mjs";
 import { policyDecide } from "./dsh-keys.mjs";
+import { wrapUntrusted } from "./prompt-security.mjs";
 
 let _executeUnifiedTool = null, _findKeyByEntry = null, _readJsonFile = null, _getModelList = () => [], _getDefaultModel = () => null, _authPath = "", _modelsPath = "", _cwd = "", _piPackage = "", _unifiedTools = [], _getAgentDir = null;
 export function initUnifiedChat({ executeUnifiedTool = null, findKeyByEntry = null, readJsonFile = null, getModelList = null, getDefaultModel = null, authPath = "", modelsPath = "", cwd = "", piPackage = "", UNIFIED_TOOLS = [], getAgentDir = null } = {}) {
@@ -198,7 +199,8 @@ export async function unifiedChat(model, messages, opts = {}) {
           out.text = `[系统提示] 工具 ${fnName} 已连续失败 5 次（最近错误：${String(out.text || "").slice(0, 100)}）。请换一种方式完成任务，不要重复相同的失败操作。`;
         }
         if (opts.onToolEnd) opts.onToolEnd(tc.id, fnName, args, out);
-        history.push({ role: "tool", tool_call_id: tc.id, content: out.text });
+        // 注入防线（08-25 Odysseus 路线）：外部来源输出包装为"数据"，防提示注入
+        history.push({ role: "tool", tool_call_id: tc.id, content: wrapUntrusted(fnName, out.text) });
       }
       continue;
     }
@@ -219,7 +221,7 @@ export async function unifiedChat(model, messages, opts = {}) {
         if (opts.onTool) opts.onTool(s.id, s.name, s.args);
         const out = await _executeUnifiedTool(s.name, s.args);
         if (opts.onToolEnd) opts.onToolEnd(s.id, s.name, s.args, out);
-        history.push({ role: "tool", tool_call_id: s.id, content: out.text });
+        history.push({ role: "tool", tool_call_id: s.id, content: wrapUntrusted(s.name, out.text) });
       }
       continue;
     }
