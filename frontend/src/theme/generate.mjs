@@ -90,6 +90,7 @@ const SEMANTIC = { green: '#3ecf8e', red: '#f47067', yellow: '#f5b759' }
 const FONTS = {
   mono: '"Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace',
   sans: '-apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
+  display: '"Space Grotesk", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
 }
 const FONT_SCALE = [['sm', 12], ['md', 13], ['lg', 15], ['xl', 17], ['xxl', 22]] // 行高绑定：(n+4)/n
 export const EASINGS = {
@@ -163,6 +164,7 @@ export function generateTheme(seed) {
   // 字体 / 圆角（单变量派生）/ 字阶（行高绑定单 token）
   v['--pi-font-mono'] = FONTS.mono
   v['--pi-font-sans'] = FONTS.sans
+  v['--pi-font-display'] = FONTS.display
   v['--pi-radius-base'] = '8px'
   v['--pi-r-sm'] = '6px'; v['--pi-r-md'] = '8px'; v['--pi-r-lg'] = '12px'; v['--pi-r-xl'] = '16px'
   for (const [name, px] of FONT_SCALE) {

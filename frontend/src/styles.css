@@ -63,6 +63,7 @@ ul[class], ol[class] { list-style: none; margin: 0; padding: 0; }
   --pi-accent-soft-fg: #5468ff;
   --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
   --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --pi-font-display: "Space Grotesk", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --pi-radius-base: 8px;
   --pi-r-sm: 6px;
   --pi-r-md: 8px;
@@ -381,6 +382,7 @@ body::before {
   --pi-accent-soft-fg: #5468ff;
   --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
   --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --pi-font-display: "Space Grotesk", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --pi-radius-base: 8px;
   --pi-r-sm: 6px;
   --pi-r-md: 8px;
@@ -435,6 +437,7 @@ body::before {
   --pi-accent-soft-fg: #8b7cf6;
   --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
   --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --pi-font-display: "Space Grotesk", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --pi-radius-base: 8px;
   --pi-r-sm: 6px;
   --pi-r-md: 8px;
@@ -489,6 +492,7 @@ body::before {
   --pi-accent-soft-fg: #4a58fa;
   --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
   --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --pi-font-display: "Space Grotesk", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --pi-radius-base: 8px;
   --pi-r-sm: 6px;
   --pi-r-md: 8px;
