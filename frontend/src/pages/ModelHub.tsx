@@ -102,11 +102,23 @@ export default function ModelHub() {
           <p className="text-xs text-pi-dim2 mt-1.5">{models.length} 个模型 · {freeCount} 免费 · 工作空间 {cwd ? cwd.split(/[\\/]/).pop() : '—'}</p>
         </div>
 
-        {/* 统计卡 */}
+        {/* 统计卡（stats 加载中显示骨架，杜绝 0 值跳变）*/}
         <div className="grid grid-cols-3 gap-3 mb-5">
-          <div className="stat-card"><div className="stat-num text-pi-text">{fmtCost(totalCost)}</div><div className="text-[11px] text-pi-dim2 mt-0.5">累计成本</div></div>
-          <div className="stat-card"><div className="stat-num text-pi-text">{totalMsgs.toLocaleString()}</div><div className="text-[11px] text-pi-dim2 mt-0.5">累计消息</div></div>
-          <div className="stat-card"><div className="stat-num text-pi-green">{freeCount}<span className="text-[13px] text-pi-dim2 font-medium"> / {models.length}</span></div><div className="text-[11px] text-pi-dim2 mt-0.5">免费通道</div></div>
+          {(() => {
+            if (!stats) {
+              return [0, 1, 2].map(i => (
+                <div key={i} className="stat-card">
+                  <div className="h-6 rounded-pi-sm skeleton-block w-16" />
+                  <div className="h-2.5 rounded-pi-sm skeleton-block w-12 mt-2" />
+                </div>
+              ))
+            }
+            return (<>
+              <div className="stat-card"><div className="stat-num text-pi-text">{fmtCost(totalCost)}</div><div className="text-[11px] text-pi-dim2 mt-0.5">累计成本</div></div>
+              <div className="stat-card"><div className="stat-num text-pi-text">{totalMsgs.toLocaleString()}</div><div className="text-[11px] text-pi-dim2 mt-0.5">累计消息</div></div>
+              <div className="stat-card"><div className="stat-num text-pi-green">{freeCount}<span className="text-[13px] text-pi-dim2 font-medium"> / {models.length}</span></div><div className="text-[11px] text-pi-dim2 mt-0.5">免费通道</div></div>
+            </>)
+          })()}
         </div>
 
         {/* Auto 路由说明条 */}
@@ -152,13 +164,16 @@ export default function ModelHub() {
             const mk = `${m.provider}/${m.id}`
             return <ModelCard key={mk} m={m} active={currentModel === mk} switching={switching === mk} onUse={() => useModel(m)} />
           })}
+          {!filtered.length && (
+            <div className="empty-state py-12 text-center col-span-full">
+              <div className="text-3xl mb-2 opacity-60">🔍</div>
+              <div className="text-sm text-pi-dim">没有符合条件的模型</div>
+              <div className="text-[11px] text-pi-dim2 mt-1">试试清空搜索词或取消能力筛选</div>
+              <button onClick={() => { setQuery(''); setFacets({ free: false, reasoning: false, vision: false }); setFilter('all') }}
+                className="mt-3 btn-ghost text-xs px-3 py-1.5">重置筛选</button>
+            </div>
+          )}
         </div>
-        {!filtered.length && (
-          <div className="empty-state py-12 text-center mb-8">
-            <div className="text-sm text-pi-dim">没有符合条件的模型</div>
-            <div className="text-[11px] text-pi-dim2 mt-1">试试清空搜索词或取消能力筛选</div>
-          </div>
-        )}
 
         {/* Provider 用量（默认折叠，08-25 评审 P2）*/}
         <details className="panel !p-0 overflow-hidden mb-6">
