@@ -50,41 +50,40 @@ test('所有 animation 引用都有对应 @keyframes 定义', () => {
   assert.deepEqual(missing, [], `引用了未定义的 keyframes: ${missing.join(', ')}`)
 })
 
-// ── 契约四：文字 token 全主题 WCAG AA（dim/dim2 对 bg 与 bg2）──
-const lum = hex => {
-  const [r, g, b] = hex.replace('#', '').match(/\w\w/g).map(x => parseInt(x, 16) / 255)
-    .map(c => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4))
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b
-}
-const contrast = (a, b) => {
-  const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m)
-  return (x + 0.05) / (y + 0.05)
-}
-const parseVars = block => Object.fromEntries(
-  [...block.matchAll(/--pi-([\w-]+):\s*(#[0-9a-fA-F]{6})/g)].map(m => ['pi-' + m[1], m[2]]))
-
-test('全主题 dim/dim2 文字对比度 ≥ 4.5（对 bg 和 bg2 卡片底色）', () => {
-  const themes = [{ name: 'deep(default)', vars: parseVars(css.slice(css.indexOf(':root'))) }]
-  for (const m of css.matchAll(/\[data-theme="(\w+)"\]\s*\{([^}]*)\}/g)) {
-    themes.push({ name: m[1], vars: { ...themes[0].vars, ...parseVars(m[2]) } })
-  }
+// ── 契约四A：token 生成器派生不变量（Ant Design 路线：AA 是定义不是事后校验）──
+import { SEEDS, generateTheme, emitCss, contrast, wcagLum } from '../src/theme/generate.mjs'
+test('token 生成器：任意 seed 下 dim2/bg2 ≥4.5、dim/bg ≥5.5、阶梯单调', () => {
+  const seeds = [...Object.entries(SEEDS),
+    ['rand-warm', { bg: '#171310', text: '#f8efe8', accent: '#ff7847' }],
+    ['rand-teal', { bg: '#0c1414', text: '#e8f8f5', accent: '#14b8a6' }],
+    ['rand-rose', { bg: '#140d12', text: '#fdeef5', accent: '#ec4899' }],
+  ]
   const failures = []
-  for (const t of themes) {
-    const v = t.vars
-    if (!v['pi-bg'] || !v['pi-dim']) continue
-    const bg2 = v['pi-bg2'] || v['pi-bg']
-    for (const [token, surfaceName, fg, bg] of [
-      ['dim', 'bg', v['pi-dim'], v['pi-bg']],
-      ['dim2', 'bg', v['pi-dim2'], v['pi-bg']],
-      ['dim2', 'bg2(卡片)', v['pi-dim2'], bg2],
-    ]) {
-      const ratio = contrast(fg, bg)
-      if (ratio < 4.5) failures.push(`${t.name}: --${token} on ${surfaceName} = ${ratio.toFixed(2)} (${fg} on ${bg})`)
-    }
+  for (const [name, seed] of seeds) {
+    const v = generateTheme(seed)
+    if (contrast(v['--pi-dim2'], v['--pi-bg2']) < 4.5) failures.push(`${name}: dim2/bg2 ${contrast(v['--pi-dim2'], v['--pi-bg2']).toFixed(2)}`)
+    if (contrast(v['--pi-dim'], v['--pi-bg']) < 5.5) failures.push(`${name}: dim/bg ${contrast(v['--pi-dim'], v['--pi-bg']).toFixed(2)}`)
+    // 阶梯亮度单调：深色主题递增、浅色主题递减（方向一致即可）
+    const Ls = [v['--pi-bg'], v['--pi-bg1'], v['--pi-bg2'], v['--pi-bg3'], v['--pi-bg4']].map(h => wcagLum(h))
+    const inc = Ls.every((x, i) => i === 0 || x > Ls[i - 1])
+    const dec = Ls.every((x, i) => i === 0 || x < Ls[i - 1])
+    if (!inc && !dec) failures.push(`${name}: 阶梯亮度不单调`)
   }
   assert.deepEqual(failures, [], failures.join('\n'))
 })
 
+// ── 契约四B：styles.css 生成区块与生成器输出一致（防手改漂移）──
+test('styles.css token 区块与生成器输出一致（改 token 请改 generate.mjs 后重跑 scripts）', () => {
+  const css = readFileSync(join(ROOT, 'src/styles.css'), 'utf8')
+  const esc = s => s.replace(/[*/]/g, '\\$&')
+  const START = '/* @generated-tokens:start —— 本区块由 scripts/generate-theme.mjs 生成，勿手改 */'
+  const END = '/* @generated-tokens:end */'
+  const regions = [...css.matchAll(new RegExp(`${esc(START)}\\r?\\n([\\s\\S]*?)\\r?\\n${esc(END)}`, 'g'))].map(m => m[1])
+  assert.equal(regions.length, 2, `应有 2 个生成区块，实际 ${regions.length}`)
+  const { root, themes } = emitCss()
+  assert.equal(regions[0].trim(), root.trim(), ':root 区与生成器不一致——跑 node scripts/generate-theme.mjs')
+  assert.equal(regions[1].trim(), themes.trim(), 'data-theme 区与生成器不一致——跑 node scripts/generate-theme.mjs')
+})
 // ── 契约七：Radix 封装组件必须声明 data-slot（shadcn 结构/皮肤分离约定）──
 test('Radix 封装组件声明 data-slot 契约', () => {
   const required = [

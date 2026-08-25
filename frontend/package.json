@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint:design": "impeccable detect src/",
-    "check:theme": "node scripts/check-theme.mjs"
+    "check:theme": "node scripts/check-theme.mjs",
+    "theme": "node scripts/generate-theme.mjs"
   },
   "dependencies": {
     "@icon-park/react": "^1.4.2",

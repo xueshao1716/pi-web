@@ -24,33 +24,26 @@ img, svg, video, audio { max-width: 100%; }
 img, svg, video { display: block; }
 ul[class], ol[class] { list-style: none; margin: 0; padding: 0; }
 
+/* @generated-tokens:start —— 本区块由 scripts/generate-theme.mjs 生成，勿手改 */
 :root {
-  /* 动效 token（与 theme/tokens.ts motion 对齐，CSS 侧统一取用）*/
-  --pi-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --pi-ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
-  --pi-motion-fast: .14s var(--pi-ease);
-  --pi-motion-base: .2s var(--pi-ease);
-  --pi-motion-slow: .3s var(--pi-ease);
-  /* UI 审美修复（08-23）：底色提亮一档，拉开三栏亮度层差（原值太黑导致层次全糊） */
   --pi-bg: #0e1116;
-  --pi-bg1: #161a21;
-  --pi-bg2: #20242c;
-  --pi-bg3: #2a2f38;
-  --pi-bg4: #353b45;
-  /* 交互态语义 token（08-23 对标 nomifun：hover/active 不再手写） */
-  --pi-bg-hover: #1f242c;
-  --pi-bg-active: #272d37;
-  --pi-border: #30363f;
-  --pi-border-soft: #232830;
+  --pi-bg1: #181b20;
+  --pi-bg2: #22252a;
+  --pi-bg3: #2c2f35;
+  --pi-bg4: #373a40;
+  --pi-bg-hover: #1d2126;
+  --pi-bg-active: #25282e;
+  --pi-border: #282b31;
+  --pi-border-soft: #1b1e24;
   --pi-border-hi: rgba(255,255,255,0.10);
   --pi-text: #e8eef8;
-  --pi-dim: #8c98b4;
-  /* 08-25 评审 P0：#586580 对深底仅 3.2:1，提到达标（≥4.5:1）；装饰性弱化请用透明度 */
-  --pi-dim2: #8893b3;
+  --pi-dim: #8891a1;
+  --pi-dim2: #848e9d;
   --pi-accent: #5468ff;
-  --pi-accent2: #7b96ff;
-  --pi-accent-deep: #3c4be0;
+  --pi-accent2: #758eff;
+  --pi-accent-deep: #3e4adf;
   --pi-accent-glow: rgba(84,104,255,0.35);
+  --pi-glow: rgba(84,104,255,0.35);
   --pi-green: #3ecf8e;
   --pi-red: #f47067;
   --pi-yellow: #f5b759;
@@ -58,12 +51,28 @@ ul[class], ol[class] { list-style: none; margin: 0; padding: 0; }
   --pi-glow-cyan: rgba(56,189,248,0.10);
   --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
   --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --pi-radius-base: 8px;
   --pi-r-sm: 6px;
   --pi-r-md: 8px;
   --pi-r-lg: 12px;
   --pi-r-xl: 16px;
-  --pi-glow: rgba(84,104,255,0.35);
+  --pi-fs-sm: 12px;
+  --pi-lh-sm: 1.333;
+  --pi-fs-md: 13px;
+  --pi-lh-md: 1.308;
+  --pi-fs-lg: 15px;
+  --pi-lh-lg: 1.267;
+  --pi-fs-xl: 17px;
+  --pi-lh-xl: 1.235;
+  --pi-fs-xxl: 22px;
+  --pi-lh-xxl: 1.182;
+  --pi-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --pi-ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  --pi-motion-fast: .14s var(--pi-ease);
+  --pi-motion-base: .2s var(--pi-ease);
+  --pi-motion-slow: .3s var(--pi-ease-sheet);
 }
+/* @generated-tokens:end */
 
 body {
   font-family: var(--pi-font-sans);
@@ -246,58 +255,134 @@ body::before {
 .markdown-body a:hover { text-decoration: underline; }
 
 /* ══ 主题系统 ══ */
+/* @generated-tokens:start —— 本区块由 scripts/generate-theme.mjs 生成，勿手改 */
 [data-theme="ink"] {
   --pi-bg: #050508;
-  --pi-bg1: #0a0a10;
-  --pi-bg2: #111118;
-  --pi-bg3: #1a1a24;
-  --pi-bg4: #222230;
-  --pi-border: #2a2a38;
-  --pi-border-soft: #1a1a26;
-  --pi-border-hi: rgba(255,255,255,0.08);
+  --pi-bg1: #0d0d11;
+  --pi-bg2: #17171c;
+  --pi-bg3: #212226;
+  --pi-bg4: #2c2d31;
+  --pi-bg-hover: #131317;
+  --pi-bg-active: #1a1a1f;
+  --pi-border: #1d1d22;
+  --pi-border-soft: #111115;
+  --pi-border-hi: rgba(255,255,255,0.10);
   --pi-text: #eceef2;
-  --pi-dim: #9aa0ae;
-  --pi-dim2: #98a0b3;
-  --pi-accent-glow: rgba(120, 120, 160, 0.22);
+  --pi-dim: #858c98;
+  --pi-dim2: #7b818e;
+  --pi-accent: #5468ff;
+  --pi-accent2: #758eff;
+  --pi-accent-deep: #3e4adf;
+  --pi-accent-glow: rgba(120,120,160,0.22);
+  --pi-glow: rgba(120,120,160,0.22);
+  --pi-green: #3ecf8e;
+  --pi-red: #f47067;
+  --pi-yellow: #f5b759;
   --pi-glow-purple: rgba(120,120,160,0.12);
   --pi-glow-cyan: rgba(100,140,180,0.06);
+  --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
+  --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --pi-radius-base: 8px;
+  --pi-r-sm: 6px;
+  --pi-r-md: 8px;
+  --pi-r-lg: 12px;
+  --pi-r-xl: 16px;
+  --pi-fs-sm: 12px;
+  --pi-lh-sm: 1.333;
+  --pi-fs-md: 13px;
+  --pi-lh-md: 1.308;
+  --pi-fs-lg: 15px;
+  --pi-lh-lg: 1.267;
+  --pi-fs-xl: 17px;
+  --pi-lh-xl: 1.235;
+  --pi-fs-xxl: 22px;
+  --pi-lh-xxl: 1.182;
 }
 [data-theme="violet"] {
   --pi-bg: #0a0818;
-  --pi-bg1: #120e28;
-  --pi-bg2: #1a1438;
-  --pi-bg3: #241c4a;
-  --pi-bg4: #2e245c;
-  --pi-border: #35296a;
-  --pi-border-soft: #241c50;
-  --pi-border-hi: rgba(255,255,255,0.07);
+  --pi-bg1: #141223;
+  --pi-bg2: #1e1c2e;
+  --pi-bg3: #28273a;
+  --pi-bg4: #333246;
+  --pi-bg-hover: #1a1829;
+  --pi-bg-active: #211f31;
+  --pi-border: #242335;
+  --pi-border-soft: #171527;
+  --pi-border-hi: rgba(255,255,255,0.10);
   --pi-text: #f0eaff;
-  --pi-dim: #a99cd8;
-  --pi-dim2: #a89fd6;
-  --pi-accent-glow: rgba(139, 92, 246, 0.32);
+  --pi-dim: #908b9e;
+  --pi-dim2: #898496;
+  --pi-accent: #8b7cf6;
+  --pi-accent2: #a78bfa;
+  --pi-accent-deep: #6d5bd0;
+  --pi-accent-glow: rgba(139,92,246,0.32);
+  --pi-glow: rgba(139,92,246,0.32);
+  --pi-green: #3ecf8e;
+  --pi-red: #f47067;
+  --pi-yellow: #f5b759;
   --pi-glow-purple: rgba(139,92,246,0.22);
   --pi-glow-cyan: rgba(120,100,200,0.08);
+  --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
+  --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --pi-radius-base: 8px;
+  --pi-r-sm: 6px;
+  --pi-r-md: 8px;
+  --pi-r-lg: 12px;
+  --pi-r-xl: 16px;
+  --pi-fs-sm: 12px;
+  --pi-lh-sm: 1.333;
+  --pi-fs-md: 13px;
+  --pi-lh-md: 1.308;
+  --pi-fs-lg: 15px;
+  --pi-lh-lg: 1.267;
+  --pi-fs-xl: 17px;
+  --pi-lh-xl: 1.235;
+  --pi-fs-xxl: 22px;
+  --pi-lh-xxl: 1.182;
 }
 [data-theme="mist"] {
   --pi-bg: #f3f5fa;
-  --pi-bg1: #ffffff;
-  --pi-bg2: #ffffff;
-  --pi-bg3: #eef1f8;
-  --pi-bg4: #e4e8f0;
-  --pi-border: #d8deeb;
-  --pi-border-soft: #e4e9f3;
+  --pi-bg1: #eceef3;
+  --pi-bg2: #e6e8ed;
+  --pi-bg3: #dfe1e6;
+  --pi-bg4: #d9dbdf;
+  --pi-bg-hover: #e8eaef;
+  --pi-bg-active: #e4e6eb;
+  --pi-border: #e2e4e9;
+  --pi-border-soft: #eaecf1;
   --pi-border-hi: rgba(0,0,0,0.06);
   --pi-text: #1c2333;
-  --pi-dim: #5a6580;
-  --pi-dim2: #5f6b85;
+  --pi-dim: #515d77;
+  --pi-dim2: #5b6881;
+  --pi-accent: #4a58fa;
+  --pi-accent2: #677fff;
+  --pi-accent-deep: #3637da;
+  --pi-accent-glow: rgba(74,88,250,0.12);
+  --pi-glow: rgba(74,88,250,0.12);
   --pi-green: #16a34a;
   --pi-red: #dc4b45;
   --pi-yellow: #d97706;
-  --pi-accent-glow: rgba(74, 88, 250, 0.12);
   --pi-glow-purple: rgba(100,80,200,0.06);
   --pi-glow-cyan: rgba(56,189,248,0.04);
+  --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
+  --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --pi-radius-base: 8px;
+  --pi-r-sm: 6px;
+  --pi-r-md: 8px;
+  --pi-r-lg: 12px;
+  --pi-r-xl: 16px;
+  --pi-fs-sm: 12px;
+  --pi-lh-sm: 1.333;
+  --pi-fs-md: 13px;
+  --pi-lh-md: 1.308;
+  --pi-fs-lg: 15px;
+  --pi-lh-lg: 1.267;
+  --pi-fs-xl: 17px;
+  --pi-lh-xl: 1.235;
+  --pi-fs-xxl: 22px;
+  --pi-lh-xxl: 1.182;
 }
-[data-theme="mist"] .glass { background: rgba(255, 255, 255, 0.62); }
+/* @generated-tokens:end */[data-theme="mist"] .glass { background: rgba(255, 255, 255, 0.62); }
 [data-theme="mist"] .glass-strong { background: rgba(255, 255, 255, 0.82); }
 [data-theme="mist"] body::before { opacity: .4; }
 

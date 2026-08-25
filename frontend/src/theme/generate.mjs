@@ -1,0 +1,176 @@
+// ══════════════════════════════════════════════════════════
+// pi-web Token 生成器（Ant Design 路线：主题是纯函数，不是表）
+// seed(设计意图) → 派生算法 → 全量 CSS 变量
+// 跑法：node scripts/generate-theme.mjs（写回 styles.css 标记区块）
+// 校验：node --test tests/design-contract.test.mjs（派生不变量）
+// ══════════════════════════════════════════════════════════
+
+// ── 色彩数学：sRGB ↔ OKLCH（Björn Ottosson 的 OKLab 标准）──
+const hexToRgb = hex => {
+  const h = hex.replace('#', '')
+  return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) / 255)
+}
+const rgbToHex = rgb => '#' + rgb.map(c =>
+  Math.round(Math.max(0, Math.min(1, c)) * 255).toString(16).padStart(2, '0')).join('')
+const lin = c => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+const gam = c => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055)
+
+function rgbToOklch(rgb) {
+  const [r, g, b] = rgb.map(lin)
+  const l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b
+  const m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b
+  const s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b
+  const l_ = Math.cbrt(l), m_ = Math.cbrt(m), s_ = Math.cbrt(s)
+  const L = 0.2104542553 * l_ + 0.793617785 * m_ - 0.0040720468 * s_
+  const A = 1.9779984951 * l_ - 2.428592205 * m_ + 0.4505937099 * s_
+  const B = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.808675766 * s_
+  return { L, C: Math.hypot(A, B), H: Math.atan2(B, A) }
+}
+function oklchToRgb({ L, C, H }) {
+  const A = C * Math.cos(H), B = C * Math.sin(H)
+  const l_ = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3
+  const m_ = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3
+  const s_ = (L - 0.0894841775 * A - 1.291485548 * B) ** 3
+  return [
+    4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_,
+    -1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_,
+    -0.0041960863 * l_ - 0.7034186147 * m_ + 1.707614701 * s_,
+  ].map(gam)
+}
+// 色域内收敛：超出色域就降 chroma（简单二分，够用）
+function safeOklch(lch) {
+  let { C } = lch, lo = 0, hi = C
+  const inGamut = c => { const r = oklchToRgb({ ...lch, C: c }); return r.every(v => v >= -0.0005 && v <= 1.0005) }
+  if (!inGamut(C)) {
+    for (let i = 0; i < 24; i++) {
+      const mid = (lo + hi) / 2
+      if (inGamut(mid)) lo = mid; else hi = mid
+    }
+    C = lo
+  }
+  return { ...lch, C }
+}
+const setL = (hex, L) => safeOklch({ ...rgbToOklch(hexToRgb(hex)), L })
+const shiftL = (hex, dL) => { const c = rgbToOklch(hexToRgb(hex)); return rgbToHex(oklchToRgb(safeOklch({ ...c, L: Math.max(0, Math.min(1, c.L + dL)) }))) }
+const mixAlpha = (hex, a) => { const [r, g, b] = hexToRgb(hex).map(c => Math.round(c * 255)); return `rgba(${r},${g},${b},${a})` }
+
+// WCAG 亮度/对比度
+export const wcagLum = hex => { const [r, g, b] = hexToRgb(hex).map(lin); return 0.2126 * r + 0.7152 * g + 0.0722 * b }
+export function contrast(fg, bg) {
+  const [x, y] = [wcagLum(fg), wcagLum(bg)].sort((a, b) => b - a)
+  return (x + 0.05) / (y + 0.05)
+}
+// 保持色相与彩度，解出对 bg 达到目标对比度的 L
+function solveLForContrast(baseHex, bgHex, target) {
+  const ch = rgbToOklch(hexToRgb(baseHex))
+  const dir = wcagLum(bgHex) > 0.18 ? -1 : 1 // 浅底往深解、深底往浅解
+  let lo = 0, hi = 1
+  for (let i = 0; i < 32; i++) {
+    const mid = (lo + hi) / 2
+    const candidate = rgbToHex(oklchToRgb(safeOklch({ ...ch, L: mid })))
+    const cr = contrast(candidate, bgHex)
+    if (cr < target) { if (dir > 0) lo = mid; else hi = mid } else { if (dir > 0) hi = mid; else lo = mid }
+  }
+  const L = (lo + hi) / 2
+  return rgbToHex(oklchToRgb(safeOklch({ ...ch, L })))
+}
+
+// ── Seed：每套主题只有这几个设计意图输入 ──
+export const SEEDS = {
+  deep:   { bg: '#0e1116', text: '#e8eef8', accent: '#5468ff', step: 0.043 },
+  ink:    { bg: '#050508', text: '#eceef2', accent: '#5468ff', step: 0.045,
+            overrides: { '--pi-accent-glow': 'rgba(120,120,160,0.22)', '--pi-glow-purple': 'rgba(120,120,160,0.12)', '--pi-glow-cyan': 'rgba(100,140,180,0.06)' } },
+  violet: { bg: '#0a0818', text: '#f0eaff', accent: '#8b7cf6', step: 0.045,
+            overrides: { '--pi-accent-glow': 'rgba(139,92,246,0.32)', '--pi-accent2': '#a78bfa', '--pi-accent-deep': '#6d5bd0', '--pi-glow-purple': 'rgba(139,92,246,0.22)', '--pi-glow-cyan': 'rgba(120,100,200,0.08)' } },
+  mist:   { bg: '#f3f5fa', text: '#1c2333', accent: '#4a58fa', light: true, step: 0.02,
+            overrides: { '--pi-green': '#16a34a', '--pi-red': '#dc4b45', '--pi-yellow': '#d97706', '--pi-accent-glow': 'rgba(74,88,250,0.12)', '--pi-glow-purple': 'rgba(100,80,200,0.06)', '--pi-glow-cyan': 'rgba(56,189,248,0.04)' } },
+}
+
+const SEMANTIC = { green: '#3ecf8e', red: '#f47067', yellow: '#f5b759' }
+const FONTS = {
+  mono: '"Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace',
+  sans: '-apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
+}
+const FONT_SCALE = [['sm', 12], ['md', 13], ['lg', 15], ['xl', 17], ['xxl', 22]] // 行高绑定：(n+4)/n
+export const EASINGS = {
+  '--pi-ease': 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+  '--pi-ease-sheet': 'cubic-bezier(0.32, 0.72, 0, 1)',
+}
+
+// ── 派生算法：seed → 全量变量 ──
+export function generateTheme(seed) {
+  const v = {}
+  const bgL = rgbToOklch(hexToRgb(seed.bg)).L
+  // 阶梯方向：深色主题向上加亮、浅色主题向下加深（"更高级"的语义一致，物理方向相反）
+  const dir = seed.light ? -1 : 1
+  const st = (seed.step ?? 0.043) * dir
+
+  // 底色五级阶梯：同色相同彩度，L 线性移动（层级关系由亮度差表达——antd dark 同理）
+  v['--pi-bg'] = seed.bg
+  ;[1, 2, 3, 4].forEach(i => { v[`--pi-bg${i}`] = rgbToHex(oklchToRgb(setL(seed.bg, bgL + st * i))) })
+  v['--pi-bg-hover'] = rgbToHex(oklchToRgb(setL(seed.bg, bgL + st * 1.6)))
+  v['--pi-bg-active'] = rgbToHex(oklchToRgb(setL(seed.bg, bgL + st * 2.3)))
+
+  const bg2 = v['--pi-bg2']
+  // 边框 = 底色按固定亮度差偏移；soft 更贴近底色
+  v['--pi-border'] = rgbToHex(oklchToRgb(setL(seed.bg, bgL + st * 2.6)))
+  v['--pi-border-soft'] = rgbToHex(oklchToRgb(setL(seed.bg, bgL + st * 1.35)))
+  v['--pi-border-hi'] = seed.light ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.10)'
+
+  // 文字三级：text 本体；dim/dim2 保持文字色相、彩度给下限（纯灰在玻璃上显脏），按目标对比度解 L
+  v['--pi-text'] = seed.text
+  const dimBase = (() => {
+    const ch = rgbToOklch(hexToRgb(seed.text))
+    const C = Math.min(0.045, Math.max(0.02, ch.C * 3))
+    return rgbToHex(oklchToRgb(safeOklch({ L: ch.L, C, H: ch.H })))
+  })()
+  v['--pi-dim'] = solveLForContrast(dimBase, seed.bg, 6.0)
+  v['--pi-dim2'] = solveLForContrast(dimBase, bg2, 4.6)
+
+  // 强调色族：accent2/accent-deep 是 accent 的亮度位移（换主色后交互态永远协调）
+  v['--pi-accent'] = seed.accent
+  v['--pi-accent2'] = seed.overrides?.['--pi-accent2'] || shiftL(seed.accent, 0.09)
+  v['--pi-accent-deep'] = seed.overrides?.['--pi-accent-deep'] || shiftL(seed.accent, -0.09)
+  v['--pi-accent-glow'] = seed.overrides?.['--pi-accent-glow'] || mixAlpha(seed.accent, 0.35)
+  v['--pi-glow'] = v['--pi-accent-glow']
+
+  // 语义色 + 装饰光斑（overrides 可覆写）
+  Object.assign(v, {
+    '--pi-green': SEMANTIC.green, '--pi-red': SEMANTIC.red, '--pi-yellow': SEMANTIC.yellow,
+    '--pi-glow-purple': 'rgba(139,92,246,0.18)', '--pi-glow-cyan': 'rgba(56,189,248,0.10)',
+  }, seed.overrides || {})
+
+  // 字体 / 圆角（单变量派生）/ 字阶（行高绑定单 token）
+  v['--pi-font-mono'] = FONTS.mono
+  v['--pi-font-sans'] = FONTS.sans
+  v['--pi-radius-base'] = '8px'
+  v['--pi-r-sm'] = '6px'; v['--pi-r-md'] = '8px'; v['--pi-r-lg'] = '12px'; v['--pi-r-xl'] = '16px'
+  for (const [name, px] of FONT_SCALE) {
+    v[`--pi-fs-${name}`] = `${px}px`
+    v[`--pi-lh-${name}`] = `${((px + 4) / px).toFixed(3)}`
+  }
+  return v
+}
+
+// 动效 token（全主题共享，两条曲线白名单的源头）
+export function motionVars() {
+  return {
+    ...EASINGS,
+    '--pi-motion-fast': '.14s var(--pi-ease)',
+    '--pi-motion-base': '.2s var(--pi-ease)',
+    '--pi-motion-slow': '.3s var(--pi-ease-sheet)',
+  }
+}
+
+const fmtVars = vars => Object.entries(vars).map(([k, val]) => `  ${k}: ${val};`).join('\n')
+
+// 输出两段 CSS：:root 区（deep + 共享动效）与三套 data-theme 区
+export function emitCss() {
+  const deep = { ...generateTheme(SEEDS.deep), ...motionVars() }
+  const block = (sel, vars) => `${sel} {\n${fmtVars(vars)}\n}`
+  return {
+    root: block(':root', deep),
+    themes: ['ink', 'violet', 'mist'].map(name =>
+      block(`[data-theme="${name}"]`, generateTheme(SEEDS[name]))).join('\n'),
+  }
+}
