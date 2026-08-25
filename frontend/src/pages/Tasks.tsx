@@ -61,22 +61,23 @@ export default function Tasks() {
             </div>
           )}
           {tasks.map(t => (
-            <div key={t.id} className="panel !p-3.5 flex items-start gap-3 card-hover group/task">
+            <div key={t.id} className="panel !p-3.5 flex items-start gap-3 card-hover group/task group">
               <div className="w-11 h-11 rounded-pi-md bg-pi-accent/12 border border-pi-accent/25 flex flex-col items-center justify-center flex-shrink-0"
                 style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,.06)' }}>
-                <span className="text-[9px] text-pi-accent leading-none font-semibold tracking-wide">{TYPE_LABEL[t.type]}</span>
-                <span className="text-[11px] font-bold text-pi-text leading-tight tabular-nums">{t.at}</span>
+                <span className="text-[10px] text-pi-accent leading-none font-semibold tracking-wide">{TYPE_LABEL[t.type]}</span>
+                <span className="text-[12px] font-bold text-pi-text leading-tight tabular-nums">{t.at}</span>
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-[13px] text-pi-text font-medium truncate">{t.label || t.prompt.slice(0, 30)}</div>
                 <div className="text-[11px] text-pi-dim2 mt-0.5 line-clamp-2">{t.prompt}</div>
-                <div className="text-[10px] text-pi-dim2 mt-1.5 flex gap-3 flex-wrap">
+                <div className="text-[11px] text-pi-dim2 mt-1.5 flex gap-3 flex-wrap">
                   <span className="px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3">⏰ {describe(t)}</span>
                   <span className="px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3">已跑 {t.runs || 0} 次</span>
                   {t.lastRun && <span className="px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3">上次 {new Date(t.lastRun).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</span>}
                 </div>
               </div>
-              <button title="删除任务" className="btn-tool !px-2 text-pi-dim2 hover:text-pi-red flex-shrink-0 opacity-0 group-hover/task:opacity-100 transition-opacity"
+              {/* 08-25 评审 P1：hover 门控 → 触屏常显 */}
+              <button title="删除任务" aria-label={`删除任务 ${t.label || t.prompt.slice(0, 20)}`} className="hov-reveal btn-tool !px-2 text-pi-dim2 hover:text-pi-red flex-shrink-0"
                 onClick={async () => { try { await TasksApi.remove(t.id); mutate() } catch {} }}><Trash2 className="w-4 h-4" /></button>
             </div>
           ))}

@@ -288,8 +288,8 @@ export default function ChatArea({ compactHeader }: { compactHeader?: boolean } 
       <div className="flex items-center px-5 h-12 border-b border-pi-border-soft glass flex-shrink-0 gap-2">
         {!compactHeader && <div className="font-medium text-[14px] text-pi-text">会话</div>}
         <div className="ml-auto" />
-        {/* 执行状态（对标老版 .status-pill） */}
-        <div className={`status-pill status-${agentStatus} text-[11px] text-pi-dim flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-pi-border-soft bg-pi-bg2/50`}>
+        {/* 执行状态（对标老版 .status-pill；aria-live 让屏幕阅读器感知流式开始/结束）*/}
+        <div role="status" aria-live="polite" className={`status-pill status-${agentStatus} text-[11px] text-pi-dim flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-pi-border-soft bg-pi-bg2/50`}>
           <span className={`status-dot status-dot-${agentStatus} w-[7px] h-[7px] rounded-full flex-shrink-0`} />
           <span>{agentStatus === 'busy' ? '执行中' : agentStatus === 'error' ? '异常' : '就绪'}</span>
         </div>

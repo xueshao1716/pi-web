@@ -137,10 +137,10 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
               )}
               <div className="flex items-center gap-2 mt-0.5 px-1">
                 {canEdit && (
-                  <button className="hidden group-hover/msg:inline-flex items-center gap-1 text-[10px] text-pi-dim2 hover:text-pi-text transition-colors" title="编辑并重新发送"
+                  <button className="hov-reveal inline-flex items-center gap-1 text-[11px] text-pi-dim2 hover:text-pi-text transition-colors" title="编辑并重新发送" aria-label="编辑并重新发送"
                     onClick={() => { setDraft(msg.text); setEditing(true) }}><Pencil className="w-3 h-3" /> 编辑</button>
                 )}
-                {msg.ts && <span className="text-[10px] text-pi-dim2 opacity-0 group-hover/msg:opacity-100 transition-opacity">{new Date(msg.ts).toLocaleTimeString('zh-CN', { hour12: false })}</span>}
+                {msg.ts && <span className="hov-reveal text-[11px] text-pi-dim2 transition-opacity">{new Date(msg.ts).toLocaleTimeString('zh-CN', { hour12: false })}</span>}
               </div>
             </>
           )}
@@ -172,7 +172,7 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
           <Markdown text={msg.text} />
         </div>
         {msg.ts && !streaming && (
-          <div className="text-[10px] text-pi-dim2 mt-1 opacity-0 group-hover/msg:opacity-100 transition-opacity">{new Date(msg.ts).toLocaleTimeString('zh-CN', { hour12: false })}</div>
+          <div className="hov-reveal text-[11px] text-pi-dim2 mt-1 transition-opacity">{new Date(msg.ts).toLocaleTimeString('zh-CN', { hour12: false })}</div>
         )}
       </div>
     </div>

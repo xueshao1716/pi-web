@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed } from 'lucide-react'
 import { useApp } from './store'
 import { useIsMobile } from './hooks/useIsMobile'
@@ -11,6 +11,7 @@ import Deliveries from './components/Deliveries'
 import TerminalPanel from './components/TerminalPanel'
 import ModelManager from './components/ModelManager'
 import ThemeSwitcher from './components/ThemeSwitcher'
+import CommandPalette from './components/CommandPalette'
 
 // 页面 lazy（路线图：每路由 lazy + ErrorBoundary）
 const ModelHub = lazy(() => import('./pages/ModelHub'))
@@ -47,6 +48,22 @@ export default function AppLayout() {
   const [modelOpen, setModelOpen] = useState(false)
   // 移动端：sessions 抽屉
   const [mobileDrawer, setMobileDrawer] = useState<'none' | 'sessions'>('none')
+  // ⌘K 命令面板（08-25 评审 P1：全局快捷键）
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen(o => !o)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+  const palette = (
+    <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} nav={nav}
+      onRightPanel={p => setRightPanel(p)} onModelManager={() => setModelOpen(true)} />
+  )
 
   if (!authed) return <Login />
 
@@ -104,16 +121,17 @@ export default function AppLayout() {
             { key: 'tasks', icon: Clock4, label: '任务', active: route === 'tasks' && mobileDrawer === 'none', onClick: () => { setMobileDrawer('none'); nav('tasks') } },
             { key: 'settings', icon: Settings2, label: '设置', active: false, onClick: () => setModelOpen(true) },
           ] as const).map(item => (
-            <button key={item.key}
+            <button key={item.key} aria-label={item.label}
               className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${item.active ? 'text-pi-accent' : 'text-pi-dim2'}`}
               onClick={item.onClick}>
               <item.icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
-              <span className="text-[9.5px] leading-none">{item.label}</span>
+              <span className="text-[11px] leading-none">{item.label}</span>
             </button>
           ))}
         </nav>
 
         <ModelManager visible={modelOpen} onClose={() => setModelOpen(false)} />
+        {palette}
       </div>
     )
   }
@@ -129,7 +147,7 @@ export default function AppLayout() {
       <nav className="w-14 flex-shrink-0 flex flex-col items-center py-3 gap-1.5 col-sidebar glass-strong border-r border-pi-border relative z-20 glow-edge">
         <div className="w-8 h-8 rounded-pi-md avatar-grad flex items-center justify-center text-white font-bold mb-2">语</div>
         {NAV.map(n => (
-          <button key={n.route} title={n.label}
+          <button key={n.route} title={n.label} aria-label={n.label} aria-current={route === n.route ? 'page' : undefined}
             className={`w-9 h-9 rounded-pi-md flex items-center justify-center relative group/rail transition-all duration-150 ${
               route === n.route ? 'bg-pi-accent/15 text-pi-accent' : 'text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3'}`}
             onClick={() => nav(n.route)}>
@@ -139,7 +157,7 @@ export default function AppLayout() {
         ))}
         <div className="mt-auto flex flex-col gap-1.5">
           <ThemeSwitcher />
-          <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-all" title="密钥与通道管理" onClick={() => setModelOpen(true)}><Settings2 className="w-[18px] h-[18px]" strokeWidth={1.8} /></button>
+          <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-all" title="密钥与通道管理" aria-label="密钥与通道管理" onClick={() => setModelOpen(true)}><Settings2 className="w-[18px] h-[18px]" strokeWidth={1.8} /></button>
         </div>
       </nav>
 
@@ -178,6 +196,7 @@ export default function AppLayout() {
       )}
 
       <ModelManager visible={modelOpen} onClose={() => setModelOpen(false)} />
+      {palette}
     </div>
   )
 }

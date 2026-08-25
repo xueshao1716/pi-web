@@ -15,10 +15,10 @@ export const colors = {
   border: '#283352',
   borderSoft: '#1c2640',
   borderHi: 'rgba(255,255,255,0.08)',
-  // 文字
+  // 文字（dim2 08-25 提亮：原 #586580 对深底仅 3.2:1 不达 WCAG）
   text: '#e8eef8',
   dim: '#8c98b4',
-  dim2: '#586580',
+  dim2: '#7d88a8',
   // 强调色（主色）
   accent: '#5468ff',
   accent2: '#7b96ff',

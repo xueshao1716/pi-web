@@ -34,7 +34,7 @@ function ModelCard({ m, active, switching, onUse }: { m: Model; active: boolean;
         {free && <span className="text-[10px] px-1.5 py-0.5 rounded-pi-pill bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex-shrink-0">免费</span>}
       </div>
       <div className="text-[10.5px] text-pi-dim2 font-mono truncate relative">{m.provider}/{m.id}</div>
-      <div className="flex items-center gap-2 text-[10px] text-pi-dim2 relative">
+      <div className="flex items-center gap-2 text-[10.5px] text-pi-dim2 relative">
         {ctx && <span className="px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3">上下文 {ctx}</span>}
         {m.reasoning && <span className="px-1.5 py-0.5 rounded-pi-pill bg-purple-500/12 text-purple-300">推理</span>}
         {(m.capabilities as any)?.vision === true && <span className="px-1.5 py-0.5 rounded-pi-pill bg-sky-500/12 text-sky-300">视觉</span>}
@@ -52,16 +52,33 @@ function ModelCard({ m, active, switching, onUse }: { m: Model; active: boolean;
 export default function ModelHub() {
   const { models, currentModel, setCurrentModel, cwd } = useApp()
   const [filter, setFilter] = useState<'all' | 'chat' | 'media'>('all')
+  const [query, setQuery] = useState('')
+  const [facets, setFacets] = useState<{ free: boolean; reasoning: boolean; vision: boolean }>({ free: false, reasoning: false, vision: false })
+  const [freeFirst, setFreeFirst] = useState(true)
   const [switching, setSwitching] = useState('')
   const { data: stats } = useSWR('provider-stats', () => StatsApi.providers(), { refreshInterval: 60000 })
 
-  const filtered = models.filter(m => {
-    if (filter === 'all') return true
+  // 08-25 评审 P2：从库存清单变决策工具——搜索/能力筛选/免费优先
+  const capKeys = (m: Model): string[] => {
     const cap = m.capabilities as any
-    const keys: string[] = Array.isArray(cap) ? cap : Object.entries(cap || {}).filter(([, v]) => v).map(([k]) => k as string)
-    const isChat = !keys.some(k => ['image', 'video', 'tts', 'asr'].includes(k))
-    return filter === 'chat' ? isChat : !isChat
+    return Array.isArray(cap) ? cap : Object.entries(cap || {}).filter(([, v]) => v).map(([k]) => k as string)
+  }
+  const kw = query.trim().toLowerCase()
+  const filtered = models.filter(m => {
+    if (filter === 'all') {} else {
+      const keys = capKeys(m)
+      const isChat = !keys.some(k => ['image', 'video', 'tts', 'asr'].includes(k))
+      if (filter === 'chat' ? !isChat : isChat) return false
+    }
+    if (kw && !(`${m.name} ${m.provider} ${m.id} ${m.note || ''}`.toLowerCase().includes(kw))) return false
+    if (facets.free && !(m.free || (m.note || '').includes('免费'))) return false
+    if (facets.reasoning && !m.reasoning) return false
+    if (facets.vision && (m.capabilities as any)?.vision !== true) return false
+    return true
   })
+  if (freeFirst) {
+    filtered.sort((a, b) => Number(!!(b.free || (b.note || '').includes('免费'))) - Number(!!(a.free || (a.note || '').includes('免费'))))
+  }
   const freeCount = models.filter(m => m.free || (m.note || '').includes('免费')).length
   const totalCost = (stats?.providers || []).reduce((s, p) => s + (p.cost || 0), 0)
   const totalMsgs = (stats?.providers || []).reduce((s, p) => s + (p.messages || 0), 0)
@@ -87,9 +104,9 @@ export default function ModelHub() {
 
         {/* 统计卡 */}
         <div className="grid grid-cols-3 gap-3 mb-5">
-          <div className="stat-card"><div className="stat-num text-pi-text">{fmtCost(totalCost)}</div><div className="text-[10.5px] text-pi-dim2 mt-0.5">累计成本</div></div>
-          <div className="stat-card"><div className="stat-num text-pi-text">{totalMsgs.toLocaleString()}</div><div className="text-[10.5px] text-pi-dim2 mt-0.5">累计消息</div></div>
-          <div className="stat-card"><div className="stat-num text-pi-green">{freeCount}<span className="text-[13px] text-pi-dim2 font-medium"> / {models.length}</span></div><div className="text-[10.5px] text-pi-dim2 mt-0.5">免费通道</div></div>
+          <div className="stat-card"><div className="stat-num text-pi-text">{fmtCost(totalCost)}</div><div className="text-[11px] text-pi-dim2 mt-0.5">累计成本</div></div>
+          <div className="stat-card"><div className="stat-num text-pi-text">{totalMsgs.toLocaleString()}</div><div className="text-[11px] text-pi-dim2 mt-0.5">累计消息</div></div>
+          <div className="stat-card"><div className="stat-num text-pi-green">{freeCount}<span className="text-[13px] text-pi-dim2 font-medium"> / {models.length}</span></div><div className="text-[11px] text-pi-dim2 mt-0.5">免费通道</div></div>
         </div>
 
         {/* Auto 路由说明条 */}
@@ -100,16 +117,34 @@ export default function ModelHub() {
           </div>
         </div>
 
-        {/* 筛选 */}
-        <div className="flex gap-1.5 mb-4">
+        {/* 筛选：类型分段 + 搜索 + 能力 facet + 排序（08-25 评审 P2）*/}
+        <div className="flex gap-1.5 mb-3 flex-wrap items-center">
           {([['all', '全部'], ['chat', '对话'], ['media', '媒体']] as const).map(([k, label]) => (
-            <button key={k} onClick={() => setFilter(k)}
+            <button key={k} onClick={() => setFilter(k)} aria-pressed={filter === k}
               className={`text-xs px-3 py-1.5 rounded-pi-md transition-colors ${filter === k ? 'bg-pi-accent/15 text-pi-accent font-medium' : 'text-pi-dim hover:text-pi-text hover:bg-pi-bg3'}`}>
               {label}
             </button>
           ))}
-          {switching && <span className="ml-auto text-[11px] text-pi-accent animate-pulse self-center">切换中…</span>}
+          <div className="mx-1 w-px h-5 bg-pi-border" />
+          {([['free', `免费`], ['reasoning', '推理'], ['vision', '视觉']] as const).map(([k, label]) => (
+            <button key={k} onClick={() => setFacets(f => ({ ...f, [k]: !f[k] }))} aria-pressed={facets[k]}
+              className={`text-xs px-2.5 py-1.5 rounded-pi-pill border transition-colors ${facets[k] ? 'bg-pi-accent/15 border-pi-accent/40 text-pi-accent font-medium' : 'border-pi-border text-pi-dim hover:text-pi-text hover:border-pi-border-hi'}`}>
+              {label}
+            </button>
+          ))}
+          <button onClick={() => setFreeFirst(v => !v)} aria-pressed={freeFirst} title="免费模型排前"
+            className={`ml-auto text-xs px-2.5 py-1.5 rounded-pi-pill border transition-colors ${freeFirst ? 'bg-emerald-500/12 border-emerald-500/35 text-emerald-400 font-medium' : 'border-pi-border text-pi-dim hover:text-pi-text hover:border-pi-border-hi'}`}>
+            免费优先 ↓
+          </button>
+          {switching && <span className="text-[11px] text-pi-accent animate-pulse self-center">切换中…</span>}
         </div>
+        <input className="input-pi mb-4 max-w-xs !py-1.5 text-xs" placeholder="搜索模型名 / 提供商 / 备注…"
+          value={query} onChange={e => setQuery(e.target.value)} aria-label="搜索模型" />
+
+        {/* 结果计数 */}
+        {(kw || facets.free || facets.reasoning || facets.vision || filter !== 'all') && (
+          <div className="text-[11px] text-pi-dim2 mb-3">筛出 {filtered.length} / {models.length} 个模型</div>
+        )}
 
         {/* 模型网格 */}
         <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-3 mb-8">
@@ -118,11 +153,21 @@ export default function ModelHub() {
             return <ModelCard key={mk} m={m} active={currentModel === mk} switching={switching === mk} onUse={() => useModel(m)} />
           })}
         </div>
+        {!filtered.length && (
+          <div className="empty-state py-12 text-center mb-8">
+            <div className="text-sm text-pi-dim">没有符合条件的模型</div>
+            <div className="text-[11px] text-pi-dim2 mt-1">试试清空搜索词或取消能力筛选</div>
+          </div>
+        )}
 
-        {/* Provider 用量 */}
-        <h2 className="text-sm font-semibold text-pi-text mb-2">Provider 用量</h2>
-        <div className="panel !p-0 overflow-hidden mb-6 overflow-x-auto">
-          <table className="w-full text-[12px]">
+        {/* Provider 用量（默认折叠，08-25 评审 P2）*/}
+        <details className="panel !p-0 overflow-hidden mb-6">
+          <summary className="px-4 py-3 cursor-pointer text-sm font-semibold text-pi-text select-none flex items-center justify-between">
+            Provider 用量
+            <span className="text-[10.5px] text-pi-dim2 font-normal">每 60s 刷新 · 点击展开</span>
+          </summary>
+          <div className="overflow-x-auto border-t border-pi-border-soft">
+            <table className="w-full text-[12px]">
             <thead>
               <tr className="text-left text-pi-dim2 border-b border-pi-border-soft">
                 <th className="px-4 py-2 font-medium">Provider</th>
@@ -146,8 +191,9 @@ export default function ModelHub() {
               ))}
               {!stats?.providers?.length && <tr><td colSpan={6} className="px-4 py-6 text-center text-pi-dim2">暂无用量数据</td></tr>}
             </tbody>
-          </table>
-        </div>
+            </table>
+          </div>
+        </details>
 
         <p className="text-[11px] text-pi-dim2">密钥与通道管理在右上角「模型」面板 · 用量每 60s 自动刷新</p>
       </div>

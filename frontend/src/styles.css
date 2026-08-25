@@ -1,8 +1,34 @@
 /* ══════════════════════════════════════════════════════════
-   pi-web styles — Phase3 层次重做
+   pi-web styles
    ══════════════════════════════════════════════════════════ */
 
+/* ── 基础 Reset（08-25 评审 P0：此前无 reset，原生 UA 按钮白块遍布全屏）── */
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; }
+html { -webkit-text-size-adjust: 100%; }
+html, body, #root { height: 100%; }
+body { line-height: 1.5; }
+button {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+button:disabled { cursor: default; }
+input, select, textarea { font: inherit; color: inherit; }
+img, svg, video, audio { max-width: 100%; }
+img, svg, video { display: block; }
+ul[class], ol[class] { list-style: none; margin: 0; padding: 0; }
+
 :root {
+  /* 动效 token（与 theme/tokens.ts motion 对齐，CSS 侧统一取用）*/
+  --pi-motion-fast: .14s cubic-bezier(.33, 1, .68, 1);
+  --pi-motion-base: .2s cubic-bezier(.33, 1, .68, 1);
+  --pi-motion-slow: .3s cubic-bezier(.22, 1, .36, 1);
   /* UI 审美修复（08-23）：底色提亮一档，拉开三栏亮度层差（原值太黑导致层次全糊） */
   --pi-bg: #0b101d;
   --pi-bg1: #131a2c;
@@ -17,7 +43,8 @@
   --pi-border-hi: rgba(255,255,255,0.10);
   --pi-text: #e8eef8;
   --pi-dim: #8c98b4;
-  --pi-dim2: #586580;
+  /* 08-25 评审 P0：#586580 对深底仅 3.2:1，提到达标（≥4.5:1）；装饰性弱化请用透明度 */
+  --pi-dim2: #7d88a8;
   --pi-accent: #5468ff;
   --pi-accent2: #7b96ff;
   --pi-accent-deep: #3c4be0;
@@ -36,8 +63,6 @@
   --pi-glow: rgba(84,104,255,0.35);
 }
 
-* { box-sizing: border-box; }
-html, body, #root { height: 100%; margin: 0; }
 body {
   font-family: var(--pi-font-sans);
   background: var(--pi-bg);
@@ -186,7 +211,7 @@ body::before {
 .markdown-body h3 { font-size: 14px; }
 .markdown-body ul, .markdown-body ol { padding-left: 22px; margin: 6px 0; }
 .markdown-body li { margin: 3px 0; }
-.markdown-body blockquote { border-left: 2px solid var(--pi-border); padding-left: 12px; color: var(--pi-dim); margin: 8px 0; }
+.markdown-body blockquote { box-shadow: inset 2px 0 0 var(--pi-border); padding-left: 12px; color: var(--pi-dim); margin: 8px 0; }
 .markdown-body code { font-family: var(--pi-font-mono); }
 .markdown-body pre { background: var(--pi-bg3); border: 1px solid var(--pi-border); border-radius: var(--pi-r-md); }
 .markdown-body table { width: 100%; border-collapse: collapse; }
@@ -208,7 +233,7 @@ body::before {
   --pi-border-hi: rgba(255,255,255,0.08);
   --pi-text: #eceef2;
   --pi-dim: #9aa0ae;
-  --pi-dim2: #62666f;
+  --pi-dim2: #8a90a0;
   --pi-accent-glow: rgba(120, 120, 160, 0.22);
   --pi-glow-purple: rgba(120,120,160,0.12);
   --pi-glow-cyan: rgba(100,140,180,0.06);
@@ -224,7 +249,7 @@ body::before {
   --pi-border-hi: rgba(255,255,255,0.07);
   --pi-text: #f0eaff;
   --pi-dim: #a99cd8;
-  --pi-dim2: #6f63a0;
+  --pi-dim2: #978cc8;
   --pi-accent-glow: rgba(139, 92, 246, 0.32);
   --pi-glow-purple: rgba(139,92,246,0.22);
   --pi-glow-cyan: rgba(120,100,200,0.08);
@@ -240,7 +265,7 @@ body::before {
   --pi-border-hi: rgba(0,0,0,0.06);
   --pi-text: #1c2333;
   --pi-dim: #5a6580;
-  --pi-dim2: #9099ad;
+  --pi-dim2: #5f6b85;
   --pi-green: #16a34a;
   --pi-red: #dc4b45;
   --pi-yellow: #d97706;
@@ -432,23 +457,7 @@ body::before {
   opacity: 0.3;
 }
 
-/* ── SendBox 视觉升级 ── */
-.sendbox-glow {
-  transition: box-shadow 0.3s, border-color 0.3s;
-}
-.sendbox-glow:focus-within {
-  border-color: var(--pi-accent) !important;
-  box-shadow:
-    0 0 0 3px rgba(84,104,255,0.12),
-    0 0 20px rgba(84,104,255,0.08),
-    0 4px 24px rgba(0,0,0,0.22);
-  animation: sendboxBreath 2.5s ease-in-out infinite;
-}
-@keyframes sendboxBreath {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(84,104,255,0.12), 0 0 20px rgba(84,104,255,0.08), 0 4px 24px rgba(0,0,0,0.22); }
-  50% { box-shadow: 0 0 0 5px rgba(84,104,255,0.18), 0 0 30px rgba(84,104,255,0.14), 0 4px 24px rgba(0,0,0,0.22); }
-}
-
+/* ── 发送按钮一次性旋转反馈 ── */
 .send-btn-spin { animation: sendSpin 0.6s cubic-bezier(.22,1,.36,1); }
 @keyframes sendSpin {
   from { transform: rotate(0deg) scale(1); }
@@ -456,43 +465,24 @@ body::before {
   to { transform: rotate(360deg) scale(1); }
 }
 
-.rec-wave { display: flex; align-items: center; gap: 2px; height: 20px; }
-.rec-wave-bar {
-  width: 3px; border-radius: 2px; background: #fff;
-  animation: recBar 0.6s ease-in-out infinite alternate;
-}
-.rec-wave-bar:nth-child(1) { animation-delay: 0s; height: 6px; }
-.rec-wave-bar:nth-child(2) { animation-delay: 0.1s; height: 12px; }
-.rec-wave-bar:nth-child(3) { animation-delay: 0.15s; height: 18px; }
-.rec-wave-bar:nth-child(4) { animation-delay: 0.08s; height: 10px; }
-.rec-wave-bar:nth-child(5) { animation-delay: 0.2s; height: 14px; }
-@keyframes recBar {
-  from { transform: scaleY(0.4); opacity: 0.5; }
-  to { transform: scaleY(1); opacity: 1; }
-}
-
-/* ── 骨架屏加载 ── */
+/* ── 骨架屏加载（08-25 去重：合并两套 shimmer/骨架定义为单一系统）── */
 .skeleton-row { display: flex; gap: 12px; padding: 10px 0; }
 .skeleton-avatar {
   width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
-  background: linear-gradient(110deg, var(--pi-bg3) 30%, var(--pi-bg4) 50%, var(--pi-bg3) 70%);
+  background: linear-gradient(100deg, rgba(255,255,255,0.04) 40%, rgba(255,255,255,0.09) 50%, rgba(255,255,255,0.04) 60%);
   background-size: 200% 100%;
   animation: skeletonShimmer 1.5s ease-in-out infinite;
 }
 .skeleton-lines { flex: 1; display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
 .skeleton-line {
   height: 12px; border-radius: 6px;
-  background: linear-gradient(110deg, var(--pi-bg3) 30%, var(--pi-bg4) 50%, var(--pi-bg3) 70%);
+  background: linear-gradient(100deg, rgba(255,255,255,0.04) 40%, rgba(255,255,255,0.09) 50%, rgba(255,255,255,0.04) 60%);
   background-size: 200% 100%;
   animation: skeletonShimmer 1.5s ease-in-out infinite;
 }
 .skeleton-line:nth-child(1) { width: 60%; animation-delay: 0.1s; }
 .skeleton-line:nth-child(2) { width: 85%; animation-delay: 0.2s; }
 .skeleton-line:nth-child(3) { width: 45%; animation-delay: 0.3s; }
-@keyframes skeletonShimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
 
 /* ── 消息间距节奏 ── */
 .message-gap { margin-bottom: 6px; }
@@ -501,13 +491,33 @@ body::before {
 /* ── Mist 主题适配 ── */
 [data-theme="mist"] .turn-content-line::before { opacity: 0.2; }
 
-/* ── SendBox 聚焦光晕呼吸（08-24 对话区打磨）── */
-@keyframes shellBreath {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(84,104,255,0.00), 0 4px 20px rgba(0,0,0,0.25); }
-  50% { box-shadow: 0 0 24px 2px var(--pi-accent-glow), 0 4px 20px rgba(0,0,0,0.25); }
+/* ── 触屏可达（08-25 评审 P1）：hover 门控操作在无 hover 设备常显 ── */
+.hov-reveal { opacity: 0; transition: opacity var(--pi-motion-fast); }
+.group:hover .hov-reveal,
+.group:focus-within .hov-reveal,
+[class*="group"]:hover .hov-reveal,
+[class*="group"]:focus-within .hov-reveal { opacity: 1; }
+@media (hover: none), (pointer: coarse) {
+  .hov-reveal { opacity: 1; }
 }
+
+/* ── 小号工具按钮（SendBox 麦克风/附件；此前被引用 3 处但从未定义）── */
+.btn-tool-sm {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  height: 28px; min-width: 28px; padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px; color: var(--pi-dim);
+  transition: background-color var(--pi-motion-fast), color var(--pi-motion-fast);
+}
+.btn-tool-sm:hover:not(:disabled) { background: var(--pi-bg3); color: var(--pi-text); }
+.btn-tool-sm:disabled { opacity: .5; cursor: default; }
+
+/* ── SendBox 聚焦：静态光晕（08-25 去呼吸动画：聚焦环+光标闪烁+扫光三动画并发超载）── */
 .sendbox-shell:focus-within {
-  animation: shellBreath 2.6s ease-in-out infinite;
+  box-shadow:
+    0 0 0 3px rgba(84,104,255,0.14),
+    0 4px 24px rgba(0,0,0,0.25),
+    0 0 28px rgba(84,104,255,0.10);
 }
 
 /* ── 录音波形条 ── */
@@ -534,17 +544,9 @@ body::before {
   background-size: 200% 100%;
   animation: skeletonShimmer 1.4s ease-in-out infinite;
 }
-@keyframes skeletonShimmer {
-  0% { background-position: 120% 0; }
-  100% { background-position: -80% 0; }
-}
 
 /* ── mimo 评审落地（08-24）：工具卡流光加辉光 ── */
 .tool-progress { filter: drop-shadow(0 0 3px var(--pi-accent)); }
-@keyframes shellBreath {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(84,104,255,0.00), 0 4px 20px rgba(0,0,0,0.25); }
-  50% { box-shadow: 0 0 32px 4px var(--pi-accent-glow), 0 4px 20px rgba(0,0,0,0.25); }
-}
 
 /* ── GLM5.3 评审落地：流式光标内联到正文末行（不再掉行）── */
 .markdown-body-wrapper.streaming-caret > :last-child::after {

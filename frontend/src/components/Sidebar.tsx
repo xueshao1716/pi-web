@@ -13,6 +13,7 @@ const GROUP_ORDER = ['terminal', 'workspace']
 export default function Sidebar({ onNavigated }: { onNavigated?: () => void } = {}) {
   const { sessions, currentSessionId, selectSession, refreshSessions } = useApp()
   const [renaming, setRenaming] = useState<{ sid: string; name: string } | null>(null)
+  const [confirming, setConfirming] = useState<Session | null>(null)
   const [search, setSearch] = useState('')
 
   const handleNew = async () => {
@@ -24,8 +25,8 @@ export default function Sidebar({ onNavigated }: { onNavigated?: () => void } = 
     setRenaming(null)
   }
   const handleDelete = async (s: Session) => {
-    if (!window.confirm(`删除会话「${s.name}」？`)) return
     try { await SessionsApi.remove(s.id); await refreshSessions() } catch {}
+    setConfirming(null)
   }
 
   const kw = search.trim().toLowerCase()
@@ -78,13 +79,14 @@ export default function Sidebar({ onNavigated }: { onNavigated?: () => void } = 
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[13px] truncate text-pi-text">{s.name || '新会话'}</div>
-                  <div className="text-[10px] text-pi-dim2 truncate">{s.preview || ''}</div>
+                  <div className="text-[11px] text-pi-dim2 truncate">{s.preview || ''}</div>
                 </div>
-                <div className="hidden group-hover:flex gap-1 flex-shrink-0">
+                {/* 08-25 评审 P1：hover 门控 → 触屏常显（hov-reveal）*/}
+                <div className="hov-reveal flex gap-1 flex-shrink-0">
                   <button className="p-0.5 text-pi-dim2 hover:text-pi-text" onClick={(e) => { e.stopPropagation(); setRenaming({ sid: s.id, name: s.name }) }}>
                     <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
                   </button>
-                  <button className="p-0.5 text-pi-dim2 hover:text-pi-red" onClick={(e) => { e.stopPropagation(); handleDelete(s) }}>
+                  <button className="p-0.5 text-pi-dim2 hover:text-pi-red" aria-label={`删除会话 ${s.name || '新会话'}`} onClick={(e) => { e.stopPropagation(); setConfirming(s) }}>
                     <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                   </button>
                 </div>
@@ -93,6 +95,20 @@ export default function Sidebar({ onNavigated }: { onNavigated?: () => void } = 
           </div>
         ))}
       </div>
+
+      {/* 删除确认弹窗（08-25：替换 window.confirm，与重命名弹窗同腔调）*/}
+      {confirming && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]" onClick={() => setConfirming(null)}>
+          <div className="panel p-4 w-72" onClick={e => e.stopPropagation()} role="alertdialog" aria-label="确认删除会话">
+            <div className="text-sm font-semibold mb-1.5">删除会话</div>
+            <div className="text-xs text-pi-dim mb-3">「{confirming.name || '新会话'}」将被永久删除，不可恢复。</div>
+            <div className="flex justify-end gap-2">
+              <button className="btn-ghost" onClick={() => setConfirming(null)}>取消</button>
+              <button className="btn bg-pi-red/90 text-white hover:bg-pi-red" onClick={() => handleDelete(confirming)}>删除</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 重命名弹窗 */}
       {renaming && (

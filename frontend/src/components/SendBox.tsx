@@ -68,8 +68,11 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
   const [files, setFiles] = useState<FileAttachment[]>([])
   const [uploading, setUploading] = useState(false)
   const [slashQuery, setSlashQuery] = useState<string | null>(null)
+  const [slashHi, setSlashHi] = useState(0)
   const [atQuery, setAtQuery] = useState<string | null>(null)
+  const [atHi, setAtHi] = useState(0)
   const [atResults, setAtResults] = useState<{ name: string; path: string }[]>([])
+  const [micErr, setMicErr] = useState('')
   const [recording, setRecording] = useState(false)
   const [recSeconds, setRecSeconds] = useState(0)
   const recRef = useRef<{ rec: MediaRecorder; stream: MediaStream; chunks: Blob[]; mime: string } | null>(null)
@@ -114,7 +117,8 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
       setRecording(true); setRecSeconds(0)
       recTimerRef.current = setInterval(() => setRecSeconds(s => s + 1), 1000)
     } catch {
-      alert('无法访问麦克风，请检查浏览器权限')
+      setMicErr('无法访问麦克风，请检查浏览器权限')
+      setTimeout(() => setMicErr(''), 4000)
     }
   }
 
@@ -132,6 +136,9 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
     : []
   const showSlash = slashMatches.length > 0
 
+  // 高亮索引跟随过滤结果重置（08-25：菜单键盘导航）
+  useEffect(() => { setSlashHi(0) }, [slashQuery])
+
   useEffect(() => {
     if (atQuery === null) return
     const kw = atQuery.trim()
@@ -148,6 +155,7 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
     }, 250)
     return () => clearTimeout(t)
   }, [atQuery])
+  useEffect(() => { setAtHi(0) }, [atQuery, atResults.length])
   const showAt = atQuery !== null
 
   const onChange = (v: string) => {
@@ -194,26 +202,34 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
 
   return (
     <div className="relative">
+      {/* 麦克风错误提示（08-25 评审 P1：替换 alert()）*/}
+      {micErr && <div className="mb-1.5 px-3 py-1.5 rounded-pi-md bg-pi-red/12 border border-pi-red/30 text-[11.5px] text-pi-red" role="alert">⚠ {micErr}</div>}
       {/* 斜杠命令菜单 */}
       {showSlash && (
-        <div className="absolute bottom-full left-0 right-0 mb-1 panel !p-1 max-h-56 overflow-y-auto z-20">
-          {slashMatches.map(c => (
-            <div key={c.cmd} className="px-3 py-2 rounded-pi-sm hover:bg-pi-bg3 cursor-pointer flex items-baseline gap-2" onMouseDown={e => { e.preventDefault(); pickSlash(c.cmd) }}>
+        <div className="absolute bottom-full left-0 right-0 mb-1 panel !p-1 max-h-56 overflow-y-auto z-20" role="listbox" aria-label="斜杠命令">
+          {slashMatches.map((c, i) => (
+            <div key={c.cmd} role="option" aria-selected={i === slashHi}
+              className={`px-3 py-2 rounded-pi-sm cursor-pointer flex items-baseline gap-2 ${i === slashHi ? 'bg-pi-bg3' : 'hover:bg-pi-bg-hover'}`}
+              onMouseEnter={() => setSlashHi(i)}
+              onMouseDown={e => { e.preventDefault(); pickSlash(c.cmd) }}>
               <span className="font-mono text-[13px] text-pi-accent">{c.cmd}</span>
-              <span className="text-xs text-pi-dim2">{c.desc}</span>
+              <span className="text-[11px] text-pi-dim2">{c.desc}</span>
             </div>
           ))}
         </div>
       )}
       {/* @ 文件引用菜单 */}
       {showAt && (
-        <div className="absolute bottom-full left-0 right-0 mb-1 panel !p-1 max-h-56 overflow-y-auto z-20">
+        <div className="absolute bottom-full left-0 right-0 mb-1 panel !p-1 max-h-56 overflow-y-auto z-20" role="listbox" aria-label="引用工作空间文件">
           {atResults.length === 0 ? (
-            <div className="px-3 py-2 text-xs text-pi-dim2">输入关键词搜索工作空间文件…</div>
-          ) : atResults.map(r => (
-            <div key={r.path} className="px-3 py-2 rounded-pi-sm hover:bg-pi-bg3 cursor-pointer" onMouseDown={e => { e.preventDefault(); pickAt(r) }}>
+            <div className="px-3 py-2 text-[11px] text-pi-dim2">输入关键词搜索工作空间文件…</div>
+          ) : atResults.map((r, i) => (
+            <div key={r.path} role="option" aria-selected={i === atHi}
+              className={`px-3 py-2 rounded-pi-sm cursor-pointer ${i === atHi ? 'bg-pi-bg3' : 'hover:bg-pi-bg-hover'}`}
+              onMouseEnter={() => setAtHi(i)}
+              onMouseDown={e => { e.preventDefault(); pickAt(r) }}>
               <div className="text-[13px] text-pi-text">{r.name}</div>
-              <div className="text-[10px] text-pi-dim2 font-mono truncate">{r.path}</div>
+              <div className="text-[10.5px] text-pi-dim2 font-mono truncate">{r.path}</div>
             </div>
           ))}
         </div>
@@ -234,14 +250,26 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
       <div className="sendbox-shell rounded-pi-xl border border-pi-border bg-pi-bg2/50 backdrop-blur-xl focus-within:border-pi-accent focus-within:ring-1 focus-within:ring-pi-accent/40 transition-all duration-300">
         <textarea ref={taRef} rows={2} value={value} disabled={streaming}
           placeholder='给小语发消息…　"/" 命令 · "@ 引用文件'
+          role="combobox"
+          aria-expanded={showSlash || showAt}
+          aria-label="消息输入框"
           className="w-full bg-transparent border-none outline-none px-4 pt-3 pb-1 text-[13.5px] text-pi-text resize-none placeholder:text-pi-dim2 disabled:opacity-60"
           onChange={e => onChange(e.target.value)}
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
-              if (showSlash) { pickSlash(slashMatches[0].cmd); return }
-              if (showAt && atResults.length) { pickAt(atResults[0]); return }
+              if (showSlash) { pickSlash(slashMatches[slashHi] ? slashMatches[slashHi].cmd : slashMatches[0].cmd); return }
+              if (showAt && atResults.length) { pickAt(atResults[atHi] || atResults[0]); return }
               doSend()
+            } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+              // 菜单打开时 ↑↓ 导航高亮项（08-25 评审 P1：菜单不再是纯鼠标组件）
+              if (showSlash) {
+                e.preventDefault()
+                setSlashHi(h => Math.max(0, Math.min(h + (e.key === 'ArrowDown' ? 1 : -1), slashMatches.length - 1)))
+              } else if (showAt && atResults.length) {
+                e.preventDefault()
+                setAtHi(h => Math.max(0, Math.min(h + (e.key === 'ArrowDown' ? 1 : -1), atResults.length - 1)))
+              }
             } else if (e.key === 'Escape') { setSlashQuery(null); setAtQuery(null) }
           }} />
 
