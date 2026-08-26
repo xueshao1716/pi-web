@@ -8,11 +8,12 @@ import { useRestoreFocus } from '../hooks/useRestoreFocus'
 import { PanelLeftClose } from 'lucide-react'
 
 const GROUP_LABEL: Record<string, string> = {
+  test: '小语真测',
   workspace: '工作空间会话',
   terminal: '小语会话（终端）',
 }
-// 分组排序：终端会话置顶（外部可随时打开终端会话找小语，双向同步）
-const GROUP_ORDER = ['terminal', 'workspace']
+// 分组排序：终端/真测置顶（外部联系+测试），工作空间在后
+const GROUP_ORDER = ['terminal', 'test', 'workspace']
 
 // 分组折叠状态持久化（记住用户偏好）
 function loadCollapsed(): Set<string> {

@@ -430,8 +430,16 @@ export function isFirstTurn(sm) {
   } catch { return false; }
 }
 
+function _clearSessionModelKey(sid) {
+  try {
+    const p = path.join(_getAgentDir(), "session-model-keys.json");
+    const d = _readJsonFile(p) || {};
+    if (d[sid]) { delete d[sid]; _writeJsonFile(p, d); }
+  } catch {}
+}
+
 export async function deleteSession(id) {
-  clearSessionModelKey(id); // 修复 A：删除会话时清理模型选择记录
+  _clearSessionModelKey(id);
   const entry = _activeSessions.get(id);
   if (entry) {
     try { entry.agent.dispose(); } catch {}

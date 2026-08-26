@@ -256,6 +256,12 @@ export const MemoryApi = {
   dedupe: () => api<{ ok: boolean; removed: number; backup: string | null }>('/api/memory-gardener/dedupe', { method: 'POST' }),
 }
 
+// ── 系统面板：说明 / 检测更新 ──
+export const SystemApi = {
+  info: () => api<any>('/api/system/info'),
+  checkUpdate: () => api<any>('/api/system/check-update'),
+}
+
 // ── 用量统计（按 provider/模型聚合）──
 export interface ProviderStat { provider: string; input: number; output: number; cacheRead?: number; cost: number; messages: number }
 export const StatsApi = {

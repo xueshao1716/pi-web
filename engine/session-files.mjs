@@ -101,8 +101,14 @@ function listSessions() {
       messageCount: s.messageCount,
       file: s.file,
       cwd: s.cwd,
-      // 2026-08-20 分组：工作区会话 vs 其他目录（pi 终端会话，外部联系小语用）
-      group: (() => { try { return path.resolve(s.cwd || "") === path.resolve(_workspaceCwd) ? "workspace" : "terminal"; } catch { return "terminal"; } })(),
+      // 2026-08-26 分组：小语真测（[真测] 前缀命名约定）→ terminal（pi 终端/外部联系）→ workspace
+      // 测试会话不入工作空间，避免污染伙伴的会话列表
+      group: (() => {
+        const name = s.name || s.preview || "";
+        // 命名约定：以 [真测]/真测/E2E 开头的会话归入小语真测组（测试不入工作空间）
+        if (/^(\[真测\]|真测[·:：]?|E2E)/i.test(name.trim())) return "test";
+        try { return path.resolve(s.cwd || "") === path.resolve(_workspaceCwd) ? "workspace" : "terminal"; } catch { return "terminal"; }
+      })(),
     }));
 }
 

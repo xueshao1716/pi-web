@@ -351,7 +351,6 @@ function saveSessionModelKey(sid, mk) {
   try { const d = readJsonFile(SESSION_KEYS_FILE); d[sid] = mk; fs.writeFileSync(SESSION_KEYS_FILE, JSON.stringify(d, null, 1)); } catch {}
 }
 function loadSessionModelKey(sid) { try { return readJsonFile(SESSION_KEYS_FILE)[sid] || null; } catch { return null; } }
-function clearSessionModelKey(sid) { try { const d = readJsonFile(SESSION_KEYS_FILE); if (d[sid]) { delete d[sid]; fs.writeFileSync(SESSION_KEYS_FILE, JSON.stringify(d, null, 1)); } } catch {} }
 
 // ══ 全局最后模型（2026-08-19 新增）══
 // 现象：新建会话 createSession 不恢复模型选择 → 新会话永远回 Auto → 降级链落 mimo，用户上次选的千问不继承 → “智能路由乱了”
@@ -1581,6 +1580,8 @@ const API_ROUTES = [
     const r = dedupeLog(WS_ROOT);
     json(res, 200, { ok: true, ...r });
   }],
+  ["GET", "/api/system/info", (res) => json(res, 200, systemInfo())],
+  ["GET", "/api/system/check-update", async (res) => json(res, 200, await checkUpdate())],
   // ── 灵犀：双向灵感池（user/xiaoyu 分源记录，攒着一起过）──
   ["GET", "/api/lingxi", (res, req, url) => {
     const source = url.searchParams.get("source") || undefined;
@@ -2125,3 +2126,67 @@ checkSubscriptions();
 setInterval(checkSubscriptions, 6 * 3600 * 1000); // 每 6 小时查一次
 
 startServer();
+
+
+// ── 系统面板（08-26）：信息聚合 / 与远端仓库比对检测更新 ──
+const STARTED_AT = Date.now();
+const PUBLIC_DOMAINS = [
+  { domain: "pi.myxinyu.xin", desc: "工作台主入口" },
+  { domain: "share.myxinyu.xin", desc: "成品外链分享" },
+  { domain: "novel.myxinyu.xin", desc: "小说创作系统" },
+];
+
+function lanIPs() {
+  const out = [];
+  try {
+    for (const nets of Object.values(os.networkInterfaces())) {
+      for (const n of nets || []) if (n.family === "IPv4" && !n.internal) out.push(n.address);
+    }
+  } catch {}
+  return out;
+}
+
+function localGitSha() {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: __dirname, timeout: 5000 }).toString().trim();
+  } catch { return ""; }
+}
+
+function systemInfo() {
+  let version = "";
+  try { version = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8")).version || ""; } catch {}
+  return {
+    name: "pi-web 小语工作台",
+    version,
+    node: process.version,
+    platform: `${os.type()} ${os.arch()}`,
+    uptimeSec: Math.round((Date.now() - STARTED_AT) / 1000),
+    startedAt: new Date(STARTED_AT).toISOString(),
+    wsRoot: WS_ROOT,
+    port: 8787,
+    lanIPs: lanIPs(),
+    domains: PUBLIC_DOMAINS,
+  };
+}
+
+async function checkUpdate() {
+  const localShaFull = localGitSha();
+  const localSha = localShaFull.slice(0, 7);
+  const sources = [
+    { name: "github", url: "https://api.github.com/repos/xueshao1716/pi-web/commits/main",
+      pick: (d) => ({ sha: String(d.sha || "").slice(0, 7), message: String(d.commit?.message || "").split("\n")[0], date: d.commit?.author?.date }) },
+    { name: "gitee", url: "https://gitee.com/api/v5/repos/linxinyu520xue/pi-web/branches/main",
+      pick: (d) => ({ sha: String(d.commit?.id || "").slice(0, 7), message: String(d.commit?.message || "").split("\n")[0], date: undefined }) },
+  ];
+  for (const s of sources) {
+    try {
+      const r = await fetch(s.url, { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "pi-web" } });
+      if (!r.ok) continue;
+      const remote = s.pick(await r.json());
+      if (!remote.sha) continue;
+      return { ok: true, source: s.name, localSha, remote, upToDate: !localShaFull || localSha === remote.sha };
+    } catch {}
+  }
+  return { ok: false, error: "无法连接 github / gitee，请检查网络后重试", localSha };
+}
+
