@@ -28,7 +28,7 @@ function Node({ n, k }: { n: Spec; k?: string }) {
         </div>
       </div>
     )
-    case 'badge': return <span key={k} className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] bg-pi-accent/12 border border-pi-accent/25 text-pi-accent">{n.content || n.text}</span>
+    case 'badge': return <span key={k} className="inline-flex items-center px-2 py-0.5 rounded-pi-sm text-[11px] bg-pi-accent/12 border border-pi-accent/25 text-pi-accent">{n.content || n.text}</span>
     case 'list': return (
       <ul key={k} className="space-y-1 text-[13px] text-pi-text/90">
         {(n.items || []).map((x: any, i: number) => {

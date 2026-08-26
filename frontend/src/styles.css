@@ -67,11 +67,11 @@ ul[class], ol[class] { list-style: none; margin: 0; padding: 0; }
   --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
   --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --pi-font-display: "Space Grotesk", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  --pi-radius-base: 8px;
-  --pi-r-sm: 6px;
-  --pi-r-md: 8px;
-  --pi-r-lg: 12px;
-  --pi-r-xl: 16px;
+  --pi-radius-base: 6px;
+  --pi-r-sm: 4px;
+  --pi-r-md: 6px;
+  --pi-r-lg: 8px;
+  --pi-r-xl: 12px;
   --pi-fs-sm: 12px;
   --pi-lh-sm: 1.333;
   --pi-fs-md: 13px;
@@ -98,15 +98,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── 全局彩色光斑背景（液态玻璃：紫 + 青 + 主色；08-23 加强：原透度太低在暗底上不可见）── */
-body::before {
-  content: "";
-  position: fixed; inset: 0; z-index: 0; pointer-events: none;
-  background:
-    radial-gradient(900px 500px at 85% -10%, rgba(84,104,255,0.09), transparent 55%),
-    radial-gradient(600px 400px at 5% 105%, rgba(139,92,246,0.06), transparent 55%),
-    radial-gradient(500px 350px at 50% 45%, rgba(84,104,255,0.04), transparent 55%);
-}
+/* ── 全局背景（08-26 去 AI 味：环境光斑退场。工具软件的底是干净的）── */
 #root { position: relative; z-index: 1; }
 
 /* ── 滚动条 ── */
@@ -115,55 +107,37 @@ body::before {
 ::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,.38); }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* ══ 玻璃面板（08-25 shadcn nova 配方：blur 移入 ::before 伪元素——
-   隔离子元素合成层、不再阻断 fixed 后代的定位上下文；@supports 实底兜底）══ */
+/* ══ 面板材质（08-26 去 AI 味改版：
+   .glass = 常驻框架面板 → 实底主题色，零模糊；
+   .glass-strong = 弹层/遮罩（命令面板、移动 overlay、TabBar）→ 半透明+模糊保留，这是功能性景深不是装饰 ══ */
 .glass {
-  position: relative;
-  background: rgba(16, 20, 27, 0.55);
-}
-.glass::before {
-  content: ""; position: absolute; inset: 0; z-index: -1;
-  border-radius: inherit;
-  pointer-events: none;
-  backdrop-filter: blur(24px) saturate(1.4);
-  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  background: var(--pi-bg2);
 }
 .glass-strong {
   position: relative;
-  background: rgba(10, 13, 19, 0.72);
+  background: color-mix(in oklab, var(--pi-bg1) 82%, transparent);
 }
 .glass-strong::before {
   content: ""; position: absolute; inset: 0; z-index: -1;
   border-radius: inherit;
   pointer-events: none;
-  backdrop-filter: blur(32px) saturate(1.5);
-  -webkit-backdrop-filter: blur(32px) saturate(1.5);
+  backdrop-filter: blur(28px) saturate(1.3);
+  -webkit-backdrop-filter: blur(28px) saturate(1.3);
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .glass { background: rgba(14, 18, 25, 0.94); }
-  .glass-strong { background: rgba(10, 13, 19, 0.97); }
+  .glass-strong { background: var(--pi-bg1); }
 }
-/* 高光描边（nomifun 质感核心：亮线 + 内发光 + 外阴影；08-23 提亮描边让面板"浮起来"） */
+/* 高光描边简化：一条边框 + 一道投影，去掉内发光叠层 */
 .glass-hi {
-  border: 1px solid rgba(255,255,255,0.16);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.14),
-    inset 0 0 0 0.5px rgba(255,255,255,0.07),
-    0 8px 32px rgba(0,0,0,0.38),
-    0 2px 8px rgba(0,0,0,0.24),
-    0 0 0 1px rgba(123,150,255,0.06);
+  border: 1px solid var(--pi-border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.34);
 }
 
 /* ── 三栏层次（08-23）：左栏微亮+顶部天光，中栏最深做画布，右栏居中 —— 拉开前中后景 */
-.col-sidebar {
-  background: linear-gradient(180deg, rgba(38,42,50,0.60), rgba(18,22,28,0.72));
-}
-.col-canvas {
-  background: linear-gradient(180deg, rgba(14,17,22,0.88), rgba(11,14,19,0.92));
-}
-.col-right {
-  background: linear-gradient(180deg, rgba(24,28,34,0.66), rgba(16,20,26,0.74));
-}
+/* ── 三栏层次（08-26 改版：实底 token 色，随四主题自适应。侧栏最亮 / 画布最深 / 右栏居中）── */
+.col-sidebar { background: var(--pi-bg2); }
+.col-canvas { background: var(--pi-bg); }
+.col-right { background: var(--pi-bg1); }
 
 /* ── 欢迎页快捷卡彩色化（08-23）：每张卡自己的强调色，拉彩色占比 */
 .chip-blue   { background: rgba(84,104,255,0.10);  border-color: rgba(123,150,255,0.28); }
@@ -175,23 +149,11 @@ body::before {
 .chip-violet { background: rgba(167,139,250,0.10); border-color: rgba(167,139,250,0.28); }
 .chip-violet:hover { background: rgba(167,139,250,0.18); }
 
-/* 通用玻璃面板（带完整高光；同上伪元素配方） */
+/* 通用面板（08-26 去玻璃化：实底 surface + 单边框单投影） */
 .panel-glass {
-  position: relative;
-  background: rgba(17, 21, 28, 0.50);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.10),
-    inset 0 0 0 0.5px rgba(255,255,255,0.04),
-    0 4px 20px rgba(0,0,0,0.32),
-    0 1px 4px rgba(0,0,0,0.22);
-  border: 1px solid rgba(255,255,255,0.10);
-}
-.panel-glass::before {
-  content: ""; position: absolute; inset: 0; z-index: -1;
-  border-radius: inherit;
-  pointer-events: none;
-  backdrop-filter: blur(22px) saturate(1.35);
-  -webkit-backdrop-filter: blur(22px) saturate(1.35);
+  background: var(--pi-surface);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.26);
+  border: 1px solid var(--pi-border);
 }
 
 /* ── 颜色派生层（HeroUI OKLCH+color-mix 语义色层系统）：
@@ -277,38 +239,26 @@ body::before {
   .press:hover, .press:active { transform: none; }
 }
 
-/* ── 渐变主按钮 ── */
+/* ── 主按钮（08-26 去 AI 味：渐变+辉光 → 实底 accent。强调靠色相不靠光效）── */
 .btn-grad {
-  background: linear-gradient(135deg, var(--pi-accent) 0%, var(--pi-accent2) 100%);
-  box-shadow: 0 2px 14px var(--pi-accent-glow);
+  background: var(--pi-accent);
 }
 
-/* ── 消息气泡玻璃化（Phase3 加强）── */
+/* ── 消息气泡（08-26 去玻璃化：实底 surface，去 backdrop-blur；投影收敛为一道）── */
 .msg-bubble {
-  /* 语义化重写：surface 层级 + color-mix 派生高光，让气泡比画布明显浮出 */
-  background: color-mix(in oklab, var(--pi-surface) 82%, transparent);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid color-mix(in oklab, var(--pi-border-hi) 60%, white 10%);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.10),
-    0 6px 24px rgba(0,0,0,0.30),
-    0 0 0 0.5px rgba(255,255,255,0.05);
-  transition: box-shadow var(--pi-motion-fast), transform var(--pi-motion-fast);
+  background: color-mix(in oklab, var(--pi-surface) 94%, var(--pi-bg));
+  border: 1px solid color-mix(in oklab, var(--pi-border) 85%, white 15%);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.18);
 }
 .msg-bubble-user {
-  background: rgba(84, 104, 255, 0.16);
-  border-color: rgba(123,150,255,0.25);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.08),
-    0 4px 18px rgba(84,104,255,0.14),
-    0 0 0 0.5px rgba(84,104,255,0.08);
+  background: color-mix(in oklab, var(--pi-accent) 16%, var(--pi-surface));
+  border-color: color-mix(in oklab, var(--pi-accent) 30%, transparent);
+  box-shadow: none;
 }
 
-/* ── 字母头像渐变 ── */
+/* ── 字母头像（08-26：渐变→实底，保留 accent 深度）── */
 .avatar-grad {
-  background: linear-gradient(135deg, var(--pi-accent) 0%, var(--pi-accent2) 60%, #a78bfa 100%);
-  box-shadow: 0 2px 12px var(--pi-accent-glow);
+  background: color-mix(in oklab, var(--pi-accent) 80%, black 20%);
 }
 
 /* ── 导航活跃态（Phase3 新增：左侧 accent 竖条 + 背景）── */
@@ -386,11 +336,11 @@ body::before {
   --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
   --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --pi-font-display: "Space Grotesk", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  --pi-radius-base: 8px;
-  --pi-r-sm: 6px;
-  --pi-r-md: 8px;
-  --pi-r-lg: 12px;
-  --pi-r-xl: 16px;
+  --pi-radius-base: 6px;
+  --pi-r-sm: 4px;
+  --pi-r-md: 6px;
+  --pi-r-lg: 8px;
+  --pi-r-xl: 12px;
   --pi-fs-sm: 12px;
   --pi-lh-sm: 1.333;
   --pi-fs-md: 13px;
@@ -441,11 +391,11 @@ body::before {
   --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
   --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --pi-font-display: "Space Grotesk", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  --pi-radius-base: 8px;
-  --pi-r-sm: 6px;
-  --pi-r-md: 8px;
-  --pi-r-lg: 12px;
-  --pi-r-xl: 16px;
+  --pi-radius-base: 6px;
+  --pi-r-sm: 4px;
+  --pi-r-md: 6px;
+  --pi-r-lg: 8px;
+  --pi-r-xl: 12px;
   --pi-fs-sm: 12px;
   --pi-lh-sm: 1.333;
   --pi-fs-md: 13px;
@@ -496,11 +446,11 @@ body::before {
   --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
   --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --pi-font-display: "Space Grotesk", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  --pi-radius-base: 8px;
-  --pi-r-sm: 6px;
-  --pi-r-md: 8px;
-  --pi-r-lg: 12px;
-  --pi-r-xl: 16px;
+  --pi-radius-base: 6px;
+  --pi-r-sm: 4px;
+  --pi-r-md: 6px;
+  --pi-r-lg: 8px;
+  --pi-r-xl: 12px;
   --pi-fs-sm: 12px;
   --pi-lh-sm: 1.333;
   --pi-fs-md: 13px;
@@ -829,7 +779,7 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   z-index 分层常量（2026-08-26）：全局唯一出处，JSX 用 z-[var(--pi-z-*)] 引用，
+   z-index 分层常量（2026-08-26）：全局唯一出处，JSX 经 UnoCSS 任意值语法引用对应变量，
    新代码禁止手写魔法数字（对标 uView zIndex.ts / KickSide 分层设计）
    ══════════════════════════════════════════════════════════════════════ */
 :root {

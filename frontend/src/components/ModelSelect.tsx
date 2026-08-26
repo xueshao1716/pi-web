@@ -76,7 +76,7 @@ export default function ModelSelect({ compact = false }: { compact?: boolean }) 
                 <div className={`text-[13px] font-semibold ${isAuto ? 'text-pi-accent' : 'text-pi-text'}`}>Auto 智能路由</div>
                 <div className="text-[11px] opacity-60">按任务复杂度自动选模型</div>
               </div>
-              {isAuto && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-pi-accent/20 text-pi-accent font-medium">当前</span>}
+              {isAuto && <span className="text-[10px] px-1.5 py-0.5 rounded-pi-sm bg-pi-accent/20 text-pi-accent font-medium">当前</span>}
             </DM.RadioItem>
             <DM.Separator className="mx-3 my-0.5 border-t border-pi-border-soft" />
             {models.map(m => {
@@ -89,11 +89,11 @@ export default function ModelSelect({ compact = false }: { compact?: boolean }) 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <span className={`text-[13px] font-medium truncate ${active ? 'text-pi-accent' : 'text-pi-text'}`}>{m.name}</span>
-                      {free && <span className="text-[10px] px-1 py-px rounded-full bg-emerald-500/15 text-emerald-400 font-medium flex-shrink-0">免费</span>}
+                      {free && <span className="text-[10px] px-1 py-px rounded-pi-sm bg-emerald-500/15 text-emerald-400 font-medium flex-shrink-0">免费</span>}
                     </div>
                     <div className="text-[11px] text-pi-dim2 truncate">{m.provider}</div>
                   </div>
-                  {active && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-pi-accent/20 text-pi-accent font-medium flex-shrink-0">当前</span>}
+                  {active && <span className="text-[10px] px-1.5 py-0.5 rounded-pi-sm bg-pi-accent/20 text-pi-accent font-medium flex-shrink-0">当前</span>}
                 </DM.RadioItem>
               )
             })}

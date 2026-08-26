@@ -54,6 +54,6 @@ export default defineConfig({
     ['rounded-pi-md', { 'border-radius': 'var(--pi-r-md)' }],
     ['rounded-pi-lg', { 'border-radius': 'var(--pi-r-lg)' }],
     ['rounded-pi-xl', { 'border-radius': 'var(--pi-r-xl)' }],
-    ['rounded-pi-pill', { 'border-radius': '999px' }],
+    ['rounded-pi-pill', { 'border-radius': 'var(--pi-r-sm)' }],
   ],
 })

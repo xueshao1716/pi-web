@@ -109,7 +109,7 @@ export default function WorkshopView() {
       {/* 运行条 */}
       <div className="flex items-center gap-2">
         {running
-          ? <button className="h-8 px-4 rounded-full bg-red-500/90 text-white text-xs font-medium animate-pulse" onClick={stop}>⏹ 停止</button>
+          ? <button className="h-8 px-4 rounded-pi-md bg-red-500/90 text-white text-xs font-medium animate-pulse" onClick={stop}>⏹ 停止</button>
           : <button className="btn-primary text-xs px-4 py-2" onClick={run}>开始{kind === 'ppt' ? '生成 PPT' : '创作小说'}</button>}
         <span className="text-[11px] text-pi-dim2">{kind === 'ppt' ? '走 ppt-generator 技能全流程，通常需要几分钟' : '走 novel-forge v10 全流程，单章可能较久'}</span>
       </div>

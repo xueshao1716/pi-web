@@ -362,7 +362,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
             aria-label="切换右栏"
             title={rightPanel !== 'chat' ? '收起右栏' : '打开右栏'}
             onClick={() => onRightPanel(rightPanel === 'chat' ? 'workspace' : 'chat')}
-            className={`text-[11px] px-2.5 py-1 rounded-full border flex items-center gap-1 flex-shrink-0 transition-colors duration-150 ${
+            className={`text-[11px] px-2.5 py-1 rounded-pi-sm border flex items-center gap-1 flex-shrink-0 transition-colors duration-150 ${
               rightPanel && rightPanel !== 'chat'
                 ? 'bg-pi-accent text-white border-pi-accent'
                 : 'border-pi-border-soft bg-pi-bg2/60 text-pi-dim hover:text-pi-text glow-hover'}`}

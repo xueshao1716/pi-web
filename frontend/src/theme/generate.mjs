@@ -167,8 +167,9 @@ export function generateTheme(seed) {
   v['--pi-font-mono'] = FONTS.mono
   v['--pi-font-sans'] = FONTS.sans
   v['--pi-font-display'] = FONTS.display
-  v['--pi-radius-base'] = '8px'
-  v['--pi-r-sm'] = '6px'; v['--pi-r-md'] = '8px'; v['--pi-r-lg'] = '12px'; v['--pi-r-xl'] = '16px'
+  // 08-26 去 AI 味：圆角全档收敛（工具感），与 styles.css 手改保持一致
+  v['--pi-radius-base'] = '6px'
+  v['--pi-r-sm'] = '4px'; v['--pi-r-md'] = '6px'; v['--pi-r-lg'] = '8px'; v['--pi-r-xl'] = '12px'
   for (const [name, px] of FONT_SCALE) {
     v[`--pi-fs-${name}`] = `${px}px`
     v[`--pi-lh-${name}`] = `${((px + 4) / px).toFixed(3)}`

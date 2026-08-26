@@ -290,7 +290,7 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
           {onVoice && !streaming && (
             recording ? (
               <button onClick={() => stopRec()}
-                className="h-7 px-2.5 rounded-full bg-red-500/90 text-white text-[11px] font-medium flex items-center gap-1.5 hover:bg-red-500 transition-colors"
+                className="h-7 px-2.5 rounded-pi-md bg-red-500/90 text-white text-[11px] font-medium flex items-center gap-1.5 hover:bg-red-500 transition-colors"
                 title="停止录音并转写">
                 <span className="rec-wave"><i /><i /><i /><i /><i /></span> {Math.floor(recSeconds / 60)}:{String(recSeconds % 60).padStart(2, '0')}
               </button>

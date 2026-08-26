@@ -162,7 +162,7 @@ export default function AppLayout() {
         style={{ background: 'radial-gradient(720px 420px at 82% -8%, color-mix(in oklab, var(--pi-accent) 12%, transparent), transparent 62%), radial-gradient(560px 380px at 8% 108%, color-mix(in oklab, var(--pi-accent2) 7%, transparent), transparent 60%)' }} />
 
       {/* 图标导航 rail（08-23：col-sidebar 顶部天光，拉开与中栏层次） */}
-      <nav className="w-14 flex-shrink-0 flex flex-col items-center py-3 gap-1.5 col-sidebar glass-strong border-r border-pi-border relative z-20">
+      <nav className="w-14 flex-shrink-0 flex flex-col items-center py-3 gap-1.5 col-sidebar border-r border-pi-border relative z-20">
         <div className="w-8 h-8 rounded-pi-md avatar-grad flex items-center justify-center text-white font-bold mb-2">语</div>
         {NAV.map(n => (
           <T.Root key={n.route}>

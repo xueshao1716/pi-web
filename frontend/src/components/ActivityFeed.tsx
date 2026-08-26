@@ -81,7 +81,7 @@ export default function ActivityFeed() {
           <EmptyState emoji="🛰️" title="暂无活动记录" hint="小语干活时会实时显示在这里" />
         ) : (
           events.slice().reverse().slice(0, 40).map((ev, i) => (
-            <div key={`${ev.ts}-${i}`} className="flex gap-2 items-start px-2 py-1.5 rounded-pi-sm hover:bg-pi-bg2/50 text-[11.5px] leading-relaxed">
+            <div key={`${ev.ts}-${i}`} className="flex gap-2 items-start px-2 py-1.5 rounded-pi-sm hover:bg-pi-bg2/50 text-xs leading-relaxed">
               <span className="font-mono text-[10px] text-pi-dim2 flex-shrink-0 mt-0.5">
                 {new Date(ev.ts).toLocaleTimeString('zh-CN', { hour12: false })}
               </span>
