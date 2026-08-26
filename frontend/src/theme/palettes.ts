@@ -15,6 +15,7 @@ export const THEME_PRESETS = [
   { id: 'ink', name: '墨玉黑', swatch: 'linear-gradient(135deg,#000,#1a1a1f)' },
   { id: 'violet', name: '紫夜', swatch: 'linear-gradient(135deg,#0d0a1a,#251d52)' },
   { id: 'mist', name: '晨雾', swatch: 'linear-gradient(135deg,#f3f5fa,#ffffff)', light: true },
+  { id: 'kraft', name: '牛皮纸', swatch: 'linear-gradient(135deg,#e5d4aa,#c9a66b)', light: true },
 ]
 export const ACCENT_PRESETS = [
   { name: '靛蓝', color: '#4a58fa' },

@@ -82,8 +82,12 @@ export const SEEDS = {
             overrides: { '--pi-accent-glow': 'rgba(120,120,160,0.22)', '--pi-glow-purple': 'rgba(120,120,160,0.12)', '--pi-glow-cyan': 'rgba(100,140,180,0.06)' } },
   violet: { bg: '#0a0818', text: '#f0eaff', accent: '#8b7cf6', step: 0.045,
             overrides: { '--pi-accent-glow': 'rgba(139,92,246,0.32)', '--pi-accent2': '#a78bfa', '--pi-accent-deep': '#6d5bd0', '--pi-glow-purple': 'rgba(139,92,246,0.22)', '--pi-glow-cyan': 'rgba(120,100,200,0.08)' } },
-  mist:   { bg: '#f3f5fa', text: '#1c2333', accent: '#4a58fa', light: true, step: 0.02,
+  mist:   { bg: '#f3f5fa', text: '#1c2333', accent: '#4a58fa', light: true, step: 0.036,
             overrides: { '--pi-green': '#16a34a', '--pi-red': '#dc4b45', '--pi-yellow': '#d97706', '--pi-accent-glow': 'rgba(74,88,250,0.12)', '--pi-glow-purple': 'rgba(100,80,200,0.06)', '--pi-glow-cyan': 'rgba(56,189,248,0.04)' } },
+  kraft:  { bg: '#e5d4aa', text: '#3b2c14', accent: '#b45309', light: true, step: 0.035,
+            overrides: { '--pi-green': '#158039', '--pi-red': '#bb2c27', '--pi-yellow': '#a16207',
+                         '--pi-accent-glow': 'rgba(180,83,9,0.14)', '--pi-glow-purple': 'rgba(146,98,10,0.07)', '--pi-glow-cyan': 'rgba(120,90,20,0.05)',
+                         '--pi-shadow-sm': 'rgba(92,58,16,0.16)', '--pi-shadow-md': 'rgba(92,58,16,0.26)', '--pi-shadow-lg': 'rgba(80,50,12,0.36)' } },
 }
 
 const SEMANTIC = { green: '#3ecf8e', red: '#f47067', yellow: '#f5b759' }
@@ -163,6 +167,12 @@ export function generateTheme(seed) {
   v['--pi-accent-soft'] = mixAlpha(seed.accent, 0.12)
   v['--pi-accent-soft-fg'] = seed.accent
 
+  // 三档阴影 token（08-26 立体感体系）：组件类只引用变量，主题可覆写浓淡与色调
+  const shadowTint = seed.light ? 'rgba(15,23,42,' : 'rgba(0,0,0,'
+  v['--pi-shadow-sm'] = seed.overrides?.['--pi-shadow-sm'] || `${shadowTint}0.18)`
+  v['--pi-shadow-md'] = seed.overrides?.['--pi-shadow-md'] || `${shadowTint}0.26)`
+  v['--pi-shadow-lg'] = seed.overrides?.['--pi-shadow-lg'] || `${shadowTint}0.34)`
+
   // 字体 / 圆角（单变量派生）/ 字阶（行高绑定单 token）
   v['--pi-font-mono'] = FONTS.mono
   v['--pi-font-sans'] = FONTS.sans
@@ -195,7 +205,7 @@ export function emitCss() {
   const block = (sel, vars) => `${sel} {\n${fmtVars(vars)}\n}`
   return {
     root: block(':root', deep),
-    themes: ['ink', 'violet', 'mist'].map(name =>
+    themes: ['ink', 'violet', 'mist', 'kraft'].map(name =>
       block(`[data-theme="${name}"]`, generateTheme(SEEDS[name]))).join('\n'),
   }
 }

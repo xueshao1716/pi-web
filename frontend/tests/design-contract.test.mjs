@@ -130,7 +130,7 @@ test('四套主题必需 token 完整', () => {
   const required = ['--pi-bg','--pi-text','--pi-dim','--pi-dim2','--pi-accent','--pi-border','--pi-border-soft','--pi-bg1','--pi-bg2','--pi-bg3','--pi-bg4']
   const { themes } = emitCss()
   const failures = []
-  for (const sel of ['ink','violet','mist']) {
+  for (const sel of ['ink','violet','mist','kraft']) {
     const block = themes.split(`[data-theme="${sel}"]`)[1]?.split('}')[0] || ''
     for (const v of required) if (!block.includes(v + ':')) failures.push(`${sel}: 缺 ${v}`)
   }

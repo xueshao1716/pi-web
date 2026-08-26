@@ -64,6 +64,9 @@ ul[class], ol[class] { list-style: none; margin: 0; padding: 0; }
   --pi-danger: #f47067;
   --pi-accent-soft: rgba(84,104,255,0.12);
   --pi-accent-soft-fg: #5468ff;
+  --pi-shadow-sm: rgba(0,0,0,0.18);
+  --pi-shadow-md: rgba(0,0,0,0.26);
+  --pi-shadow-lg: rgba(0,0,0,0.34);
   --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
   --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --pi-font-display: "Space Grotesk", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
@@ -130,7 +133,7 @@ body {
 /* 高光描边简化：一条边框 + 一道投影，去掉内发光叠层 */
 .glass-hi {
   border: 1px solid var(--pi-border);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.34);
+  box-shadow: var(--pi-shadow-lg);
 }
 
 /* ── 三栏层次（08-23）：左栏微亮+顶部天光，中栏最深做画布，右栏居中 —— 拉开前中后景 */
@@ -152,7 +155,7 @@ body {
 /* 通用面板（08-26 去玻璃化：实底 surface + 单边框单投影） */
 .panel-glass {
   background: var(--pi-surface);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.26);
+  box-shadow: var(--pi-shadow-md);
   border: 1px solid var(--pi-border);
 }
 
@@ -248,7 +251,7 @@ body {
 .msg-bubble {
   background: color-mix(in oklab, var(--pi-surface) 94%, var(--pi-bg));
   border: 1px solid color-mix(in oklab, var(--pi-border) 85%, white 15%);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+  box-shadow: var(--pi-shadow-sm);
 }
 .msg-bubble-user {
   background: color-mix(in oklab, var(--pi-accent) 16%, var(--pi-surface));
@@ -333,6 +336,9 @@ body {
   --pi-danger: #f47067;
   --pi-accent-soft: rgba(84,104,255,0.12);
   --pi-accent-soft-fg: #5468ff;
+  --pi-shadow-sm: rgba(0,0,0,0.18);
+  --pi-shadow-md: rgba(0,0,0,0.26);
+  --pi-shadow-lg: rgba(0,0,0,0.34);
   --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
   --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --pi-font-display: "Space Grotesk", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
@@ -388,6 +394,9 @@ body {
   --pi-danger: #f47067;
   --pi-accent-soft: rgba(139,124,246,0.12);
   --pi-accent-soft-fg: #8b7cf6;
+  --pi-shadow-sm: rgba(0,0,0,0.18);
+  --pi-shadow-md: rgba(0,0,0,0.26);
+  --pi-shadow-lg: rgba(0,0,0,0.34);
   --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
   --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --pi-font-display: "Space Grotesk", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
@@ -409,18 +418,18 @@ body {
 }
 [data-theme="mist"] {
   --pi-bg: #f3f5fa;
-  --pi-bg1: #eceef3;
-  --pi-bg2: #e6e8ed;
-  --pi-bg3: #dfe1e6;
-  --pi-bg4: #d9dbdf;
-  --pi-bg-hover: #e8eaef;
-  --pi-bg-active: #e4e6eb;
-  --pi-border: #e2e4e9;
-  --pi-border-soft: #eaecf1;
+  --pi-bg1: #e7e9ee;
+  --pi-bg2: #dbdde2;
+  --pi-bg3: #d0d1d6;
+  --pi-bg4: #c4c6cb;
+  --pi-bg-hover: #e0e2e7;
+  --pi-bg-active: #d8dadf;
+  --pi-border: #d4d6db;
+  --pi-border-soft: #e3e5ea;
   --pi-border-hi: rgba(0,0,0,0.06);
   --pi-text: #1c2333;
   --pi-dim: #515d77;
-  --pi-dim2: #54617a;
+  --pi-dim2: #4b5770;
   --pi-accent: #4a58fa;
   --pi-accent2: #677fff;
   --pi-accent-deep: #3637da;
@@ -431,18 +440,79 @@ body {
   --pi-yellow: #d97706;
   --pi-glow-purple: rgba(100,80,200,0.06);
   --pi-glow-cyan: rgba(56,189,248,0.04);
-  --pi-surface: #eceef3;
+  --pi-surface: #e7e9ee;
   --pi-surface-fg: #1c2333;
-  --pi-overlay: #e6e8ed;
+  --pi-overlay: #dbdde2;
   --pi-overlay-fg: #515d77;
-  --pi-field: #eceef3;
-  --pi-field-border: #eaecf1;
-  --pi-default: #dfe1e6;
+  --pi-field: #e7e9ee;
+  --pi-field-border: #e3e5ea;
+  --pi-default: #d0d1d6;
   --pi-success: #16a34a;
   --pi-warning: #d97706;
   --pi-danger: #dc4b45;
   --pi-accent-soft: rgba(74,88,250,0.12);
   --pi-accent-soft-fg: #4a58fa;
+  --pi-shadow-sm: rgba(15,23,42,0.18);
+  --pi-shadow-md: rgba(15,23,42,0.26);
+  --pi-shadow-lg: rgba(15,23,42,0.34);
+  --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
+  --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --pi-font-display: "Space Grotesk", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --pi-radius-base: 6px;
+  --pi-r-sm: 4px;
+  --pi-r-md: 6px;
+  --pi-r-lg: 8px;
+  --pi-r-xl: 12px;
+  --pi-fs-sm: 12px;
+  --pi-lh-sm: 1.333;
+  --pi-fs-md: 13px;
+  --pi-lh-md: 1.308;
+  --pi-fs-lg: 15px;
+  --pi-lh-lg: 1.267;
+  --pi-fs-xl: 17px;
+  --pi-lh-xl: 1.235;
+  --pi-fs-xxl: 22px;
+  --pi-lh-xxl: 1.182;
+}
+[data-theme="kraft"] {
+  --pi-bg: #e5d4aa;
+  --pi-bg1: #dac99f;
+  --pi-bg2: #cebd94;
+  --pi-bg3: #c3b289;
+  --pi-bg4: #b8a77f;
+  --pi-bg-hover: #d3c298;
+  --pi-bg-active: #cbba91;
+  --pi-border: #c7b78e;
+  --pi-border-soft: #d6c59b;
+  --pi-border-hi: rgba(0,0,0,0.06);
+  --pi-text: #3b2c14;
+  --pi-dim: #59482f;
+  --pi-dim2: #4f4026;
+  --pi-accent: #b45309;
+  --pi-accent2: #d26f31;
+  --pi-accent-deep: #8f3f00;
+  --pi-accent-glow: rgba(180,83,9,0.14);
+  --pi-glow: rgba(180,83,9,0.14);
+  --pi-green: #158039;
+  --pi-red: #bb2c27;
+  --pi-yellow: #a16207;
+  --pi-glow-purple: rgba(146,98,10,0.07);
+  --pi-glow-cyan: rgba(120,90,20,0.05);
+  --pi-shadow-sm: rgba(92,58,16,0.16);
+  --pi-shadow-md: rgba(92,58,16,0.26);
+  --pi-shadow-lg: rgba(80,50,12,0.36);
+  --pi-surface: #dac99f;
+  --pi-surface-fg: #3b2c14;
+  --pi-overlay: #cebd94;
+  --pi-overlay-fg: #59482f;
+  --pi-field: #dac99f;
+  --pi-field-border: #d6c59b;
+  --pi-default: #c3b289;
+  --pi-success: #158039;
+  --pi-warning: #a16207;
+  --pi-danger: #bb2c27;
+  --pi-accent-soft: rgba(180,83,9,0.12);
+  --pi-accent-soft-fg: #b45309;
   --pi-font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
   --pi-font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --pi-font-display: "Space Grotesk", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
@@ -792,4 +862,19 @@ button:focus:not(:focus-visible) { outline: none; }
   --pi-z-viewer: 120;          /* 资产预览全屏层 */
   --pi-z-modal: 200;           /* 重模态（模型管理等） */
   --pi-z-modal-inner: 201;     /* 重模态内嵌子弹层 */
+}
+
+
+/* ══ 牛皮纸主题立体加强层（08-26）：暖棕重阴影+纸面抬升感 ══ */
+[data-theme="kraft"] .glass-hi {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.35),
+    var(--pi-shadow-lg);
+}
+[data-theme="kraft"] .panel-glass,
+[data-theme="kraft"] .glass {
+  border-color: color-mix(in oklab, #7a5a20 30%, var(--pi-border));
+}
+[data-theme="kraft"] .msg-bubble {
+  box-shadow: 0 2px 6px var(--pi-shadow-sm);
 }

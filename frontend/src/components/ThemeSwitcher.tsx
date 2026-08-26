@@ -25,6 +25,7 @@ export default function ThemeSwitcher() {
     if (theme === 'mist') el.dataset.theme = 'mist'
     else if (theme === 'ink') el.dataset.theme = 'ink'
     else if (theme === 'violet') el.dataset.theme = 'violet'
+    else if (theme === 'kraft') el.dataset.theme = 'kraft'
     else delete el.dataset.theme
     try { localStorage.setItem('pi_theme', theme) } catch {}
   }, [theme])
