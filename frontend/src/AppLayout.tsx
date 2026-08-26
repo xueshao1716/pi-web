@@ -6,6 +6,7 @@ import { useHashRoute, PageErrorBoundary, type Route } from './hooks/useHashRout
 import Login from './components/Login'
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
+import ActivityFeed from './components/ActivityFeed'
 import WorkSpace from './components/Workspace'
 import Deliveries from './components/Deliveries'
 import TerminalPanel from './components/TerminalPanel'
@@ -45,7 +46,7 @@ export default function AppLayout() {
   const { authed } = useApp()
   const isMobile = useIsMobile()
   const [route, nav] = useHashRoute()
-  const [rightPanel, setRightPanel] = useState<'chat' | 'workspace' | 'deliveries' | 'terminal'>('chat')
+  const [rightPanel, setRightPanel] = useState<'chat' | 'workspace' | 'deliveries' | 'terminal' | 'activity'>('chat')
   const [modelOpen, setModelOpen] = useState(false)
   // 移动端：sessions 抽屉
   const [mobileDrawer, setMobileDrawer] = useState<'none' | 'sessions'>('none')
@@ -113,7 +114,7 @@ export default function AppLayout() {
                 <div className="fixed inset-0 z-[var(--pi-z-rightpanel)] glass-strong flex flex-col"
                   style={{ top: 'calc(env(safe-area-inset-top, 0px) + 48px)' }}>
                   <div className="flex items-center gap-1 px-3 h-10 border-b border-pi-border-soft flex-shrink-0">
-                    {([['workspace', '工作空间'], ['deliveries', '交付物'], ['terminal', '终端']] as const).map(([k, label]) => (
+                    {([['workspace', '工作空间'], ['deliveries', '交付物'], ['terminal', '终端'], ['activity', '活动']] as const).map(([k, label]) => (
                       <button key={k} onClick={() => setRightPanel(k)}
                         className={`touch-hit text-xs px-3 py-1.5 rounded-pi-md transition-colors ${rightPanel === k ? 'bg-pi-accent/15 text-pi-accent font-medium' : 'text-pi-dim'}`}>
                         {label}
@@ -122,7 +123,7 @@ export default function AppLayout() {
                     <span className="ml-auto" />
                     <button className="btn-tool !px-2 touch-hit" onClick={() => setRightPanel('chat')}>✕</button>
                   </div>
-                  {rightPanel === 'workspace' ? <WorkSpace /> : rightPanel === 'deliveries' ? <Deliveries /> : <TerminalPanel />}
+                  {rightPanel === 'workspace' ? <WorkSpace /> : rightPanel === 'deliveries' ? <Deliveries /> : rightPanel === 'activity' ? <ActivityFeed /> : <TerminalPanel />}
                 </div>
               )}
             </div>
@@ -198,7 +199,7 @@ export default function AppLayout() {
       {route === 'chat' && rightPanel !== 'chat' && (
         <div className="w-[44%] min-w-[360px] border-l border-pi-border col-right glass flex flex-col min-h-0 relative z-10">
           <div className="flex items-center gap-1 px-3 h-10 border-b border-pi-border-soft flex-shrink-0">
-            {([['workspace', '工作空间'], ['deliveries', '交付物'], ['terminal', '终端']] as const).map(([k, label]) => (
+            {([['workspace', '工作空间'], ['deliveries', '交付物'], ['terminal', '终端'], ['activity', '活动']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setRightPanel(k)}
                 className={`text-xs px-3 py-1.5 rounded-pi-md transition-colors ${rightPanel === k ? 'bg-pi-accent/15 text-pi-accent font-medium' : 'text-pi-dim hover:text-pi-text hover:bg-pi-bg3'}`}>
                 {label}
@@ -207,7 +208,7 @@ export default function AppLayout() {
             <span className="ml-auto" />
             <button className="btn-tool !px-2" title="收起右栏" onClick={() => setRightPanel('chat')}>✕</button>
           </div>
-          {rightPanel === 'workspace' ? <WorkSpace /> : rightPanel === 'deliveries' ? <Deliveries /> : <TerminalPanel />}
+          {rightPanel === 'workspace' ? <WorkSpace /> : rightPanel === 'deliveries' ? <Deliveries /> : rightPanel === 'activity' ? <ActivityFeed /> : <TerminalPanel />}
         </div>
       )}
 

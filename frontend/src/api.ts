@@ -141,6 +141,12 @@ export const AgentStatusApi = {
   get: () => api<{ busy: { id: string; since: number | null }[]; anyBusy: boolean }>('/api/agent-status'),
 }
 
+// 小语活动事件流（对标 vanilla 活动面板）
+export interface AgentEvent { type: string; ts: string | number; data?: { tool?: string; text?: string; [k: string]: unknown } }
+export const AgentEventsApi = {
+  get: () => api<{ events: AgentEvent[] }>('/api/agent/events'),
+}
+
 // ── 出图（自动落盘生成物/图片/日期，资产库联动）──
 export const MediaApi = {
   image: (body: { provider: string; modelId: string; prompt: string; size?: string }) =>
