@@ -368,6 +368,16 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         {/* 右栏开关：紧贴状态胶囊（桌面端；原 fixed 悬浮层会遮挡头部） */}
         {onRightPanel && (
           <button
+            aria-label="打开TUI终端" title="TUI 终端"
+            onClick={() => { if (rightPanel !== 'chat') onRightPanel('chat'); onRightPanel('tui') }}
+            className={`text-[11px] px-2.5 py-1 rounded-pi-sm border flex items-center gap-1 flex-shrink-0 transition-colors duration-150 ${
+              rightPanel === 'tui'
+                ? 'bg-pi-accent text-white border-pi-accent'
+                : 'border-pi-border-soft bg-pi-bg2/60 text-pi-dim hover:text-pi-text'}`}
+          >TUI</button>
+        )}
+        {onRightPanel && (
+          <button
             aria-label="切换右栏"
             title={rightPanel !== 'chat' ? '收起右栏' : '打开右栏'}
             onClick={() => onRightPanel(rightPanel === 'chat' ? 'workspace' : 'chat')}

@@ -9,7 +9,9 @@
     "@capacitor/cli": "^8.5.0",
     "@capacitor/core": "^8.5.0",
     "@capacitor/ios": "^8.5.0",
-    "undici": "^7.16.0"
+    "@lydell/node-pty": "^1.2.0-beta.15",
+    "undici": "^7.16.0",
+    "ws": "^8.21.3"
   },
   "scripts": {
     "start": "node server.mjs",

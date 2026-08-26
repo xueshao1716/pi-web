@@ -42,6 +42,7 @@ import { initMediaApi, findMediaModel, detectMediaIntents, extractMediaPrompt, g
 import { initAsrApi, handleAsr } from "./engine/asr-api.mjs";
 import { gardenMemory, scanMemoryHealth, markReviewed, unmarkReviewed, dedupeLog, reviewedKeys } from "./engine/memory-gardener.mjs";
 import { systemInfo as buildSystemInfo, loadNetworkConfig, saveNetworkConfig, checkUpdate } from "./engine/system-panel.mjs";
+import { initTuiBridge } from "./engine/tui-bridge.mjs";
 import { listLingXi, addLingXi, setLingXi, removeLingXi } from "./engine/lingxi.mjs";
 import { initDshKeys, dshResolveBin, handleDshStatus, handleDshWebStart, handleKeysStatus, loadPolicies, toolMatch, policyDecide, handleKeysApply, handleKeysPresets, refreshModelList, handleModelsManage, handleModelsAdd, KNOWN_PROVIDERS, PROVIDER_PRESETS, resolveAuth } from "./engine/dsh-keys.mjs";
 import { initStatsApi, handleGlobalStats, handleProviderStats, safeSessionStats, handleStats, handleCompact, listBuiltinSkills, handleSkills, handleSkillRead, handleParseFile, escHtml, handleExport, resolveFsPath, handleFsList, handleFsRead, handleRename } from "./engine/stats-api.mjs";
@@ -2032,6 +2033,7 @@ server.on("error", (err) => {
 function startServer() {
   server.listen(CONFIG.port, CONFIG.host, () => {
     listenAttempt = 0; // 监听成功 → 重置重试计数
+    try { initTuiBridge(server, { token: CONFIG.token, cwd: WS_ROOT }); console.log("  TUI 桥接: ws://…/ws/tui 已就绪"); } catch {}
     console.log("");
     console.log("╭──────────────────────────────────────────────╮");
     console.log("│              pi-web 已启动                    │");
