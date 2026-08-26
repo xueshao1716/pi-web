@@ -641,6 +641,10 @@ body {
   to { opacity: 1; transform: scale(1); }
 }
 .anim-enter { animation: fadeSlideUp 0.35s var(--pi-ease-sheet) both; }
+/* 纯 opacity 入场：给依赖 transform 定位的元素（如 -translate-x-1/2 居中悬浮件），
+   fadeSlideUp 的 transform 终帧会经 fill:both 永久覆盖定位 translate，导致偏移 */
+@keyframes fadeInOnly { from { opacity: 0; } to { opacity: 1; } }
+.anim-fade { animation: fadeInOnly 0.25s var(--pi-ease) both; }
 .anim-enter-delay-1 { animation-delay: 0.08s; }
 .anim-enter-delay-2 { animation-delay: 0.16s; }
 .anim-enter-delay-3 { animation-delay: 0.24s; }
@@ -753,7 +757,9 @@ body {
 }
 
 /* 触屏命中区扩展（评审 P1：18×18 目标过小）——伪元素外扩 10px，桌面指针不生效 */
-.touch-hit { position: relative; }
+/* 触控命中区外扩：仅对未声明定位的元素补 relative（:not 链保证 absolute/fixed/sticky 类不被覆盖，
+   否则同优先级下本规则会赢——回到底部悬浮按钮曾因此掉回文档流变全宽长条） */
+.touch-hit:not(.absolute):not(.fixed):not(.sticky) { position: relative; }
 .touch-hit::after { content: ""; position: absolute; inset: -10px; }
 @media (hover: hover) and (pointer: fine) {
   .touch-hit::after { display: none; }
