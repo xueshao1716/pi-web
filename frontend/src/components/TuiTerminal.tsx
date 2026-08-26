@@ -14,13 +14,16 @@ export default function TuiTerminal() {
     if (!hostRef.current) return
     const term = new Terminal({
       fontSize: 13,
-      fontFamily: 'var(--pi-font-mono), Consolas, monospace',
+      // xterm 用 canvas 测量字体，不能解析 CSS 变量——必须显式等宽字体栈，否则字距测量错乱
+      fontFamily: '"Cascadia Code", "Cascadia Mono", Consolas, "JetBrains Mono", monospace',
+      letterSpacing: 0,
       cursorBlink: true,
       convertEol: false,
       theme: {
-        background: 'rgba(0,0,0,0)',
+        background: '#0b0e13',
         foreground: '#d8e2f0',
         cursor: '#5468ff',
+        selectionBackground: 'rgba(84,104,255,0.30)',
       },
       allowProposedApi: true,
     })
