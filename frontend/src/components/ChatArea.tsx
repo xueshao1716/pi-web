@@ -174,10 +174,14 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     updateMessages(prev => [...prev, { id: 'u' + Date.now(), role: 'user', text: content, ts: new Date().toISOString() }])
     streamRef.current = emptyStream()
     setStream({ ...streamRef.current })
+    // 模型参数（ParamsPanel 存 localStorage，随请求带给 server）
+    let params: { temperature?: number; top_p?: number } | undefined
+    try { params = JSON.parse(localStorage.getItem('pi_params') || 'null') || undefined } catch {}
     abortRef.current = ChatApi.send({
       sessionId: sid, message: content,
       model: currentModel === 'auto/auto' ? undefined : currentModel,
       files: attachFiles.length ? attachFiles : undefined,
+      params,
     }, (ev) => {
       lastEventAtRef.current = Date.now() // 任意事件都算活跃（含 delta）
       const d = ev.data || {}

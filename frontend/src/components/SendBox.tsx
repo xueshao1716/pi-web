@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Mic, Paperclip, FileText } from 'lucide-react'
+import { Mic, Paperclip, FileText, SlidersHorizontal } from 'lucide-react'
+import ParamsPanel from './ParamsPanel'
 import { WsApi } from '../api'
 import ModelSelect from './ModelSelect'
 
@@ -281,6 +282,9 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
           <div className="flex-1" />
 
           <input ref={fileInputRef} type="file" className="hidden" onChange={onUploadFile} />
+
+          {/* 模型参数（temperature/top_p，会话级） */}
+          <ParamsPanel />
 
           {/* 语音输入 */}
           {onVoice && !streaming && (
