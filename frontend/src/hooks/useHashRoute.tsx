@@ -2,8 +2,8 @@ import { useEffect, useState, Component, ReactNode } from 'react'
 import { AlertTriangle } from 'lucide-react'
 
 // ── 极轻 hash 路由（零依赖）：#/chat #/models #/assets #/tasks ──
-export type Route = 'chat' | 'models' | 'assets' | 'tasks' | 'apps'
-const ROUTES: Route[] = ['chat', 'models', 'assets', 'tasks', 'apps']
+export type Route = 'chat' | 'models' | 'assets' | 'tasks' | 'apps' | 'lingxi'
+const ROUTES: Route[] = ['chat', 'models', 'assets', 'tasks', 'apps', 'lingxi']
 
 function parse(): Route {
   const h = location.hash.replace(/^#\/?/, '')

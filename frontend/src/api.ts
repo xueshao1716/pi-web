@@ -147,6 +147,31 @@ export const AgentEventsApi = {
   get: () => api<{ events: AgentEvent[] }>('/api/agent/events'),
 }
 
+// ── 灵犀：双向灵感池（user/xiaoyu 分源记录）──
+export interface LingXiEntry {
+  id: string
+  source: LingXiSource
+  text: string
+  status: 'new' | 'adopted' | 'archived'
+  note: string
+  ts: string
+}
+export type LingXiSource = 'user' | 'xiaoyu'
+export const LingXiApi = {
+  list: (filter?: { source?: LingXiSource; status?: string }) => {
+    const q = new URLSearchParams()
+    if (filter?.source) q.set('source', filter.source)
+    if (filter?.status) q.set('status', filter.status)
+    const qs = q.toString()
+    return api<{ entries: LingXiEntry[] }>('/api/lingxi' + (qs ? '?' + qs : ''))
+  },
+  add: (body: { text: string; source: LingXiSource }) =>
+    api<{ ok: boolean; entry: LingXiEntry }>('/api/lingxi', { method: 'POST', body }),
+  setStatus: (id: string, status: 'new' | 'adopted' | 'archived', note?: string) =>
+    api<{ ok: boolean; entry: LingXiEntry }>(`/api/lingxi/${encodeURIComponent(id)}`, { method: 'PATCH', body: { status, note } }),
+  remove: (id: string) => api<{ ok: boolean }>(`/api/lingxi/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+}
+
 // ── 出图（自动落盘生成物/图片/日期，资产库联动）──
 export const MediaApi = {
   image: (body: { provider: string; modelId: string; prompt: string; size?: string }) =>

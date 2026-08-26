@@ -41,6 +41,7 @@ import { initContextLoader, makeLoader, loadExperience, readRulesWithImports, lo
 import { initMediaApi, findMediaModel, detectMediaIntents, extractMediaPrompt, generateMediaAsync, generateTTS, generateImage, handleImage, handleImageWithSave, generateVideo, handleMedia } from "./engine/media-api.mjs";
 import { initAsrApi, handleAsr } from "./engine/asr-api.mjs";
 import { gardenMemory } from "./engine/memory-gardener.mjs";
+import { listLingXi, addLingXi, setLingXi, removeLingXi } from "./engine/lingxi.mjs";
 import { initDshKeys, dshResolveBin, handleDshStatus, handleDshWebStart, handleKeysStatus, loadPolicies, toolMatch, policyDecide, handleKeysApply, handleKeysPresets, refreshModelList, handleModelsManage, handleModelsAdd, KNOWN_PROVIDERS, PROVIDER_PRESETS, resolveAuth } from "./engine/dsh-keys.mjs";
 import { initStatsApi, handleGlobalStats, handleProviderStats, safeSessionStats, handleStats, handleCompact, listBuiltinSkills, handleSkills, handleSkillRead, handleParseFile, escHtml, handleExport, resolveFsPath, handleFsList, handleFsRead, handleRename } from "./engine/stats-api.mjs";
 import { initModelClient, directChat, handleThink, handleDirectChat, maybeCompactHistory } from "./engine/model-client.mjs";
@@ -1570,6 +1571,29 @@ const API_ROUTES = [
   ["GET", "/api/agent-status", (res) => handleAgentStatus(res)],
   // ── 记忆园丁：只报告记忆健康（重复/过时/膨胀），不自动写记忆（防污染）──
   ["GET", "/api/memory-gardener", (res) => json(res, 200, gardenMemory(WS_ROOT))],
+  // ── 灵犀：双向灵感池（user/xiaoyu 分源记录，攒着一起过）──
+  ["GET", "/api/lingxi", (res, req, url) => {
+    const source = url.searchParams.get("source") || undefined;
+    const status = url.searchParams.get("status") || undefined;
+    return json(res, 200, { entries: listLingXi(WS_ROOT, { source, status }) });
+  }],
+  ["POST", "/api/lingxi", async (res, req) => {
+    const b = await readBody(req);
+    const r = addLingXi(WS_ROOT, { text: b?.text, source: b?.source, note: b?.note });
+    if (r.error) return json(res, 400, { error: r.error });
+    json(res, 200, r);
+  }],
+  ["PATCH", /^\/api\/lingxi\/([\w-]+)$/, async (res, req, url, m) => {
+    const b = await readBody(req);
+    const e = setLingXi(WS_ROOT, m[1], { status: b?.status, note: b?.note });
+    if (!e) return json(res, 404, { error: "灵感不存在或状态非法" });
+    json(res, 200, { ok: true, entry: e });
+  }],
+  ["DELETE", /^\/api\/lingxi\/([\w-]+)$/, (res, req, url, m) => {
+    const ok = removeLingXi(WS_ROOT, m[1]);
+    if (!ok) return json(res, 404, { error: "灵感不存在" });
+    json(res, 200, { ok: true });
+  }],
   // ── 人格基因 + 提案制进化 ──
   ["GET", "/api/genome", (res) => json(res, 200, emotion.getGenome())],
   ["POST", "/api/genome/propose", async (res, req) => {

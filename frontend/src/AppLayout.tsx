@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
-import {MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen } from 'lucide-react'
+import {MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen, Sparkles } from 'lucide-react'
 import { useApp } from './store'
 import { useIsMobile } from './hooks/useIsMobile'
 import { useHashRoute, PageErrorBoundary, type Route } from './hooks/useHashRoute'
@@ -20,10 +20,12 @@ const ModelHub = lazy(() => import('./pages/ModelHub'))
 const Assets = lazy(() => import('./pages/Assets'))
 const Tasks = lazy(() => import('./pages/Tasks'))
 const Apps = lazy(() => import('./pages/Apps'))
+const LingXiPage = lazy(() => import('./pages/LingXi'))
 
 // 导航项（桌面 rail / 移动 TabBar 共用语义）
 const NAV: { route: Route; icon: typeof MessagesSquare; label: string }[] = [
   { route: 'chat', icon: MessagesSquare, label: '对话' },
+  { route: 'lingxi', icon: Sparkles, label: '灵犀' },
   { route: 'models', icon: BrainCircuit, label: '模型' },
   { route: 'assets', icon: Images, label: '资产' },
   { route: 'tasks', icon: Clock4, label: '任务' },
@@ -39,6 +41,7 @@ function PageBody({ route }: { route: Route }) {
   if (route === 'assets') return <Assets />
   if (route === 'tasks') return <Tasks />
   if (route === 'apps') return <Apps />
+  if (route === 'lingxi') return <LingXiPage />
   return null
 }
 

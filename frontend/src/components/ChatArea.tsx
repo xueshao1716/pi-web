@@ -4,7 +4,7 @@ import { useApp } from '../store'
 import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, LayoutGrid, Command, ChevronDown, PanelRight } from 'lucide-react'
 import { RefreshCw } from 'lucide-react'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
-import { ChatApi, SessionsApi, AsrApi, EmotionApi, AgentStatusApi, streamSession } from '../api'
+import { ChatApi, SessionsApi, AsrApi, EmotionApi, AgentStatusApi, streamSession, LingXiApi } from '../api'
 import Message from './Message'
 import SendBox from './SendBox'
 import TurnList from './TurnList'
@@ -155,7 +155,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     }
     if (cmd === '/legacy') { window.location.href = '/?legacy=1'; return }
     const tips: Record<string, string> = {
-      '/help': '可用命令：/new 新建会话 · /legacy 旧版界面 · /compact 压缩上下文（暂未接入） · /stats 统计（暂未接入）',
+      '/help': '可用命令：/new 新建会话 · /lx 记灵犀（如 /lx 加个时间轴视图） · /legacy 旧版界面 · /compact 压缩上下文（暂未接入） · /stats 统计（暂未接入）',
       '/compact': '/compact 暂未接入 React 版，可到旧版界面使用（/?legacy=1）',
       '/stats': '/stats 暂未接入 React 版，可到旧版界面使用（/?legacy=1）',
     }
@@ -170,6 +170,15 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
       // 否则乐观更新的用户消息会落空、后续 SSE 事件会被 effect 清掉
       try { const d = await SessionsApi.create(); await refreshSessions(); selectSession(d.id); sid = d.id } catch { return }
       await new Promise(r => setTimeout(r, 80))
+    }
+    // 灵犀速记：/lx 灵感内容 → 记入「我的灵感」，不进对话流、不发给模型
+    if (content === '/lx' || content.startsWith('/lx ')) {
+      const text = content.slice(3).trim()
+      if (!text) { toast('用法：/lx 后面跟上灵感内容', 'error'); return }
+      LingXiApi.add({ text, source: 'user' })
+        .then(() => toast('✨ 已记入灵犀·我的灵感'))
+        .catch(() => toast('灵犀记录失败', 'error'))
+      return
     }
     updateMessages(prev => [...prev, { id: 'u' + Date.now(), role: 'user', text: content, ts: new Date().toISOString() }])
     streamRef.current = emptyStream()
