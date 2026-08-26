@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Palette } from 'lucide-react'
 import { THEME_PRESETS as THEMES, ACCENT_PRESETS as ACCENTS, COLOR_ERROR, ACCENT_LIGHT } from '../theme/palettes'
 // 主题预设：data-theme 属性驱动（styles.css [data-theme] 变量覆盖）；色板定义在 theme/palettes.ts
 
@@ -41,16 +42,18 @@ export default function ThemeSwitcher() {
 
   return (
     <div className="relative">
-      <button
-        className="w-6 h-6 rounded-pi-pill border-2 border-pi-border hover:border-pi-accent transition-colors"
-        style={{ background: THEMES.find(t => t.id === theme)?.swatch }}
-        onClick={() => setMenuOpen(!menuOpen)}
-        title="主题"
-      />
+      {/* rail 风格触发器：与导航按钮同尺寸同交互；色板圆点显示当前主题色（08-26 原 w-6 白底渐变小圆在浅色主题下不可见） */}
+      <button aria-label="切换主题" title="主题"
+        className="w-9 h-9 rounded-pi-md flex items-center justify-center relative text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-colors"
+        onClick={() => setMenuOpen(!menuOpen)}>
+        <Palette className="w-[18px] h-[18px]" strokeWidth={1.8} />
+        <span className="absolute bottom-1 right-1 w-2 h-2 rounded-full border border-pi-bg2"
+          style={{ background: THEMES.find(t => t.id === theme)?.swatch }} />
+      </button>
       {menuOpen && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-          <div className="absolute right-0 top-7 z-20 panel p-2 flex flex-col gap-1 w-40">
+          <div className="absolute left-0 bottom-11 z-20 panel p-2 flex flex-col gap-1 w-40 anim-enter">
             <div className="text-[10px] text-pi-dim2 px-2 pt-0.5 pb-1 font-semibold">主题</div>
             {THEMES.map(t => (
               <button key={t.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-pi-sm hover:bg-pi-bg3 text-xs ${theme === t.id ? 'text-pi-text' : 'text-pi-dim'}`} onClick={() => setTheme(t.id)}>

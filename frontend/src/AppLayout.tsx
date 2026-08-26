@@ -178,7 +178,7 @@ export default function AppLayout() {
             </T.Portal>
           </T.Root>
         ))}
-        <div className="mt-auto flex flex-col gap-1.5">
+        <div className="mt-auto mb-2 flex flex-col gap-1.5">
           <ThemeSwitcher />
           <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-colors" title="密钥与通道管理" aria-label="密钥与通道管理" onClick={() => setModelOpen(true)}><Settings2 className="w-[18px] h-[18px]" strokeWidth={1.8} /></button>
         </div>
