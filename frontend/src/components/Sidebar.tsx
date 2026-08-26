@@ -5,6 +5,7 @@ import { useApp } from '../store'
 import { SessionsApi } from '../api'
 import type { Session } from '../types'
 import { useRestoreFocus } from '../hooks/useRestoreFocus'
+import { PanelLeftClose } from 'lucide-react'
 
 const GROUP_LABEL: Record<string, string> = {
   workspace: '工作空间会话',
@@ -18,7 +19,7 @@ function loadCollapsed(): Set<string> {
   try { return new Set(JSON.parse(localStorage.getItem('pi_groups_collapsed') || '[]')) } catch { return new Set() }
 }
 
-export default function Sidebar({ onNavigated }: { onNavigated?: () => void } = {}) {
+export default function Sidebar({ onNavigated, onCollapse }: { onNavigated?: () => void; onCollapse?: () => void } = {}) {
   const { sessions, currentSessionId, selectSession, refreshSessions } = useApp()
   const [renaming, setRenaming] = useState<{ sid: string; name: string } | null>(null)
   const [confirming, setConfirming] = useState<Session | null>(null)
@@ -60,6 +61,12 @@ export default function Sidebar({ onNavigated }: { onNavigated?: () => void } = 
         <div className="w-7 h-7 rounded-pi-md avatar-grad flex items-center justify-center text-white font-bold">语</div>
         <div className="font-semibold text-[15px]">小语</div>
         <div className="text-pi-dim2 text-xs">·工作台</div>
+        {onCollapse && (
+          <button className="ml-auto touch-hit p-1.5 text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 rounded-pi-sm transition-colors"
+            aria-label="收起会话栏" title="收起会话栏" onClick={onCollapse}>
+            <PanelLeftClose className="w-4 h-4" strokeWidth={1.8} />
+          </button>
+        )}
       </div>
 
       {/* 新建 */}

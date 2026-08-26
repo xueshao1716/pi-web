@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
-import { MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed } from 'lucide-react'
+import {MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen } from 'lucide-react'
 import { useApp } from './store'
 import { useIsMobile } from './hooks/useIsMobile'
 import { useHashRoute, PageErrorBoundary, type Route } from './hooks/useHashRoute'
@@ -46,6 +46,14 @@ export default function AppLayout() {
   const { authed } = useApp()
   const isMobile = useIsMobile()
   const [route, nav] = useHashRoute()
+  // 桌面会话栏折叠（08-26）：持久化到 localStorage
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem('pi_sidebar_collapsed') === '1' } catch { return false }
+  })
+  const toggleSidebar = () => setSidebarCollapsed(v => {
+    try { localStorage.setItem('pi_sidebar_collapsed', v ? '0' : '1') } catch {}
+    return !v
+  })
   const [rightPanel, setRightPanel] = useState<'chat' | 'workspace' | 'deliveries' | 'terminal' | 'activity'>('chat')
   const [modelOpen, setModelOpen] = useState(false)
   // 移动端：sessions 抽屉
@@ -160,6 +168,12 @@ export default function AppLayout() {
       {/* 图标导航 rail（08-23：col-sidebar 顶部天光，拉开与中栏层次） */}
       <nav className="w-14 flex-shrink-0 flex flex-col items-center py-3 gap-1.5 col-sidebar border-r border-pi-border relative z-20">
         <div className="w-8 h-8 rounded-pi-md avatar-grad flex items-center justify-center text-white font-bold mb-2">语</div>
+        {sidebarCollapsed && (
+          <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-colors"
+            aria-label="展开会话栏" title="展开会话栏" onClick={toggleSidebar}>
+            <PanelLeftOpen className="w-[18px] h-[18px]" strokeWidth={1.8} />
+          </button>
+        )}
         {NAV.map(n => (
           <T.Root key={n.route}>
             <T.Trigger asChild>
@@ -185,7 +199,7 @@ export default function AppLayout() {
       </nav>
 
       {/* 会话列表：仅对话路由显示 */}
-      {route === 'chat' && <Sidebar />}
+      {route === 'chat' && !sidebarCollapsed && <Sidebar onCollapse={toggleSidebar} />}
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0 relative z-10 col-canvas">
         {route === 'chat' ? <ChatArea rightPanel={rightPanel} onRightPanel={setRightPanel} /> : pageArea}
