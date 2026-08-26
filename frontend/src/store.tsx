@@ -30,7 +30,7 @@ const fetchers = {
 export function AppProvider({ children }: { children: ReactNode }) {
   const [token, setT] = useState(getToken())
   const [authed, setAuthed] = useState(!!getToken())
-  const [currentModel, setCurModel] = useState('auto/auto')
+  const [currentModel, setCurModel] = useState(() => { try { return localStorage.getItem('pi_model') || 'auto/auto' } catch { return 'auto/auto' } })
   const [currentSessionId, setCurSid] = useState<string | null>(null)
 
   // ── swr 数据层：缓存 + 窗口聚焦重验证 + 断线重连后自动刷新 ──
@@ -53,10 +53,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const refreshModels = useCallback(async () => { await globalMutate('models') }, [])
   const refreshSessions = useCallback(async () => { await globalMutate('sessions') }, [])
 
-  // 服务端当前模型 → 本地选择（仅初始化时同步一次，之后以本地选择为准）
+  // 服务端当前模型 → 本地选择（仅在无本地偏好时同步，之后以本地为准）
   useEffect(() => {
     if (modelsData?.current && currentModel === 'auto/auto') {
-      setCurModel(`${modelsData.current.provider}/${modelsData.current.id}`)
+      const mk = `${modelsData.current.provider}/${modelsData.current.id}`
+      setCurModel(mk)
+      try { localStorage.setItem('pi_model', mk) } catch {}
     }
   }, [modelsData?.current]) // eslint-disable-line
 
@@ -90,7 +92,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     authed, token, models, currentModel, cwd, sessions, currentSessionId,
     login, logout, refreshModels, refreshSessions,
     selectSession: (sid) => { setCurSid(sid); if (sid) { try { localStorage.setItem('pi_last_session', sid) } catch {} } },
-    setCurrentModel: (mk) => setCurModel(mk),
+    setCurrentModel: (mk) => { setCurModel(mk); try { localStorage.setItem('pi_model', mk) } catch {} },
   }
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
