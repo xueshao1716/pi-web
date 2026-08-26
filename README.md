@@ -42,13 +42,20 @@
 
 ```powershell
 # Gitee（国内快）
-irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-lite.ps1 | iex
+irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-all.ps1 | iex
+
 # GitHub
-irm https://raw.githubusercontent.com/xueshao1716/pi-web/main/install-lite.ps1 | iex
+irm https://raw.githubusercontent.com/xueshao1716/pi-web/main/install-all.ps1 | iex
 ```
 
 > 安装中会询问两件事，全部回车即可用默认：① 安装目录（不想装 C 盘可输 `D:\pi-web`）② pi/dsh 引擎全局包装哪个盘（输 `D:\npm-global` 可装 D 盘）。
 > 装完自动：生成访问令牌 → 启动服务 → 打开浏览器；首次打开弹窗选一家模型商填 API Key 就能开始对话。
+
+> **需要指定安装目录？**（免交互，跳过询问直接装）
+> ```powershell
+> irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-all.ps1 -OutFile $env:TEMP\piw.ps1
+> & $env:TEMP\piw.ps1 -InstallDir D:\pi-web
+> ```
 
 **全局安装（npm，适合已装 Node 的用户）：**
 
@@ -76,18 +83,6 @@ pi-web
 > 更多模型商（小米/阿里/火山等）逐个加进 auth.json 即可，模型清单见 `~/.pi/agent/models-store.json`。
 >
 > **dsh 引擎的 key**：不写 auth.json，首次启动 `dsh web` 会弹窗引导填写（存为 `DEEPSEEK_API_KEY`），与 pi 共用同一把 DeepSeek key 即可。
-
-> **备选（无 git 环境时用脚本安装，同样装双引擎）：**
-> ```powershell
-> # Gitee（国内快）——一条命令，零报错
-> irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-lite.ps1 | iex
-> # GitHub
-> irm https://raw.githubusercontent.com/xueshao1716/pi-web/main/install-lite.ps1 | iex
-> ```
-> （`install-lite.ps1` 是引导脚本：自动下载正式安装器并以文件方式执行，BOM/param/中文全兼容；需要 `-InstallDir` 参数时可用 `irm .../install-all.ps1 -OutFile $env:TEMP\p.ps1; & $env:TEMP\p.ps1 -InstallDir D:\pi-web`）
->
-> **不想装 C 盘？** 安装时脚本会询问安装目录，回车=默认用户目录，输入 `D:\pi-web` 之类即可装到其他盘；
-> 接着还会问 **pi/dsh 引擎全局包装到哪个盘**，输入 `D:\npm-global` 可将引擎也装到 D 盘（回车则保持 C 盘默认）。
 
 ## ✨ 为什么与众不同
 
@@ -122,14 +117,9 @@ pi-web
   <em>工作空间全屏浏览</em>
 </p>
 
-## 🚀 新机器一键安装（Windows）
+## 🚀 新机器安装
 
-与顶部相同的最简方式（一条命令，自动装 Node + pi/dsh 双引擎 + 源码 + 启动）：
-
-```powershell
-# Gitee（国内快）
-irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-lite.ps1 | iex
-```
+一条命令装完（见顶部「一条命令安装」段落）。
 
 需要手动控制安装步骤（装完 Node 后自己跑）时，可分别执行：
 
@@ -204,7 +194,7 @@ node setup.mjs --install
 
 ```bash
 # 方式零：Windows 一键安装（推荐给小白用户，自动装 Node + 下载 + 启动）
-powershell -ExecutionPolicy Bypass -File install.ps1
+powershell -ExecutionPolicy Bypass -File install-all.ps1
 
 # 方式一：一键安装向导（推荐，跨平台）
 node setup.mjs            # 检测环境并引导
