@@ -4,15 +4,16 @@ import assert from "node:assert/strict";
 import { addLingXi, listLingXi, setLingXi, removeLingXi, lingXiPath } from "../../engine/lingxi.mjs";
 
 // 极简内存 fs 桩：只实现 lingxi.mjs 用到的面
+function normPath(p) { return String(p).replace(/\\/g, '/') }
 function memFs() {
   const files = new Map();
   return {
     files,
-    existsSync: p => files.has(p),
-    readFileSync: (p) => { if (!files.has(p)) throw new Error("ENOENT"); return files.get(p); },
-    writeFileSync: (p, c) => files.set(p, String(c)),
+    existsSync: p => files.has(normPath(p)),
+    readFileSync: (p) => { const k = normPath(p); if (!files.has(k)) throw new Error("ENOENT"); return files.get(k); },
+    writeFileSync: (p, c) => files.set(normPath(p), String(c)),
     mkdirSync: () => {},
-    renameSync: (a, b) => { const v = files.get(a); files.delete(a); if (v !== undefined) files.set(b, v); },
+    renameSync: (a, b) => { const ka = normPath(a), kb = normPath(b); const v = files.get(ka); files.delete(ka); if (v !== undefined) files.set(kb, v); },
     unlinkSync: () => {},
   };
 }
