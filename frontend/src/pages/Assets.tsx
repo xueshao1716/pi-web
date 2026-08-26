@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Film, Music, FileText, ImagePlus, FolderOpen, Images as ImagesIcon, Package } from 'lucide-react'
+import EmptyState from '../components/EmptyState'
 import useSWR from 'swr'
 import { WsApi, withFileToken } from '../api'
 import GeneratePanel from '../components/GeneratePanel'
@@ -100,11 +101,7 @@ export default function Assets() {
           }} />)}
         </div>
         {!list.length && !isLoading && (
-          <div className="empty-state py-14 mb-8 text-center">
-            <ImagesIcon className="w-9 h-9 mb-2 mx-auto opacity-40" strokeWidth={1.5} />
-            <div className="text-sm text-pi-dim">这个筛选下没有资产</div>
-            <div className="text-[11px] text-pi-dim2 mt-1">换个类型，或点右上角生成一张新图</div>
-          </div>
+          <EmptyState icon={ImagesIcon} title="这个筛选下没有资产" hint="换个类型，或点右上角生成一张新图" className="py-14 mb-8" />
         )}
 
         {/* 交付物列表 */}
@@ -127,7 +124,7 @@ export default function Assets() {
 
       {/* 图片灯箱 */}
       {viewer && (
-        <div className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-sm flex items-center justify-center p-8" onClick={() => setViewer(null)}>
+        <div className="fixed inset-0 z-[var(--pi-z-viewer)] bg-black/80 backdrop-blur-sm flex items-center justify-center p-8" onClick={() => setViewer(null)}>
           <div className="max-w-[90vw] max-h-[88vh] flex flex-col gap-2" onClick={e => e.stopPropagation()}>
             <img src={withFileToken(viewer.url)} alt={viewer.name} className="max-w-full max-h-[78vh] object-contain rounded-pi-lg border border-pi-border" />
             <div className="flex items-center gap-3 text-xs text-pi-dim">

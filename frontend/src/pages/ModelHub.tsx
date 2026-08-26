@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Image, Film, Mic, MessagesSquare, Zap } from 'lucide-react'
+import EmptyState from '../components/EmptyState'
 import type { LucideIcon } from 'lucide-react'
 import useSWR from 'swr'
 import { useApp } from '../store'
@@ -165,13 +166,8 @@ export default function ModelHub() {
             return <ModelCard key={mk} m={m} active={currentModel === mk} switching={switching === mk} onUse={() => useModel(m)} />
           })}
           {!filtered.length && (
-            <div className="empty-state py-12 text-center col-span-full">
-              <div className="text-3xl mb-2 opacity-60">🔍</div>
-              <div className="text-sm text-pi-dim">没有符合条件的模型</div>
-              <div className="text-[11px] text-pi-dim2 mt-1">试试清空搜索词或取消能力筛选</div>
-              <button onClick={() => { setQuery(''); setFacets({ free: false, reasoning: false, vision: false }); setFilter('all') }}
-                className="mt-3 btn-ghost text-xs px-3 py-1.5">重置筛选</button>
-            </div>
+            <EmptyState emoji="🔍" title="没有符合条件的模型" hint="试试清空搜索词或取消能力筛选" className="col-span-full"
+              action={{ label: '重置筛选', onClick: () => { setQuery(''); setFacets({ free: false, reasoning: false, vision: false }); setFilter('all') } }} />
           )}
         </div>
 

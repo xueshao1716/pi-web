@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { FlaskConical, Factory, Puzzle, StickyNote, TrendingUp, Zap, X, Check, Sprout } from 'lucide-react'
+import EmptyState from '../components/EmptyState'
 import type { LucideIcon } from 'lucide-react'
 import useSWR from 'swr'
 import { RefineApi, SkillsApi, PromptsApi, ImprovementsApi, MemoryApi } from '../api'
@@ -69,11 +70,7 @@ function RefineView() {
         </div>
       ))}
       {!pending.length && !applied.length && !rejected.length && (
-        <div className="empty-state py-12 text-center">
-          <FlaskConical className="w-9 h-9 mb-2 mx-auto opacity-40" strokeWidth={1.5} />
-          <div className="text-sm text-pi-dim">暂无提案</div>
-          <div className="text-[11px] text-pi-dim2 mt-1">点上方按钮，让小语分析近期工作日志、主动提出改进建议</div>
-        </div>
+        <EmptyState icon={FlaskConical} title="暂无提案" hint="点上方按钮，让小语分析近期工作日志、主动提出改进建议" />
       )}
     </div>
   )
@@ -95,10 +92,7 @@ function SkillsView() {
         ))}
       </div>
       {!skills.length && (
-        <div className="empty-state py-12 text-center">
-          <Puzzle className="w-9 h-9 mb-2 mx-auto opacity-40" strokeWidth={1.5} />
-          <div className="text-sm text-pi-dim">没有匹配的技能</div>
-        </div>
+        <EmptyState icon={Puzzle} title="没有匹配的技能" />
       )}
     </div>
   )
@@ -125,11 +119,7 @@ function PromptsView() {
         </div>
       ))}
       {!prompts.length && (
-        <div className="empty-state py-12 text-center">
-          <StickyNote className="w-9 h-9 mb-2 mx-auto opacity-40" strokeWidth={1.5} />
-          <div className="text-sm text-pi-dim">提示词库为空</div>
-          <div className="text-[11px] text-pi-dim2 mt-1">在 ~/.pi/agent/prompts/ 放入 .md 文件即可</div>
-        </div>
+        <EmptyState icon={StickyNote} title="提示词库为空" hint="在 ~/.pi/agent/prompts/ 放入 .md 文件即可" />
       )}
     </div>
   )
@@ -157,11 +147,7 @@ function ImproveView() {
         </div>
       ))}
       {!items.length && (
-        <div className="empty-state py-12 text-center">
-          <TrendingUp className="w-9 h-9 mb-2 mx-auto opacity-40" strokeWidth={1.5} />
-          <div className="text-sm text-pi-dim">当前没有待处理的改进提案</div>
-          <div className="text-[11px] text-pi-dim2 mt-1">点上方按钮分析 provider 用量与错误率</div>
-        </div>
+        <EmptyState icon={TrendingUp} title="当前没有待处理的改进提案" hint="点上方按钮分析 provider 用量与错误率" />
       )}
     </div>
   )
@@ -188,11 +174,7 @@ function GardenerView() {
           </ul>
         </div>
       ) : (
-        <div className="empty-state py-12 text-center">
-          <Sprout className="w-9 h-9 mb-2 mx-auto opacity-40" strokeWidth={1.5} />
-          <div className="text-sm text-pi-dim">记忆很健康，无重复、无过时状态堆积</div>
-          <div className="text-[11px] text-pi-dim2 mt-1">记忆园丁只报告、不自动写——防止记忆被污染</div>
-        </div>
+        <EmptyState icon={Sprout} title="记忆很健康，无重复、无过时状态堆积" hint="记忆园丁只报告、不自动写——防止记忆被污染" />
       )}
     </div>
   )

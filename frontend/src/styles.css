@@ -827,3 +827,19 @@ button:focus:not(:focus-visible) { outline: none; }
 @media (max-width: 768px) {
   .toast-stack { bottom: calc(3.25rem + env(safe-area-inset-bottom, 0px)); }
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   z-index 分层常量（2026-08-26）：全局唯一出处，JSX 用 z-[var(--pi-z-*)] 引用，
+   新代码禁止手写魔法数字（对标 uView zIndex.ts / KickSide 分层设计）
+   ══════════════════════════════════════════════════════════════════════ */
+:root {
+  --pi-z-rightpanel: 80;      /* 右栏 / 移动端全屏功能面板 */
+  --pi-z-dialog: 100;          /* 确认框等轻弹窗 overlay */
+  --pi-z-dialog-top: 101;      /* 轻弹窗内容层 */
+  --pi-z-toast: 100;           /* Toast 提示 */
+  --pi-z-palette: 110;         /* 命令面板 Ctrl+K overlay */
+  --pi-z-palette-content: 111; /* 命令面板内容层 */
+  --pi-z-viewer: 120;          /* 资产预览全屏层 */
+  --pi-z-modal: 200;           /* 重模态（模型管理等） */
+  --pi-z-modal-inner: 201;     /* 重模态内嵌子弹层 */
+}

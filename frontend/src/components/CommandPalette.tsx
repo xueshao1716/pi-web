@@ -89,10 +89,10 @@ export default function CommandPalette({ open, onClose, nav, onRightPanel, onMod
   return (
     <D.Root open={open} onOpenChange={o => { if (!o) onClose() }}>
       <D.Portal>
-        <D.Overlay className="fixed inset-0 z-[110] bg-black/55 backdrop-blur-sm" />
+        <D.Overlay className="fixed inset-0 z-[var(--pi-z-palette)] bg-black/55 backdrop-blur-sm" />
         <D.Content aria-label="命令面板"
           onOpenAutoFocus={e => { e.preventDefault(); setTimeout(() => inputRef.current?.focus(), 0) }}
-          className="fixed left-1/2 top-[12vh] -translate-x-1/2 z-[120] w-full max-w-lg px-4 sm:px-0">
+          className="fixed left-1/2 top-[12vh] -translate-x-1/2 z-[var(--pi-z-palette-content)] w-full max-w-lg px-4 sm:px-0">
           <div className="rounded-pi-xl glass-strong glass-hi overflow-hidden anim-enter" style={{ animationDuration: '.18s' }}>
             <input
               data-slot="command-input"

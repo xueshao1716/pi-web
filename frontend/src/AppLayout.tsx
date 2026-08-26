@@ -110,7 +110,7 @@ export default function AppLayout() {
             <div className="flex-1 flex flex-col min-w-0 min-h-0">
               <ChatArea compactHeader />
               {rightPanel !== 'chat' && (
-                <div className="fixed inset-0 z-[80] glass-strong flex flex-col"
+                <div className="fixed inset-0 z-[var(--pi-z-rightpanel)] glass-strong flex flex-col"
                   style={{ top: 'calc(env(safe-area-inset-top, 0px) + 48px)' }}>
                   <div className="flex items-center gap-1 px-3 h-10 border-b border-pi-border-soft flex-shrink-0">
                     {([['workspace', '工作空间'], ['deliveries', '交付物'], ['terminal', '终端']] as const).map(([k, label]) => (

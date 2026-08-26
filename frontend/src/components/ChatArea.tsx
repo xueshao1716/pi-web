@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { useApp } from '../store'
 import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, LayoutGrid, Command, ChevronDown, PanelRight } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
+import { usePullToRefresh } from '../hooks/usePullToRefresh'
 import { ChatApi, SessionsApi, AsrApi, EmotionApi, AgentStatusApi, streamSession } from '../api'
 import Message from './Message'
 import SendBox from './SendBox'
@@ -55,6 +57,12 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     ([, sid]: readonly [string, string]) => SessionsApi.messages(sid),
     { revalidateOnFocus: false, dedupingInterval: 1500 })
   const messages: ChatMessage[] = msgData?.messages || []
+
+  // 移动端下拉刷新：重验证当前会话消息 + 会话列表（触屏才触发，桌面无 touch 事件）
+  const pull = usePullToRefresh(async () => {
+    await mutateMsgs()
+    await refreshSessions()
+  })
   const loading = !!msgKey && isLoading && !msgData
 
   // 本地乐观更新（发送/收尾/系统提示），不触发重验证
@@ -329,6 +337,12 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
 
   return (
     <div className="relative flex-1 flex flex-col min-w-0 min-h-0">
+      {/* 下拉刷新指示器（移动端触屏；锚定头部下方，平时 opacity:0 不占位） */}
+      <div aria-hidden
+        className="pointer-events-none absolute z-[var(--pi-z-toast)] left-1/2 -translate-x-1/2 top-[52px] w-9 h-9 rounded-full border border-pi-border bg-pi-bg1/90 backdrop-blur-xl shadow-xl grid place-items-center"
+        style={pull.indicatorStyle}>
+        <RefreshCw className={`w-4 h-4 text-pi-dim ${pull.spin ? 'animate-spin' : ''}`} strokeWidth={2} />
+      </div>
       {/* 顶栏 */}
       <div className="flex items-center px-5 h-12 border-b border-pi-border-soft glass flex-shrink-0 gap-2">
         {!compactHeader && <div className="font-medium text-[15px] text-pi-text">会话</div>}
@@ -368,7 +382,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
       )}
 
       {/* 消息区 */}
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-4">
+      <div ref={(el) => { scrollRef.current = el; pull.containerRef.current = el }} className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-4">
         {loading ? (
           <div className="max-w-3xl w-full mx-auto px-6 py-6 space-y-5" aria-label="加载中">
             {[520, 380, 460].map((w, i) => (

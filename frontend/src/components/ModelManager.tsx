@@ -31,7 +31,7 @@ export default function ModelManager({ visible, onClose }: { visible: boolean; o
 
   if (!visible) return null
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[200]" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[var(--pi-z-modal)]" onClick={onClose}>
       <div className="panel w-[600px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex items-center px-5 h-12 border-b border-pi-border-soft flex-shrink-0">
           <span className="font-semibold text-pi-text">模型管理</span>
@@ -72,7 +72,7 @@ export default function ModelManager({ visible, onClose }: { visible: boolean; o
       </div>
 
       {addOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[201]" onClick={() => setAddOpen(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[var(--pi-z-modal-inner)]" onClick={() => setAddOpen(false)}>
           <div className="panel p-4 w-96" onClick={e => e.stopPropagation()}>
             <div className="text-sm font-semibold mb-3">添加 API</div>
             <input className="input-pi mb-2" placeholder="服务商（如 openrouter / deepseek）" value={addProvider} onChange={e => setAddProvider(e.target.value)} />
