@@ -96,10 +96,24 @@ const FONTS = {
   sans: '-apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
   display: '"Space Grotesk", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
 }
-const FONT_SCALE = [['sm', 12], ['md', 13], ['lg', 15], ['xl', 17], ['xxl', 22]] // 行高绑定：(n+4)/n
+const FONT_SCALE = [['badge', 10], ['xs', 11], ['sm', 12], ['md', 13], ['lg', 15], ['xl', 17], ['xxl', 22]] // 行高绑定：(n+4)/n，7 级字阶白名单
 export const EASINGS = {
   '--pi-ease': 'cubic-bezier(0.2, 0.8, 0.2, 1)',
   '--pi-ease-sheet': 'cubic-bezier(0.32, 0.72, 0, 1)',
+}
+
+// ── 全局（非主题）token：间距 + 层叠 z-index（08-26 收口：从手写区挪进生成器，消除多源漂移）──
+// 不随主题变，统一在 :root 输出；组件只能用这里定义的 --pi-space-* / --pi-z-*
+export const SPACING = [['xs', 4], ['sm', 8], ['md', 12], ['lg', 16], ['xl', 20], ['xxl', 24], ['xxxl', 32]]
+export const Z_INDEX = [
+  ['rightpanel', 80], ['dialog', 100], ['dialog-top', 101], ['toast', 100], ['palette', 110],
+  ['palette-content', 111], ['viewer', 120], ['modal', 200], ['modal-inner', 201],
+]
+export function globalVars() {
+  const out = {}
+  for (const [k, v] of SPACING) out[`--pi-space-${k}`] = `${v}px`
+  for (const [k, v] of Z_INDEX) out[`--pi-z-${k}`] = v
+  return out
 }
 
 // ── 派生算法：seed → 全量变量 ──
@@ -201,7 +215,7 @@ const fmtVars = vars => Object.entries(vars).map(([k, val]) => `  ${k}: ${val};`
 
 // 输出两段 CSS：:root 区（deep + 共享动效）与三套 data-theme 区
 export function emitCss() {
-  const deep = { ...generateTheme(SEEDS.deep), ...motionVars() }
+  const deep = { ...generateTheme(SEEDS.deep), ...motionVars(), ...globalVars() }
   const block = (sel, vars) => `${sel} {\n${fmtVars(vars)}\n}`
   return {
     root: block(':root', deep),

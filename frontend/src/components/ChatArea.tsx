@@ -13,6 +13,7 @@ import { toast } from './Toast'
 import { emoMeta, emoTooltip, type EmoMeta } from '../lib/emotion'
 import type { FileAttachment } from './SendBox'
 import type { ChatMessage, RunningTool } from '../types'
+import WebglBackdrop from './WebglBackdrop'
 
 // 流式状态：覆盖服务端全部 SSE 事件（delta/think/think_end/tool/tool_output/
 // tool_end/turn_end/file/image/media/note/emotion/done/error）
@@ -285,8 +286,9 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   }
   const openPanel = (p: string) => window.dispatchEvent(new CustomEvent('pi-open-panel', { detail: p }))
   const welcome = (
-    <div className="flex items-center justify-center h-full px-6">
-      <div className="text-center max-w-lg anim-enter">
+    <div className="relative overflow-hidden flex items-center justify-center h-full px-6">
+      <WebglBackdrop className="absolute inset-0" dim={0.12} />
+      <div className="relative z-10 text-center max-w-lg anim-enter">
         <div className="w-16 h-16 mx-auto rounded-pi-xl bg-gradient-to-br from-pi-accent via-pi-accent2 to-purple-400 flex items-center justify-center text-3xl font-bold text-white mb-5 anim-enter" style={{ boxShadow: '0 8px 28px color-mix(in oklab, var(--pi-accent) 22%, transparent)' }}>语</div>
         <div className="text-[22px] font-extrabold text-pi-text mb-1.5 tracking-tight anim-enter anim-enter-delay-1">小语 · AI 工作台</div>
         <div className="text-pi-dim mb-7 text-[13px] anim-enter anim-enter-delay-2">基于 pi 引擎的 AI 工作伙伴 · 从一个动作开始</div>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useApp } from '../store'
+import WebglBackdrop from './WebglBackdrop'
 
 export default function Login() {
   const { login } = useApp()
@@ -17,8 +18,10 @@ export default function Login() {
   }
 
   return (
-    <div className="h-screen flex items-center justify-center" style={{ background: 'radial-gradient(1100px 550px at 50% -10%, var(--pi-bg2) 0%, var(--pi-bg) 60%)' }}>
-      <div className="panel w-88 p-10">
+    // 方案A：主题驱动 WebGL 光场背景（深色科技风），radial-gradient 作降级回退；面板提上一层
+    <div className="relative h-screen flex items-center justify-center overflow-hidden" style={{ background: 'radial-gradient(1100px 550px at 50% -10%, var(--pi-bg2) 0%, var(--pi-bg) 60%)' }}>
+      <WebglBackdrop className="absolute inset-0" dim={0.22} />
+      <div className="relative z-10 panel w-88 p-10">
         <div className="text-center mb-6">
           <div className="text-4xl font-black text-pi-accent tracking-tight mb-1">◈ 小语</div>
           <div className="text-pi-dim text-sm">· AI 工作台</div>

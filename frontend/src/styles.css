@@ -75,6 +75,10 @@ ul[class], ol[class] { list-style: none; margin: 0; padding: 0; }
   --pi-r-md: 6px;
   --pi-r-lg: 8px;
   --pi-r-xl: 12px;
+  --pi-fs-badge: 10px;
+  --pi-lh-badge: 1.400;
+  --pi-fs-xs: 11px;
+  --pi-lh-xs: 1.364;
   --pi-fs-sm: 12px;
   --pi-lh-sm: 1.333;
   --pi-fs-md: 13px;
@@ -90,6 +94,22 @@ ul[class], ol[class] { list-style: none; margin: 0; padding: 0; }
   --pi-motion-fast: .14s var(--pi-ease);
   --pi-motion-base: .2s var(--pi-ease);
   --pi-motion-slow: .3s var(--pi-ease-sheet);
+  --pi-space-xs: 4px;
+  --pi-space-sm: 8px;
+  --pi-space-md: 12px;
+  --pi-space-lg: 16px;
+  --pi-space-xl: 20px;
+  --pi-space-xxl: 24px;
+  --pi-space-xxxl: 32px;
+  --pi-z-rightpanel: 80;
+  --pi-z-dialog: 100;
+  --pi-z-dialog-top: 101;
+  --pi-z-toast: 100;
+  --pi-z-palette: 110;
+  --pi-z-palette-content: 111;
+  --pi-z-viewer: 120;
+  --pi-z-modal: 200;
+  --pi-z-modal-inner: 201;
 }
 /* @generated-tokens:end */
 
@@ -347,6 +367,10 @@ body {
   --pi-r-md: 6px;
   --pi-r-lg: 8px;
   --pi-r-xl: 12px;
+  --pi-fs-badge: 10px;
+  --pi-lh-badge: 1.400;
+  --pi-fs-xs: 11px;
+  --pi-lh-xs: 1.364;
   --pi-fs-sm: 12px;
   --pi-lh-sm: 1.333;
   --pi-fs-md: 13px;
@@ -405,6 +429,10 @@ body {
   --pi-r-md: 6px;
   --pi-r-lg: 8px;
   --pi-r-xl: 12px;
+  --pi-fs-badge: 10px;
+  --pi-lh-badge: 1.400;
+  --pi-fs-xs: 11px;
+  --pi-lh-xs: 1.364;
   --pi-fs-sm: 12px;
   --pi-lh-sm: 1.333;
   --pi-fs-md: 13px;
@@ -463,6 +491,10 @@ body {
   --pi-r-md: 6px;
   --pi-r-lg: 8px;
   --pi-r-xl: 12px;
+  --pi-fs-badge: 10px;
+  --pi-lh-badge: 1.400;
+  --pi-fs-xs: 11px;
+  --pi-lh-xs: 1.364;
   --pi-fs-sm: 12px;
   --pi-lh-sm: 1.333;
   --pi-fs-md: 13px;
@@ -521,6 +553,10 @@ body {
   --pi-r-md: 6px;
   --pi-r-lg: 8px;
   --pi-r-xl: 12px;
+  --pi-fs-badge: 10px;
+  --pi-lh-badge: 1.400;
+  --pi-fs-xs: 11px;
+  --pi-lh-xs: 1.364;
   --pi-fs-sm: 12px;
   --pi-lh-sm: 1.333;
   --pi-fs-md: 13px;
@@ -853,23 +889,6 @@ button:focus:not(:focus-visible) { outline: none; }
 @media (max-width: 768px) {
   .toast-stack { bottom: calc(3.25rem + env(safe-area-inset-bottom, 0px)); }
 }
-
-/* ══════════════════════════════════════════════════════════════════════
-   z-index 分层常量（2026-08-26）：全局唯一出处，JSX 经 UnoCSS 任意值语法引用对应变量，
-   新代码禁止手写魔法数字（对标 uView zIndex.ts / KickSide 分层设计）
-   ══════════════════════════════════════════════════════════════════════ */
-:root {
-  --pi-z-rightpanel: 80;      /* 右栏 / 移动端全屏功能面板 */
-  --pi-z-dialog: 100;          /* 确认框等轻弹窗 overlay */
-  --pi-z-dialog-top: 101;      /* 轻弹窗内容层 */
-  --pi-z-toast: 100;           /* Toast 提示 */
-  --pi-z-palette: 110;         /* 命令面板 Ctrl+K overlay */
-  --pi-z-palette-content: 111; /* 命令面板内容层 */
-  --pi-z-viewer: 120;          /* 资产预览全屏层 */
-  --pi-z-modal: 200;           /* 重模态（模型管理等） */
-  --pi-z-modal-inner: 201;     /* 重模态内嵌子弹层 */
-}
-
 
 /* ══ 牛皮纸主题立体加强层（08-26）：暖棕重阴影+纸面抬升感 ══ */
 [data-theme="kraft"] .glass-hi {
