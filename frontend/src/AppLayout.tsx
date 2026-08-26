@@ -11,7 +11,6 @@ import WorkSpace from './components/Workspace'
 import Deliveries from './components/Deliveries'
 import TerminalPanel from './components/TerminalPanel'
 import ModelManager from './components/ModelManager'
-import SystemModal from './components/SystemModal'
 import ThemeSwitcher from './components/ThemeSwitcher'
 import CommandPalette from './components/CommandPalette'
 import * as T from '@radix-ui/react-tooltip'
@@ -22,6 +21,7 @@ const Assets = lazy(() => import('./pages/Assets'))
 const Tasks = lazy(() => import('./pages/Tasks'))
 const Apps = lazy(() => import('./pages/Apps'))
 const LingXiPage = lazy(() => import('./pages/LingXi'))
+const SystemPage = lazy(() => import('./pages/System'))
 const WorkshopPage = lazy(() => import('./pages/Workshop'))
 
 // 导航项（桌面 rail / 移动 TabBar 共用语义）
@@ -33,6 +33,7 @@ const NAV: { route: Route; icon: typeof MessagesSquare; label: string }[] = [
   { route: 'assets', icon: Images, label: '资产' },
   { route: 'tasks', icon: Clock4, label: '任务' },
   { route: 'apps', icon: LayoutGrid, label: '应用' },
+  { route: 'system', icon: MonitorCog, label: '系统' },
 ]
 
 function PageLoader() {
@@ -46,6 +47,7 @@ function PageBody({ route }: { route: Route }) {
   if (route === 'apps') return <Apps />
   if (route === 'lingxi') return <LingXiPage />
   if (route === 'workshop') return <WorkshopPage />
+  if (route === 'system') return <SystemPage />
   return null
 }
 
@@ -63,7 +65,6 @@ export default function AppLayout() {
   })
   const [rightPanel, setRightPanel] = useState<'chat' | 'workspace' | 'deliveries' | 'terminal' | 'activity'>('chat')
   const [modelOpen, setModelOpen] = useState(false)
-  const [systemOpen, setSystemOpen] = useState(false)
   // 移动端：sessions 抽屉
   const [mobileDrawer, setMobileDrawer] = useState<'none' | 'sessions'>('none')
   // ⌘K 命令面板（08-25 评审 P1：全局快捷键）
@@ -165,7 +166,6 @@ export default function AppLayout() {
         </nav>
 
         <ModelManager visible={modelOpen} onClose={() => setModelOpen(false)} />
-      <SystemModal visible={systemOpen} onClose={() => setSystemOpen(false)} />
         {palette}
       </div>
     )
@@ -203,7 +203,6 @@ export default function AppLayout() {
         ))}
         <div className="mt-auto mb-2 flex flex-col gap-1.5">
           <ThemeSwitcher />
-          <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-colors" title="系统" aria-label="系统" onClick={() => setSystemOpen(true)}><MonitorCog className="w-[18px] h-[18px]" strokeWidth={1.8} /></button>
           <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-colors" title="密钥与通道管理" aria-label="密钥与通道管理" onClick={() => setModelOpen(true)}><Settings2 className="w-[18px] h-[18px]" strokeWidth={1.8} /></button>
         </div>
       </nav>
@@ -235,7 +234,6 @@ export default function AppLayout() {
       {/* 右栏开关已入 ChatArea 顶栏（与状态胶囊并排，不再悬浮遮挡） */}
 
       <ModelManager visible={modelOpen} onClose={() => setModelOpen(false)} />
-      <SystemModal visible={systemOpen} onClose={() => setSystemOpen(false)} />
       {palette}
     </div>
   )

@@ -260,6 +260,8 @@ export const MemoryApi = {
 export const SystemApi = {
   info: () => api<any>('/api/system/info'),
   checkUpdate: () => api<any>('/api/system/check-update'),
+  saveNetwork: (body: { domains: { domain: string; desc: string }[] }) =>
+    api<{ ok: boolean; domains: { domain: string; desc: string }[] }>('/api/system/network', { method: 'POST', body }),
 }
 
 // ── 用量统计（按 provider/模型聚合）──

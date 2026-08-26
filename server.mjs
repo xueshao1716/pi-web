@@ -41,6 +41,7 @@ import { initContextLoader, makeLoader, loadExperience, readRulesWithImports, lo
 import { initMediaApi, findMediaModel, detectMediaIntents, extractMediaPrompt, generateMediaAsync, generateTTS, generateImage, handleImage, handleImageWithSave, generateVideo, handleMedia } from "./engine/media-api.mjs";
 import { initAsrApi, handleAsr } from "./engine/asr-api.mjs";
 import { gardenMemory, scanMemoryHealth, markReviewed, unmarkReviewed, dedupeLog, reviewedKeys } from "./engine/memory-gardener.mjs";
+import { systemInfo as buildSystemInfo, loadNetworkConfig, saveNetworkConfig, checkUpdate } from "./engine/system-panel.mjs";
 import { listLingXi, addLingXi, setLingXi, removeLingXi } from "./engine/lingxi.mjs";
 import { initDshKeys, dshResolveBin, handleDshStatus, handleDshWebStart, handleKeysStatus, loadPolicies, toolMatch, policyDecide, handleKeysApply, handleKeysPresets, refreshModelList, handleModelsManage, handleModelsAdd, KNOWN_PROVIDERS, PROVIDER_PRESETS, resolveAuth } from "./engine/dsh-keys.mjs";
 import { initStatsApi, handleGlobalStats, handleProviderStats, safeSessionStats, handleStats, handleCompact, listBuiltinSkills, handleSkills, handleSkillRead, handleParseFile, escHtml, handleExport, resolveFsPath, handleFsList, handleFsRead, handleRename } from "./engine/stats-api.mjs";
@@ -1580,8 +1581,14 @@ const API_ROUTES = [
     const r = dedupeLog(WS_ROOT);
     json(res, 200, { ok: true, ...r });
   }],
-  ["GET", "/api/system/info", (res) => json(res, 200, systemInfo())],
-  ["GET", "/api/system/check-update", async (res) => json(res, 200, await checkUpdate())],
+  ["GET", "/api/system/info", (res) => json(res, 200, buildSystemInfo(WS_ROOT, AGENT_DIR))],
+  ["POST", "/api/system/network", async (res, req) => {
+    const b = await readBody(req);
+    const r = saveNetworkConfig(AGENT_DIR, b);
+    if (r.error) return json(res, 400, { error: r.error });
+    json(res, 200, { ok: true, domains: r.domains });
+  }],
+  ["GET", "/api/system/check-update", async (res) => json(res, 200, await checkUpdate(__dirname))],
   // ── 灵犀：双向灵感池（user/xiaoyu 分源记录，攒着一起过）──
   ["GET", "/api/lingxi", (res, req, url) => {
     const source = url.searchParams.get("source") || undefined;
@@ -2127,66 +2134,4 @@ setInterval(checkSubscriptions, 6 * 3600 * 1000); // 每 6 小时查一次
 
 startServer();
 
-
-// ── 系统面板（08-26）：信息聚合 / 与远端仓库比对检测更新 ──
-const STARTED_AT = Date.now();
-const PUBLIC_DOMAINS = [
-  { domain: "pi.myxinyu.xin", desc: "工作台主入口" },
-  { domain: "share.myxinyu.xin", desc: "成品外链分享" },
-  { domain: "novel.myxinyu.xin", desc: "小说创作系统" },
-];
-
-function lanIPs() {
-  const out = [];
-  try {
-    for (const nets of Object.values(os.networkInterfaces())) {
-      for (const n of nets || []) if (n.family === "IPv4" && !n.internal) out.push(n.address);
-    }
-  } catch {}
-  return out;
-}
-
-function localGitSha() {
-  try {
-    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: __dirname, timeout: 5000 }).toString().trim();
-  } catch { return ""; }
-}
-
-function systemInfo() {
-  let version = "";
-  try { version = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8")).version || ""; } catch {}
-  return {
-    name: "pi-web 小语工作台",
-    version,
-    node: process.version,
-    platform: `${os.type()} ${os.arch()}`,
-    uptimeSec: Math.round((Date.now() - STARTED_AT) / 1000),
-    startedAt: new Date(STARTED_AT).toISOString(),
-    wsRoot: WS_ROOT,
-    port: 8787,
-    lanIPs: lanIPs(),
-    domains: PUBLIC_DOMAINS,
-  };
-}
-
-async function checkUpdate() {
-  const localShaFull = localGitSha();
-  const localSha = localShaFull.slice(0, 7);
-  const sources = [
-    { name: "github", url: "https://api.github.com/repos/xueshao1716/pi-web/commits/main",
-      pick: (d) => ({ sha: String(d.sha || "").slice(0, 7), message: String(d.commit?.message || "").split("\n")[0], date: d.commit?.author?.date }) },
-    { name: "gitee", url: "https://gitee.com/api/v5/repos/linxinyu520xue/pi-web/branches/main",
-      pick: (d) => ({ sha: String(d.commit?.id || "").slice(0, 7), message: String(d.commit?.message || "").split("\n")[0], date: undefined }) },
-  ];
-  for (const s of sources) {
-    try {
-      const r = await fetch(s.url, { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "pi-web" } });
-      if (!r.ok) continue;
-      const remote = s.pick(await r.json());
-      if (!remote.sha) continue;
-      return { ok: true, source: s.name, localSha, remote, upToDate: !localShaFull || localSha === remote.sha };
-    } catch {}
-  }
-  return { ok: false, error: "无法连接 github / gitee，请检查网络后重试", localSha };
-}
 
