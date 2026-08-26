@@ -4,7 +4,7 @@ import { useApp } from '../store'
 import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, LayoutGrid, Command, ChevronDown, PanelRight } from 'lucide-react'
 import { RefreshCw } from 'lucide-react'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
-import { ChatApi, SessionsApi, AsrApi, EmotionApi, AgentStatusApi, streamSession, LingXiApi } from '../api'
+import { ChatApi, SessionsApi, MessagesApi, AsrApi, EmotionApi, AgentStatusApi, streamSession, LingXiApi } from '../api'
 import Message from './Message'
 import SendBox from './SendBox'
 import TurnList from './TurnList'
@@ -181,7 +181,10 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         .catch(() => toast('灵犀记录失败', 'error'))
       return
     }
-    updateMessages(prev => [...prev, { id: 'u' + Date.now(), role: 'user', text: content, ts: new Date().toISOString() }])
+    // 先持久化用户消息到 JSONL（防 network error 丢消息）
+    let userMsgId = 'u' + Date.now();
+    MessagesApi.add(sid, content).catch(() => {});
+    updateMessages(prev => [...prev, { id: userMsgId, role: 'user', text: content, ts: new Date().toISOString() }])
     streamRef.current = emptyStream()
     setStream({ ...streamRef.current })
     // 模型参数（ParamsPanel 存 localStorage，随请求带给 server）

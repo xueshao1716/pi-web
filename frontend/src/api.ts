@@ -61,6 +61,9 @@ export const SessionsApi = {
   stats: (sid: string) => api<any>(`/api/sessions/${encodeURIComponent(sid)}/stats`),
   export: (sid: string, format = 'html') => api<any>(`/api/sessions/${encodeURIComponent(sid)}/export?format=${format}`),
 }
+export const MessagesApi = {
+  add: (sid: string, text: string) => api<{ ok: boolean; id: string }>(`/api/sessions/${encodeURIComponent(sid)}/messages`, { method: 'POST', body: { text } }),
+}
 export const ChatApi = {
   // SSE 流式：返回 { writer, abort } ，onChunk 处理 delta/think/tool/note/finish
   send: (body: any, onEvent: (ev: { type: string; data: any }) => void) => {

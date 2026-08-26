@@ -1528,10 +1528,39 @@ async function handleMessages(res, id, req, url) {
   const found = getSessionList().find(s => s.id === id);
   if (!found || !found.file || !fs.existsSync(found.file)) return json(res, 404, { error: "会话不存在" });
   const entries = readEntriesFromFile(found.file);
-  // leafId 仅当前端显式传 ?leafId=xxx（分叉视图）时过滤；普通视图返回全部消息
-  // 修复：换浏览器/终端后会话“只剩一两条/内容变了”——根因是内存 leafId 漂移导致误过滤
   const leafId = url?.searchParams?.get("leafId") || null;
   json(res, 200, { messages: extractMessages(entries, leafId), leafId });
+}
+
+// POST /api/sessions/:id/messages —— 持久化用户消息到 JSONL（防 network error 丢消息）
+async function handleAppendMessage(res, id, body) {
+  const found = getSessionList().find(s => s.id === id);
+  if (!found || !found.file) return json(res, 404, { error: "会话不存在" });
+  const file = found.file;
+  let parentId = "";
+  try {
+    const lines = fs.readFileSync(file, "utf8").split("\n").filter(Boolean);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const e = JSON.parse(lines[i]);
+        if (e.type === "message" && e.id) { parentId = e.id; break; }
+      } catch {}
+    }
+  } catch {}
+  const entry = {
+    type: "message",
+    id: Math.random().toString(16).slice(2, 10),
+    parentId,
+    timestamp: new Date().toISOString(),
+    message: { role: "user", content: [{ type: "text", text: String(body.text || body.content || "") }] }
+  };
+  try {
+    fs.appendFileSync(file, JSON.stringify(entry) + "\n");
+    invalidateSessionCache();
+    json(res, 200, { ok: true, id: entry.id });
+  } catch (e) {
+    json(res, 500, { error: e.message });
+  }
 }
 
 // GET /api/stats/global —— 所有会话的 token/成本汇总（直接从会话文件读取 usage）
@@ -1658,6 +1687,7 @@ const API_ROUTES = [
   ["GET", /^\/api\/sessions\/([^/]+)\/tree$/, (res, req, url, m) => handleSessionTree(res, decodeURIComponent(m[1]))],
   ["POST", /^\/api\/sessions\/([^/]+)\/branch$/, async (res, req, url, m) => handleSessionBranch(res, decodeURIComponent(m[1]), await readBody(req))],
   ["GET", /^\/api\/sessions\/([^/]+)\/messages$/, (res, req, url, m) => handleMessages(res, decodeURIComponent(m[1]), req, url)],
+  ["POST", /^\/api\/sessions\/([^/]+)\/messages$/, async (res, req, url, m) => handleAppendMessage(res, decodeURIComponent(m[1]), await readBody(req))],
   ["GET", /^\/api\/sessions\/([^/]+)\/stream$/, (res, req, url, m) => handleSessionStream(res, req, url, m[1])],
   ["GET", /^\/api\/sessions\/([^/]+)\/stats$/, (res, req, url, m) => handleStats(res, decodeURIComponent(m[1]))],
   ["POST", /^\/api\/sessions\/([^/]+)\/compact$/, (res, req, url, m) => handleCompact(res, decodeURIComponent(m[1]))],
