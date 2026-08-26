@@ -5,14 +5,16 @@ import WorkshopView from '../components/WorkshopView'
 
 // ── 专项工作台（08-26 从应用中心提升为主功能路由）：AI 绘画 / PPT·小说生成 ──
 
-type Tab = 'image' | 'longform'
+type Tab = 'image' | 'ppt' | 'novel'
 const TABS: [Tab, typeof ImagePlus, string][] = [
   ['image', ImagePlus, 'AI 绘画'],
-  ['longform', BookOpen, 'PPT · 小说生成'],
+  ['ppt', Presentation, 'PPT 生成'],
+  ['novel', BookOpen, '小说工坊'],
 ]
 const TAB_DESC: Record<Tab, string> = {
   image: '选模型出图，成品自动归档到资产库',
-  longform: 'SSE 长任务流式生成，成品可直接下载',
+  ppt: '走 ppt-generator 技能全流程，通常需要几分钟',
+  novel: '走 novel-forge v10 全流程，单章可能较久',
 }
 
 export default function Workshop() {
@@ -41,11 +43,8 @@ export default function Workshop() {
           </span>
         </div>
 
-        {tab === 'image' ? (
-          <div className="max-w-3xl"><GeneratePanel onGenerated={() => {}} /></div>
-        ) : (
-          <WorkshopView />
-        )}
+        {tab === 'image' && <div className="max-w-3xl"><GeneratePanel onGenerated={() => {}} /></div>}
+        {(tab === 'ppt' || tab === 'novel') && <WorkshopView key={tab} kind={tab} />}
       </div>
     </div>
   )

@@ -1,14 +1,13 @@
 import { useRef, useState } from 'react'
-import { BarChart3, BookOpen, Zap, Package } from 'lucide-react'
+import { Package } from 'lucide-react'
 import { WorkshopApi, withFileToken } from '../api'
 
-// ── 专项工作台：PPT / 小说生成（SSE 长任务，收编自 vanilla）──
+// ── 专项长文生成器（SSE 长任务，收编自 vanilla）：kind 由页面级 Tab 锁定传入 ──
 
-type Kind = 'ppt' | 'novel'
+export type Kind = 'ppt' | 'novel'
 interface Artifact { name: string; path: string; size?: number }
 
-export default function WorkshopView() {
-  const [kind, setKind] = useState<Kind>('ppt')
+export default function WorkshopView({ kind }: { kind: Kind }) {
   // PPT 表单
   const [theme, setTheme] = useState('')
   const [pages, setPages] = useState(10)
@@ -61,15 +60,6 @@ export default function WorkshopView() {
 
   return (
     <div className="space-y-4">
-      {/* 类型切换 */}
-      <div className="flex rounded-pi-md overflow-hidden border border-pi-border w-fit">
-        {([['ppt', BarChart3, 'PPT 生成'], ['novel', BookOpen, '小说工坊']] as const).map(([k, Icon, label]) => (
-          <button key={k} onClick={() => !running && setKind(k)}
-            className={`text-xs px-4 py-2 inline-flex items-center gap-1.5 transition-colors ${kind === k ? 'bg-pi-accent text-white' : 'bg-pi-bg2 text-pi-dim hover:text-pi-text disabled:opacity-60'}`}
-            disabled={running}><Icon className="w-3.5 h-3.5" strokeWidth={1.8} />{label}</button>
-        ))}
-      </div>
-
       {/* 表单 */}
       {kind === 'ppt' ? (
         <div className="panel !p-4 space-y-3">
