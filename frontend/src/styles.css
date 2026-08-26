@@ -89,6 +89,23 @@ ul[class], ol[class] { list-style: none; margin: 0; padding: 0; }
   --pi-lh-xl: 1.235;
   --pi-fs-xxl: 22px;
   --pi-lh-xxl: 1.182;
+  --pi-accent-hover: #6982ff;
+  --pi-accent-active: #4a5bf1;
+  --pi-accent-muted: rgba(84,104,255,0.55);
+  --pi-grad-accent: linear-gradient(135deg, #5468ff 0%, #758eff 100%);
+  --pi-grad-glow: linear-gradient(135deg, #5468ff 0%, transparent 70%);
+  --pi-btn-bg: #2c2f35;
+  --pi-btn-border: #282b31;
+  --pi-btn-hover: #1d2126;
+  --pi-card-bg: #181b20;
+  --pi-card-border: #282b31;
+  --pi-input-bg: #181b20;
+  --pi-input-border: #1b1e24;
+  --pi-chart-1: #5470f7;
+  --pi-chart-2: #23c399;
+  --pi-chart-3: #f0b64a;
+  --pi-chart-4: #2fb4d6;
+  --pi-chart-5: #b06cf2;
   --pi-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --pi-ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
   --pi-motion-fast: .14s var(--pi-ease);
@@ -163,14 +180,14 @@ body {
 .col-right { background: var(--pi-bg1); }
 
 /* ── 欢迎页快捷卡彩色化（08-23）：每张卡自己的强调色，拉彩色占比 */
-.chip-blue   { background: rgba(84,104,255,0.10);  border-color: rgba(123,150,255,0.28); }
-.chip-blue:hover   { background: rgba(84,104,255,0.18); }
-.chip-green  { background: rgba(62,207,142,0.09);  border-color: rgba(62,207,142,0.26); }
-.chip-green:hover  { background: rgba(62,207,142,0.16); }
-.chip-amber  { background: rgba(245,183,89,0.09);  border-color: rgba(245,183,89,0.26); }
-.chip-amber:hover  { background: rgba(245,183,89,0.16); }
-.chip-violet { background: rgba(167,139,250,0.10); border-color: rgba(167,139,250,0.28); }
-.chip-violet:hover { background: rgba(167,139,250,0.18); }
+.chip-blue   { background: color-mix(in oklab, var(--pi-accent) 10%, transparent);  border-color: color-mix(in oklab, var(--pi-accent) 28%, transparent); }
+.chip-blue:hover   { background: color-mix(in oklab, var(--pi-accent) 18%, transparent); }
+.chip-green  { background: color-mix(in oklab, var(--pi-green) 9%, transparent);  border-color: color-mix(in oklab, var(--pi-green) 26%, transparent); }
+.chip-green:hover  { background: color-mix(in oklab, var(--pi-green) 16%, transparent); }
+.chip-amber  { background: color-mix(in oklab, var(--pi-yellow) 9%, transparent);  border-color: color-mix(in oklab, var(--pi-yellow) 26%, transparent); }
+.chip-amber:hover  { background: color-mix(in oklab, var(--pi-yellow) 16%, transparent); }
+.chip-violet { background: color-mix(in oklab, var(--pi-accent2) 10%, transparent); border-color: color-mix(in oklab, var(--pi-accent2) 28%, transparent); }
+.chip-violet:hover { background: color-mix(in oklab, var(--pi-accent2) 18%, transparent); }
 
 /* 通用面板（08-26 去玻璃化：实底 surface + 单边框单投影） */
 .panel-glass {
@@ -381,6 +398,23 @@ body {
   --pi-lh-xl: 1.235;
   --pi-fs-xxl: 22px;
   --pi-lh-xxl: 1.182;
+  --pi-accent-hover: #6982ff;
+  --pi-accent-active: #4a5bf1;
+  --pi-accent-muted: rgba(84,104,255,0.55);
+  --pi-grad-accent: linear-gradient(135deg, #5468ff 0%, #758eff 100%);
+  --pi-grad-glow: linear-gradient(135deg, #5468ff 0%, transparent 70%);
+  --pi-btn-bg: #212226;
+  --pi-btn-border: #1d1d22;
+  --pi-btn-hover: #131317;
+  --pi-card-bg: #0d0d11;
+  --pi-card-border: #1d1d22;
+  --pi-input-bg: #0d0d11;
+  --pi-input-border: #111115;
+  --pi-chart-1: #5470f7;
+  --pi-chart-2: #23c399;
+  --pi-chart-3: #f0b64a;
+  --pi-chart-4: #2fb4d6;
+  --pi-chart-5: #b06cf2;
 }
 [data-theme="violet"] {
   --pi-bg: #0a0818;
@@ -443,6 +477,23 @@ body {
   --pi-lh-xl: 1.235;
   --pi-fs-xxl: 22px;
   --pi-lh-xxl: 1.182;
+  --pi-accent-hover: #9d93ff;
+  --pi-accent-active: #806fe8;
+  --pi-accent-muted: rgba(139,124,246,0.55);
+  --pi-grad-accent: linear-gradient(135deg, #8b7cf6 0%, #a78bfa 100%);
+  --pi-grad-glow: linear-gradient(135deg, #8b7cf6 0%, transparent 70%);
+  --pi-btn-bg: #28273a;
+  --pi-btn-border: #242335;
+  --pi-btn-hover: #1a1829;
+  --pi-card-bg: #141223;
+  --pi-card-border: #242335;
+  --pi-input-bg: #141223;
+  --pi-input-border: #171527;
+  --pi-chart-1: #5470f7;
+  --pi-chart-2: #23c399;
+  --pi-chart-3: #f0b64a;
+  --pi-chart-4: #2fb4d6;
+  --pi-chart-5: #b06cf2;
 }
 [data-theme="mist"] {
   --pi-bg: #f3f5fa;
@@ -505,6 +556,23 @@ body {
   --pi-lh-xl: 1.235;
   --pi-fs-xxl: 22px;
   --pi-lh-xxl: 1.182;
+  --pi-accent-hover: #5c73ff;
+  --pi-accent-active: #414aec;
+  --pi-accent-muted: rgba(74,88,250,0.55);
+  --pi-grad-accent: linear-gradient(135deg, #4a58fa 0%, #677fff 100%);
+  --pi-grad-glow: linear-gradient(135deg, #4a58fa 0%, transparent 70%);
+  --pi-btn-bg: #d0d1d6;
+  --pi-btn-border: #d4d6db;
+  --pi-btn-hover: #e0e2e7;
+  --pi-card-bg: #e7e9ee;
+  --pi-card-border: #d4d6db;
+  --pi-input-bg: #e7e9ee;
+  --pi-input-border: #e3e5ea;
+  --pi-chart-1: #5470f7;
+  --pi-chart-2: #23c399;
+  --pi-chart-3: #f0b64a;
+  --pi-chart-4: #2fb4d6;
+  --pi-chart-5: #b06cf2;
 }
 [data-theme="kraft"] {
   --pi-bg: #e5d4aa;
@@ -567,6 +635,23 @@ body {
   --pi-lh-xl: 1.235;
   --pi-fs-xxl: 22px;
   --pi-lh-xxl: 1.182;
+  --pi-accent-hover: #c86526;
+  --pi-accent-active: #a44900;
+  --pi-accent-muted: rgba(180,83,9,0.55);
+  --pi-grad-accent: linear-gradient(135deg, #b45309 0%, #d26f31 100%);
+  --pi-grad-glow: linear-gradient(135deg, #b45309 0%, transparent 70%);
+  --pi-btn-bg: #c3b289;
+  --pi-btn-border: #c7b78e;
+  --pi-btn-hover: #d3c298;
+  --pi-card-bg: #dac99f;
+  --pi-card-border: #c7b78e;
+  --pi-input-bg: #dac99f;
+  --pi-input-border: #d6c59b;
+  --pi-chart-1: #5470f7;
+  --pi-chart-2: #23c399;
+  --pi-chart-3: #f0b64a;
+  --pi-chart-4: #2fb4d6;
+  --pi-chart-5: #b06cf2;
 }
 /* @generated-tokens:end */[data-theme="mist"] .glass { background: rgba(255, 255, 255, 0.62); }
 [data-theme="mist"] .glass-strong { background: rgba(255, 255, 255, 0.82); }

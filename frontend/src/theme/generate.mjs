@@ -198,6 +198,26 @@ export function generateTheme(seed) {
     v[`--pi-fs-${name}`] = `${px}px`
     v[`--pi-lh-${name}`] = `${((px + 4) / px).toFixed(3)}`
   }
+
+  // ── 08-26 主题穿透到组件层：accent 交互矩阵 + 渐变 + 组件语义 + 图表色 ──
+  // 组件类一律引用这些变量（勿再写死 rgba/hex），主题一变全跟随
+  v['--pi-accent-hover'] = seed.overrides?.['--pi-accent-hover'] || shiftL(seed.accent, 0.06)
+  v['--pi-accent-active'] = seed.overrides?.['--pi-accent-active'] || shiftL(seed.accent, -0.04)
+  v['--pi-accent-muted'] = seed.overrides?.['--pi-accent-muted'] || mixAlpha(seed.accent, 0.55)
+  v['--pi-grad-accent'] = seed.overrides?.['--pi-grad-accent'] || `linear-gradient(135deg, ${v['--pi-accent']} 0%, ${v['--pi-accent2']} 100%)`
+  v['--pi-grad-glow'] = seed.overrides?.['--pi-grad-glow'] || `linear-gradient(135deg, ${v['--pi-accent']} 0%, transparent 70%)`
+
+  v['--pi-btn-bg'] = v['--pi-default']
+  v['--pi-btn-border'] = v['--pi-border']
+  v['--pi-btn-hover'] = v['--pi-bg-hover']
+  v['--pi-card-bg'] = v['--pi-bg1']
+  v['--pi-card-border'] = v['--pi-border']
+  v['--pi-input-bg'] = v['--pi-field']
+  v['--pi-input-border'] = v['--pi-field-border']
+
+  // 图表/序列色（高区分度，固定；主题 only 影响可读性不重映射）
+  const CHART = ['#5470f7', '#23c399', '#f0b64a', '#2fb4d6', '#b06cf2']
+  CHART.forEach((c, i) => { v[`--pi-chart-${i + 1}`] = c })
   return v
 }
 
