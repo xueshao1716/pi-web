@@ -13,11 +13,17 @@ const GROUP_LABEL: Record<string, string> = {
 // 分组排序：终端会话置顶（外部可随时打开终端会话找小语，双向同步）
 const GROUP_ORDER = ['terminal', 'workspace']
 
+// 分组折叠状态持久化（记住用户偏好）
+function loadCollapsed(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem('pi_groups_collapsed') || '[]')) } catch { return new Set() }
+}
+
 export default function Sidebar({ onNavigated }: { onNavigated?: () => void } = {}) {
   const { sessions, currentSessionId, selectSession, refreshSessions } = useApp()
   const [renaming, setRenaming] = useState<{ sid: string; name: string } | null>(null)
   const [confirming, setConfirming] = useState<Session | null>(null)
   const [search, setSearch] = useState('')
+  const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed)
 
   // Radix Dialog 关闭不归还焦点（1.x 行为），自补
   useRestoreFocus(!!confirming)
@@ -74,8 +80,20 @@ export default function Sidebar({ onNavigated }: { onNavigated?: () => void } = 
       <div className="flex-1 overflow-y-auto px-2 pb-3">
         {groupKeys.map(g => groups[g].length > 0 && (
           <div key={g} className="mb-3">
-            <div className="px-2 py-1.5 text-[11px] text-pi-dim2 font-semibold uppercase tracking-wider">{GROUP_LABEL[g] || g}</div>
-            {groups[g].map(s => (
+            {/* 分组头：可点击折叠，chevron+计数让归属一眼可辨 */}
+            <button
+              className="w-full flex items-center gap-1 px-2 py-1.5 rounded-pi-sm hover:bg-pi-bg3 transition-colors duration-fast"
+              aria-expanded={!collapsed.has(g)}
+              onClick={() => setCollapsed(prev => {
+                const n = new Set(prev); n.has(g) ? n.delete(g) : n.add(g)
+                try { localStorage.setItem('pi_groups_collapsed', JSON.stringify([...n])) } catch {}
+                return n
+              })}>
+              <svg className={`w-3 h-3 text-pi-dim2 transition-transform duration-fast ${collapsed.has(g) ? '' : 'rotate-90'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
+              <span className="text-[11px] text-pi-dim font-semibold tracking-wider">{GROUP_LABEL[g] || g}</span>
+              <span className="ml-auto text-[10px] font-mono text-pi-dim2 bg-pi-bg3 px-1.5 py-px rounded-pi-pill">{groups[g].length}</span>
+            </button>
+            {!collapsed.has(g) && groups[g].map(s => (
               <div key={s.id}
                 className={`group flex items-center gap-2.5 px-2.5 py-2 rounded-pi-md cursor-pointer mb-0.5 transition-colors duration-fast ${
                   s.id === currentSessionId ? 'accent-soft' : 'surface-hover'
