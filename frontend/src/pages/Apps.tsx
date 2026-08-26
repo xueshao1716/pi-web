@@ -3,7 +3,8 @@ import { FlaskConical, Factory, Puzzle, StickyNote, TrendingUp, Zap, X, Check, S
 import EmptyState from '../components/EmptyState'
 import type { LucideIcon } from 'lucide-react'
 import useSWR from 'swr'
-import { RefineApi, SkillsApi, PromptsApi, ImprovementsApi, MemoryApi } from '../api'
+import { RefineApi, SkillsApi, PromptsApi, ImprovementsApi } from '../api'
+import GardenerView from '../components/GardenerView'
 
 // ── 应用中心（Phase 3）：经验沉淀台 / 技能库 / 提示词库 / 改进提案 ──
 
@@ -146,33 +147,6 @@ function ImproveView() {
       ))}
       {!items.length && (
         <EmptyState icon={TrendingUp} title="当前没有待处理的改进提案" hint="点上方按钮分析 provider 用量与错误率" />
-      )}
-    </div>
-  )
-}
-
-function GardenerView() {
-  const { data, isLoading } = useSWR('memory-gardener', () => MemoryApi.gardener())
-  const r = data || {}
-  const dups = r.duplicates?.length || 0
-  const stale = r.staleSections?.staleCount || 0
-  const total = r.totalEntries || 0
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-2.5">
-        <div className="stat-card !p-3.5"><div className="text-[11px] text-pi-dim2">记忆日志条目</div><div className="text-2xl font-bold mt-1">{isLoading ? '—' : total}</div></div>
-        <div className="stat-card !p-3.5"><div className="text-[11px] text-pi-dim2">疑似重复/流水账</div><div className={`text-2xl font-bold mt-1 ${dups > 0 ? 'text-pi-warning' : 'text-emerald-400'}`}>{dups}</div></div>
-        <div className="stat-card !p-3.5"><div className="text-[11px] text-pi-dim2">过时「状态」节</div><div className={`text-2xl font-bold mt-1 ${stale > 0 ? 'text-pi-warning' : 'text-emerald-400'}`}>{stale}</div></div>
-      </div>
-      {(r.recommendations?.length || 0) > 0 ? (
-        <div className="panel !p-3">
-          <h3 className="text-[13px] font-semibold text-pi-text mb-2">记忆园丁建议（不自动改，人工处理）</h3>
-          <ul className="space-y-2">
-            {r.recommendations.map((x: string, i: number) => <li key={i} className="text-[12px] text-pi-dim flex gap-2"><span className="text-pi-accent mt-0.5">•</span><span>{x}</span></li>)}
-          </ul>
-        </div>
-      ) : (
-        <EmptyState icon={Sprout} title="记忆很健康，无重复、无过时状态堆积" hint="记忆园丁只报告、不自动写——防止记忆被污染" />
       )}
     </div>
   )

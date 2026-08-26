@@ -250,6 +250,10 @@ export const ImprovementsApi = {
 // ── 记忆园丁：只报告记忆健康（重复/过时状态/膨胀），不自动写 ──
 export const MemoryApi = {
   gardener: () => api<any>('/api/memory-gardener'),
+  report: () => api<any>('/api/memory-gardener'),
+  markReviewed: (kind: string, key: string, unmark = false) =>
+    api<{ ok: boolean }>('/api/memory-gardener/reviewed', { method: 'POST', body: { kind, key, unmark } }),
+  dedupe: () => api<{ ok: boolean; removed: number; backup: string | null }>('/api/memory-gardener/dedupe', { method: 'POST' }),
 }
 
 // ── 用量统计（按 provider/模型聚合）──

@@ -40,7 +40,7 @@ import { initWorkspaceApi, WS_ROOT, findWorkspaceFiles, wsSafePath, saveArtifact
 import { initContextLoader, makeLoader, loadExperience, readRulesWithImports, loadContextRules, jitRulesForPath, loadProjectRules, loadSkillIndex, execActivateSkill, ACTIVATE_SKILL_TOOL, WORK_PROTOCOL, loadMemory, loadMemoryIndex, loadExperienceIndex, shouldInjectFullMemory, setLastUserQuery } from "./engine/context-loader.mjs";
 import { initMediaApi, findMediaModel, detectMediaIntents, extractMediaPrompt, generateMediaAsync, generateTTS, generateImage, handleImage, handleImageWithSave, generateVideo, handleMedia } from "./engine/media-api.mjs";
 import { initAsrApi, handleAsr } from "./engine/asr-api.mjs";
-import { gardenMemory } from "./engine/memory-gardener.mjs";
+import { gardenMemory, scanMemoryHealth, markReviewed, unmarkReviewed, dedupeLog, reviewedKeys } from "./engine/memory-gardener.mjs";
 import { listLingXi, addLingXi, setLingXi, removeLingXi } from "./engine/lingxi.mjs";
 import { initDshKeys, dshResolveBin, handleDshStatus, handleDshWebStart, handleKeysStatus, loadPolicies, toolMatch, policyDecide, handleKeysApply, handleKeysPresets, refreshModelList, handleModelsManage, handleModelsAdd, KNOWN_PROVIDERS, PROVIDER_PRESETS, resolveAuth } from "./engine/dsh-keys.mjs";
 import { initStatsApi, handleGlobalStats, handleProviderStats, safeSessionStats, handleStats, handleCompact, listBuiltinSkills, handleSkills, handleSkillRead, handleParseFile, escHtml, handleExport, resolveFsPath, handleFsList, handleFsRead, handleRename } from "./engine/stats-api.mjs";
@@ -1570,7 +1570,17 @@ const API_ROUTES = [
   ["GET", "/api/emotion", (res, req, url) => handleEmotion(res, url)],
   ["GET", "/api/agent-status", (res) => handleAgentStatus(res)],
   // ── 记忆园丁：只报告记忆健康（重复/过时/膨胀），不自动写记忆（防污染）──
-  ["GET", "/api/memory-gardener", (res) => json(res, 200, gardenMemory(WS_ROOT))],
+  ["GET", "/api/memory-gardener", (res) => json(res, 200, { ...gardenMemory(WS_ROOT), report: { ...scanMemoryHealth(WS_ROOT), reviewed: reviewedKeys(WS_ROOT) } })],
+  ["POST", "/api/memory-gardener/reviewed", async (res, req) => {
+    const b = await readBody(req);
+    if (!b?.kind || !b?.key) return json(res, 400, { error: "缺少 kind/key" });
+    const items = b.unmark ? unmarkReviewed(WS_ROOT, b.kind, b.key) : markReviewed(WS_ROOT, b.kind, b.key);
+    json(res, 200, { ok: true, items });
+  }],
+  ["POST", "/api/memory-gardener/dedupe", (res) => {
+    const r = dedupeLog(WS_ROOT);
+    json(res, 200, { ok: true, ...r });
+  }],
   // ── 灵犀：双向灵感池（user/xiaoyu 分源记录，攒着一起过）──
   ["GET", "/api/lingxi", (res, req, url) => {
     const source = url.searchParams.get("source") || undefined;

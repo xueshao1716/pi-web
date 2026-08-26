@@ -7,17 +7,32 @@
 // 用法：scanMemoryHealth(wsRoot) 纯函数（可单测）；gardenMemory(wsRoot) 供 time-engine 定时调用。
 // ══════════════════════════════════════════════════════════
 import { readFileSync, existsSync } from "node:fs";
+import * as fs from "node:fs";
 import { join } from "node:path";
 import { memoryPaths } from "./memory.mjs";
+import { atomicWriteText } from "./atomic-io.mjs";
 
 const DAY = 24 * 60 * 60 * 1000;
 const STALE_DAYS = 7; // 「当前状态」节超过 7 天视作过时，建议归档
 const LOG_BLOAT = 400; // 记忆日志超过该条数建议归档早期历史
 
 // 记忆日志条目以 "### 日期 时间" 开头
+// 记忆日志条目以 "### 日期" 或 "## 日期" 开头（两种风格并存，逐字保留原标题）
+const HEADING_RE = /^#{2,4}\s\d{4}-\d{2}-\d{2}/;
 function parseLog(raw) {
-  return raw.split(/\n###\s/).filter(b => b.trim())
-    .map(b => (b.startsWith("### ") ? b : "### " + b).trim());
+  const lines = raw.split("\n");
+  const blocks = [];
+  let cur = [];
+  for (const ln of lines) {
+    if (HEADING_RE.test(ln)) {
+      if (cur.length) blocks.push(cur.join("\n"));
+      cur = [ln];
+    } else if (cur.length) {
+      cur.push(ln);
+    }
+  }
+  if (cur.length) blocks.push(cur.join("\n"));
+  return blocks.filter(b => b.trim());
 }
 
 export function scanMemoryHealth(wsRoot) {
@@ -25,9 +40,10 @@ export function scanMemoryHealth(wsRoot) {
   try {
     const paths = memoryPaths(wsRoot);
 
-    // 1) 记忆日志：重复/流水账检测（要点行前 40 字去空白作 key，同 key 多次 = 疑似重复）
+    // 1) 记忆日志：重复/流水账检测（要点行前 40 字去空白作 key，同 key 多次 = 疑似重复；带全文预览供人工核对）
     if (existsSync(paths.log)) {
-      const blocks = parseLog(readFileSync(paths.log, "utf8"));
+      const raw = readFileSync(paths.log, "utf8");
+      const blocks = parseLog(raw);
       report.totalEntries = blocks.length;
       const keyCount = {};
       for (const b of blocks) {
@@ -41,6 +57,7 @@ export function scanMemoryHealth(wsRoot) {
           report.duplicates.push({
             key, count: arr.length,
             dates: arr.map(b => (b.match(/###\s*([\d-]+)/)?.[1] || "")).filter(Boolean),
+            previews: arr.map(b => b.replace(/\s+/g, " ").trim().slice(0, 120)),
           });
         }
       }
@@ -49,12 +66,24 @@ export function scanMemoryHealth(wsRoot) {
     // 2) 固定记忆：过时的「当前状态」节堆积检测
     if (existsSync(paths.fixed)) {
       const raw = readFileSync(paths.fixed, "utf8");
-      const dates = [...raw.matchAll(/##\s*当前状态（([\d-]+)）/g)].map(m => m[1]);
-      if (dates.length > 1) {
-        const times = dates.map(d => new Date(d).getTime()).sort((a, b) => b - a);
+      // 逐节解析「## 当前状态（日期）」节：带标题与正文预览，供人工核对具体内容
+      const sections = [...raw.matchAll(/##\s*当前状态（([\d-]+)）([^\n]*)\n?([\s\S]*?)(?=\n## |$)/g)]
+        .map(m => ({
+          date: m[1],
+          title: m[2].trim().slice(0, 40),
+          preview: m[3].replace(/\s+/g, " ").trim().slice(0, 120),
+        }));
+      if (sections.length > 0) {
+        const times = sections.map(s => new Date(s.date).getTime()).sort((a, b) => b - a);
         const newest = times[0];
-        const stale = dates.filter(d => (newest - new Date(d).getTime()) / DAY > STALE_DAYS);
-        report.staleSections = { total: dates.length, staleCount: stale.length, staleDates: stale };
+        const staleList = sections.filter(s => (newest - new Date(s.date).getTime()) / DAY > STALE_DAYS);
+        report.staleSections = {
+          total: sections.length,
+          staleCount: staleList.length,
+          staleDates: staleList.map(s => s.date),
+          sections: staleList.map(({ date, title, preview }) => ({ date, title, preview })),
+          latestDate: sections.reduce((a, b) => (a.date > b.date ? a : b)).date,
+        };
       }
     }
 
@@ -77,3 +106,82 @@ export function gardenMemory(wsRoot) {
 
 // 固定记忆/记忆日志的绝对路径暴露（供 API 挂载用）
 export function gardenerPaths(wsRoot) { return memoryPaths(wsRoot); }
+
+// ════════ 人工核对能力（08-26）：已核对标记 + 一键去重（带备份）════════
+// 已核对记录存 记忆/园丁-已核对.json，只影响报告展示，不动记忆文件；
+// 一键去重会改写记忆日志——先落 .bak 备份再重写，可手动恢复。
+
+function reviewedPath(wsRoot) { return join(wsRoot, "记忆", "园丁-已核对.json"); }
+
+export function getReviewed(wsRoot, fsMod = fs) {
+  const p = reviewedPath(wsRoot);
+  if (!fsMod.existsSync(p)) return [];
+  try {
+    const d = JSON.parse(fsMod.readFileSync(p, "utf8"));
+    return Array.isArray(d?.items) ? d.items : [];
+  } catch { return []; }
+}
+
+/** 标记某条发现为「已核对」（kind: dup|stale, key: 重复组 key 或 过时节日期） */
+export function markReviewed(wsRoot, kind, key, fsMod = fs) {
+  const items = getReviewed(wsRoot, fsMod).filter(x => !(x.kind === kind && x.key === key));
+  items.push({ kind, key, ts: new Date().toISOString() });
+  atomicWriteText(reviewedPath(wsRoot), JSON.stringify({ version: 1, items }, null, 2), fsMod);
+  return items;
+}
+
+/** 撤销已核对标记 */
+export function unmarkReviewed(wsRoot, kind, key, fsMod = fs) {
+  const items = getReviewed(wsRoot, fsMod).filter(x => !(x.kind === kind && x.key === key));
+  atomicWriteText(reviewedPath(wsRoot), JSON.stringify({ version: 1, items }, null, 2), fsMod);
+  return items;
+}
+
+/**
+ * 一键去重：每组重复保留日期最新的一条，其余删除。
+ * 先把原日志完整备份为 记忆日志.md.bak-<时间戳>（可手动恢复），然后原子重写。
+ * 返回 { removed, backup }。
+ */
+export function dedupeLog(wsRoot, fsMod = fs) {
+  const paths = memoryPaths(wsRoot);
+  if (!fsMod.existsSync(paths.log)) return { removed: 0, backup: null };
+  const raw = fsMod.readFileSync(paths.log, "utf8");
+  const blocks = parseLog(raw);
+  const keyCount = {};
+  for (const b of blocks) {
+    const line = (b.split("\n").find(l => l.includes("要点：")) || b);
+    const key = line.trim().replace(/\s+/g, "").slice(0, 40);
+    if (!key) continue;
+    (keyCount[key] = keyCount[key] || []).push(b);
+  }
+  const dropKeys = new Set(Object.entries(keyCount).filter(([, arr]) => arr.length > 1).map(([k]) => k));
+  if (!dropKeys.size) return { removed: 0, backup: null };
+
+  // 每个重复组内：按块内日期取最新的一条保留
+  const keepIdx = new Set();
+  for (const key of dropKeys) {
+    const group = keyCount[key].map(b => ({ b, date: b.match(/###\s*([\d-]+)/)?.[1] || "" }));
+    group.sort((x, y) => y.date.localeCompare(x.date));
+    keepIdx.add(group[0].b);
+  }
+  let removed = 0;
+  const kept = [];
+  for (const b of blocks) {
+    const line = (b.split("\n").find(l => l.includes("要点：")) || b);
+    const key = line.trim().replace(/\s+/g, "").slice(0, 40);
+    if (dropKeys.has(key)) {
+      if (keepIdx.has(b)) { kept.push(b); continue; }
+      removed++; continue;
+    }
+    kept.push(b);
+  }
+
+  const stamp = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
+  const backup = paths.log + ".bak-" + stamp;
+  fsMod.writeFileSync(backup, raw, "utf8");
+  atomicWriteText(paths.log, kept.join("\n\n") + "\n", fsMod);
+  return { removed, backup };
+}
+
+// 报告附上已核对清单（供 UI 隐藏/折叠）
+export function reviewedKeys(wsRoot, fsMod = fs) { return getReviewed(wsRoot, fsMod); }
