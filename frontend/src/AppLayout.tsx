@@ -157,10 +157,6 @@ export default function AppLayout() {
   /* ── 桌面布局：图标 rail + 会话列表 + 主区 + 动态右栏 ── */
   return (
     <div className="h-screen flex bg-pi-bg text-pi-text relative">
-      {/* 全局光斑背景 */}
-      <div className="absolute inset-0 pointer-events-none z-0"
-        style={{ background: 'radial-gradient(720px 420px at 82% -8%, color-mix(in oklab, var(--pi-accent) 12%, transparent), transparent 62%), radial-gradient(560px 380px at 8% 108%, color-mix(in oklab, var(--pi-accent2) 7%, transparent), transparent 60%)' }} />
-
       {/* 图标导航 rail（08-23：col-sidebar 顶部天光，拉开与中栏层次） */}
       <nav className="w-14 flex-shrink-0 flex flex-col items-center py-3 gap-1.5 col-sidebar border-r border-pi-border relative z-20">
         <div className="w-8 h-8 rounded-pi-md avatar-grad flex items-center justify-center text-white font-bold mb-2">语</div>
@@ -169,7 +165,7 @@ export default function AppLayout() {
             <T.Trigger asChild>
               <button aria-label={n.label} aria-current={route === n.route ? 'page' : undefined}
                 className={`w-9 h-9 rounded-pi-md flex items-center justify-center relative transition-colors duration-150 ${
-                  route === n.route ? 'bg-pi-accent/15 text-pi-accent' : 'text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3'}`}
+                  route === n.route ? 'bg-pi-accent text-white shadow-sm' : 'text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3'}`}
                 onClick={() => nav(n.route)}>
                 <n.icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
               </button>

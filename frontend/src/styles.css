@@ -263,7 +263,7 @@ body {
 
 /* ── 导航活跃态（Phase3 新增：左侧 accent 竖条 + 背景）── */
 .nav-active {
-  background: rgba(84,104,255,0.12);
+  background: color-mix(in oklab, var(--pi-accent) 14%, transparent);
   color: var(--pi-accent);
   position: relative;
 }

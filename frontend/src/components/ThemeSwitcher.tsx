@@ -2,8 +2,21 @@ import { useEffect, useState } from 'react'
 import { THEME_PRESETS as THEMES, ACCENT_PRESETS as ACCENTS, COLOR_ERROR, ACCENT_LIGHT } from '../theme/palettes'
 // 主题预设：data-theme 属性驱动（styles.css [data-theme] 变量覆盖）；色板定义在 theme/palettes.ts
 
+// 默认主题「晨雾」(mist)：08-26 用户拍板白色主色。一次性迁移：老默认 'deep' 自动切到 mist（打标记后不再覆盖显式选择）
+const DEFAULT_THEME = 'mist'
+function initialTheme(): string {
+  try {
+    const stored = localStorage.getItem('pi_theme')
+    if (stored == null) return DEFAULT_THEME
+    if (stored === 'deep' && !localStorage.getItem('pi_theme_migrated')) {
+      localStorage.setItem('pi_theme_migrated', '1')
+      return DEFAULT_THEME
+    }
+    return stored
+  } catch { return DEFAULT_THEME }
+}
 export default function ThemeSwitcher() {
-  const [theme, setTheme] = useState(() => { try { return localStorage.getItem('pi_theme') || 'deep' } catch { return 'deep' } })
+  const [theme, setTheme] = useState(initialTheme)
   const [accent, setAccent] = useState(() => { try { return localStorage.getItem('pi_accent') || '' } catch { return '' } })
   const [menuOpen, setMenuOpen] = useState(false)
 
