@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ImagePlus, Zap } from 'lucide-react'
+import { ImagePlus, Zap, X } from 'lucide-react'
 import { MediaApi, withFileToken } from '../api'
 import { useApp } from '../store'
 import type { Model } from '../types'
@@ -14,7 +14,7 @@ function capKeys(m: Model): string[] {
   return Array.isArray(cap) ? cap : Object.entries(cap || {}).filter(([, v]) => v).map(([k]) => k as string)
 }
 
-export default function GeneratePanel({ onClose, onGenerated }: { onClose: () => void; onGenerated: () => void }) {
+export default function GeneratePanel({ onClose, onGenerated }: { onClose?: () => void; onGenerated: () => void }) {
   const { models } = useApp()
   const imageModels = models.filter(m => capKeys(m).includes('image'))
   const [modelIdx, setModelIdx] = useState(0)
@@ -43,7 +43,7 @@ export default function GeneratePanel({ onClose, onGenerated }: { onClose: () =>
       <div className="flex items-center gap-2">
         <span className="text-sm font-semibold text-pi-text inline-flex items-center gap-1.5"><ImagePlus className="w-4 h-4" /> 生成图片</span>
         <span className="text-[11px] text-pi-dim2">生成后自动存入「生成物/图片」，出现在下方列表</span>
-        <button className="btn-tool !px-2 ml-auto" onClick={onClose}>✕</button>
+        {onClose && <button className="btn-tool !px-2 ml-auto" onClick={onClose}><X className="w-4 h-4" /></button>}
       </div>
       {imageModels.length === 0 ? (
         <div className="text-xs text-pi-dim2 py-2">没有可用的图像模型——先到模型管理里添加（如 Agnes / 云flare Flux / 豆包 Seedream）</div>

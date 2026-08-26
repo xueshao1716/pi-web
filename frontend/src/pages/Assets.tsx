@@ -43,7 +43,6 @@ export default function Assets() {
   const [typeFilter, setTypeFilter] = useState('全部')
   const [kw, setKw] = useState('')
   const [viewer, setViewer] = useState<Artifact | null>(null)
-  const [showGen, setShowGen] = useState(false)
   // swr：资产清单缓存 + 聚焦重验证（生成新图后切回来自动出现）
   const { data: artData, isLoading, mutate: mutateArtifacts } = useSWR('artifacts', () => WsApi.artifacts(), { revalidateOnFocus: true, dedupingInterval: 10000 })
   const { data: delData } = useSWR('deliveries', () => WsApi.deliveries(), { dedupingInterval: 60000 })
@@ -73,14 +72,8 @@ export default function Assets() {
           <p className="text-xs text-pi-dim2 mt-1.5">工作空间「生成物」{artData?.artifacts?.length || 0} 个 · 「交付」{deliveries.length} 个</p>
         </div>
         <div className="flex items-center gap-2 mb-4">
-          <button className={`text-xs px-3.5 py-1.5 rounded-full font-medium inline-flex items-center gap-1.5 transition-colors duration-150 ${showGen ? 'btn-grad text-white shadow-lg shadow-pi-accent/25' : 'bg-pi-accent/12 text-pi-accent border border-pi-accent/25 hover:bg-pi-accent/22'}`}
-            onClick={() => setShowGen(v => !v)}>
-            <ImagePlus className="w-4 h-4" /> 生成图片
-          </button>
           <input className="input-pi !py-1.5 text-xs w-48 sm:w-56 rounded-full" placeholder="搜索资产名…" value={kw} onChange={e => setKw(e.target.value)} />
         </div>
-
-        {showGen && <GeneratePanel onClose={() => setShowGen(false)} onGenerated={() => mutateArtifacts()} />}
 
         {/* 类型筛选 */}
         <div className="flex gap-1.5 mb-4 flex-wrap">
@@ -101,7 +94,7 @@ export default function Assets() {
           }} />)}
         </div>
         {!list.length && !isLoading && (
-          <EmptyState icon={ImagesIcon} title="这个筛选下没有资产" hint="换个类型，或点右上角生成一张新图" className="py-14 mb-8" />
+          <EmptyState icon={ImagesIcon} title="这个筛选下没有资产" hint="换个类型筛选；生成新图请到「专项工作台 · AI 绘画」" className="py-14 mb-8" />
         )}
 
         {/* 交付物列表 */}

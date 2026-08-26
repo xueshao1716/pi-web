@@ -4,14 +4,12 @@ import EmptyState from '../components/EmptyState'
 import type { LucideIcon } from 'lucide-react'
 import useSWR from 'swr'
 import { RefineApi, SkillsApi, PromptsApi, ImprovementsApi, MemoryApi } from '../api'
-import WorkshopView from '../components/WorkshopView'
 
 // ── 应用中心（Phase 3）：经验沉淀台 / 技能库 / 提示词库 / 改进提案 ──
 
-type Tab = 'refine' | 'workshop' | 'skills' | 'prompts' | 'improve' | 'gardener'
+type Tab = 'refine' | 'skills' | 'prompts' | 'improve' | 'gardener'
 const TABS: [Tab, LucideIcon, string][] = [
   ['refine', FlaskConical, '经验沉淀台'],
-  ['workshop', Factory, '专项工作台'],
   ['skills', Puzzle, '技能库'],
   ['prompts', StickyNote, '提示词库'],
   ['improve', TrendingUp, '改进提案'],
@@ -201,7 +199,6 @@ export default function Apps() {
         </div>
         <div key={tab} className="page-enter">
           {tab === 'refine' && <RefineView />}
-          {tab === 'workshop' && <WorkshopView />}
           {tab === 'skills' && <SkillsView />}
           {tab === 'prompts' && <PromptsView />}
           {tab === 'improve' && <ImproveView />}
