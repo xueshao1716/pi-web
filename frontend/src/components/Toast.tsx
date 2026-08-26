@@ -26,7 +26,7 @@ export function Toaster() {
   }, [])
   if (!items.length) return null
   return (
-    <div aria-live="polite" className="fixed bottom-16 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 items-center pointer-events-none">
+    <div aria-live="polite" className="toast-stack fixed left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 items-center pointer-events-none">
       {items.map(it => (
         <div key={it.id}
           role="status"

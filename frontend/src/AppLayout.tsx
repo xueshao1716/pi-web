@@ -96,7 +96,8 @@ export default function AppLayout() {
   /* ── 移动端布局：TabBar 五入口（对话/会话/资产/任务/设置；模型在对话页下拉） ── */
   if (isMobile) {
     return (
-      <div className="h-screen flex flex-col bg-pi-bg text-pi-text relative">
+      <div className="h-screen flex flex-col bg-pi-bg text-pi-text relative"
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <div className="absolute inset-0 pointer-events-none z-0"
           style={{ background: 'radial-gradient(720px 420px at 82% -8%, color-mix(in oklab, var(--pi-accent) 12%, transparent), transparent 62%), radial-gradient(560px 380px at 8% 108%, color-mix(in oklab, var(--pi-accent2) 7%, transparent), transparent 60%)' }} />
         {/* 主内容层 */}
@@ -109,7 +110,8 @@ export default function AppLayout() {
             <div className="flex-1 flex flex-col min-w-0 min-h-0">
               <ChatArea compactHeader />
               {rightPanel !== 'chat' && (
-                <div className="fixed inset-0 top-10 z-[80] glass-strong flex flex-col">
+                <div className="fixed inset-0 z-[80] glass-strong flex flex-col"
+                  style={{ top: 'calc(env(safe-area-inset-top, 0px) + 48px)' }}>
                   <div className="flex items-center gap-1 px-3 h-10 border-b border-pi-border-soft flex-shrink-0">
                     {([['workspace', '工作空间'], ['deliveries', '交付物'], ['terminal', '终端']] as const).map(([k, label]) => (
                       <button key={k} onClick={() => setRightPanel(k)}

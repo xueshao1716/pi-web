@@ -6,6 +6,9 @@
 *, *::before, *::after { box-sizing: border-box; }
 * { margin: 0; }
 html { -webkit-text-size-adjust: 100%; }
+/* 暗色为默认主题（deep/ink/violet），mist 为浅色——让原生控件跟随 */
+html { color-scheme: dark; }
+html[data-theme="mist"] { color-scheme: light; }
 html, body, #root { height: 100%; }
 body { line-height: 1.5; }
 button {
@@ -818,3 +821,9 @@ body::before {
 }
 .btn:focus:not(:focus-visible),
 button:focus:not(:focus-visible) { outline: none; }
+
+/* ── Toast 层：桌面 bottom 4rem；移动端抬到 TabBar(48px)+安全区之上，避免遮挡 ── */
+.toast-stack { bottom: 4rem; }
+@media (max-width: 768px) {
+  .toast-stack { bottom: calc(3.25rem + env(safe-area-inset-bottom, 0px)); }
+}

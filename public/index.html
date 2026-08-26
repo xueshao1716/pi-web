@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="小语">
 <link rel="stylesheet" href="/static/vendor/github-dark.min.css" integrity="sha384-wH75j6z1lH97ZOpMOInqhgKzFkAInZPPSPlZpYKYTOqsaizPvhQZmAtLcPKXpLyH" crossorigin="anonymous">
-<link rel="stylesheet" href="/static/app.css?v=240">
+<link rel="stylesheet" href="/static/app.css?v=242">
 <link rel="stylesheet" href="/static/css/quantum.css?v=222">
 <link rel="stylesheet" href="/static/css/ai.css?v=222">
 <link rel="stylesheet" href="/static/css/neu.css?v=230">
@@ -276,6 +276,15 @@
         <span class="ft-item" id="ft-context" title="上下文占用">—</span>
       </div>
     </main>
+
+    <!-- 移动端 TabBar（≤768px 显示，uView u-tabbar 心智） -->
+    <nav class="mobile-tabbar" id="mobile-tabbar">
+      <button class="tb-item active" data-view="__new"><svg class="vi"><use href="#ic-plus"/></svg><span>新对话</span></button>
+      <button class="tb-item" data-view="sessions"><svg class="vi"><use href="#ic-chat"/></svg><span>会话</span></button>
+      <button class="tb-item" data-view="activity"><svg class="vi"><use href="#ic-bolt"/></svg><span>活动</span></button>
+      <button class="tb-item" data-view="skills"><svg class="vi"><use href="#ic-tool"/></svg><span>技能</span></button>
+      <button class="tb-item" data-view="__drawer"><svg class="vi"><use href="#ic-dots"/></svg><span>抽屉</span></button>
+    </nav>
 
   </div>
 </div>
@@ -587,7 +596,7 @@
 <script src="/static/js/chat.js?v=242"></script>
 <script src="/static/js/wallpaper.js?v=223"></script>
 <script src="/static/js/model.js?v=229"></script>
-<script src="/static/js/ui.js?v=222"></script>
+<script src="/static/js/ui.js?v=224"></script>
 <script src="/static/js/panels.js?v=222"></script>
 <script src="/static/js/workspace.js?v=223"></script>
 <script src="/static/js/designer.js?v=222"></script>

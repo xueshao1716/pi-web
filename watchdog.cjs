@@ -13,6 +13,7 @@ let lastRestartAt = 0;
 let child = null;
 let crashTimes = []; // 最近崩溃时间戳（用于连续崩溃检测→回滚）
 let rollbackDone = false; // 回滚只做一次，避免无限回滚
+let lastStartAt = 0; // 最近一次启动时刻（用于分级检查频率：启动期快查，稳态慢查）
 
 function log(msg) {
   const line = `[${new Date().toLocaleString("zh-CN")}] ${msg}`;
@@ -114,6 +115,7 @@ async function startServer() {
   await new Promise(r => setTimeout(r, 2000));
   if (child) { try { child.kill(); } catch {} child = null; }
   child = spawn("node", ["server.mjs"], { cwd: WEB_DIR, stdio: "ignore", windowsHide: true });
+  lastStartAt = Date.now();
   log(`已启动 server (pid ${child.pid})，累计重启 ${restartCount} 次`);
   child.on("exit", (code, sig) => {
     log(`server 退出 code=${code} signal=${sig}`);
@@ -143,18 +145,30 @@ async function startServer() {
     log("检测到已有 watchdog 实例（锁文件存在），本实例退出");
     process.exit(0);
   }
-  log("═══ pi-web 守护 v2 启动 ═══");
+  log("═══ pi-web 守护 v2.1 启动（分级检查：启动期 5s 快查 ×12 轮 → 稳态 30s）═══");
   if (await portOpen()) {
     log("当前 server 正常，进入监控");
   } else {
     log("当前 server 未运行，启动中…");
     startServer();
   }
-  setInterval(async () => {
+  // 分级监控循环（对标 KickSide runtime 健康检查思路）：
+  // - 新启动 60s 内：5s 快查（快速发现新进程早夭）
+  // - 连续失败：保持快查并告警
+  // - 稳态：30s 慢查
+  let consecutiveFails = 0;
+  const monitorLoop = async () => {
     const ok = await portOpen();
     if (!ok) {
-      log("⚠️ 检测到 server 掉线，拉起");
+      consecutiveFails++;
+      log(`⚠️ 检测到 server 掉线（连续第 ${consecutiveFails} 次），拉起`);
       startServer();
+    } else {
+      consecutiveFails = 0;
     }
-  }, 30000);
+    const inBootWindow = Date.now() - lastStartAt < 60000;
+    const delay = (inBootWindow || consecutiveFails > 0) ? 5000 : 30000;
+    setTimeout(monitorLoop, delay);
+  };
+  monitorLoop();
 })();

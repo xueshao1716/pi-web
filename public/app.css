@@ -2876,3 +2876,91 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   :focus-visible { transition: none; }
 }
 
+
+/* ══════════════════════════════════════════════════════════════════════
+   移动端可用性增强层 v2（2026-08-26，规范来源：uView-Pro，见 文档/dsh-研究-uViewPro移动端UI.md）
+   落地条目：②触控目标44px ③触屏sticky-hover门控 ⑦token补齐 ⑧color-scheme ⑨动效曲线token
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── ⑦ token 补齐：动效曲线 / z-index 分层 / 字号阶梯（新增变量，不覆盖旧值） ── */
+:root {
+  /* 动效曲线（对齐 React generate.mjs 白名单；cumora 弹簧感的基座） */
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  /* z-index 分层常量（uView zIndex 精神：新代码一律引用，不再手写魔法值） */
+  --z-inputbar: 800;
+  --z-mask: 900;
+  --z-sidebar: 950;
+  --z-navbar: 980;
+  --z-tabbar: 998;
+  --z-popup: 1000;
+  --z-toast: 1010;
+  /* 字号阶梯（对齐 React --pi-fs-*） */
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 15px;
+  --fs-lg: 17px;
+  --fs-xl: 22px;
+}
+
+/* ── ⑧ 暗色下原生控件跟随变暗（滚动条/下拉/日期选择器，uView color-scheme 做法） ── */
+html[data-theme="dark"] { color-scheme: dark; }
+html:not([data-theme="dark"]) { color-scheme: light; }
+
+/* ── ② 触控目标提标：移动端小图标按钮命中区 ≥44px（原 24px 仅 WCAG AA 下限，
+      未达 iOS/Android 44/48px 平台规范；只扩命中区，视觉不变） ── */
+@media (max-width: 768px) {
+  .s-pin::before, .s-arch::before, .s-del::before,
+  .main-top .tool-btn::before, .theme-more::before, .theme-edit-btn::before,
+  .btn-mini::before, .ft-refresh::before, .menu-btn::before {
+    width: 44px; height: 44px; border-radius: 10px;
+  }
+  .emo-pill { min-width: 44px; }
+}
+
+/* ── ③ 触屏 sticky-hover 修复：触屏上禁用悬停高亮（一次轻点先触发 hover、再点才
+      生效的「点两下」坏体验），按压反馈交给 :active（React hov-reveal 同思路） ── */
+@media (hover: none), (pointer: coarse) {
+  .session-item:hover, .main-top .tool-btn:hover, .new-session:hover,
+  .theme-new-btn:hover { background-color: transparent; }
+  .session-item:active { background-color: color-mix(in srgb, var(--accent) 10%, transparent); }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   移动端 TabBar（2026-08-26，uView u-tabbar 心智：50px 高 + 安全区 + 一键直达面板）
+   ══════════════════════════════════════════════════════════════════════ */
+.mobile-tabbar { display: none; }
+
+@media (max-width: 768px) {
+  .mobile-tabbar {
+    display: flex;
+    position: fixed; left: 0; right: 0; bottom: 0;
+    height: calc(50px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: color-mix(in srgb, var(--sidebar) 96%, transparent);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border-top: 1px solid var(--hairline);
+    z-index: var(--z-tabbar, 998);
+  }
+  .tb-item {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2px; padding: 0; min-height: 50px;
+    color: var(--dim-2, #8888a6); font-size: 10.5px; letter-spacing: .3px;
+    background: none; border: none; cursor: pointer;
+    transition: transform .12s var(--ease, ease), color .15s;
+  }
+  .tb-item svg { width: 20px; height: 20px; }
+  .tb-item.active { color: var(--accent); }
+  .tb-item:active { transform: scale(.92); }
+
+  /* 输入条抬到 TabBar 上方；消息区留出双倍底部空间 */
+  #inputbar { bottom: calc(50px + env(safe-area-inset-bottom, 0px)); }
+  #main { padding-bottom: calc(118px + env(safe-area-inset-bottom, 0px)); }
+
+  /* TabBar 切面板需要覆盖「移动端隐藏非会话面板」的 !important 规则：
+     面板未带 hidden 属性时显示（switchView 用 hidden 属性控制显隐） */
+  #panel-skills:not([hidden]),
+  #panel-activity:not([hidden]) {
+    display: block !important;
+  }
+}

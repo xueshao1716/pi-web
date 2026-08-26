@@ -645,3 +645,21 @@ async function loadSkills() {
 $("sk-refresh").addEventListener("click", loadSkills);
 
 
+
+// ══ 移动端 TabBar（uView u-tabbar 心智：一键直达面板；≤768px 由 CSS 显示）══
+// 用 document 级事件委托：即使 TabBar/侧栏节点在异步初始化中被重建，点击依然有效；
+// 全程 ?. 空值防护（初始化窗口内节点可能瞬时不存在）
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest?.("#mobile-tabbar .tb-item");
+  if (!btn) return;
+  e.preventDefault();
+  document.querySelectorAll("#mobile-tabbar .tb-item").forEach(b => b.classList.toggle("active", b === btn));
+  const view = btn.dataset.view;
+  const sb = document.getElementById("sidebar");
+  const drawerOpen = !!sb?.classList.contains("open");
+  if (view === "__new") { document.getElementById("new-session")?.click(); return; }
+  if (view === "__drawer") { if (!drawerOpen) document.getElementById("menu-btn")?.click(); return; }
+  // 面板类：打开抽屉并切换面板（移动端侧栏是唯一面板容器）
+  if (!drawerOpen && window.innerWidth <= 768 && sb) document.getElementById("menu-btn")?.click();
+  switchView(view);
+});
