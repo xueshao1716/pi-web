@@ -235,6 +235,7 @@ export default function AppLayout() {
       {/* 右栏开关已入 ChatArea 顶栏（与状态胶囊并排，不再悬浮遮挡） */}
 
       <ModelManager visible={modelOpen} onClose={() => setModelOpen(false)} />
+      <SystemModal visible={systemOpen} onClose={() => setSystemOpen(false)} />
       {palette}
     </div>
   )
