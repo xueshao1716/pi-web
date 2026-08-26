@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Palette } from 'lucide-react'
 import { THEME_PRESETS as THEMES, ACCENT_PRESETS as ACCENTS } from '../theme/palettes'
 import { SEEDS, generateTheme } from '../theme/generate.mjs'
+import { ThemeApi } from '../api'
 // 主题预设：data-theme 属性驱动（styles.css [data-theme] 变量覆盖）；色板定义在 theme/palettes.ts
 // ⚠️ 08-26 单一真源：主色自定义 = generateTheme(seed) 派生整套色板写 CSS 变量（非只改 3 个），
 //    与 WebglBackdrop 联动（派生后 --pi-accent/--pi-accent2 变化 → 背景自动跟随）
@@ -23,6 +24,21 @@ export default function ThemeSwitcher() {
   const [theme, setTheme] = useState(initialTheme)
   const [accent, setAccent] = useState(() => { try { return localStorage.getItem('pi_accent') || '' } catch { return '' } })
   const [menuOpen, setMenuOpen] = useState(false)
+  // 跨端同步（08-26）：挂载时拉服务端偏好（一端更新→各端打开一致），之后变更回写服务端；localStorage 作本地回退
+  const remoteReady = useRef(false)
+  useEffect(() => {
+    let alive = true
+    ThemeApi.get().then(d => {
+      if (!alive || !d) return
+      if (d.theme) setTheme(d.theme)
+      setAccent(d.accent || '')
+    }).catch(() => {}).finally(() => { if (alive) { remoteReady.current = true } })
+    return () => { alive = false }
+  }, [])
+  useEffect(() => {
+    if (!remoteReady.current) return
+    ThemeApi.save(theme, accent).catch(() => {})
+  }, [theme, accent])
 
   // 应用主题：generateTheme(seed) 派生全套 → 写 CSS 变量（单一真源，主色自定义时全族协调）
   useEffect(() => {

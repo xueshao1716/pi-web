@@ -36,6 +36,7 @@ import { CONFIG } from "./config.mjs";
 import { createGateway } from "./engine/gateway.mjs";
 import { sseWrite, createSseWriter, startSseHeartbeat } from "./engine/sse.mjs";
 import { json, readBody } from "./engine/http-utils.mjs";
+import { initThemePrefs, loadThemePrefs, saveThemePrefs } from "./engine/theme-prefs.mjs";
 import { initWorkspaceApi, WS_ROOT, findWorkspaceFiles, wsSafePath, saveArtifact, handleWsTree, handleWsFile, handleWsRead, handleWsWrite, handleWsArtifacts, wsNextVersion, wsCopyDir, handleWsDeliver, handleWsPackage, handleWsDeliveries, handleWsRename, handleWsDelete, handleWsSearch, handleWsProjectCreate, handleWsConvert } from "./engine/workspace-api.mjs";
 import { initContextLoader, makeLoader, loadExperience, readRulesWithImports, loadContextRules, jitRulesForPath, loadProjectRules, loadSkillIndex, execActivateSkill, ACTIVATE_SKILL_TOOL, WORK_PROTOCOL, loadMemory, loadMemoryIndex, loadExperienceIndex, shouldInjectFullMemory, setLastUserQuery } from "./engine/context-loader.mjs";
 import { initMediaApi, findMediaModel, detectMediaIntents, extractMediaPrompt, generateMediaAsync, generateTTS, generateImage, handleImage, handleImageWithSave, generateVideo, handleMedia } from "./engine/media-api.mjs";
@@ -223,6 +224,7 @@ try { bindOutputGuardDeps({ readEntriesFromFile, extractText }); } catch {}
 const AGENT_DIR = getAgentDir();
 const AUTH_PATH = path.join(AGENT_DIR, "auth.json");
 const MODELS_PATH = path.join(AGENT_DIR, "models-store.json");
+initThemePrefs(path.join(AGENT_DIR, "theme-prefs.json")); // 主题偏好跨端同步
 initMediaApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, authPath: AUTH_PATH, getModelList: () => modelList }); // 媒体生成层注入
 initAsrApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, httpJsonFetch }); // 语音转文字（mimo-v2.5-asr 免费通道）
 initDshKeys({ dshWebPort: 3080, readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, ModelRuntime, refreshModelList, setModelList: (l) => { modelList = l; }, getDefaultModel: () => defaultModel, setDefaultModel: (m) => { defaultModel = m; }, setModelRuntime: (r) => { modelRuntime = r; }, getModelRuntime: () => modelRuntime, keepModels: KEEP_MODELS, resetModelHealth }); // dsh/keys/模型管理注入
@@ -1582,6 +1584,8 @@ const API_ROUTES = [
     const r = dedupeLog(WS_ROOT);
     json(res, 200, { ok: true, ...r });
   }],
+  ["GET", "/api/theme-prefs", (res) => json(res, 200, loadThemePrefs())],
+  ["POST", "/api/theme-prefs", async (res, req) => { const b = await readBody(req); return json(res, 200, saveThemePrefs(b || {})) }],
   ["GET", "/api/system/info", (res) => json(res, 200, buildSystemInfo(WS_ROOT, AGENT_DIR))],
   ["POST", "/api/system/network", async (res, req) => {
     const b = await readBody(req);
