@@ -162,7 +162,7 @@ export default function AppLayout() {
             { key: 'sessions', icon: FolderClosed, label: '会话', active: mobileDrawer === 'sessions', onClick: () => setMobileDrawer(mobileDrawer === 'sessions' ? 'none' : 'sessions') },
             { key: 'assets', icon: Images, label: '资产', active: route === 'assets' && mobileDrawer === 'none', onClick: () => { setMobileDrawer('none'); nav('assets') } },
             { key: 'tasks', icon: Clock4, label: '任务', active: route === 'tasks' && mobileDrawer === 'none', onClick: () => { setMobileDrawer('none'); nav('tasks') } },
-            { key: 'settings', icon: Settings2, label: '设置', active: false, onClick: () => setModelOpen(true) },
+            { key: 'settings', icon: Settings2, label: '设置', active: route === 'models', onClick: () => { setMobileDrawer('none'); nav('models') } },
           ] as const).map(item => (
             <button key={item.key} aria-label={item.label}
               className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${item.active ? 'text-pi-accent' : 'text-pi-dim2'}`}
@@ -224,7 +224,7 @@ export default function AppLayout() {
         ))}
         <div className="mt-auto mb-2 flex flex-col gap-1.5">
           <ThemeSwitcher />
-          <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-colors" title="密钥与通道管理" aria-label="密钥与通道管理" onClick={() => setModelOpen(true)}><Settings2 className="w-[18px] h-[18px]" strokeWidth={1.8} /></button>
+          <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-colors" title="模型与通道" aria-label="模型与通道" onClick={() => nav('models')}><Settings2 className="w-[18px] h-[18px]" strokeWidth={1.8} /></button>
         </div>
       </nav>
 

@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react'
 import useSWR from 'swr'
 import { useApp } from '../store'
 import { StatsApi, KeysApi } from '../api'
+import ModelChannels from '../components/ModelChannels'
 import type { ProviderStat } from '../api'
 import type { Model } from '../types'
 
@@ -122,6 +123,11 @@ export default function ModelHub() {
           })()}
         </div>
 
+        {/* 服务商通道管理（并自 ModelManager：密钥列表 + 添加API + 删除）*/}
+        <div className="mb-6">
+          <ModelChannels />
+        </div>
+
         {/* Auto 路由说明条 */}
         <div className="mb-4 rounded-pi-lg border border-pi-accent/20 bg-gradient-to-r from-pi-accent/10 to-transparent px-4 py-3 flex items-start gap-3 text-[12px] text-pi-dim">
           <Zap className="w-4 h-4 text-pi-accent mt-0.5 flex-shrink-0" />
@@ -206,7 +212,7 @@ export default function ModelHub() {
           </div>
         </details>
 
-        <p className="text-[11px] text-pi-dim2">密钥与通道管理在右上角「模型」面板 · 用量每 60s 自动刷新</p>
+        <p className="text-[11px] text-pi-dim2">切换模型即点卡片「切换使用」· 密钥/通道管理在本页上方「服务商通道」· 用量每 60s 自动刷新</p>
       </div>
     </div>
   )
