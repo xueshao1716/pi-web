@@ -175,7 +175,14 @@ export default function AppLayout() {
 
         {/* 悬浮功能按钮（FAB）：收纳桌面侧栏主功能，手机端好找（sessions 抽屉时隐藏避免遮挡） */}
         {mobileDrawer !== 'sessions' && (
-          <MobileFab nav={nav} route={route} onSettings={() => setModelOpen(true)} />
+          <MobileFab
+            nav={nav}
+            route={route}
+            onSettings={() => setModelOpen(true)}
+            onOpenSessions={() => { setMobileDrawer('sessions') }}
+            onOpenPanel={(k) => { setMobileDrawer('none'); nav('chat'); setRightPanel(k) }}
+            onOpenTheme={() => { setMobileDrawer('none'); nav('theme-editor') }}
+          />
         )}
 
         <ModelManager visible={modelOpen} onClose={() => setModelOpen(false)} />

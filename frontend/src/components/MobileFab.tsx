@@ -1,10 +1,10 @@
-import { useRef, useState, useEffect, useCallback } from 'react'
-import { MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Sparkles, Factory, MonitorCog, Cpu, Settings2, X, Grip } from 'lucide-react'
+import { useRef, useState, useEffect } from 'react'
+import { MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Sparkles, Factory, MonitorCog, Cpu, Settings2, X, Grip, FolderClosed, PanelRight, Palette } from 'lucide-react'
 import type { Route } from '../hooks/useHashRoute'
 
-// ── 移动端悬浮功能按钮（FAB）：把桌面侧栏的主功能收纳进一个可拖动浮动入口 ──
-// 手机端底部 TabBar 只有 5 入口，灵犀/专项/模型/应用/引擎/系统不好找 —— 都收进这个 FAB。
-// 支持拖动：默认放右下（避开发送框），用户可拖到任意位置（防止遮挡输入框）。
+// ── 移动端悬浮功能按钮（FAB）：全部主功能收纳进可拖动浮动入口 ──
+// 收：灵犀/专项/模型/资产/任务/应用/引擎/系统 + 会话/右栏/主题/设置
+// 支持拖动(存 localStorage)；弹出菜单按 FAB 位置智能展开到空间大的方向。
 
 const FAB_NAV: { route: Route; icon: typeof MessagesSquare; label: string; color?: string }[] = [
   { route: 'lingxi', icon: Sparkles, label: '灵犀', color: 'text-purple-300' },
@@ -17,34 +17,31 @@ const FAB_NAV: { route: Route; icon: typeof MessagesSquare; label: string; color
   { route: 'system', icon: MonitorCog, label: '系统', color: 'text-pi-accent2' },
 ]
 
-const BTN = 52         // FAB 直径 px
-const MARGIN = 12      // 距屏幕边距
-// 默认位置：右下，但抬到发送框上方(约 bottom-20 = 80px)，避免遮挡输入栏
-const DEFAULT = { x: 0, y: 0 } // 会在 mount 时根据视口算右/下偏移
+const BTN = 52
+const MARGIN = 12
 
-export default function MobileFab({ nav, route, onSettings }: {
+export default function MobileFab({ nav, route, onSettings, onOpenSessions, onOpenPanel, onOpenTheme }: {
   nav: (r: Route) => void
   route: Route
   onSettings: () => void
+  onOpenSessions: () => void
+  onOpenPanel: (k: 'workspace' | 'deliveries' | 'terminal' | 'activity' | 'tui') => void
+  onOpenTheme: () => void
 }) {
   const [open, setOpen] = useState(false)
-  // 拖动：用 left/top 绝对定位（比 right/bottom 更适合拖动）
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null) // null=用默认 right/bottom
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number; moving: boolean } | null>(null)
   const [dragging, setDragging] = useState(false)
 
-  // 计算默认位置（mount 时）：右侧、发框上方；优先用 localStorage 记忆的位置
   useEffect(() => {
     const w = window.innerWidth, h = window.innerHeight
     let saved: { x: number; y: number } | null = null
     try { const s = localStorage.getItem('pi_fab_pos'); if (s) saved = JSON.parse(s) } catch {}
-    // 校验 saved 是否在可视范围内（窗口可能变过）并留边距
     const inRange = saved && saved.x >= MARGIN && saved.x <= w - BTN - MARGIN && saved.y >= MARGIN && saved.y <= h - BTN - MARGIN
     setPos(inRange ? saved : { x: w - BTN - MARGIN, y: h - BTN - MARGIN - 88 })
   }, [])
 
   const onPointerDown = (e: React.PointerEvent) => {
-    // 只处理主指针
     if (e.pointerType === 'mouse' && e.button !== 0) return
     const el = e.currentTarget as HTMLElement
     try { el.setPointerCapture(e.pointerId) } catch {}
@@ -53,12 +50,10 @@ export default function MobileFab({ nav, route, onSettings }: {
     const origY = pos?.y ?? (window.innerHeight - BTN - MARGIN - 88)
     dragRef.current = { startX, startY, origX, origY, moving: false }
   }
-
   const onPointerMove = (e: React.PointerEvent) => {
     const d = dragRef.current
     if (!d) return
     const dx = e.clientX - d.startX, dy = e.clientY - d.startY
-    // 移动超过阈值判定为拖动（而非点击）
     if (!d.moving && Math.hypot(dx, dy) > 4) d.moving = true
     if (d.moving) {
       if (!dragging) setDragging(true)
@@ -68,51 +63,55 @@ export default function MobileFab({ nav, route, onSettings }: {
       setPos({ x: nx, y: ny })
     }
   }
-
   const onPointerUp = (e: React.PointerEvent) => {
     const d = dragRef.current
     const wasDragging = !!d?.moving
     dragRef.current = null
     if (wasDragging) {
-      setDragging(false)
-      setOpen(false)
-      // 持久化位置（跨刷新记住）
+      setDragging(false); setOpen(false)
       try { if (pos) localStorage.setItem('pi_fab_pos', JSON.stringify(pos)) } catch {}
       e.preventDefault()
       return
     }
-    // 非拖动：视为点击 → 切换菜单
     setOpen(o => !o)
   }
 
-  // 拖动时的位移量（视觉反馈：轻微放大 + 光标 grabbing）
-  const posStyle = pos
-    ? { left: pos.x, top: pos.y }
-    : { right: MARGIN, bottom: MARGIN + 88 }
+  const posStyle = pos ? { left: pos.x, top: pos.y } : { right: MARGIN, bottom: MARGIN + 88 }
   const btnStyle = {
     ...posStyle,
     width: BTN, height: BTN,
-    // ⚠️ 移动端触摸拖动必须 touch-action:none，否则浏览器当成滚动/缩放手势，pointerMove 被中断、拖不远
     touchAction: 'none',
     transition: dragging ? 'none' : 'box-shadow .2s, transform .2s',
-    transform: dragging ? 'scale(1.06) rotate(0deg)' : (open ? 'scale(1) rotate(0deg)' : 'scale(1)'),
+    transform: dragging ? 'scale(1.06) rotate(0deg)' : 'scale(1)',
     background: 'linear-gradient(135deg, var(--pi-accent), var(--pi-accent2))',
     boxShadow: dragging ? '0 8px 24px color-mix(in oklab, var(--pi-accent) 55%, transparent)' : '0 6px 20px color-mix(in oklab, var(--pi-accent) 45%, transparent)',
   }
 
+  // ── 智能展开：根据 FAB 在屏幕的相对位置，挑空间大的方向弹菜单 ──
+  // 菜单尺寸估算：宽 264 (w-64) + 高约 340（8功能+3快捷 + 头部）
+  const MENU_W = 264, MENU_H = 360
+  const fabX = pos?.x ?? (window.innerWidth - BTN - MARGIN)
+  const fabY = pos?.y ?? (window.innerHeight - BTN - MARGIN - 88)
+  const w = window.innerWidth, h = window.innerHeight
+  // 右侧空间是否够放整个菜单（留 gap），不够就放左侧
+  const toLeft = (fabX + BTN + 10 + MENU_W) > w
+  // 下方空间是否够，不够就放上方
+  const toUp = (fabY + BTN + 10 + MENU_H) > h
+  const menuX = toLeft ? fabX - MENU_W - 8 : fabX + BTN + 8
+  const menuY = toUp ? fabY - MENU_H - 8 : fabY + BTN + 8
+  // clamp 进屏幕
+  const menuStyle = {
+    left: Math.max(8, Math.min(w - MENU_W - 8, menuX)),
+    top: Math.max(8, Math.min(h - MENU_H - 8, menuY)),
+  }
+
   return (
     <>
-      {/* 遮罩：点外面关闭 */}
       {open && <div className="fixed inset-0 z-[var(--pi-z-toast)] bg-black/30 backdrop-blur-sm touch-hit" onClick={() => setOpen(false)} />}
 
-      {/* 展开的菜单面板：从 FAB 位置向上弹出 */}
       {open && (
-        <div className="fixed z-[var(--pi-z-toast)] w-64 rounded-pi-xl bg-pi-bg1/95 backdrop-blur-xl border border-pi-border-soft shadow-2xl overflow-hidden anim-enter"
-          style={{
-            ...posStyle,
-            transform: `translate(-100%, -${BTN + 10}px)`, // 左移+上移，贴合 FAB
-            transformOrigin: 'bottom right',
-          }}>
+        <div className="fixed z-[var(--pi-z-toast)] rounded-pi-xl bg-pi-bg1/95 backdrop-blur-xl border border-pi-border-soft shadow-2xl overflow-hidden anim-enter"
+          style={{ ...menuStyle, width: MENU_W }}>
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-pi-border-soft">
             <span className="text-[13px] font-medium text-pi-text">全部功能</span>
             <button className="btn-tool !px-1.5 touch-hit" aria-label="关闭" onClick={() => setOpen(false)}><X className="w-4 h-4" /></button>
@@ -126,29 +125,42 @@ export default function MobileFab({ nav, route, onSettings }: {
                 <span className="text-[11px] text-pi-text leading-none">{n.label}</span>
               </button>
             ))}
+          </div>
+          {/* 快捷操作：会话/右栏/主题/设置 */}
+          <div className="border-t border-pi-border-soft px-3 py-2 grid grid-cols-4 gap-1.5">
+            <button aria-label="会话"
+              className="touch-hit flex flex-col items-center gap-1 rounded-pi-md px-1 py-2 transition-colors hover:bg-pi-bg-hover/50"
+              onClick={() => { setOpen(false); onOpenSessions() }}>
+              <FolderClosed className="w-5 h-5 text-pi-accent" strokeWidth={1.8} />
+              <span className="text-[10px] text-pi-text leading-none">会话</span>
+            </button>
+            <button aria-label="右栏"
+              className="touch-hit flex flex-col items-center gap-1 rounded-pi-md px-1 py-2 transition-colors hover:bg-pi-bg-hover/50"
+              onClick={() => { setOpen(false); onOpenPanel('terminal') }}>
+              <PanelRight className="w-5 h-5 text-sky-300" strokeWidth={1.8} />
+              <span className="text-[10px] text-pi-text leading-none">右栏</span>
+            </button>
+            <button aria-label="主题"
+              className="touch-hit flex flex-col items-center gap-1 rounded-pi-md px-1 py-2 transition-colors hover:bg-pi-bg-hover/50"
+              onClick={() => { setOpen(false); onOpenTheme() }}>
+              <Palette className="w-5 h-5 text-pink-300" strokeWidth={1.8} />
+              <span className="text-[10px] text-pi-text leading-none">主题</span>
+            </button>
             <button aria-label="设置"
-              className="touch-hit flex flex-col items-center gap-1.5 rounded-pi-md px-1 py-2.5 transition-colors hover:bg-pi-bg-hover/50"
+              className="touch-hit flex flex-col items-center gap-1 rounded-pi-md px-1 py-2 transition-colors hover:bg-pi-bg-hover/50"
               onClick={() => { setOpen(false); onSettings() }}>
               <Settings2 className="w-5 h-5 text-pi-dim" strokeWidth={1.8} />
-              <span className="text-[11px] text-pi-text leading-none">设置</span>
+              <span className="text-[10px] text-pi-text leading-none">设置</span>
             </button>
           </div>
         </div>
       )}
 
-      {/* FAB 按钮：可拖动 */}
       <button aria-label="全部功能"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
+        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
         className={`fixed z-[var(--pi-z-toast)] rounded-full flex items-center justify-center text-white select-none ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
         style={btnStyle}>
-        {/* 图标：拖动中显示 Grip，其余显示 LayoutGrid（更贴合"全部功能"语义） */}
-        {dragging
-          ? <Grip className="w-6 h-6" strokeWidth={2} />
-          : open
-            ? <X className="w-5 h-5" strokeWidth={2.2} />
-            : <LayoutGrid className="w-6 h-6" strokeWidth={2} />}
+        {dragging ? <Grip className="w-6 h-6" strokeWidth={2} /> : open ? <X className="w-5 h-5" strokeWidth={2.2} /> : <LayoutGrid className="w-6 h-6" strokeWidth={2} />}
       </button>
     </>
   )
