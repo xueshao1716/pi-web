@@ -4,7 +4,7 @@ import { useApp } from '../store'
 import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, LayoutGrid, Command, ChevronDown, PanelRight } from 'lucide-react'
 import { RefreshCw } from 'lucide-react'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
-import { ChatApi, SessionsApi, MessagesApi, AsrApi, EmotionApi, AgentStatusApi, streamSession, LingXiApi } from '../api'
+import { ChatApi, SessionsApi, AsrApi, EmotionApi, AgentStatusApi, streamSession, LingXiApi } from '../api'
 import Message from './Message'
 import SendBox from './SendBox'
 import TurnList from './TurnList'
@@ -133,6 +133,8 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   }, [streaming])
 
   const finalize = (model?: { provider: string; id: string }) => {
+    // 本轮 SSE 结束（done/finish/error 均走到这）：用户消息已由引擎写入会话文件，清除前端防丢暂存
+    try { localStorage.removeItem('pi_pending_msg') } catch {}
     const s = streamRef.current
     if (!s) return
     if (s.text || s.think || s.tools.length || s.files.length || s.images.length || s.audios.length || s.error) {
@@ -181,9 +183,11 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         .catch(() => toast('灵犀记录失败', 'error'))
       return
     }
-    // 先持久化用户消息到 JSONL（防 network error 丢消息）
+    // 用户消息防丢：引擎 agent.prompt 会自动把用户消息写入会话 JSONL（pi 引擎 message_end 时 appendMessage），
+    // 这里绝不能再手动预写一份到 JSONL——否则同一条 user 被写两份、parentId 相同，正是「重复+套旧答案」的根因。
+    // 防 network error 丢消息改由前端 localStorage 暂存：发送前暂存，SSE done/error 收尾成功后清除；失败保留。
     let userMsgId = 'u' + Date.now();
-    MessagesApi.add(sid, content).catch(() => {});
+    try { localStorage.setItem('pi_pending_msg', JSON.stringify({ sid, content, at: Date.now() })) } catch {}
     updateMessages(prev => [...prev, { id: userMsgId, role: 'user', text: content, ts: new Date().toISOString() }])
     streamRef.current = emptyStream()
     setStream({ ...streamRef.current })
