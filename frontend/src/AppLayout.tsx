@@ -155,7 +155,7 @@ export default function AppLayout() {
         <div className="flex-1 flex min-h-0 relative z-10">
           {mobileDrawer === 'sessions' ? (
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              <Sidebar onNavigated={() => setMobileDrawer('none')} onCollapse={() => setMobileDrawer('none')} />
+              <Sidebar onNavigated={() => { setMobileDrawer('none'); nav('chat') }} onCollapse={() => setMobileDrawer('none')} />
             </div>
           ) : route === 'chat' ? (
             <div className="flex-1 flex flex-col min-w-0 min-h-0">
