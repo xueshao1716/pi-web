@@ -100,12 +100,12 @@ function App({ accent, setAccent, theme, setTheme, wallpaper, setWallpaper }: {
   return (
     <div className="flex h-full overflow-hidden flex-col md:flex-row">
       {/* 左：控制面板（移动端全宽顶部条）；桌面 w-72 侧栏 */}
-      <div className="w-full md:w-72 border-b md:border-b-0 md:border-r border-pi-border-soft overflow-y-auto p-4 flex flex-col gap-5 md:flex-shrink-0 max-h-[45%] md:max-h-none">
+      <div className="w-full md:w-72 border-b md:border-b-0 md:border-r border-pi-border-soft overflow-y-auto p-4 flex flex-col gap-4 md:flex-shrink-0 max-h-[45%] md:max-h-none">
         <div className="text-sm font-semibold text-pi-text">主题工作台</div>
 
         {/* 基底主题 */}
         <div>
-          <div className="text-[11px] text-pi-dim2 font-semibold mb-2">基底主题</div>
+          <div className="text-[11px] text-pi-dim2 font-semibold mb-1.5">基底主题</div>
           <div className="grid grid-cols-3 gap-1.5">
             {THEME_PRESETS.map(t => (
               <button key={t.id} onClick={() => setTheme(t.id)}
@@ -120,7 +120,7 @@ function App({ accent, setAccent, theme, setTheme, wallpaper, setWallpaper }: {
 
         {/* 主色 */}
         <div>
-          <div className="text-[11px] text-pi-dim2 font-semibold mb-2">主色</div>
+          <div className="text-[11px] text-pi-dim2 font-semibold mb-1.5">主色</div>
           <div className="flex gap-1.5 mb-2">
             {ACCENT_PRESETS.map(a => (
               <button key={a.color} title={a.name}
@@ -142,7 +142,7 @@ function App({ accent, setAccent, theme, setTheme, wallpaper, setWallpaper }: {
 
         {/* 密度 */}
         <div>
-          <div className="text-[11px] text-pi-dim2 font-semibold mb-2">
+          <div className="text-[11px] text-pi-dim2 font-semibold mb-1.5">
             层级密度 <span className="text-pi-dim font-normal">step={density.toFixed(3)}</span>
           </div>
           <input type="range" min="0.02" max="0.08" step="0.001" value={density}
@@ -155,7 +155,7 @@ function App({ accent, setAccent, theme, setTheme, wallpaper, setWallpaper }: {
 
         {/* 壁纸 */}
         <div>
-          <div className="text-[11px] text-pi-dim2 font-semibold mb-2">壁纸</div>
+          <div className="text-[11px] text-pi-dim2 font-semibold mb-1.5">壁纸</div>
           <div className="flex gap-1.5 mb-2 flex-wrap">
             {WALL_PRESETS.map(p => (
               <button key={p.label} onClick={() => setWallpaper(p.value)}
@@ -218,7 +218,7 @@ function App({ accent, setAccent, theme, setTheme, wallpaper, setWallpaper }: {
         background: tokens['--pi-bg'],
         color: tokens['--pi-text'],
       }}>
-        <div className="max-w-2xl mx-auto space-y-6">
+        <div className="max-w-2xl mx-auto space-y-4">
           <div className="text-[17px] font-bold" style={{ color: tokens['--pi-text'] }}>实时预览</div>
           <div className="text-[13px]" style={{ color: tokens['--pi-dim'] }}>
             调整左侧面板，这里即时反映所有 token 变化
@@ -229,7 +229,7 @@ function App({ accent, setAccent, theme, setTheme, wallpaper, setWallpaper }: {
             background: tokens['--pi-card-bg'],
             border: `1px solid ${tokens['--pi-card-border']}`,
           }}>
-            <div className="text-[13px] font-semibold mb-2" style={{ color: tokens['--pi-text'] }}>卡片组件</div>
+            <div className="text-[13px] font-semibold mb-1.5" style={{ color: tokens['--pi-text'] }}>卡片组件</div>
             <div className="text-[12px]" style={{ color: tokens['--pi-dim'] }}>
               背景 --pi-card-bg，边框 --pi-card-border
             </div>
