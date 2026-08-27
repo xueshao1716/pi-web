@@ -104,8 +104,8 @@ export default function ModelHub() {
           <p className="text-xs text-pi-dim2 mt-1.5">{models.length} 个模型 · {freeCount} 免费 · 工作空间 {cwd ? cwd.split(/[\\/]/).pop() : '—'}</p>
         </div>
 
-        {/* 统计卡（stats 加载中显示骨架，杜绝 0 值跳变）*/}
-        <div className="grid grid-cols-3 gap-3 mb-5">
+        {/* 统计卡：移动端单列/2列，避免 3 列在 375px 下每列过窄(数字挤) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-5">
           {(() => {
             if (!stats) {
               return [0, 1, 2].map(i => (

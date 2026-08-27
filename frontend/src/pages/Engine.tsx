@@ -158,7 +158,7 @@ export default function Engine() {
 
   return (
     <div className="flex-1 overflow-y-auto relative z-10">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-5 sm:py-6 overflow-x-hidden">
         {/* 头部 */}
         <div className="mb-6">
           <div className="page-eyebrow mb-1">Engine</div>

@@ -81,7 +81,7 @@ function SkillsView() {
   const skills = (data?.skills || []).filter(s => !kw.trim() || (s.name + s.description).toLowerCase().includes(kw.toLowerCase()))
   return (
     <div>
-      <input className="input-pi !py-1.5 text-xs w-64 mb-3" placeholder={`搜索 ${data?.skills?.length || 0} 个技能…`} value={kw} onChange={e => setKw(e.target.value)} />
+      <input className="input-pi !py-1.5 text-xs w-full sm:w-64 mb-3" placeholder={`搜索 ${data?.skills?.length || 0} 个技能…`} value={kw} onChange={e => setKw(e.target.value)} />
       <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2.5">
         {skills.map(s => (
           <div key={s.name} className="panel !p-3" title={s.location}>

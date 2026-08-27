@@ -97,9 +97,9 @@ function App({ accent, setAccent, theme, setTheme, wallpaper, setWallpaper }: {
   }
 
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* 左：控制面板 */}
-      <div className="w-72 border-r border-pi-border-soft overflow-y-auto p-4 flex flex-col gap-5">
+    <div className="flex h-full overflow-hidden flex-col md:flex-row">
+      {/* 左：控制面板（移动端全宽顶部条）；桌面 w-72 侧栏 */}
+      <div className="w-full md:w-72 border-b md:border-b-0 md:border-r border-pi-border-soft overflow-y-auto p-4 flex flex-col gap-5 flex-shrink-0">
         <div className="text-sm font-semibold text-pi-text">主题工作台</div>
 
         {/* 基底主题 */}
