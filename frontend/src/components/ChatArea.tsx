@@ -57,14 +57,50 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   const msgKey = currentSessionId ? ['messages', currentSessionId] : null
   const { data: msgData, isLoading, mutate: mutateMsgs } = useSWR(msgKey,
     ([, sid]: readonly [string, string]) => SessionsApi.messages(sid),
-    { revalidateOnFocus: false, dedupingInterval: 1500 })
+    { revalidateOnFocus: true, dedupingInterval: 1500 })
   const messages: ChatMessage[] = msgData?.messages || []
 
   // 移动端下拉刷新：重验证当前会话消息 + 会话列表（触屏才触发，桌面无 touch 事件）
+    // 手机息屏恢复：页面从 hidden→visible 超过 10s，强制重拉消息（补 SWR 自动同步）
+  useEffect(() => {
+    let hiddenAt = 0
+    const onVis = () => {
+      if (document.hidden) { hiddenAt = Date.now(); return }
+      if (hiddenAt && Date.now() - hiddenAt > 10_000 && currentSessionId) {
+        mutateMsgs()
+        refreshSessions()
+      }
+      hiddenAt = 0
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [currentSessionId, mutateMsgs, refreshSessions])
+
   const pull = usePullToRefresh(async () => {
     await mutateMsgs()
     await refreshSessions()
   })
+    // 恢复息屏/重载前暂存的用户消息（pi_pending_msg）：SSE 未完成就断了，引擎可能没写入 JSONL
+  useEffect(() => {
+    if (!currentSessionId || !msgData) return
+    try {
+      const raw = localStorage.getItem('pi_pending_msg')
+      if (!raw) return
+      const pending = JSON.parse(raw)
+      if (pending.sid !== currentSessionId) { localStorage.removeItem('pi_pending_msg'); return }
+      // 检查服务端消息列表里是否已有这条（引擎已写入则不重复显示）
+      const alreadyExists = (msgData.messages || []).some((m: any) => m.role === 'user' && m.text === pending.content && m.ts && Math.abs(new Date(m.ts).getTime() - pending.at) < 30_000)
+      if (!alreadyExists) {
+        mutateMsgs(prev => {
+          const msgs = prev?.messages || []
+          // 去重：避免多次恢复同一条
+          if (msgs.some((m: any) => m.role === 'user' && m.text === pending.content)) return prev
+          return { ...(prev || { messages: [] }), messages: [...msgs, { id: 'u_pending_' + pending.at, role: 'user', text: pending.content, ts: new Date(pending.at).toISOString() }] }
+        }, { revalidate: false })
+      }
+    } catch {}
+  }, [currentSessionId, msgData])
+
   const loading = !!msgKey && isLoading && !msgData
 
   // 本地乐观更新（发送/收尾/系统提示），不触发重验证
@@ -444,7 +480,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
           </div>
         ) : messages.length === 0 && !stream ? welcome
           : (
-            <div className="max-w-3xl w-full">
+            <div className="max-w-3xl w-full sm:mx-auto">
               <TurnList
                 messages={messages}
                 streamingNode={stream ? (
