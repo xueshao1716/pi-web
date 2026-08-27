@@ -30,7 +30,7 @@ export function Toaster() {
       {items.map(it => (
         <div key={it.id}
           role="status"
-          className={`anim-enter px-4 py-2 rounded-pi-lg border text-[13px] shadow-xl backdrop-blur-xl max-w-[80vw] ${
+          className={`anim-fade px-4 py-2 rounded-pi-lg border text-[13px] shadow-xl max-w-[80vw] ${
             it.tone === 'error' ? 'bg-pi-red/15 border-pi-red/40 text-pi-red'
             : it.tone === 'ok' ? 'bg-emerald-600/90 border-emerald-400 text-white'
             : 'bg-pi-bg1/95 border-pi-border text-pi-text'}`}>
