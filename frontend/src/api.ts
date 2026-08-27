@@ -274,6 +274,13 @@ export const SystemApi = {
     api<{ ok: boolean; domains: { domain: string; desc: string }[] }>('/api/system/network', { method: 'POST', body }),
 }
 
+// ── 引擎面板（旧版引入：组件实现 / 插件注册表 / 动态注册 / /api/engine/chat）──
+export const EngineApi = {
+  status: () => api<any>('/api/engine/status'),
+  registerPlugin: (def: any) => api<any>('/api/engine/plugins/register', { method: 'POST', body: def }),
+  unregisterPlugin: (id: string) => api<any>('/api/engine/plugins/unregister', { method: 'POST', body: { id } }),
+}
+
 // ── 用量统计（按 provider/模型聚合）──
 export interface ProviderStat { provider: string; input: number; output: number; cacheRead?: number; cost: number; messages: number }
 export const StatsApi = {
