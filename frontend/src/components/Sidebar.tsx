@@ -56,7 +56,7 @@ export default function Sidebar({ onNavigated, onCollapse }: { onNavigated?: () 
   })
 
   return (
-    <aside className="w-full md:w-60 flex-shrink-0 flex flex-col col-sidebar border-r border-pi-border min-h-0 h-full relative z-10">
+    <aside className="w-full md:w-60 flex-shrink-0 flex flex-col col-sidebar md:border-r border-pi-border min-h-0 h-full relative z-10">
       {/* 品牌头 */}
       <div className="flex items-center gap-2 px-4 h-12 border-b border-pi-border-soft flex-shrink-0">
         <div className="w-7 h-7 rounded-pi-md avatar-grad flex items-center justify-center text-white font-bold">语</div>
