@@ -32,7 +32,7 @@ function EntryCard({ e, onChanged }: { e: LingXiEntry; onChanged: () => void }) 
       <div className="mt-2 flex items-center gap-1.5 text-[10px] text-pi-dim2">
         <span className="font-mono">{fmtTime(e.ts)}</span>
         {e.status === 'adopted' && (
-          <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded-pi-pill bg-pi-green/15 text-pi-green font-medium"><CheckCircle2 className="w-3 h-3" />已采纳</span>
+          <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded-pi-pill bg-emerald-500/15 text-emerald-300 font-medium"><CheckCircle2 className="w-3 h-3" />已采纳</span>
         )}
         {e.status === 'archived' && <span className="px-1.5 py-px rounded-pi-pill bg-pi-bg3">已归档</span>}
         <span className="ml-auto flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">

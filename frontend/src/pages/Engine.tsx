@@ -31,7 +31,7 @@ const CAPABILITIES = [
 
 function StatusBadge({ have }: { have: boolean }) {
   return (
-    <span className={`px-1.5 py-0.5 rounded-pi-sm text-[10px] font-medium ${have ? 'bg-pi-green/15 text-pi-green' : 'bg-pi-dim2/15 text-pi-dim2'}`}>
+    <span className={`px-1.5 py-0.5 rounded-pi-sm text-[10px] font-medium ${have ? 'bg-emerald-500/15 text-emerald-300' : 'bg-pi-dim2/15 text-pi-dim2'}`}>
       {have ? '已具备' : '规划中'}
     </span>
   )
@@ -140,7 +140,7 @@ function Plugins({ data, onReload }: { data: any; onReload: () => void }) {
             <Plug className="w-3.5 h-3.5 text-pi-dim flex-shrink-0" />
             <span className="text-xs font-mono text-pi-text">{p.name}<span className="text-pi-dim2 ml-1.5">v{p.version || '?'}</span></span>
             {p.deps?.length ? <span className="text-[10px] text-pi-dim2 truncate">依赖：{p.deps.join(', ')}</span> : null}
-            <span className={`ml-auto px-1.5 py-0.5 rounded-pi-sm text-[10px] ${p.mounted ? 'bg-pi-green/15 text-pi-green' : 'bg-pi-dim2/15 text-pi-dim2'}`}>{p.mounted ? '已挂载' : '未挂载'}</span>
+            <span className={`ml-auto px-1.5 py-0.5 rounded-pi-sm text-[10px] ${p.mounted ? 'bg-emerald-500/15 text-emerald-300' : 'bg-pi-dim2/15 text-pi-dim2'}`}>{p.mounted ? '已挂载' : '未挂载'}</span>
             <button className="btn-tool text-[10px] !px-1.5 !py-0.5 hover:!text-pi-red flex-shrink-0" disabled={busy === p.id} onClick={() => unreg(p.id || p.name)}>
               <span className="text-pi-dim2 hover:text-pi-red">卸载</span>
             </button>

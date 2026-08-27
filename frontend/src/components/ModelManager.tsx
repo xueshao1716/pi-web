@@ -55,7 +55,7 @@ export default function ModelManager({ visible, onClose }: { visible: boolean; o
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {providers.map(p => (
                 <div key={p.provider} className="group flex items-center gap-3 p-3 rounded-pi-lg border border-pi-border bg-pi-bg2 hover:border-pi-accent/40 transition-colors">
-                  <div className={`w-8 h-8 rounded-pi-md flex items-center justify-center flex-shrink-0 ${p.hasKey ? 'bg-pi-green/12 text-pi-green' : 'bg-pi-bg3 text-pi-dim2'}`}>
+                  <div className={`w-8 h-8 rounded-pi-md flex items-center justify-center flex-shrink-0 ${p.hasKey ? 'bg-emerald-500/12 text-emerald-300' : 'bg-pi-bg3 text-pi-dim2'}`}>
                     <KeyRound className="w-4 h-4" strokeWidth={1.8} />
                   </div>
                   <div className="flex-1 min-w-0">

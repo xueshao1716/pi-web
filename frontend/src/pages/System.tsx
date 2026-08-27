@@ -120,7 +120,7 @@ export default function System() {
               </div>
             ) : (
               <div className="space-y-2">
-                <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-pi-md text-xs font-medium ${update.upToDate ? 'bg-pi-green/15 text-pi-green' : 'bg-pi-yellow/15 text-pi-yellow'}`}>
+                <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-pi-md text-xs font-medium ${update.upToDate ? 'bg-emerald-500/15 text-emerald-300' : 'bg-pi-yellow/15 text-pi-yellow'}`}>
                   {update.upToDate
                     ? <><CheckCircle2 className="w-3.5 h-3.5" />已是最新（{update.source} · 本地 {update.localSha}）</>
                     : <><AlertTriangle className="w-3.5 h-3.5" />有更新：本地 {update.localSha} → 远端 {update.remote?.sha}</>}
