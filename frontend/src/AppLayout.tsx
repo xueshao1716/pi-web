@@ -180,23 +180,25 @@ export default function AppLayout() {
           ) : pageArea}
         </div>
 
-        {/* 底部 TabBar */}
-        <nav className="flex h-12 border-t border-pi-border-soft glass-strong flex-shrink-0 relative z-20 pb-[env(safe-area-inset-bottom)]">
-          {([
-            { key: 'chat', icon: MessagesSquare, label: '对话', active: route === 'chat' && mobileDrawer === 'none', onClick: () => { setMobileDrawer('none'); nav('chat') } },
-            { key: 'sessions', icon: FolderClosed, label: '会话', active: mobileDrawer === 'sessions', onClick: () => setMobileDrawer(mobileDrawer === 'sessions' ? 'none' : 'sessions') },
-            { key: 'assets', icon: Images, label: '资产', active: route === 'assets' && mobileDrawer === 'none', onClick: () => { setMobileDrawer('none'); nav('assets') } },
-            { key: 'tasks', icon: Clock4, label: '任务', active: route === 'tasks' && mobileDrawer === 'none', onClick: () => { setMobileDrawer('none'); nav('tasks') } },
-            { key: 'settings', icon: Settings2, label: '设置', active: route === 'models', onClick: () => { setMobileDrawer('none'); nav('models') } },
-          ] as const).map(item => (
-            <button key={item.key} aria-label={item.label}
-              className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${item.active ? 'text-pi-accent' : 'text-pi-dim2'}`}
-              onClick={item.onClick}>
-              <item.icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
-              <span className="text-[11px] leading-none">{item.label}</span>
-            </button>
-          ))}
-        </nav>
+        {/* 底部 TabBar（会话抽屉打开时隐藏——避免列表底部误触 TabBar 跳到资产/任务等） */}
+        {mobileDrawer !== 'sessions' && (
+          <nav className="flex h-12 border-t border-pi-border-soft glass-strong flex-shrink-0 relative z-20 pb-[env(safe-area-inset-bottom)]">
+            {([
+              { key: 'chat', icon: MessagesSquare, label: '对话', active: route === 'chat', onClick: () => { setMobileDrawer('none'); nav('chat') } },
+              { key: 'sessions', icon: FolderClosed, label: '会话', active: false, onClick: () => setMobileDrawer('sessions') },
+              { key: 'assets', icon: Images, label: '资产', active: route === 'assets', onClick: () => { setMobileDrawer('none'); nav('assets') } },
+              { key: 'tasks', icon: Clock4, label: '任务', active: route === 'tasks', onClick: () => { setMobileDrawer('none'); nav('tasks') } },
+              { key: 'settings', icon: Settings2, label: '设置', active: route === 'models', onClick: () => { setMobileDrawer('none'); nav('models') } },
+            ] as const).map(item => (
+              <button key={item.key} aria-label={item.label}
+                className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${item.active ? 'text-pi-accent' : 'text-pi-dim2'}`}
+                onClick={item.onClick}>
+                <item.icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
+                <span className="text-[11px] leading-none">{item.label}</span>
+              </button>
+            ))}
+          </nav>
+        )}
 
         {/* 悬浮功能按钮（FAB）：默认显示；会话抽屉打开时隐藏——避免挡住会话列表点击(真bug) */}
         {mobileDrawer !== 'sessions' && (
