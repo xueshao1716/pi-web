@@ -114,7 +114,7 @@ export function streamSession(sid: string, after = 0, onEvent: (ev: any) => void
   let retryTimer: ReturnType<typeof setTimeout> | null = null
   const connect = () => {
     if (closed) return
-    es = new EventSource(`${_apiBase}/api/sessions/${encodeURIComponent(sid)}/stream?after=${after}`)
+    es = new EventSource(`${_apiBase}/api/sessions/${encodeURIComponent(sid)}/stream?after=${after}&token=${encodeURIComponent(_token)}`)
     es.onmessage = (e: MessageEvent) => { try { onEvent(JSON.parse(e.data)) } catch {} }
     es.addEventListener('subscribed', (e: any) => { try { onEvent(JSON.parse(e.data)) } catch {} })
     // 断线恢复：EventSource 原生会重连，但连接失败/服务重启时可能终化——监听 error 兜底重连
@@ -230,6 +230,54 @@ export const WorkshopApi = {
         onEvent({ type: 'done', data: {} })
       } catch (e: any) {
         if (e?.name !== 'AbortError') onEvent({ type: 'error', data: { message: e.message } })
+      }
+    })()
+    return () => ctrl.abort()
+  },
+}
+
+// ── 小说工坊（书架式：作品沉淀/真相文件/第N章递进）──
+export interface NovelBook { id: string; title: string; genre: string; protagonist?: string; status?: string; narrator?: string; chapters: number; createdAt?: string }
+export interface NovelChapter { file: string; no: number; size: number; mtimeMs: number }
+export const NovelApi = {
+  books: () => api<{ books: NovelBook[] }>('/api/novel/books'),
+  create: (body: { title: string; genre: string; protagonist?: string; setting?: string; narrator?: string }) =>
+    api<{ ok?: boolean; id?: string; error?: string }>('/api/novel/books', { method: 'POST', body }),
+  detail: (id: string) =>
+    api<{ id: string; meta?: any; chapters: NovelChapter[]; truth?: any; nextCh: number; error?: string }>(`/api/novel/detail?id=${encodeURIComponent(id)}`),
+  chapter: (id: string, file: string) =>
+    api<{ ok?: boolean; file: string; content: string; error?: string }>(`/api/novel/chapter?id=${encodeURIComponent(id)}&file=${encodeURIComponent(file)}`),
+  write: (body: { id: string; outline?: string }, onEvent: (ev: { type: string; data: any }) => void) => {
+    const ctrl = new AbortController()
+    ;(async () => {
+      try {
+        const r = await fetch(_apiBase + '/api/novel/write', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${_token}` },
+          body: JSON.stringify(body),
+          signal: ctrl.signal,
+        })
+        if (!r.ok || !r.body) { onEvent({ type: 'error', data: { message: `HTTP ${r.status}` } }); return }
+        const reader = r.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const chunks = buffer.split('\n\n')
+          buffer = chunks.pop() || ''
+          for (const chunk of chunks) {
+            let ev = '', data = ''
+            for (const line of chunk.split('\n')) {
+              if (line.startsWith('event:')) ev = line.slice(6).trim()
+              else if (line.startsWith('data:')) data += line.slice(5).trim()
+            }
+            if (ev && data) { try { onEvent({ type: ev, data: JSON.parse(data) }) } catch {} }
+          }
+        }
+      } catch (e: any) {
+        if (e?.name !== 'AbortError') onEvent({ type: 'error', data: { message: String(e?.message || e) } })
       }
     })()
     return () => ctrl.abort()
