@@ -14,6 +14,7 @@ import TerminalPanel from './components/TerminalPanel'
 import ModelManager from './components/ModelManager'
 import ThemeSwitcher from './components/ThemeSwitcher'
 import CommandPalette from './components/CommandPalette'
+import MobileFab from './components/MobileFab'
 import * as T from '@radix-ui/react-tooltip'
 
 // 页面 lazy（路线图：每路由 lazy + ErrorBoundary）
@@ -171,6 +172,11 @@ export default function AppLayout() {
             </button>
           ))}
         </nav>
+
+        {/* 悬浮功能按钮（FAB）：收纳桌面侧栏主功能，手机端好找（sessions 抽屉时隐藏避免遮挡） */}
+        {mobileDrawer !== 'sessions' && (
+          <MobileFab nav={nav} route={route} onSettings={() => setModelOpen(true)} />
+        )}
 
         <ModelManager visible={modelOpen} onClose={() => setModelOpen(false)} />
         {palette}
