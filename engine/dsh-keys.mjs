@@ -115,10 +115,12 @@ export async function handleModelsManage(res) {
 // POST /api/models/add —— 添加（内置 provider 用 pi runtime；自定义 provider 直调探测）
 export async function handleModelsAdd(res, body) {
   const { provider, apiKey, baseUrl, account_id, toDsh } = body || {};
-  if (!provider || !apiKey) return json(res, 400, { error: "缺少 provider 或 API Key" });
+  // ⚠️ 兼容字段名：前端 ModelManager 旧版传 key，后端规范是 apiKey——统一接收
+  const key = apiKey || body?.key;
+  if (!provider || !key) return json(res, 400, { error: "缺少 provider 或 API Key" });
   if (!/^[a-zA-Z0-9_-]+$/.test(provider)) return json(res, 400, { error: "provider 名称只能包含字母、数字、横线" });
   const auth = _readJsonFile(_authPath);
-  auth[provider] = { type: "api_key", key: apiKey, ...(baseUrl ? { baseUrl } : {}), ...(account_id ? { account_id } : {}) };
+  auth[provider] = { type: "api_key", key, ...(baseUrl ? { baseUrl } : {}), ...(account_id ? { account_id } : {}) };
   _writeJsonFile(_authPath, auth);
   // Cloudflare Workers AI：非 OpenAI 风格，手动注册已知模型
   if (provider === "cloudflare-ai") {
@@ -148,7 +150,7 @@ export async function handleModelsAdd(res, body) {
     let models = null;
     if (KNOWN_PROVIDERS.has(provider)) {
       const runtime = await _ModelRuntime.create({ authPath: _authPath, modelsPath: _modelsPath });
-      runtime.setRuntimeApiKey(provider, apiKey);
+      runtime.setRuntimeApiKey(provider, key);
       const authCheck = await runtime.checkAuth(provider);
       if (authCheck && authCheck.status === "invalid") {
         delete auth[provider]; _writeJsonFile(_authPath, auth);
@@ -159,13 +161,13 @@ export async function handleModelsAdd(res, body) {
       const baseNoV1 = base.endsWith("/v1") ? base.slice(0, -3) : base;
       if (baseNoV1 && models?.length) {
         for (const m of models) {
-          if (!/(image|video|tts|asr)/i.test(m.id)) m.capabilities = oldCaps.get(m.id) || await probeModelCapabilities(baseNoV1, apiKey, m.id);
+          if (!/(image|video|tts|asr)/i.test(m.id)) m.capabilities = oldCaps.get(m.id) || await probeModelCapabilities(baseNoV1, key, m.id);
         }
       }
     } else {
       const base = (baseUrl || "").replace(/\/+$/, "");
       if (!base) return json(res, 400, { error: "自定义 provider 必须填写 Base URL" });
-      models = await discoverCustomModels(base, apiKey, oldCaps);
+      models = await discoverCustomModels(base, key, oldCaps);
     }
     if (!models || !models.length) {
       delete auth[provider]; _writeJsonFile(_authPath, auth);
@@ -180,7 +182,7 @@ export async function handleModelsAdd(res, body) {
     let dsh = false, dshNote = "";
     if (toDsh) {
       try {
-        execFileSync("setx", ["DEEPSEEK_API_KEY", apiKey], { windowsHide: true, timeout: 10000 });
+        execFileSync("setx", ["DEEPSEEK_API_KEY", key], { windowsHide: true, timeout: 10000 });
         dsh = true; dshNote = "dsh 已同步（新开的终端/进程生效）";
       } catch (e) { dshNote = "dsh 同步失败：" + String(e?.message || e).slice(0, 80); }
     }
@@ -382,7 +384,7 @@ export async function handleKeysApply(res, body) {
   let dshDone = false, dshNote = "";
   if (toDsh) {
     try {
-      execFileSync("setx", ["DEEPSEEK_API_KEY", apiKey], { windowsHide: true, timeout: 10000 });
+      execFileSync("setx", ["DEEPSEEK_API_KEY", key], { windowsHide: true, timeout: 10000 });
       dshDone = true;
       dshNote = "dsh 已同步（新开的终端/进程生效）";
     } catch (e) {
