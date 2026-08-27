@@ -11,9 +11,11 @@ export function initRefineApi({ cwd = "" } = {}) { _cwd = cwd; }
 
 // ══ 经验沉淀台（refine 提案制，Prime Agent 移植）══
 // 工具：工具/refine_proposal.py（plan/list/approve --only/reject/rollback/status）
-const REFINE_SCRIPT = path.join(_cwd, "工具", "refine_proposal.py");
-const REFINE_PROPOSALS = path.join(_cwd, "工程", "经验库", "refine-proposals.json");
-const REFINE_LOG = path.join(_cwd, "工程", "经验库", "refine-log.jsonl");
+// ⚠️ 路径必须用函数延迟求值：_cwd 由 initRefineApi 在运行时注入，若顶层用 const 立即求值，
+//    import 时 _cwd 仍是 ""，会拼出相对路径 工程/经验库/...，而服务 cwd 是 D:/pi-web → 读到不存在的文件 → 网页一直空。
+const REFINE_SCRIPT = () => path.join(_cwd, "工具", "refine_proposal.py");
+const REFINE_PROPOSALS = () => path.join(_cwd, "工程", "经验库", "refine-proposals.json");
+const REFINE_LOG = () => path.join(_cwd, "工程", "经验库", "refine-log.jsonl");
 
 export function readRefineJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return fallback; }
@@ -23,7 +25,7 @@ export function runRefineScript(args, timeoutMs = 180000) {
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawn("python", [REFINE_SCRIPT, ...args], { windowsHide: true });
+      child = spawn("python", [REFINE_SCRIPT(), ...args], { windowsHide: true });
     } catch (e) {
       return resolve({ code: -1, out: "", err: String(e?.message || e) });
     }
@@ -36,10 +38,10 @@ export function runRefineScript(args, timeoutMs = 180000) {
 }
 
 export function handleRefineStatus(res) {
-  const data = readRefineJson(REFINE_PROPOSALS, { pending: [], applied: [], rejected: [] });
+  const data = readRefineJson(REFINE_PROPOSALS(), { pending: [], applied: [], rejected: [] });
   let lastLog = null;
   try {
-    const lines = fs.readFileSync(REFINE_LOG, "utf8").trim().split("\n").filter(Boolean);
+    const lines = fs.readFileSync(REFINE_LOG(), "utf8").trim().split("\n").filter(Boolean);
     if (lines.length) lastLog = JSON.parse(lines[lines.length - 1]);
   } catch {}
   json(res, 200, {
@@ -49,7 +51,7 @@ export function handleRefineStatus(res) {
 }
 
 export function handleRefineList(res) {
-  const data = readRefineJson(REFINE_PROPOSALS, { pending: [], applied: [], rejected: [] });
+  const data = readRefineJson(REFINE_PROPOSALS(), { pending: [], applied: [], rejected: [] });
   json(res, 200, data);
 }
 
@@ -75,7 +77,7 @@ export function detectSkillDomain(text) {
 export function handleRefineFeedback(res, body) {
   const { id, domain, scores } = body || {};
   if (!id || !scores) return json(res, 400, { error: "需要 id + scores" });
-  const data = readRefineJson(REFINE_PROPOSALS, { pending: [], applied: [], rejected: [] });
+  const data = readRefineJson(REFINE_PROPOSALS(), { pending: [], applied: [], rejected: [] });
   const target = (data.applied || []).find(p => p.id === id);
   if (!target) return json(res, 404, { error: "未找到已应用提案" });
   const d = domain || detectSkillDomain(target.summary + " " + JSON.stringify(target.edits || []));
@@ -104,7 +106,7 @@ export function handleRefineFeedback(res, body) {
     fs.writeFileSync(SKILL_GENE_FILE, lines.join("\n"), "utf8");
     // 记录反馈日志
     const logLine = JSON.stringify({ ts: new Date().toISOString(), id, domain: d, scores, from: "refine-feedback" }) + "\n";
-    fs.appendFileSync(REFINE_LOG, logLine);
+    fs.appendFileSync(REFINE_LOG(), logLine);
     json(res, 200, { ok: true, domain: d, msg: `已更新「${d}」技能基因` });
   } catch (e) {
     json(res, 500, { error: "更新技能基因失败: " + (e?.message || e) });
@@ -133,7 +135,7 @@ export async function handleRefinePlan(res, body) {
   if (body?.instructions) args.push("--instructions", String(body.instructions));
   const r = await runRefineScript(args, 240000);
   if (r.code !== 0) return json(res, 500, { error: r.err || r.out || `python exit ${r.code}` });
-  const data = readRefineJson(REFINE_PROPOSALS, { pending: [], applied: [], rejected: [] });
+  const data = readRefineJson(REFINE_PROPOSALS(), { pending: [], applied: [], rejected: [] });
   const latest = data.pending?.length ? data.pending[data.pending.length - 1] : null;
   json(res, 200, { ok: true, latest, count: data.pending.length, log: r.out.slice(-600) });
 }
