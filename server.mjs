@@ -52,6 +52,8 @@ import { initSelfHeal, createRepairCheckpoint, handleUpdateCheck, handleUpdateAp
 import { initImproveApi, analyzeImprovements, openImprovements, setImprovementStatus } from "./engine/improve-api.mjs";
 import { initSessionManager, createSession, evictInactiveSessions, slimSessionImages, compactSession, openSession, initSearchTool, initShareTool, createSessionAgent, ensureAgent, isFirstTurn, deleteSession } from "./engine/session-manager.mjs";
 import { initUnifiedChat, unifiedChat, engineCurrentModel, initEngine, getCodeRuntime, getCodeMode, toolBindingDesc, toolBindingArgs, toolBindingArgsObj, handleNotices, handleUnifiedChat, touchTask, clearTask, handleAgentEventIn, handleAgentEventOut } from "./engine/unified-chat.mjs";
+import { createApprovalInterceptor } from "./engine/tools/approval.mjs";
+import * as confirmRegistry from "./engine/tools/confirm-registry.mjs";
 import { initRefineApi, readRefineJson, runRefineScript, handleRefineStatus, handleRefineList, detectSkillDomain, handleRefineFeedback, handleRefineGenes, handleRefinePlan, handleRefineApprove, handleRefineReject, handleRefineRollback } from "./engine/refine-api.mjs";
 import { initMcpServer, handleMcp } from "./engine/mcp-server.mjs";
 import { initMcpChat } from "./engine/mcp-chat.mjs";
@@ -1058,6 +1060,35 @@ async function handleChat(req, res, body) {
   const busKeys = [taskId, ...(sessionId && sessionId !== taskId ? [sessionId] : [])];
   const busEmit = (type, data) => { for (const k of busKeys) busPush(k, type, data); };
   touchTask(taskId, { stage: "处理中" });
+
+  // ── 危险操作确认（dsh user-approval seam）：命中危险 cmd → 弹框等人工 ──
+  // 包装底层 agent 的 beforeToolCall：命中危险 → 发 confirm 事件 → 等前端回答 → 放行/阻断
+  // ⚠️ 只挂一次：entry.agent 会话级复用，若每次 handleChat 都包装会层层叠加（重复确认刷屏）
+  try {
+    const innerAgent = agent?.agent || agent; // AgentSession.agent(底层) 优先
+    if (innerAgent && typeof innerAgent.beforeToolCall === "function" && !innerAgent.__approvalWrapped) {
+      innerAgent.__approvalWrapped = true;
+      const origBefore = innerAgent.beforeToolCall;
+      const approval = createApprovalInterceptor({
+        policyDecide, // dsh-keys 策略引擎（安全红线仍直接拒绝，不弹框）
+        ask: async (toolName, args, reason) => {
+          const sid = sessionId || findKeyByEntry(entry) || taskId;
+          const reg = confirmRegistry.register(sid, { toolName, reason, src: "ask" });
+          // 推给前端：确认框
+          writer.push("confirm", { id: reg.id, toolName, reason, args: args || {}, sessionId: sid });
+          busEmit("confirm", { id: reg.id, toolName, reason, args: args || {}, sessionId: sid });
+          const outcome = await reg.promise; // 等前端/超时 （cancelled / allowed-once / rejected）
+          return outcome;
+        },
+        enabled: process.env.PI_APPROVAL !== "0", // 默认开；PI_APPROVAL=0 关
+        log: (m) => console.log(m),
+      });
+      innerAgent.beforeToolCall = approval.wrapBeforeToolCall(origBefore);
+    }
+  } catch (e) {
+    console.log(`[approval] 注入失败(不阻断正常流): ${String(e?.message || e)}`);
+  }
+
   let sawDelta = false; // 是否产生过文本输出（用于空回复兜底）
   let collected = "";   // 收集主模型输出（用于媒体路由的配图/配音内容）
   const mediaIntents = detectMediaIntents(message);
@@ -1821,6 +1852,18 @@ const API_ROUTES = [
   // ── Agent 活动事件（pi 事件广播扩展 → 前端实时显示小语在干嘛）──
   ["POST", "/api/agent/events", async (res, req) => handleAgentEventIn(req, res, await readBody(req, 2))],
   ["GET", "/api/agent/events", (res) => handleAgentEventOut(res)],
+  // 危险操作确认回传：前端弹框后调这里（ok=true 放行 / ok=false 拒绝）
+  ["POST", "/api/agent/confirm", async (res, req) => {
+    try {
+      const b = await readBody(req, 1);
+      const sid = String(b?.sessionId || "");
+      const id = String(b?.id || "");
+      const ok = b?.ok === true;
+      if (!sid || !id) return json(res, 400, { error: "缺少 sessionId/id" });
+      const r = confirmRegistry.settle(sid, id, ok);
+      json(res, 200, r);
+    } catch (e) { json(res, 500, { error: String(e?.message || e) }); }
+  }],
   // ── Gateway 2.0 插件化引擎（dsh 设计沉淀）──
   ["GET", "/api/engine/status", async (res) => { try { json(res, 200, (await initEngine()).status()); } catch (e) { json(res, 500, { error: String(e?.message || e) }); } }],
   // 真实工具集（主聊天 UNIFIED_TOOLS）：名字+描述+是否 dsh 注入，供引擎页「工具注册表」可视化

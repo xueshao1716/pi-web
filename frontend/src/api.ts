@@ -150,6 +150,12 @@ export const AgentEventsApi = {
   get: () => api<{ events: AgentEvent[] }>('/api/agent/events'),
 }
 
+// ── 危险操作确认（dsh user-approval seam）：后端弹确认事件 → 前端回传结果 ──
+export const ConfirmApi = {
+  answer: (sessionId: string, id: string, ok: boolean) =>
+    api<{ ok: boolean; outcome: string }>('/api/agent/confirm', { method: 'POST', body: { sessionId, id, ok }, timeoutMs: 8000 }),
+}
+
 // ── 灵犀：双向灵感池（user/xiaoyu 分源记录）──
 export interface LingXiEntry {
   id: string

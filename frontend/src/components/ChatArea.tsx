@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { useApp } from '../store'
-import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, LayoutGrid, Command, ChevronDown, PanelRight } from 'lucide-react'
+import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, LayoutGrid, Command, ChevronDown, PanelRight, ShieldAlert } from 'lucide-react'
 import { RefreshCw } from 'lucide-react'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
-import { ChatApi, SessionsApi, AsrApi, EmotionApi, AgentStatusApi, streamSession, LingXiApi } from '../api'
+import { ChatApi, SessionsApi, AsrApi, EmotionApi, AgentStatusApi, streamSession, LingXiApi, ConfirmApi } from '../api'
 import Message from './Message'
 import SendBox from './SendBox'
 import TurnList from './TurnList'
@@ -46,6 +46,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
 } = {}) {
   const { currentSessionId, currentModel, refreshSessions, selectSession } = useApp()
   const [stream, setStream] = useState<StreamState | null>(null)
+  const [confirm, setConfirm] = useState<any>(null) // 危险操作待确认：{ id, toolName, reason, args, sessionId }
   const [idleSeconds, setIdleSeconds] = useState(0)
   const abortRef = useRef<(() => void) | null>(null)
   // ref 是唯一事实源：SSE 事件可能在一个渲染批次内全部到达，useEffect 同步会滞后导致 done 时读到旧值
@@ -251,6 +252,10 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
           // 服务端每轮结束推送真实情绪快照（VAD）——镜像展示，不可点改
           if (d.state && typeof d.state.valence !== 'undefined') setEmo({ state: d.state, meta: emoMeta(d.state) })
           break
+        case 'confirm':
+          // 危险操作待确认：弹确认框（dsh user-approval seam）
+          setConfirm({ id: d.id, toolName: d.toolName, reason: d.reason, args: d.args || {}, sessionId: d.sessionId || '' })
+          break
         case 'done':
         case 'finish':
           finalize(d.model)
@@ -271,6 +276,14 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     abortRef.current = null
     updStream(p => ({ ...p, error: p.error || '已手动停止', tools: p.tools.map(t => t.status === 'running' ? { ...t, status: 'canceled' } : t) }))
     finalize()
+  }
+
+  // 危险操作确认：后端弹 confirm 事件 → 用户点允许/拒绝 → 回传后端（resolve 审批 allow/reject）
+  const answerConfirm = async (ok: boolean) => {
+    const c = confirm
+    setConfirm(null)
+    if (!c || !c.id || !c.sessionId) return
+    try { await ConfirmApi.answer(c.sessionId, c.id, ok) } catch { toast('确认回传失败，请重试', 'error') }
   }
 
   // SendBox 把转写文本填进输入框的回调通道；语音输入：录音 → /api/asr 转写 → 填入输入框
@@ -448,6 +461,29 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
       </div>
 
       {/* 输入栏 */}
+      {/* 危险操作确认浮层（dsh user-approval seam）：后端弹 confirm 事件时出现 */}
+      {confirm && (
+        <div className="absolute inset-0 z-[var(--pi-z-toast)] flex items-center justify-center p-4 pointer-events-none">
+          <div className="pointer-events-auto max-w-sm w-full rounded-pi-xl bg-pi-bg1/95 backdrop-blur-xl border border-pi-red/30 shadow-2xl p-5 anim-enter">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-pi-md bg-pi-red/15 text-pi-red flex items-center justify-center flex-shrink-0"><ShieldAlert className="w-4 h-4" /></div>
+              <div>
+                <div className="text-[13px] font-semibold text-pi-text">危险操作确认</div>
+                <div className="text-[11px] text-pi-dim2 font-mono">{confirm.toolName || '工具'}</div>
+              </div>
+            </div>
+            <div className="text-[12px] text-pi-dim leading-relaxed mb-3">{confirm.reason || '该操作需要你确认后才会执行。'}</div>
+            {confirm.args?.command && (
+              <pre className="bg-black/25 border border-pi-border-soft rounded-pi-md p-2.5 text-[11px] text-pi-dim font-mono whitespace-pre-wrap break-all max-h-28 overflow-auto mb-3">{confirm.args.command}</pre>
+            )}
+            <div className="flex gap-2">
+              <button className="btn-tool text-xs flex-1" onClick={() => answerConfirm(false)}>拒绝</button>
+              <button className="btn-primary text-xs flex-1 bg-pi-red/90 hover:bg-pi-red border-pi-red" onClick={() => answerConfirm(true)}>允许执行一次</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 回到底部：用户上翻后出现（nomifun 同款交互） */}
       {!atBottom && (
         <button
