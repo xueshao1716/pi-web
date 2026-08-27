@@ -335,8 +335,10 @@ h1{font-size:18px;color:#8b7cf6}.msg{margin-bottom:20px}.msg .who{font-size:11px
 }
 
 // ── 文件系统 API（受限工作目录）─────────────────────────────────────
+// ⚠️ 路径基准必须用 _cwd（initStatsApi 注入的 cwd），不能用 CONFIG.cwd——本模块未定义 CONFIG，
+//   引用 CONFIG.cwd 会抛 ReferenceError → 前端读/列文件一直报错「找不到文件」。
 export function resolveFsPath(p) {
-  const root = path.resolve(CONFIG.cwd);
+  const root = path.resolve(_cwd);
   const target = path.resolve(root, p || ".");
   if (target !== root && !target.startsWith(root + path.sep)) return null;
   return target;
@@ -350,11 +352,11 @@ export async function handleFsList(res, p) {
     const items = entries.map(e => ({
       name: e.name,
       type: e.isDirectory() ? "dir" : "file",
-      path: path.relative(CONFIG.cwd, path.join(dir, e.name)).replace(/\\/g, "/"),
+      path: path.relative(_cwd, path.join(dir, e.name)).replace(/\\/g, "/"),
     })).sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === "dir" ? -1 : 1));
     json(res, 200, {
-      cwd: CONFIG.cwd,
-      current: path.relative(CONFIG.cwd, dir).replace(/\\/g, "/") || ".",
+      cwd: _cwd,
+      current: path.relative(_cwd, dir).replace(/\\/g, "/") || ".",
       items,
     });
   } catch (e) {
@@ -370,7 +372,7 @@ export async function handleFsRead(res, p) {
     if (stat.isDirectory()) return json(res, 400, { error: "这是目录" });
     if (stat.size > 200 * 1024) return json(res, 413, { error: "文件过大（>200KB）" });
     const content = await fs.promises.readFile(file, "utf8");
-    json(res, 200, { path: path.relative(CONFIG.cwd, file).replace(/\\/g, "/"), content });
+    json(res, 200, { path: path.relative(_cwd, file).replace(/\\/g, "/"), content });
   } catch (e) {
     json(res, 404, { error: "读取失败: " + String(e?.message || e) });
   }
