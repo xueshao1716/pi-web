@@ -120,7 +120,7 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
   if (isUser) {
     // 用户：右侧玻璃气泡 + 小头像
     return (
-      <div className="group/msg flex justify-end gap-3 py-3">
+      <div className="group/msg flex justify-end gap-2.5 py-3">
         <div className="max-w-[82%] min-w-0 flex flex-col items-end">
           {editing ? (
             <div className="w-full min-w-[280px]">
@@ -150,15 +150,15 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
             </>
           )}
         </div>
-        <div className="w-7 h-7 rounded-lg bg-pi-bg3 border border-pi-border flex items-center justify-center text-pi-dim text-xs font-bold flex-shrink-0 mt-0.5">我</div>
+        <div className="w-6 h-6 rounded-lg bg-pi-bg3 border border-pi-border flex items-center justify-center text-pi-dim text-[11px] font-bold flex-shrink-0 mt-0.5">我</div>
       </div>
     )
   }
 
   // 助手：无气泡，内容全宽铺开（现代 AI 聊天惯例），左侧小标识
   return (
-    <div className="group/msg flex gap-3 py-3 anim-enter">
-      <div className="w-7 h-7 rounded-lg avatar-grad flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5">语</div>
+    <div className="group/msg flex gap-2.5 py-3 anim-enter">
+      <div className="w-6 h-6 rounded-lg avatar-grad flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 mt-0.5">语</div>
       <div className="min-w-0 flex-1">
         {msg.notes?.length ? (
           <div className="mb-2 space-y-1">
