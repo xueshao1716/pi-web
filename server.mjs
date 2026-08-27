@@ -266,9 +266,11 @@ if (CONFIG.model) {
   defaultModel = modelList.find(m => `${m.provider}/${m.id}` === CONFIG.model) || undefined;
 }
 if (!defaultModel) {
-  defaultModel = modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
-    || modelList.find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id))
+  // 用户定：不再锁定小米(mimo太垃圾)为第一。优先商汤 flash-lite(免费主力)，再火山方舟，最后第一个。
+  defaultModel = modelList.find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id))
     || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
+    || modelList.find(m => m.provider === "zai-coding-cn" && /glm-5\.3-flash/i.test(m.id))
+    || modelList.find(m => m.provider === "deepseek" && /v4-flash/i.test(m.id))
     || modelList[0];
 }
 console.log(`[pi-web] 默认模型: ${defaultModel?.provider}/${defaultModel?.id}`);
