@@ -155,7 +155,7 @@ export default function AppLayout() {
         <div className="flex-1 flex min-h-0 relative z-10">
           {mobileDrawer === 'sessions' ? (
             <div className="flex-1 flex flex-col min-h-0">
-              <Sidebar onNavigated={() => setMobileDrawer('none')} />
+              <Sidebar onNavigated={() => setMobileDrawer('none')} onCollapse={() => setMobileDrawer('none')} />
             </div>
           ) : route === 'chat' ? (
             <div className="flex-1 flex flex-col min-w-0 min-h-0">
@@ -198,15 +198,17 @@ export default function AppLayout() {
           ))}
         </nav>
 
-        {/* 悬浮功能按钮（FAB）：收纳桌面侧栏主功能；始终显示（会话抽屉也保留，可切回其他功能） */}
-        <MobileFab
-          nav={nav}
-          route={route}
-          onSettings={() => { setMobileDrawer('none'); nav('models') }}
-          onOpenSessions={() => { setMobileDrawer('sessions') }}
-          onOpenPanel={(k) => { setMobileDrawer('none'); nav('chat'); setRightPanel(k) }}
-          onOpenTheme={() => { setMobileDrawer('none'); nav('theme-editor') }}
-        />
+        {/* 悬浮功能按钮（FAB）：默认显示；会话抽屉打开时隐藏——避免挡住会话列表点击(真bug) */}
+        {mobileDrawer !== 'sessions' && (
+          <MobileFab
+            nav={nav}
+            route={route}
+            onSettings={() => { setMobileDrawer('none'); nav('models') }}
+            onOpenSessions={() => { setMobileDrawer('sessions') }}
+            onOpenPanel={(k) => { setMobileDrawer('none'); nav('chat'); setRightPanel(k) }}
+            onOpenTheme={() => { setMobileDrawer('none'); nav('theme-editor') }}
+          />
+        )}
 
         <ModelManager visible={modelOpen} onClose={() => setModelOpen(false)} />
         {palette}
