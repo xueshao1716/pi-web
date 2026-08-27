@@ -110,10 +110,7 @@ try {
 } catch {}
 let modelRuntime = await ModelRuntime.create();
 console.log(`[pi-web] 模型运行时加载完成`);
-// ⚠️ 自定义 provider 注册（engine/sdk-providers.mjs）暂不启用：注册后模型进 SDK 表，
-// 但缺 compat/thinkingLevelMap 元数据导致流式请求报「Unknown provider」且短路 session-manager
-// 的兑底逻辑。待补 compat 映射后再启用（agent 即可与聊天同通道用商汤等）。
-import("./engine/sdk-providers.mjs").catch(() => {});
+// agent 通道扩展入口在 AUTH_PATH/MODELS_PATH 就绪后注册（见下），注册逻辑：engine/sdk-providers.mjs
 // 诊断：确认 opencode-go provider 是否被 pi runtime 识别
 try {
   const ogCount = modelRuntime.getModels().filter(m => m.provider === "opencode-go").length;
@@ -161,6 +158,20 @@ const KEEP_MODELS = new Set([
   "openrouter/mistralai/mistral-large",
   "openrouter/meta-llama/llama-4-maverick",
   "openrouter/nvidia/nemotron-3-super-120b-a12b",
+]);
+
+// pi SDK 原生 provider 表（agent 官方管线能直接跑通的通道）。外部中转/自定义通道
+// （bigmodel/claude-relay/sensenova/volces-ark/whatstoken 等）不在表内，agent 路径会静默兑底，
+// 必须走 unifiedChat 直连。此集合用于 /api/chat 通道策略判定（见 useAgent）。
+const NATIVE_PROVIDERS = new Set([
+  "deepseek", "openai", "openrouter", "anthropic", "google", "qwen", "xai", "moonshotai",
+  "moonshotai-cn", "together", "mistral", "nvidia", "opencode-go", "opencode", "openai-codex",
+  "zai", "zai-coding-cn", "xiaomi", "xiaomi-token-plan-cn", "xiaomi-token-plan-ams",
+  "xiaomi-token-plan-sgp", "qwen-token-plan-cn", "qwen-token-plan-individual", "qwen-token-plan",
+  "minimax", "minimax-cn", "kimi-coding", "github-copilot", "groq", "fireworks", "cerebras",
+  "huggingface", "baseten", "amazon-bedrock", "google-vertex", "azure-openai-responses",
+  "vercel-ai-gateway", "cloudflare-ai-gateway", "cloudflare-workers-ai", "cloudflare-auth",
+  "cloudflare-stream", "radius", "radius-config", "ant-ling", "faux",
 ]);
 
 let defaultModel = undefined; // 在启动模型列表构建后初始化（见下）
@@ -233,6 +244,14 @@ try { bindOutputGuardDeps({ readEntriesFromFile, extractText }); } catch {}
 const AGENT_DIR = getAgentDir();
 const AUTH_PATH = path.join(AGENT_DIR, "auth.json");
 const MODELS_PATH = path.join(AGENT_DIR, "models-store.json");
+// 启用 agent 通道扩展注册（2026-08-27 补 compat/thinkingLevelMap 后启用）：把 store 里
+// 「已配 key + SDK 不认识」的自定义通道（bigmodel/商汤/新雷等）注册进 pi 引擎，
+// 使 agent 会话（专项工作台/终端/TUI）与聊天同通道同凭据可用。
+try {
+  const { registerStoreProviders } = await import("./engine/sdk-providers.mjs");
+  const reg = registerStoreProviders(modelRuntime, { storePath: MODELS_PATH, authPath: AUTH_PATH });
+  if (reg?.length) console.log(`[sdk-providers] agent 通道已注册: ${reg.join(", ")}`);
+} catch (e) { console.log(`[sdk-providers] 注册失败: ${String(e?.message || e).slice(0, 150)}`); }
 initThemePrefs(path.join(AGENT_DIR, "theme-prefs.json")); // 主题偏好跨端同步
 initMediaApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, authPath: AUTH_PATH, getModelList: () => modelList }); // 媒体生成层注入
 initAsrApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, httpJsonFetch }); // 语音转文字（mimo-v2.5-asr 免费通道）
@@ -972,29 +991,6 @@ async function handleChat(req, res, body) {
     "X-Accel-Buffering": "no",
   });
 
-  // 通道策略：默认用 pi agent 官方管线（与 TUI 同源，工具执行/打断/竞态都成熟），
-  // 自制 unifiedChat 仅作兑底（官方管线异常时降级）。设置 PI_USE_AGENT=0 可强制走 unifiedChat
-  const useAgent = process.env.PI_USE_AGENT !== "0" && !!defaultModel;
-  if (defaultModel && !useAgent) {
-    const hb2 = startSseHeartbeat(res);
-    // 打断支持：客户端断开 SSE 时中止 unifiedChat（不再继续工具调用/模型请求）
-    const abortCtrl = new AbortController();
-    const onClose = () => { try { abortCtrl.abort(); } catch {} };
-    req.on("close", onClose);
-    try {
-      await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl.signal, undefined, thinkOn, body.taskKey);
-    } catch (e) {
-      try { sseWrite(res, "error", { message: String(e?.message || e) }); } catch {}
-    } finally {
-      clearInterval(hb2);
-      req.removeListener("close", onClose);
-      // 代次匹配才释放（快速重发时新请求已占 busy，旧请求不得干扰）
-      if (entry.gen === thisGen) entry.busy = false;
-      try { res.end(); } catch {}
-      if (entry.gen === thisGen) invalidateSessionCache(); // 消息写入会话文件 → 列表缓存失效
-    }
-    return;
-  }
   // 前端携带模型同步（修复 C：显示与实发一致——刷新/多端时前端下拉值与服务端 modelKey 对齐）
   // ⚠️ 2026-08-19 防呆：auto/auto 是前端下拉默认显示值（未显式选择），不能覆盖用户已切过的具体会话模型
   //    ——否则用户切千问后，消息带的 stale "auto/auto" 会把 modelKey 打回 Auto → 路由乱跳（铁证：选了千问实际跑 mimo）
@@ -1027,6 +1023,35 @@ async function handleChat(req, res, body) {
         }
       }
     } catch {}
+  }
+  // 通道策略：默认用 pi agent 官方管线（与 TUI 同源，工具执行/打断/竞态都成熟），
+  // 自制 unifiedChat 仅作兑底（官方管线异常时降级）。设置 PI_USE_AGENT=0 可强制走 unifiedChat
+  // ⚠️ 2026-08-27：请求的是非 SDK 原生通道（claude-relay/bigmodel/sensenova 等自定义中转）时，
+  //    agent 路径会静默兑底到别的模型（选了它实际没跑到）→ 改走 unifiedChat 直连（任意 OpenAI 兼容可用）。
+  const reqProv = (typeof body.model === "string" && body.model.includes("/"))
+    ? body.model.split("/")[0]
+    : null;
+  const useAgent = process.env.PI_USE_AGENT !== "0" && !!defaultModel
+    && (!reqProv || NATIVE_PROVIDERS.has(reqProv));
+  if (defaultModel && !useAgent) {
+    const hb2 = startSseHeartbeat(res);
+    // 打断支持：客户端断开 SSE 时中止 unifiedChat（不再继续工具调用/模型请求）
+    const abortCtrl = new AbortController();
+    const onClose = () => { try { abortCtrl.abort(); } catch {} };
+    req.on("close", onClose);
+    try {
+      await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl.signal, undefined, thinkOn, body.taskKey);
+    } catch (e) {
+      try { sseWrite(res, "error", { message: String(e?.message || e) }); } catch {}
+    } finally {
+      clearInterval(hb2);
+      req.removeListener("close", onClose);
+      // 代次匹配才释放（快速重发时新请求已占 busy，旧请求不得干扰）
+      if (entry.gen === thisGen) entry.busy = false;
+      try { res.end(); } catch {}
+      if (entry.gen === thisGen) invalidateSessionCache(); // 消息写入会话文件 → 列表缓存失效
+    }
+    return;
   }
   // 会话级模型：切过模型则用会话的；未切（默认）→ Auto 路由（Cursor Router 简化版：按任务复杂度选 flash/pro）
   let autoRoute = null;

@@ -24,22 +24,31 @@ export function registerStoreProviders(modelRuntime, { storePath, authPath }) {
     if (!a?.key || known.has(provider)) continue;
     const cfg = store[provider];
     const rawModels = cfg?.models || [];
+    // bigmodel 等自定义通道不提供顶层 baseUrl——从模型定义兜底取（否则注册被 guard 跳过）
+    const baseUrl = String(cfg?.baseUrl || a.baseUrl || rawModels[0]?.baseUrl || "").trim();
     const models = rawModels.map(m => ({
       id: m.id,
       name: m.name || m.id,
       reasoning: !!m.reasoning,
       input: Array.isArray(m.input) && m.input.length ? m.input : ["text"],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      cost: { input: m.cost?.input ?? 0, output: m.cost?.output ?? 0, cacheRead: m.cost?.cacheRead ?? 0, cacheWrite: m.cost?.cacheWrite ?? 0 },
       contextWindow: m.contextWindow || 128000,
       maxTokens: m.maxTokens || 8192,
+      // ⚠️ 必须保留 compat/thinkingLevelMap：缺失会导致流式「Unknown provider」+ 短路兜底
+      compat: m.compat,
+      thinkingLevelMap: m.thinkingLevelMap,
     })).filter(m => m.id);
-    // 只挑免费/已配 key 通道的代表模型，全量注册意义不大（agent 任务常用默认模型而已）
-    const picked = models.filter(m => !/pro/i.test(m.id)).slice(0, 6);
-    if (!picked.length || !(cfg?.baseUrl || a.baseUrl)) continue;
+    // 只挑有 compat 的代表模型（缺 compat 流式会报「Unknown provider」，注册了反而坏 agent）——
+    // 商汤/volces/whatstoken/minimax 等无 compat 通道被跳过，保持原走 unifiedChat 不改默认流程
+    const picked = models.filter(m => !/pro/i.test(m.id) && !!m.compat).slice(0, 6);
+    if (!picked.length || !baseUrl) {
+      console.log(`[sdk-providers] 跳过 ${provider}（无 compat 或无 baseUrl，agent 不可用，聊天仍走 unifiedChat）`);
+      continue;
+    }
 
     const api = (cfg.api === "anthropic-messages" || cfg.protocol === "anthropic") ? "anthropic-messages" : "openai-completions";
     // SDK 不做 /v1 补全（聊天适配器会补并 404 回退，这里必须手动对齐 OpenAI 规范：baseUrl 需含版本段）
-    let base = String(cfg.baseUrl || a.baseUrl || "").replace(/\/+$/, "");
+    let base = baseUrl.replace(/\/+$/, "");
     if (api === "openai-completions" && !/\/v\d+$/.test(base)) base += "/v1";
     try {
       modelRuntime.registerProvider(provider, {
