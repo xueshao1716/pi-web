@@ -27,16 +27,22 @@ export function Toaster() {
   if (!items.length) return null
   return (
     <div aria-live="polite" className="toast-stack fixed left-1/2 -translate-x-1/2 z-[var(--pi-z-toast)] flex flex-col gap-2 items-center pointer-events-none">
-      {items.map(it => (
-        <div key={it.id}
-          role="status"
-          className={`anim-fade px-4 py-2 rounded-pi-lg border text-[13px] shadow-xl max-w-[80vw] ${
-            it.tone === 'error' ? 'bg-pi-red/15 border-pi-red/40 text-pi-red'
-            : it.tone === 'ok' ? 'bg-emerald-600/90 border-emerald-400 text-white'
-            : 'bg-pi-bg1/95 border-pi-border text-pi-text'}`}>
-          {it.msg}
-        </div>
-      ))}
+      {items.map(it => {
+        // 用主题语义 token（inline style 直用 var，绕开 UnoCSS 对 var() /opacity 失效）：
+        // 深浅主题自适应——亮色主题=亮纸底+深语义字；深色主题=深底+亮语义字，绝无黑块
+        const tone = it.tone === 'error'
+          ? { bg: 'color-mix(in oklab, var(--pi-danger) 14%, transparent)', fg: 'var(--pi-danger)', border: 'color-mix(in oklab, var(--pi-danger) 45%, transparent)' }
+          : it.tone === 'ok'
+            ? { bg: 'color-mix(in oklab, var(--pi-success) 14%, transparent)', fg: 'var(--pi-success)', border: 'color-mix(in oklab, var(--pi-success) 45%, transparent)' }
+            : { bg: 'color-mix(in oklab, var(--pi-bg1) 92%, transparent)', fg: 'var(--pi-text)', border: 'var(--pi-border-soft)' }
+        return (
+          <div key={it.id} role="status"
+            className="anim-fade px-4 py-2 rounded-pi-lg border text-[13px] shadow-xl max-w-[80vw]"
+            style={{ background: tone.bg, color: tone.fg, borderColor: tone.border }}>
+            {it.msg}
+          </div>
+        )
+      })}
     </div>
   )
 }
