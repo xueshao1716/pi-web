@@ -144,6 +144,7 @@ export async function handleWorkshopNovel(ctx, res, body) {
   const protagonist = String(body?.protagonist || "").trim();
   const setting = String(body?.setting || "").trim();
   const chapters = Math.min(Math.max(parseInt(body?.chapters, 10) || 1, 1), 10);
+  const narrator = String(body?.narrator || "第三人称").trim();
   const skillPath = await findSkillPath(ctx, "novel-forge-v10");
   if (!skillPath) return json(res, 500, { error: "未找到 novel-forge-v10 技能" });
   const skillDir = path.dirname(skillPath);
@@ -181,6 +182,7 @@ export async function handleWorkshopNovel(ctx, res, body) {
 - 题材：${genre}（可选 xianxia/urban/horror/scifi）
 - 主角设定：${protagonist || "（未指定，自行设计）"}
 - 世界背景：${setting || "（未指定，按题材常规设计）"}
+- 叙事人称：${narrator || "第三人称"}
 - 本次先写第 1 章
 
 执行要求：

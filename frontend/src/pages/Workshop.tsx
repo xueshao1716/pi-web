@@ -38,9 +38,6 @@ export default function Workshop() {
               <Icon className="w-3.5 h-3.5" strokeWidth={1.8} />{label}
             </button>
           ))}
-          <span className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-pi-dim2">
-            <Presentation className="w-3.5 h-3.5" />生成物自动入库资产库
-          </span>
         </div>
 
         {tab === 'image' && <div className="max-w-3xl"><GeneratePanel onGenerated={() => {}} /></div>}

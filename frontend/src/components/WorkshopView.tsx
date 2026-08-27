@@ -16,6 +16,7 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
   // 小说表单
   const [title, setTitle] = useState('')
   const [genre, setGenre] = useState('xianxia')
+  const [narrator, setNarrator] = useState('第三人称')
   const [protagonist, setProtagonist] = useState('')
   const [setting, setSetting] = useState('')
   const [chapters, setChapters] = useState(1)
@@ -23,6 +24,8 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
   const [running, setRunning] = useState(false)
   const [log, setLog] = useState<string[]>([])
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
+  // 工具进度卡片（A：实时展示 agent 执行到哪步）
+  const [steps, setSteps] = useState<{ id: string; name: string; args: string; status: 'running' | 'done' | 'error'; output?: string }[]>([])
   const abortRef = useRef<(() => void) | null>(null)
 
   const append = (s: string) => setLog(prev => [...prev.slice(-200), s])
@@ -31,15 +34,27 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
     if (running) return
     if (kind === 'ppt' && !theme.trim()) return
     if (kind === 'novel' && !title.trim()) return
-    setRunning(true); setLog([]); setArtifacts([])
+    setRunning(true); setLog([]); setArtifacts([]); setSteps([])
     const body = kind === 'ppt'
       ? { theme: theme.trim(), pages, style, audience }
-      : { title: title.trim(), genre, protagonist, setting, chapters }
+      : { title: title.trim(), genre, protagonist, setting, chapters, narrator }
     let sawDone = false
     abortRef.current = WorkshopApi.run(kind, body, ev => {
       const d = ev.data || {}
       switch (ev.type) {
         case 'note': append('· ' + (d.text || '')); break
+        case 'tool': {
+          // 工具开始：加一张 running 卡片（A 实时进度）
+          const argsText = typeof d.args === 'object' && d.args !== null
+            ? (d.args.command || d.args.path || d.args.prompt || JSON.stringify(d.args).slice(0, 100))
+            : String(d.args || '')
+          setSteps(prev => [...prev, { id: d.id || 't' + Date.now(), name: d.name || 'tool', args: argsText, status: 'running' }])
+          break
+        }
+        case 'tool_end': {
+          setSteps(prev => prev.map(s => s.id === d.id ? { ...s, status: (d.isError ? 'error' : 'done'), output: (d.output || '').slice(0, 120) } : s))
+          break
+        }
         case 'delta': break // delta 是模型全文流，量太大不进日志（产物为准）
         case 'file':
           if (d.path) { setArtifacts(prev => [...prev, d]); append(`[产物] ${d.name}`) }
@@ -69,10 +84,12 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
               <input type="number" min={3} max={25} className="input-pi !py-1.5 text-xs w-20" value={pages} onChange={e => setPages(+e.target.value)} />
             </label>
             <label className="text-xs text-pi-dim flex items-center gap-1.5">风格
-              <input className="input-pi !py-1.5 text-xs w-32" placeholder="专业商务" value={style} onChange={e => setStyle(e.target.value)} />
+              <select className="input-pi !py-1.5 text-xs w-28" value={style} onChange={e => setStyle(e.target.value)}>
+                <option>专业商务</option><option>学术汇报</option><option>简约科技</option><option>创意活泼</option><option>国风典雅</option>
+              </select>
             </label>
             <label className="text-xs text-pi-dim flex items-center gap-1.5">受众
-              <input className="input-pi !py-1.5 text-xs w-40" placeholder="可选" value={audience} onChange={e => setAudience(e.target.value)} />
+              <input className="input-pi !py-1.5 text-xs w-32" placeholder="可选" value={audience} onChange={e => setAudience(e.target.value)} />
             </label>
           </div>
         </div>
@@ -85,6 +102,11 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
                 <option value="xianxia">仙侠</option><option value="urban">都市</option>
                 <option value="scifi">科幻</option><option value="history">历史</option>
                 <option value="mystery">悬疑</option>
+              </select>
+            </label>
+            <label className="text-xs text-pi-dim flex items-center gap-1.5">叙事
+              <select className="input-pi !py-1.5 text-xs w-24" value={narrator} onChange={e => setNarrator(e.target.value)}>
+                <option>第三人称</option><option>第一人称</option><option>上帝视角</option>
               </select>
             </label>
             <label className="text-xs text-pi-dim flex items-center gap-1.5">章节数
@@ -103,6 +125,27 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
           : <button className="btn-primary text-xs px-4 py-2" onClick={run}>开始{kind === 'ppt' ? '生成 PPT' : '创作小说'}</button>}
         <span className="text-[11px] text-pi-dim2">{kind === 'ppt' ? '走 ppt-generator 技能全流程，通常需要几分钟' : '走 novel-forge v10 全流程，单章可能较久'}</span>
       </div>
+
+      {/* 执行进度（A：agent 步骤卡片，实时看到执行到哪步）*/}
+      {steps.length > 0 && (
+        <div className="space-y-1.5">
+          {steps.map((s, i) => (
+            <div key={s.id || i} className="panel !p-2.5 flex items-start gap-2.5">
+              <span className={`mt-0.5 w-5 h-5 rounded-pi-sm flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${s.status === 'running' ? 'bg-pi-accent/20 text-pi-accent' : s.status === 'error' ? 'bg-red-500/15 text-red-400' : 'bg-emerald-500/15 text-emerald-300'}`}>
+                {s.status === 'running' ? <span className="w-2.5 h-2.5 rounded-full border-[1.5px] border-pi-accent/25 border-t-pi-accent animate-spin"/> : s.status === 'error' ? '✕' : '✓'}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 text-[12px]">
+                  <span className="font-mono font-semibold text-pi-text">{s.name}</span>
+                  <span className={`text-[10px] ${s.status === 'running' ? 'text-pi-accent' : s.status === 'error' ? 'text-red-400' : 'text-pi-dim2'}`}>{s.status === 'running' ? '执行中' : s.status === 'error' ? '出错' : '完成'}</span>
+                </div>
+                {s.args && <div className="text-[11px] text-pi-dim font-mono truncate mt-0.5">{s.args}</div>}
+                {s.output && <div className="text-[11px] text-pi-dim2 mt-0.5 line-clamp-2">{s.output}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* 过程日志 */}
       {log.length > 0 && (
