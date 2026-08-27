@@ -100,7 +100,7 @@ function App({ accent, setAccent, theme, setTheme, wallpaper, setWallpaper }: {
   return (
     <div className="flex h-full overflow-hidden flex-col md:flex-row">
       {/* 左：控制面板（移动端全宽顶部条）；桌面 w-72 侧栏 */}
-      <div className="w-full md:w-72 border-b md:border-b-0 md:border-r border-pi-border-soft overflow-y-auto p-4 flex flex-col gap-5 flex-shrink-0">
+      <div className="w-full md:w-72 border-b md:border-b-0 md:border-r border-pi-border-soft overflow-y-auto p-4 flex flex-col gap-5 md:flex-shrink-0 max-h-[45%] md:max-h-none">
         <div className="text-sm font-semibold text-pi-text">主题工作台</div>
 
         {/* 基底主题 */}
@@ -214,7 +214,7 @@ function App({ accent, setAccent, theme, setTheme, wallpaper, setWallpaper }: {
       </div>
 
       {/* 右：实时预览 */}
-      <div ref={previewRef} className="flex-1 overflow-y-auto p-8" style={{
+      <div ref={previewRef} className="flex-1 overflow-y-auto p-4 sm:p-8" style={{
         background: tokens['--pi-bg'],
         color: tokens['--pi-text'],
       }}>
