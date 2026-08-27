@@ -444,7 +444,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
           </div>
         ) : messages.length === 0 && !stream ? welcome
           : (
-            <div className="max-w-3xl mx-auto">
+            <div className="max-w-3xl w-full">
               <TurnList
                 messages={messages}
                 streamingNode={stream ? (
