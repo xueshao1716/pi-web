@@ -394,10 +394,28 @@ export async function createSessionAgent(sm, model) {
     customTools,
   });
   // 完整 model（runtime 定义，含 compat——简版 {provider,id} 会导致工具不触发）
+  // ⚠️ 若目标模型不是 SDK 认识的 provider（自定义 token-plan 中转如 sensenova/volces），SDK 会报
+  // 「No API key found」——chat 直发 HTTP 无感知，但真 agent 会话必须落在原生 provider 上。
+  // 兑底顺序：已配 key 的 deepseek → zai-coding-cn → xiaomi-token-plan-cn → nvidia → 表内第一个。
   let fullModel = model;
   try {
-    fullModel = _getModelRuntime().getModels().find(m => m.provider === model.provider && m.id === model.id) || model;
-  } catch {}
+    const models = _getModelRuntime().getModels();
+    fullModel = models.find(m => m.provider === model?.provider && m.id === model?.id) || null;
+    if (!fullModel) {
+      if (model?.provider) console.log(`[agent] ⚠️ ${model.provider}/${model.id} 不在 SDK provider 表（agent 会话不可用），自动兑底`);
+      try {
+        const auth = _readJsonFile(path.join(_getAgentDir(), "auth.json")) || {};
+        // zai 优先（用户智谱 coding plan 刚充值且实测 agent 工具链可用）；
+        // deepseek 殿后——有 key 但余额状态未知，历史 402 教训
+        for (const p of ["zai-coding-cn", "xiaomi-token-plan-cn", "nvidia", "deepseek"]) {
+          if (!auth[p]?.key) continue;
+          const m = models.find(x => x.provider === p);
+          if (m) { fullModel = m; console.log(`[agent] 兑底模型 → ${p}/${m.id}`); break; }
+        }
+      } catch {}
+      if (!fullModel) fullModel = models.find(m => m.provider === model?.provider) || model;
+    }
+  } catch { fullModel = model; }
   const created = await _createAgentSessionFromServices({
     services,
     sessionManager: sm,

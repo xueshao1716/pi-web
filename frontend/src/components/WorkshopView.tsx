@@ -2,9 +2,9 @@ import { useRef, useState } from 'react'
 import { Package } from 'lucide-react'
 import { WorkshopApi, withFileToken } from '../api'
 
-// ── 专项长文生成器（SSE 长任务，收编自 vanilla）：kind 由页面级 Tab 锁定传入 ──
+// ── 专项长文生成器（SSE 长任务，收编自 vanilla）：08-27 起仅承载 PPT（小说已迁 NovelStudioView 书架式）──
 
-export type Kind = 'ppt' | 'novel'
+export type Kind = 'ppt'
 interface Artifact { name: string; path: string; size?: number }
 
 export default function WorkshopView({ kind }: { kind: Kind }) {
@@ -13,13 +13,6 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
   const [pages, setPages] = useState(10)
   const [style, setStyle] = useState('专业商务')
   const [audience, setAudience] = useState('')
-  // 小说表单
-  const [title, setTitle] = useState('')
-  const [genre, setGenre] = useState('xianxia')
-  const [narrator, setNarrator] = useState('第三人称')
-  const [protagonist, setProtagonist] = useState('')
-  const [setting, setSetting] = useState('')
-  const [chapters, setChapters] = useState(1)
   // 运行态
   const [running, setRunning] = useState(false)
   const [log, setLog] = useState<string[]>([])
@@ -32,12 +25,9 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
 
   const run = () => {
     if (running) return
-    if (kind === 'ppt' && !theme.trim()) return
-    if (kind === 'novel' && !title.trim()) return
+    if (!theme.trim()) return
     setRunning(true); setLog([]); setArtifacts([]); setSteps([])
-    const body = kind === 'ppt'
-      ? { theme: theme.trim(), pages, style, audience }
-      : { title: title.trim(), genre, protagonist, setting, chapters, narrator }
+    const body = { theme: theme.trim(), pages, style, audience }
     let sawDone = false
     abortRef.current = WorkshopApi.run(kind, body, ev => {
       const d = ev.data || {}
@@ -76,8 +66,7 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
   return (
     <div className="space-y-4">
       {/* 表单 */}
-      {kind === 'ppt' ? (
-        <div className="panel !p-4 space-y-3">
+      <div className="panel !p-4 space-y-3">
           <input className="input-pi text-[13px]" placeholder="PPT 主题，如：Q3 产品复盘汇报" value={theme} onChange={e => setTheme(e.target.value)} />
           <div className="flex gap-2 flex-wrap">
             <label className="text-xs text-pi-dim flex items-center gap-1.5">页数
@@ -92,38 +81,14 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
               <input className="input-pi !py-1.5 text-xs w-32" placeholder="可选" value={audience} onChange={e => setAudience(e.target.value)} />
             </label>
           </div>
-        </div>
-      ) : (
-        <div className="panel !p-4 space-y-3">
-          <input className="input-pi text-[13px]" placeholder="书名" value={title} onChange={e => setTitle(e.target.value)} />
-          <div className="flex gap-2 flex-wrap">
-            <label className="text-xs text-pi-dim flex items-center gap-1.5">题材
-              <select className="input-pi !py-1.5 text-xs w-28" value={genre} onChange={e => setGenre(e.target.value)}>
-                <option value="xianxia">仙侠</option><option value="urban">都市</option>
-                <option value="scifi">科幻</option><option value="history">历史</option>
-                <option value="mystery">悬疑</option>
-              </select>
-            </label>
-            <label className="text-xs text-pi-dim flex items-center gap-1.5">叙事
-              <select className="input-pi !py-1.5 text-xs w-24" value={narrator} onChange={e => setNarrator(e.target.value)}>
-                <option>第三人称</option><option>第一人称</option><option>上帝视角</option>
-              </select>
-            </label>
-            <label className="text-xs text-pi-dim flex items-center gap-1.5">章节数
-              <input type="number" min={1} max={10} className="input-pi !py-1.5 text-xs w-20" value={chapters} onChange={e => setChapters(+e.target.value)} />
-            </label>
-          </div>
-          <input className="input-pi text-[13px]" placeholder="主角设定（可选）" value={protagonist} onChange={e => setProtagonist(e.target.value)} />
-          <input className="input-pi text-[13px]" placeholder="世界观/金手指设定（可选）" value={setting} onChange={e => setSetting(e.target.value)} />
-        </div>
-      )}
+      </div>
 
       {/* 运行条 */}
       <div className="flex items-center gap-2">
         {running
           ? <button className="h-8 px-4 rounded-pi-md bg-red-500/90 text-white text-xs font-medium animate-pulse" onClick={stop}>⏹ 停止</button>
-          : <button className="btn-primary text-xs px-4 py-2" onClick={run}>开始{kind === 'ppt' ? '生成 PPT' : '创作小说'}</button>}
-        <span className="text-[11px] text-pi-dim2">{kind === 'ppt' ? '走 ppt-generator 技能全流程，通常需要几分钟' : '走 novel-forge v10 全流程，单章可能较久'}</span>
+          : <button className="btn-primary text-xs px-4 py-2" onClick={run}>开始生成 PPT</button>}
+        <span className="text-[11px] text-pi-dim2">走 ppt-generator 技能全流程，通常需要几分钟；小说请去「小说工坊」Tab</span>
       </div>
 
       {/* 执行进度（A：agent 步骤卡片，实时看到执行到哪步）*/}

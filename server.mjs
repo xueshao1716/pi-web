@@ -69,6 +69,7 @@ emotion.init(CONFIG.cwd); // 基因系统：加载人格基因 + 提案池
 const subagent = await import("./engine/subagent.mjs");
 const workshop = await import("./engine/workshop.mjs");
 const { WORKSHOP_PAGES } = workshop;
+const novelStudio = await import("./engine/workshop-novel.mjs");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -109,6 +110,10 @@ try {
 } catch {}
 let modelRuntime = await ModelRuntime.create();
 console.log(`[pi-web] 模型运行时加载完成`);
+// ⚠️ 自定义 provider 注册（engine/sdk-providers.mjs）暂不启用：注册后模型进 SDK 表，
+// 但缺 compat/thinkingLevelMap 元数据导致流式请求报「Unknown provider」且短路 session-manager
+// 的兑底逻辑。待补 compat 映射后再启用（agent 即可与聊天同通道用商汤等）。
+import("./engine/sdk-providers.mjs").catch(() => {});
 // 诊断：确认 opencode-go provider 是否被 pi runtime 识别
 try {
   const ogCount = modelRuntime.getModels().filter(m => m.provider === "opencode-go").length;
@@ -360,7 +365,16 @@ function saveSessionModelKey(sid, mk) {
   if (!sid) return;
   try { const d = readJsonFile(SESSION_KEYS_FILE); d[sid] = mk; fs.writeFileSync(SESSION_KEYS_FILE, JSON.stringify(d, null, 1)); } catch {}
 }
-function loadSessionModelKey(sid) { try { return readJsonFile(SESSION_KEYS_FILE)[sid] || null; } catch { return null; } }
+function loadSessionModelKey(sid) {
+  try {
+    const mk = readJsonFile(SESSION_KEYS_FILE)[sid] || null;
+    if (!mk) return null;
+    // ⚠️ 校验：会话存的模型若已下架/被清理(不在当前模型列表)，视为未设置 → 走默认路由。
+    // 否则显示与实际不符、调用失败后静默降级（用户看到 A 实际跑 B）
+    const exists = (modelList || []).some(m => m.provider === mk.provider && m.id === mk.id);
+    return exists ? mk : null;
+  } catch { return null; }
+}
 
 // ══ 全局最后模型（2026-08-19 新增）══
 // 现象：新建会话 createSession 不恢复模型选择 → 新会话永远回 Auto → 降级链落 mimo，用户上次选的千问不继承 → “智能路由乱了”
@@ -1938,7 +1952,16 @@ const API_ROUTES = [
   ["POST", "/api/parse-file", async (res, req) => handleParseFile(res, await readBody(req, 12))],
   // ── 专项工作台 ──
   ["POST", "/api/workshop/ppt", async (res, req) => workshop.handleWorkshopPpt(wsCtx(), res, await readBody(req))],
-  ["POST", "/api/workshop/novel", async (res, req) => workshop.handleWorkshopNovel(wsCtx(), res, await readBody(req))],
+  // ── 小说工坊（书架式：作品沉淀/真相文件/第N章递进，收编自 novel-studio）──
+  ["GET", "/api/novel/books", (res) => json(res, 200, { books: novelStudio.listBooks() })],
+  ["POST", "/api/novel/books", async (res, req) => {
+    const b = await readBody(req);
+    const r = novelStudio.createBook(b);
+    json(res, r.error ? 400 : 200, r);
+  }],
+  ["GET", "/api/novel/detail", (res, req, url) => json(res, 200, novelStudio.bookDetail(url.searchParams.get("id") || ""))],
+  ["GET", "/api/novel/chapter", (res, req, url) => json(res, 200, novelStudio.readChapter(url.searchParams.get("id") || "", url.searchParams.get("file") || ""))],
+  ["POST", "/api/novel/write", async (res, req) => novelStudio.handleBookWrite(wsCtx(), res, await readBody(req))],
   // ── 经验沉淀台（refine 提案制，Prime Agent 移植）──
   ["GET", "/api/refine/status", (res) => handleRefineStatus(res)],
   ["GET", "/api/refine/list", (res) => handleRefineList(res)],

@@ -148,7 +148,7 @@ function App({ accent, setAccent, theme, setTheme, wallpaper, setWallpaper }: {
           <input type="range" min="0.02" max="0.08" step="0.001" value={density}
             onChange={e => setDensity(parseFloat(e.target.value))}
             className="w-full accent-pi-accent" />
-          <div className="flex justify-between text-[9px] text-pi-dim mt-0.5">
+          <div className="flex justify-between text-[10px] text-pi-dim mt-0.5">
             <span>平坦</span><span>立体</span>
           </div>
         </div>

@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { ImagePlus, Presentation, BookOpen } from 'lucide-react'
 import GeneratePanel from '../components/GeneratePanel'
 import WorkshopView from '../components/WorkshopView'
+import NovelStudioView from '../components/NovelStudioView'
 
-// ── 专项工作台（08-26 从应用中心提升为主功能路由）：AI 绘画 / PPT·小说生成 ──
+// ── 专项工作台（08-26 从应用中心提升为主功能路由）：AI 绘画 / PPT / 小说工坊（08-27 书架式改版）──
 
 type Tab = 'image' | 'ppt' | 'novel'
 const TABS: [Tab, typeof ImagePlus, string][] = [
@@ -14,7 +15,7 @@ const TABS: [Tab, typeof ImagePlus, string][] = [
 const TAB_DESC: Record<Tab, string> = {
   image: '选模型出图，成品自动归档到资产库',
   ppt: '走 ppt-generator 技能全流程，通常需要几分钟',
-  novel: '走 novel-forge v10 全流程，单章可能较久',
+  novel: '书架式创作：作品沉淀 · 真相文件一致性 · 章节递进',
 }
 
 export default function Workshop() {
@@ -41,7 +42,8 @@ export default function Workshop() {
         </div>
 
         {tab === 'image' && <div className="max-w-3xl"><GeneratePanel onGenerated={() => {}} /></div>}
-        {(tab === 'ppt' || tab === 'novel') && <WorkshopView key={tab} kind={tab} />}
+        {tab === 'ppt' && <WorkshopView key="ppt" kind="ppt" />}
+        {tab === 'novel' && <NovelStudioView />}
       </div>
     </div>
   )
