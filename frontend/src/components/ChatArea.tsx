@@ -428,7 +428,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
       )}
 
       {/* 消息区 */}
-      <div ref={(el) => { scrollRef.current = el; pull.containerRef.current = el }} className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-4">
+      <div ref={(el) => { scrollRef.current = el; pull.containerRef.current = el }} className="flex-1 min-h-0 overflow-y-auto pl-[14px] pr-[18px] sm:px-6 py-4">
         {loading ? (
           <div className="max-w-3xl w-full mx-auto px-6 py-6 space-y-5" aria-label="加载中">
             {[520, 380, 460].map((w, i) => (
