@@ -17,15 +17,15 @@ export function loadThemePrefs() {
   try {
     if (_file && fs.existsSync(_file)) {
       const o = JSON.parse(fs.readFileSync(_file, "utf8"))
-      return { theme: String(o.theme || "mist"), accent: String(o.accent || "") }
+      return { theme: String(o.theme || "mist"), accent: String(o.accent || ""), wallpaper: String(o.wallpaper || "") }
     }
   } catch {}
-  return { theme: "mist", accent: "" }
+  return { theme: "mist", accent: "", wallpaper: "" }
 }
 
 // 写：白名单字段，原子写；返回规范化对象
 export function saveThemePrefs(obj) {
-  const t = { theme: String(obj?.theme || "mist"), accent: String(obj?.accent || "") }
+  const t = { theme: String(obj?.theme || "mist"), accent: String(obj?.accent || ""), wallpaper: String(obj?.wallpaper || "") }
   if (_file) { try { atomicWriteJson(_file, t) } catch {} }
   return t
 }

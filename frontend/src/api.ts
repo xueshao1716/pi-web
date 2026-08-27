@@ -177,9 +177,9 @@ export const LingXiApi = {
 
 // ── 主题偏好跨端同步（08-26：一端更新，各端打开拉取一致）──
 export const ThemeApi = {
-  get: () => api<{ theme: string; accent: string }>('/api/theme-prefs'),
-  save: (theme: string, accent: string) =>
-    api<{ theme: string; accent: string }>('/api/theme-prefs', { method: 'POST', body: { theme, accent } }),
+  get: () => api<{ theme: string; accent: string; wallpaper: string }>('/api/theme-prefs'),
+  save: (theme: string, accent: string, wallpaper: string = '') =>
+    api<{ theme: string; accent: string; wallpaper: string }>('/api/theme-prefs', { method: 'POST', body: { theme, accent, wallpaper } }),
 }
 
 // ── 出图（自动落盘生成物/图片/日期，资产库联动）──
