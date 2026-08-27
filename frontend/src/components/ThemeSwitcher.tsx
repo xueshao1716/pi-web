@@ -97,6 +97,11 @@ export default function ThemeSwitcher() {
                 onChange={e => setAccent(e.target.value)}
                 className="flex-1 min-w-0 text-[10px] bg-pi-field border border-pi-border-soft rounded-pi-sm px-2 py-1 text-pi-text outline-none focus:border-pi-accent" />
             </div>
+            <div className="h-px bg-pi-border-soft my-1" />
+            <button className="w-full text-left px-2 py-1.5 text-[11px] text-pi-dim hover:text-pi-text hover:bg-pi-bg3 rounded-pi-sm transition-colors"
+              onClick={() => { location.hash = '#/theme-editor'; setMenuOpen(false) }}>
+              编辑主题 →
+            </button>
           </div>
         </>
       )}

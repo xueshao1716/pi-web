@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
-import {MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog, Paintbrush } from 'lucide-react'
+import {MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog } from 'lucide-react'
 import TuiTerminal from './components/TuiTerminal'
 import { useApp } from './store'
 import { useIsMobile } from './hooks/useIsMobile'
@@ -36,7 +36,6 @@ const NAV: { route: Route; icon: typeof MessagesSquare; label: string }[] = [
   { route: 'tasks', icon: Clock4, label: '任务' },
   { route: 'apps', icon: LayoutGrid, label: '应用' },
   { route: 'system', icon: MonitorCog, label: '系统' },
-  { route: 'theme-editor', icon: Paintbrush, label: '主题' },
 ]
 
 function PageLoader() {
