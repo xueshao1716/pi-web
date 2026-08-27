@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import { MonitorCog, RefreshCw, CheckCircle2, AlertTriangle, Plus, Trash2, Save, Copy,
-  MessagesSquare, Sparkles, Clock, Factory, Image, Brain, FlaskConical, Sprout, TerminalSquare, Globe,
-  Cpu, Plug, Wrench, FolderClosed } from 'lucide-react'
+  MessagesSquare, Sparkles, Clock, Factory, Image, Brain, FlaskConical, Sprout, TerminalSquare, Globe } from 'lucide-react'
 import useSWR from 'swr'
-import { SystemApi, EngineApi } from '../api'
+import { SystemApi } from '../api'
 
 // ── 系统页（08-26，从弹窗改为独立页面）：能力清单 / 运行状态 / 检测更新 / 外网配置（可编辑）──
 
@@ -33,69 +32,7 @@ function fmtTime(ts: string) {
   try { return new Date(ts).toLocaleString('zh-CN', { hour12: false }) } catch { return ts }
 }
 
-// ── 引擎面板（旧版引入：组件实现 / 插件注册表 / 动态注册）──
 // ── 引擎面板（实用化：运行底盘 + 只读插件架构，去掉展示性注册/卸载）──
-function EngineSection() {
-  const { data, mutate } = useSWR('engine-status', () => EngineApi.status(), { refreshInterval: 60000 })
-  const st: any = data || {}
-  const comp = st.components || {}
-
-  const compMeta = [
-    { key: 'modelAdapter', name: '模型适配器', note: 'ModelAdapter', desc: '模型调用入口，当前走 HTTP/OpenAI 兼容', icon: <Brain className="w-4 h-4 text-pi-accent" /> },
-    { key: 'toolRegistry', name: '工具注册表', note: 'ToolRegistry', desc: '暴露给模型的可调用工具集', icon: <Wrench className="w-4 h-4 text-pi-accent" /> },
-    { key: 'sessionStore', name: '会话存储', note: 'SessionStore', desc: '会话历史持久化方式', icon: <FolderClosed className="w-4 h-4 text-pi-accent" /> },
-    { key: 'agentLoop', name: 'Agent 循环', note: 'AgentLoop', desc: '一次对话的执行编排', icon: <RefreshCw className="w-4 h-4 text-pi-accent" /> },
-  ]
-  const tools: string[] = comp.toolRegistry?.tools || []
-
-  return (
-    <section className="mb-8">
-      <h2 className="text-sm font-semibold text-pi-text mb-3 flex items-center gap-1.5"><Cpu className="w-4 h-4 text-pi-accent" />引擎运行底盘</h2>
-      <p className="text-[11px] text-pi-dim2 -mt-1 mb-3">看清系统当前用什么在跑·这些件都是可替换插件，一键换实现即可定制行为。</p>
-      {/* 运行底盘：4 个核心组件 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-3">
-        {compMeta.map(c => {
-          const v = comp[c.key] || {}
-          return (
-            <div key={c.key} className="panel !p-3.5 flex gap-3 items-start card-hover">
-              <div className="w-8 h-8 rounded-pi-md bg-pi-accent/12 text-pi-accent flex items-center justify-center flex-shrink-0">{c.icon}</div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[13px] font-medium text-pi-text">{c.name}</span>
-                  <span className="px-1.5 py-0.5 rounded-pi-sm bg-pi-dim2/12 text-pi-dim2 text-[10px]">可替换</span>
-                </div>
-                <div className="font-mono text-[11px] text-pi-accent mt-0.5 truncate">{v.name || '—'}</div>
-                <div className="text-[11px] text-pi-dim2 mt-1 leading-relaxed">{c.desc}</div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-      {/* 可用工具 */}
-      <div className="panel !p-4 mb-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[12px] text-pi-dim">可用工具</span>
-          {tools.length ? tools.map(t => <span key={t} className="px-1.5 py-0.5 rounded-pi-sm bg-pi-accent/12 text-pi-accent text-[10px] font-mono">{t}</span>) : <span className="text-[11px] text-pi-dim2">—</span>}
-        </div>
-      </div>
-      {/* 已挂载插件（只读，展示架构） */}
-      <div className="panel !p-4">
-        <div className="text-[12px] text-pi-dim mb-2.5">已挂载插件 · {(st.plugins || []).length} 个</div>
-        <div className="space-y-1.5">
-          {(st.plugins || []).map((p: any) => (
-            <div key={p.id || p.name} className="flex items-center gap-2 py-1.5 border-b border-pi-border-soft last:border-none">
-              <Plug className="w-3.5 h-3.5 text-pi-dim flex-shrink-0" />
-              <span className="text-xs font-mono text-pi-text">{p.name}<span className="text-pi-dim2 ml-1.5">v{p.version || '?'}</span></span>
-              {p.deps?.length ? <span className="text-[10px] text-pi-dim2 truncate">依赖：{p.deps.join(', ')}</span> : null}
-              <span className={`ml-auto px-1.5 py-0.5 rounded-pi-sm text-[10px] ${p.mounted ? 'bg-pi-green/15 text-pi-green' : 'bg-pi-dim2/15 text-pi-dim2'}`}>{p.mounted ? '已挂载' : '未挂载'}</span>
-            </div>
-          ))}
-          {!(st.plugins || []).length && <div className="text-[11px] text-pi-dim2">暂无插件</div>}
-        </div>
-      </div>
-    </section>
-  )
-}
 export default function System() {
   const { data, mutate } = useSWR('system-info', () => SystemApi.info(), { dedupingInterval: 30000 })
   const info: any = data || {}
@@ -202,8 +139,6 @@ export default function System() {
           </div>
         </section>
 
-        {/* 引擎面板（旧版引入：组件实现 / 插件注册表 / 动态注册） */}
-        <EngineSection />
 
         {/* 外网配置（可编辑） */}
         <section className="mb-8">

@@ -277,6 +277,7 @@ export const SystemApi = {
 // ── 引擎面板（旧版引入：组件实现 / 插件注册表 / 动态注册 / /api/engine/chat）──
 export const EngineApi = {
   status: () => api<any>('/api/engine/status'),
+  tools: () => api<{ tools: { name: string; description: string }[]; count: number; dsh: boolean; skill: boolean }>('/api/engine/tools'),
   registerPlugin: (def: any) => api<any>('/api/engine/plugins/register', { method: 'POST', body: def }),
   unregisterPlugin: (id: string) => api<any>('/api/engine/plugins/unregister', { method: 'POST', body: { id } }),
 }

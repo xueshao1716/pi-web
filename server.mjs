@@ -141,6 +141,7 @@ const KEEP_MODELS = new Set([
   "openrouter/deepseek/deepseek-v4-pro",
   "openrouter/stealth/ox-alpha",
   "bigmodel/glm-5.3",
+  "bigmodel/glm-5.3-flash",
   "openrouter/deepseek/deepseek-r1",
   "openrouter/qwen/qwen3-max",
   "openrouter/qwen/qwen3.7-max",
@@ -1822,6 +1823,17 @@ const API_ROUTES = [
   ["GET", "/api/agent/events", (res) => handleAgentEventOut(res)],
   // ── Gateway 2.0 插件化引擎（dsh 设计沉淀）──
   ["GET", "/api/engine/status", async (res) => { try { json(res, 200, (await initEngine()).status()); } catch (e) { json(res, 500, { error: String(e?.message || e) }); } }],
+  // 真实工具集（主聊天 UNIFIED_TOOLS）：名字+描述+是否 dsh 注入，供引擎页「工具注册表」可视化
+  ["GET", "/api/engine/tools", async (res) => {
+    try {
+      const tools = (UNIFIED_TOOLS || []).map(t => {
+        const f = t?.function || t;
+        return { name: f?.name || t?.name || "?", description: (f?.description || t?.description || "").slice(0, 160) };
+      });
+      const names = tools.map(t => t.name);
+      json(res, 200, { tools, count: tools.length, dsh: names.includes("dsh_task"), skill: names.includes("activate_skill") });
+    } catch (e) { json(res, 500, { error: String(e?.message || e) }); }
+  }],
   ["POST", "/api/engine/plugins/register", async (res, req) => {
     try {
       const def = await readBody(req, 2);

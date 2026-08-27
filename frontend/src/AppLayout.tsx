@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
-import {MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog } from 'lucide-react'
+import {MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog, Cpu } from 'lucide-react'
 import TuiTerminal from './components/TuiTerminal'
 import { useApp } from './store'
 import { useIsMobile } from './hooks/useIsMobile'
@@ -21,6 +21,7 @@ const ModelHub = lazy(() => import('./pages/ModelHub'))
 const Assets = lazy(() => import('./pages/Assets'))
 const Tasks = lazy(() => import('./pages/Tasks'))
 const Apps = lazy(() => import('./pages/Apps'))
+const EnginePage = lazy(() => import('./pages/Engine'))
 const LingXiPage = lazy(() => import('./pages/LingXi'))
 const SystemPage = lazy(() => import('./pages/System'))
 const ThemeEditorPage = lazy(() => import('./pages/ThemeEditor'))
@@ -35,6 +36,7 @@ const NAV: { route: Route; icon: typeof MessagesSquare; label: string }[] = [
   { route: 'assets', icon: Images, label: '资产' },
   { route: 'tasks', icon: Clock4, label: '任务' },
   { route: 'apps', icon: LayoutGrid, label: '应用' },
+  { route: 'engine', icon: Cpu, label: '引擎' },
   { route: 'system', icon: MonitorCog, label: '系统' },
 ]
 
@@ -47,6 +49,7 @@ function PageBody({ route }: { route: Route }) {
   if (route === 'assets') return <Assets />
   if (route === 'tasks') return <Tasks />
   if (route === 'apps') return <Apps />
+  if (route === 'engine') return <EnginePage />
   if (route === 'lingxi') return <LingXiPage />
   if (route === 'workshop') return <WorkshopPage />
   if (route === 'system') return <SystemPage />
