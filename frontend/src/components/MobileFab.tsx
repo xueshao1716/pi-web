@@ -127,7 +127,7 @@ export default function MobileFab({ nav, route, onSettings, onOpenSessions, onOp
             ))}
           </div>
           {/* 快捷操作：会话/右栏/主题/设置 */}
-          <div className="border-t border-pi-border-soft px-3 py-2 grid grid-cols-4 gap-1.5">
+          <div className="border-t border-pi-border-soft px-3 py-2 grid grid-cols-3 gap-1.5">
             <button aria-label="会话"
               className="touch-hit flex flex-col items-center gap-1 rounded-pi-md px-1 py-2 transition-colors hover:bg-pi-bg-hover/50"
               onClick={() => { setOpen(false); onOpenSessions() }}>
@@ -145,12 +145,6 @@ export default function MobileFab({ nav, route, onSettings, onOpenSessions, onOp
               onClick={() => { setOpen(false); onOpenTheme() }}>
               <Palette className="w-5 h-5 text-pink-300" strokeWidth={1.8} />
               <span className="text-[10px] text-pi-text leading-none">主题</span>
-            </button>
-            <button aria-label="设置"
-              className="touch-hit flex flex-col items-center gap-1 rounded-pi-md px-1 py-2 transition-colors hover:bg-pi-bg-hover/50"
-              onClick={() => { setOpen(false); onSettings() }}>
-              <Settings2 className="w-5 h-5 text-pi-dim" strokeWidth={1.8} />
-              <span className="text-[10px] text-pi-text leading-none">设置</span>
             </button>
           </div>
         </div>

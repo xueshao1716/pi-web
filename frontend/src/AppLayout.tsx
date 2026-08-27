@@ -173,17 +173,15 @@ export default function AppLayout() {
           ))}
         </nav>
 
-        {/* 悬浮功能按钮（FAB）：收纳桌面侧栏主功能，手机端好找（sessions 抽屉时隐藏避免遮挡） */}
-        {mobileDrawer !== 'sessions' && (
-          <MobileFab
-            nav={nav}
-            route={route}
-            onSettings={() => setModelOpen(true)}
-            onOpenSessions={() => { setMobileDrawer('sessions') }}
-            onOpenPanel={(k) => { setMobileDrawer('none'); nav('chat'); setRightPanel(k) }}
-            onOpenTheme={() => { setMobileDrawer('none'); nav('theme-editor') }}
-          />
-        )}
+        {/* 悬浮功能按钮（FAB）：收纳桌面侧栏主功能；始终显示（会话抽屉也保留，可切回其他功能） */}
+        <MobileFab
+          nav={nav}
+          route={route}
+          onSettings={() => { setMobileDrawer('none'); nav('models') }}
+          onOpenSessions={() => { setMobileDrawer('sessions') }}
+          onOpenPanel={(k) => { setMobileDrawer('none'); nav('chat'); setRightPanel(k) }}
+          onOpenTheme={() => { setMobileDrawer('none'); nav('theme-editor') }}
+        />
 
         <ModelManager visible={modelOpen} onClose={() => setModelOpen(false)} />
         {palette}
