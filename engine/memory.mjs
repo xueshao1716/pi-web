@@ -60,6 +60,8 @@ export function loadRecentMemory(wsRoot, max = 10) {
 // 用途：任务消息按关键词检索历史相关条目（“上次那个方案/之前说的端口”类语义引用可查）
 // 索引按 mtime 缓存，避免每次对话全量扫文件
 const _logIdx = { mtime: 0, blocks: [], toks: [] };
+// 归档层索引（冷存储）：热区命中不足时降级检索，结果标【归档】
+const _arcIdx = { files: "", blocks: [], toks: [] };
 function _tokenize(str) {
   const out = [];
   const s = String(str || "");
@@ -102,7 +104,49 @@ export function searchMemoryLog(wsRoot, query, max = 5) {
     }
     // 命中数优先，其次新近（序号大 = 新）
     scored.sort((a, b) => b.hits - a.hits || b.i - a.i);
-    return scored.slice(0, max).map(x => x.b);
+    const hot = scored.slice(0, max).map(x => x.b);
+    // ── 两层召回：热区命中不足 → 降级搜归档（结果标【归档】提醒时效）──
+    if (hot.length < max) {
+      try {
+        const arcDir = path.join(wsRoot, "记忆", "归档");
+        const files = fs.existsSync(arcDir)
+          ? fs.readdirSync(arcDir).filter(f => /^记忆日志-.*\.md$/.test(f)).sort().reverse()
+          : [];
+        const sig = files.join(",");
+        if (sig !== _arcIdx.files) {
+          _arcIdx.blocks = []; _arcIdx.toks = [];
+          for (const f of files) {
+            const raw = fs.readFileSync(path.join(arcDir, f), "utf8");
+            for (const raw_blk of raw.split(/\n### /)) {
+              if (!raw_blk.trim()) continue;
+              const b = (raw_blk.startsWith("### ") ? raw_blk : "### " + raw_blk).trim();
+              _arcIdx.blocks.push(b);
+              _arcIdx.toks.push(new Set(_tokenize(b)));
+            }
+          }
+          _arcIdx.files = sig;
+        }
+        const q2 = q;
+        const scored2 = [];
+        for (let i = 0; i < _arcIdx.blocks.length; i++) {
+          let hits = 0;
+          for (const t of q2) if (_arcIdx.toks[i].has(t)) hits++;
+          if (hits > 0) {
+            const m = _arcIdx.blocks[i].match(/要点：([\s\S]*)/);
+            let w = 1;
+            if (m) { const t2 = new Set(_tokenize(m[1])); let h2 = 0; for (const t of q2) if (t2.has(t)) h2++; if (h2 > 0) w = 2; }
+            scored2.push({ b: _arcIdx.blocks[i], hits: hits * w, i });
+          }
+        }
+        scored2.sort((a, b) => b.hits - a.hits || b.i - a.i);
+        const need = max - hot.length;
+        for (const x of scored2.slice(0, need)) {
+          const b = x.b.replace(/^### /, "### 【归档】");
+          hot.push(b);
+        }
+      } catch {}
+    }
+    return hot;
   } catch { return []; }
 }
 
