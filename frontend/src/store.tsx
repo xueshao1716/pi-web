@@ -62,6 +62,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [modelsData?.current]) // eslint-disable-line
 
+  // 模型存在性校验：本地选的模型若已下架/被清理(不在当前模型列表) → 回退服务端默认并提示。
+  // 否则输入框显示 A、实际静默降级跑 B（显示与实发不一致）
+  useEffect(() => {
+    const list: Model[] = modelsData?.models || []
+    if (!list.length || currentModel === 'auto/auto') return
+    const idx = currentModel.indexOf('/')
+    const exists = list.some(m => m.provider === currentModel.slice(0, idx) && m.id === currentModel.slice(idx + 1))
+    if (!exists && modelsData?.current) {
+      const mk = `${modelsData.current.provider}/${modelsData.current.id}`
+      setCurModel(mk)
+      try { localStorage.setItem('pi_model', mk) } catch {}
+      // 惰性 import 避免循环依赖（Toast→store）
+      import('./components/Toast').then(({ toast }) => toast(`原模型 ${currentModel} 已不可用，已切换为 ${mk}`, 'error'))
+    }
+  }, [modelsData, currentModel])
+
   const login = useCallback(async (tk: string, apiBase?: string) => {
     setToken(tk); if (apiBase) { try { localStorage.setItem('pi_api_base', apiBase) } catch {} }
     setT(tk); setAuthed(true)

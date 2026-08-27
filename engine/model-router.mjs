@@ -93,12 +93,12 @@ export function pickFallbackDefault() {
 // 2026-08-20 修正残留：末位兜底 pickFallbackDefault() 也可能返回被排除模型——现在全链过滤。
 export function pickFallbackExcluding(excludeModel) {
   const excludeKey = modelKey(excludeModel);
-  // 2026-08-21 升级：复读/异常兜底优先 ox-alpha（OpenRouter 免费推理强）→ mimo → flash-lite
+  // 2026-08-27 调序：ox-alpha 已下架；小米不再优先——商汤 → 智谱glm-flash → 小米
   // （之前只有 flash-lite 兜底，mimo 复读时切去更弱的模型，体验差）
   const cands = [
-    findLive("openrouter", /ox-alpha/i),
-    findLive("xiaomi-token-plan-cn", /mimo-v2\.5$/i),
     findLive("sensenova", /flash-lite/i),
+    findLive("zai-coding-cn", /glm-5\.3-flash/i),
+    findLive("xiaomi-token-plan-cn", /mimo-v2\.5$/i),
     findLive("nvidia", /llama-3\.1-8b/i),
     findLive("volces-ark", /ark-code/i),
   ].filter(Boolean).filter(m => modelKey(m) !== excludeKey);
@@ -138,10 +138,12 @@ export function classifyTaskComplexity(text) {
   return { level: complex ? "complex" : "simple", score, reasons: reasons.slice(0, 5) };
 }
 
-// flash 主力候选：小米 mimo（免费·100万上下文·工具调用实测正常·2026-08-21 升主力）→ 商汤 flash-lite → ocGo flash → nvidia → ark
+// flash 主力候选（2026-08-27 用户定：小米太垃圾不再优先）——
+// 商汤 flash-lite（免费实测稳）→ 智谱 glm-5.3-flash（coding 套餐免费）→ 小米 mimo → ocGo flash → nvidia → ark
 function flashCandidate() {
-  return findLive("xiaomi-token-plan-cn", /mimo-v2\.5$/i)
-    || findLive("sensenova", /flash-lite/i)
+  return findLive("sensenova", /flash-lite/i)
+    || findLive("zai-coding-cn", /glm-5\.3-flash/i)
+    || findLive("xiaomi-token-plan-cn", /mimo-v2\.5$/i)
     || ocGoCandidate(/deepseek-v4-flash/i)
     || findLive("nvidia", /llama-3\.1-8b/i)
     || findLive("volces-ark", /ark-code/i)
