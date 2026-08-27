@@ -33,10 +33,14 @@ export default function MobileFab({ nav, route, onSettings }: {
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number; moving: boolean } | null>(null)
   const [dragging, setDragging] = useState(false)
 
-  // 计算默认位置（mount 时）：右侧、发框上方
+  // 计算默认位置（mount 时）：右侧、发框上方；优先用 localStorage 记忆的位置
   useEffect(() => {
     const w = window.innerWidth, h = window.innerHeight
-    setPos({ x: w - BTN - MARGIN, y: h - BTN - MARGIN - 88 }) // 88px 抬到发送框上方
+    let saved: { x: number; y: number } | null = null
+    try { const s = localStorage.getItem('pi_fab_pos'); if (s) saved = JSON.parse(s) } catch {}
+    // 校验 saved 是否在可视范围内（窗口可能变过）并留边距
+    const inRange = saved && saved.x >= MARGIN && saved.x <= w - BTN - MARGIN && saved.y >= MARGIN && saved.y <= h - BTN - MARGIN
+    setPos(inRange ? saved : { x: w - BTN - MARGIN, y: h - BTN - MARGIN - 88 })
   }, [])
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -57,7 +61,7 @@ export default function MobileFab({ nav, route, onSettings }: {
     // 移动超过阈值判定为拖动（而非点击）
     if (!d.moving && Math.hypot(dx, dy) > 4) d.moving = true
     if (d.moving) {
-      setDragging(true)
+      if (!dragging) setDragging(true)
       const w = window.innerWidth, h = window.innerHeight
       const nx = Math.max(MARGIN, Math.min(w - BTN - MARGIN, d.origX + dx))
       const ny = Math.max(MARGIN, Math.min(h - BTN - MARGIN, d.origY + dy))
@@ -67,17 +71,17 @@ export default function MobileFab({ nav, route, onSettings }: {
 
   const onPointerUp = (e: React.PointerEvent) => {
     const d = dragRef.current
-    const wasDragging = d?.moving
+    const wasDragging = !!d?.moving
     dragRef.current = null
     if (wasDragging) {
       setDragging(false)
-      // 拖动结束：关闭菜单（若开）避免误触
       setOpen(false)
+      // 持久化位置（跨刷新记住）
+      try { if (pos) localStorage.setItem('pi_fab_pos', JSON.stringify(pos)) } catch {}
       e.preventDefault()
       return
     }
     // 非拖动：视为点击 → 切换菜单
-    if (dragging) setDragging(false)
     setOpen(o => !o)
   }
 
@@ -88,6 +92,8 @@ export default function MobileFab({ nav, route, onSettings }: {
   const btnStyle = {
     ...posStyle,
     width: BTN, height: BTN,
+    // ⚠️ 移动端触摸拖动必须 touch-action:none，否则浏览器当成滚动/缩放手势，pointerMove 被中断、拖不远
+    touchAction: 'none',
     transition: dragging ? 'none' : 'box-shadow .2s, transform .2s',
     transform: dragging ? 'scale(1.06) rotate(0deg)' : (open ? 'scale(1) rotate(0deg)' : 'scale(1)'),
     background: 'linear-gradient(135deg, var(--pi-accent), var(--pi-accent2))',
