@@ -88,7 +88,7 @@ const Tags = ({ items, value, onChange }: { items: [string, string][]; value: st
   <div className="flex flex-wrap gap-1.5">
     {items.map(([k, label]) => (
       <button key={k} onClick={() => onChange(k)}
-        className={`px-2.5 py-1 rounded-full text-[11px] border transition-all ${value === k ? 'bg-pi-accent text-white border-pi-accent font-medium' : 'bg-transparent text-pi-dim border-pi-border-soft hover:text-pi-text hover:border-pi-dim'}`}>
+        className={`px-2.5 py-1 rounded-full text-[11px] border transition-colors duration-fast ${value === k ? 'bg-pi-accent text-white border-pi-accent font-medium' : 'bg-transparent text-pi-dim border-pi-border-soft hover:text-pi-text hover:border-pi-dim'}`}>
         {label}
       </button>
     ))}
@@ -150,7 +150,7 @@ export default function WanXiang() {
   const [gambleLocks, setGambleLocks] = useState<Set<string>>(new Set(['gender']))
   // 输出
   const [output, setOutput] = useState('')
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState('')
 
   // 场景切换 → 自动填充
   const selectScene = useCallback((k: keyof typeof SCENES) => {
@@ -212,7 +212,7 @@ export default function WanXiang() {
 
   const copyToClipboard = useCallback(async () => {
     if (!output) return
-    try { await navigator.clipboard.writeText(output); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch {}
+    try { await navigator.clipboard.writeText(output); setCopied('1'); setTimeout(() => setCopied(''), 1500) } catch {}
   }, [output])
 
   return (
@@ -226,7 +226,7 @@ export default function WanXiang() {
         <div className="flex flex-wrap gap-1.5">
           {SCENE_KEYS.map(k => (
             <button key={k} onClick={() => selectScene(k)}
-              className={`px-2.5 py-1 rounded-full text-[11px] border transition-all ${scene === k ? 'bg-pi-accent text-white border-pi-accent font-medium' : 'bg-transparent text-pi-dim border-pi-border-soft hover:text-pi-text hover:border-pi-dim'}`}>
+              className={`px-2.5 py-1 rounded-full text-[11px] border transition-colors duration-fast ${scene === k ? 'bg-pi-accent text-white border-pi-accent font-medium' : 'bg-transparent text-pi-dim border-pi-border-soft hover:text-pi-text hover:border-pi-dim'}`}>
               {SCENES[k].icon} {SCENES[k].name}
             </button>
           ))}
@@ -297,7 +297,7 @@ export default function WanXiang() {
         <Field label="输出平台">
           <div className="flex gap-1.5">
             {[['dreamina', '即梦'], ['mj', 'MJ'], ['sd', 'SD']].map(([k, l]) => (
-              <button key={k} onClick={() => setPlatform(k)} className={`px-2.5 py-1 rounded-full text-[11px] border transition-all ${platform === k ? 'bg-pi-accent text-white border-pi-accent' : 'bg-transparent text-pi-dim border-pi-border-soft hover:text-pi-text'}`}>{l}</button>
+              <button key={k} onClick={() => setPlatform(k)} className={`px-2.5 py-1 rounded-full text-[11px] border transition-colors duration-fast ${platform === k ? 'bg-pi-accent text-white border-pi-accent' : 'bg-transparent text-pi-dim border-pi-border-soft hover:text-pi-text'}`}>{l}</button>
             ))}
           </div>
         </Field>
@@ -309,7 +309,7 @@ export default function WanXiang() {
       </div>
 
       {/* 生成按钮 */}
-      <button onClick={generate} className="w-full py-3 rounded-pi-lg bg-gradient-to-r from-pi-accent to-pi-accent2 text-white font-semibold text-sm tracking-wider hover:brightness-110 transition-all">
+      <button onClick={generate} className="w-full py-3 rounded-pi-lg bg-gradient-to-r from-pi-accent to-pi-accent2 text-white font-semibold text-sm tracking-wider hover:brightness-110 transition-colors duration-fast">
         <Sparkles className="w-4 h-4 inline mr-2" />生成提示词
       </button>
 
