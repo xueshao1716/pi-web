@@ -215,6 +215,20 @@ export function generateTheme(seed) {
   v['--pi-input-bg'] = v['--pi-field']
   v['--pi-input-border'] = v['--pi-field-border']
 
+  // ── P1 组件级语义 token（08-27）：panel/dialog/badge/glass/info，主题穿透到组件层 ──
+  v['--pi-panel-bg'] = v['--pi-bg1']
+  v['--pi-panel-border'] = v['--pi-border']
+  v['--pi-dialog-bg'] = v['--pi-bg2']
+  v['--pi-dialog-border'] = v['--pi-border']
+  v['--pi-badge-bg'] = v['--pi-accent-soft']
+  v['--pi-badge-fg'] = v['--pi-accent']
+  v['--pi-badge-border'] = 'transparent'
+  v['--pi-glass-bg'] = seed.light ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.06)'
+  v['--pi-glass-border'] = seed.light ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)'
+  v['--pi-info'] = '#3b82f6'
+  v['--pi-info-fg'] = '#ffffff'
+  v['--pi-muted'] = solveLForContrast(dimBase, seed.bg, 3.0)
+
   // 图表/序列色（高区分度，固定；主题 only 影响可读性不重映射）
   const CHART = ['#5470f7', '#23c399', '#f0b64a', '#2fb4d6', '#b06cf2']
   CHART.forEach((c, i) => { v[`--pi-chart-${i + 1}`] = c })
