@@ -335,10 +335,18 @@ export default function ThemeEditorPage() {
   })
 
   useEffect(() => {
+    // 从 localStorage 读最近一次用户选择(ThemeSwitcher 切主题已写 localStorage)
+    const lt = (() => { try { return localStorage.getItem('pi_theme') || '' } catch { return '' } })()
+    const la = (() => { try { return localStorage.getItem('pi_accent') || '' } catch { return '' } })()
+    const lw = (() => { try { return localStorage.getItem('pi_wallpaper') || '' } catch { return '' } })()
+    if (lt) setTheme(lt)
+    if (la) setAccent(la)
+    if (lw) setWallpaper(lw)
+    // 服务端 theme-prefs 作为后备(仅当 localStorage 无值时); 不覆盖 localStorage 的权威值
     ThemeApi.get().then(d => {
-      if (d?.theme) setTheme(d.theme)
-      if (d?.accent) setAccent(d.accent)
-      if (d?.wallpaper) setWallpaper(d.wallpaper)
+      if (d?.theme && !lt) setTheme(d.theme)
+      if (d?.accent && !la) setAccent(d.accent)
+      if (d?.wallpaper && !lw) setWallpaper(d.wallpaper)
     }).catch(() => {})
   }, [])
 
