@@ -262,9 +262,9 @@ export default function AppLayout() {
         {route === 'chat' ? <ChatArea rightPanel={rightPanel} onRightPanel={setRightPanel} /> : pageArea}
       </div>
 
-      {/* 动态右栏（仅对话路由；08-23：col-right 独立亮度层） */}
+      {/* 动态右栏（全屏覆盖；08-23 col-right 独立亮度层，08-27 改为全屏） */}
       {route === 'chat' && rightPanel !== 'chat' && (
-        <div className="w-[44%] min-w-[360px] border-l border-pi-border col-right glass flex flex-col min-h-0 relative z-10">
+        <div className="fixed inset-0 z-[var(--pi-z-rightpanel)] col-right glass-strong flex flex-col min-h-0">
           <div className="flex items-center gap-1 px-3 h-10 border-b border-pi-border-soft flex-shrink-0">
             {([['workspace', '工作空间'], ['deliveries', '交付物'], ['terminal', '终端'], ['activity', '活动'], ['tui', 'TUI']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setRightPanel(k)}
