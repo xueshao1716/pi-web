@@ -74,11 +74,9 @@ export async function handleWorkshopPpt(ctx, res, body) {
     });
     const id = Date.now().toString(36);
     // ⚠️ Windows 下中文路径会被 bash/python 子进程编码打乱(GBK/UTF-8) → 脚本写不出产物。
-    // 工作目录改用纯 ascii(不掺中文'工程'/主题名)，产物再回迁到「工程」供资产库归档。
-    const workDir = path.join(WS_ROOT, "_workshop", `ppt-${id}`);
+    // 工作目录改用纯 ascii(不掺中文'工程'/主题名)，产物留在 workshop-out(能被资产库扫到，不被 _ 前缀排除)。
+    const workDir = path.join(WS_ROOT, "workshop-out", `ppt-${id}`);
     fs.mkdirSync(workDir, { recursive: true });
-    const themeSafe = String(theme).replace(/[^\w\u4e00-\u9fa5-]/g, "").slice(0, 12) || "ppt";
-    const finalDir = path.join(WS_ROOT, "工程", `PPT-${themeSafe}-${id}`);
     const prompt = `你是 ppt-generator 技能的执行者。用户通过「PPT 工作室」提交了表单，请按技能流程**跳过用户确认环节，直接完整执行**：
 
 用户需求：
@@ -118,14 +116,9 @@ export async function handleWorkshopPpt(ctx, res, body) {
           }
         } catch {}
       }
-      // 产物回迁到「工程」目录（ascii 工作区 → 中文归档区），供资产库/交付扫描
+      // 产物留在 ascii 工作区 workshop-out（能被 scanRecentArtifacts 扫到），不回迁避免中文编码风险
       if (file) {
-        try {
-          fs.mkdirSync(path.dirname(finalDir), { recursive: true });
-          const src = path.join(WS_ROOT, file.path);
-          const dst = path.join(finalDir, "presentation.pptx");
-          if (fs.existsSync(src)) { fs.copyFileSync(src, dst); file.path = path.relative(WS_ROOT, dst).replace(/\\/g, "/"); }
-        } catch {}
+        // 不再回迁到中文'工程'目录（易踩 GBK/UTF-8 编码），产物 path 就是 workshop-out 相对路径
       }
       if (file) {
         write("file", file);
@@ -188,11 +181,9 @@ export async function handleWorkshopNovel(ctx, res, body) {
     });
     const safeTitle = title.replace(/[\/:*?"<>|\s]+/g, "-").slice(0, 20);
     const id = Date.now().toString(36);
-    // ⚠️ Windows 中文路径子进程编码问题 → 用 ascii 工作区，产物再回迁
-    const workDir = path.join(WS_ROOT, "_workshop", `novel-${id}`);
+    // ⚠️ Windows 中文路径子进程编码问题 → 用 ascii 工作区，产物留在 workshop-out
+    const workDir = path.join(WS_ROOT, "workshop-out", `novel-${id}`);
     fs.mkdirSync(workDir, { recursive: true });
-    const titleSafe = String(title).replace(/[^\w\u4e00-\u9fa5-]/g, "").slice(0, 12) || "novel";
-    const finalDir = path.join(WS_ROOT, "工程", `小说-${titleSafe}-${id}`);
     const prompt = `你是 novel-forge-v10 技能的执行者。用户通过「小说工作室」提交了表单，请按 v10 流程**跳过用户确认环节，直接完整执行**：
 
 用户需求：
