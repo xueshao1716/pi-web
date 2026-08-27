@@ -52,17 +52,18 @@ function App({ accent, setAccent, theme, setTheme, wallpaper, setWallpaper }: {
   }, [tokens])
 
   useEffect(() => {
-    const el = document.documentElement as any
+    const wp = document.getElementById('pi-wallpaper') as HTMLElement | null
+    if (!wp) return
     if (wallpaper) {
-      el.style.backgroundImage = `url(${wallpaper})`
-      el.style.backgroundSize = 'cover'
-      el.style.backgroundPosition = 'center'
-      el.style.backgroundRepeat = 'no-repeat'
+      wp.style.backgroundImage = `url(${wallpaper})`
+      wp.style.backgroundSize = 'cover'
+      wp.style.backgroundPosition = 'center'
+      wp.style.backgroundRepeat = 'no-repeat'
     } else {
-      el.style.backgroundImage = ''
-      el.style.backgroundSize = ''
-      el.style.backgroundPosition = ''
-      el.style.backgroundRepeat = ''
+      wp.style.backgroundImage = ''
+      wp.style.backgroundSize = ''
+      wp.style.backgroundPosition = ''
+      wp.style.backgroundRepeat = ''
     }
   }, [wallpaper])
 

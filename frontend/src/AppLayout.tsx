@@ -117,9 +117,10 @@ export default function AppLayout() {
   /* ── 移动端布局：TabBar 五入口（对话/会话/资产/任务/设置；模型在对话页下拉） ── */
   if (isMobile) {
     return (
-      <div className="h-screen flex flex-col bg-pi-bg text-pi-text relative"
+      <div className="h-screen flex flex-col text-pi-text relative"
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-        <div className="absolute inset-0 pointer-events-none z-0"
+        <div id="pi-wallpaper" className="fixed inset-0 z-0 pointer-events-none" />
+        <div className="absolute inset-0 pointer-events-none z-[1]"
           style={{ background: 'radial-gradient(720px 420px at 82% -8%, color-mix(in oklab, var(--pi-accent) 12%, transparent), transparent 62%), radial-gradient(560px 380px at 8% 108%, color-mix(in oklab, var(--pi-accent2) 7%, transparent), transparent 60%)' }} />
         {/* 主内容层 */}
         <div className="flex-1 flex min-h-0 relative z-10">
@@ -176,7 +177,8 @@ export default function AppLayout() {
 
   /* ── 桌面布局：图标 rail + 会话列表 + 主区 + 动态右栏 ── */
   return (
-    <div className="h-screen flex bg-pi-bg text-pi-text relative">
+    <div className="h-screen flex text-pi-text relative">
+      <div id="pi-wallpaper" className="fixed inset-0 z-0 pointer-events-none" />
       {/* 图标导航 rail（08-23：col-sidebar 顶部天光，拉开与中栏层次） */}
       <nav className="w-14 flex-shrink-0 flex flex-col items-center py-3 gap-1.5 col-sidebar border-r border-pi-border relative z-20">
         <div className="w-8 h-8 rounded-pi-md avatar-grad flex items-center justify-center text-white font-bold mb-2">语</div>

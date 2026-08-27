@@ -354,7 +354,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   const liveCls = agentStatus === 'busy' ? (busyFromBackground ? 'status-pill-live-bg' : 'status-pill-live-busy') : agentStatus === 'error' ? 'status-pill-live-error' : ''
 
   return (
-    <div className="relative flex-1 flex flex-col min-w-0 min-h-0">
+    <div className="relative flex-1 flex flex-col min-w-0 min-h-0 bg-pi-bg/80 backdrop-blur-sm">
       {/* 下拉刷新指示器（移动端触屏；锚定头部下方，平时 opacity:0 不占位） */}
       <div aria-hidden
         className="pointer-events-none absolute z-[var(--pi-z-toast)] left-1/2 -translate-x-1/2 top-[52px] w-9 h-9 rounded-full border border-pi-border bg-pi-bg1/90 backdrop-blur-xl shadow-xl grid place-items-center"
