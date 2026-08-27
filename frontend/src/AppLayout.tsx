@@ -162,7 +162,7 @@ export default function AppLayout() {
               <ChatArea compactHeader />
               {rightPanel !== 'chat' && (
                 <div className="fixed inset-0 z-[var(--pi-z-rightpanel)] glass-strong flex flex-col"
-                  style={{ top: 'calc(env(safe-area-inset-top, 0px) + 48px)' }}>
+                  style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
                   <div className="flex items-center gap-1 px-3 h-10 border-b border-pi-border-soft flex-shrink-0">
                     {([['workspace', '工作空间'], ['deliveries', '交付物'], ['terminal', '终端'], ['activity', '活动'], ['tui', 'TUI']] as const).map(([k, label]) => (
                       <button key={k} onClick={() => setRightPanel(k)}
