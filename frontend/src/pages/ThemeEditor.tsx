@@ -1,0 +1,299 @@
+// ══════════════════════════════════════════════════════════
+// 设计令牌工作台（08-27 P2）：可视化主题编辑器
+// 实时预览 + 导出/保存自定义主题 + token 参考
+// ══════════════════════════════════════════════════════════
+import { useState, useEffect, useRef } from 'react'
+import { SEEDS, generateTheme } from '../theme/generate.mjs'
+import { THEME_PRESETS, ACCENT_PRESETS } from '../theme/palettes'
+import { ThemeApi } from '../api'
+import { toast } from '../components/Toast'
+
+function hexToOklch(hex: string): { L: number; C: number; H: number } {
+  // 简化：用 hex→rgb→oklch（复用 generate.mjs 的数学，这里内联简化版）
+  const h = hex.replace('#', '')
+  const r = parseInt(h.slice(0, 2), 16) / 255
+  const g = parseInt(h.slice(2, 4), 16) / 255
+  const b = parseInt(h.slice(4, 6), 16) / 255
+  const lin = (c: number) => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  const [lr, lg, lb] = [lin(r), lin(g), lin(b)]
+  const l = 0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb
+  const m = 0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb
+  const s = 0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb
+  const l_ = Math.cbrt(l), m_ = Math.cbrt(m), s_ = Math.cbrt(s)
+  const L = 0.2104542553 * l_ + 0.793617785 * m_ - 0.0040720468 * s_
+  const A = 1.9779984951 * l_ - 2.428592205 * m_ + 0.4505937099 * s_
+  const B = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.808675766 * s_
+  return { L, C: Math.hypot(A, B), H: Math.atan2(B, A) }
+}
+
+function App({ accent, setAccent, theme, setTheme }: {
+  accent: string; setAccent: (s: string) => void
+  theme: string; setTheme: (s: string) => void
+}) {
+  const [density, setDensity] = useState(0.043)
+  const [saving, setSaving] = useState(false)
+  const previewRef = useRef<HTMLDivElement>(null)
+
+  const seed = SEEDS[theme as keyof typeof SEEDS] || SEEDS.deep
+  const currentSeed = { ...seed, accent, step: density }
+  const tokens = generateTheme(currentSeed)
+
+  // 实时应用到全局
+  useEffect(() => {
+    const el = document.documentElement
+    for (const [k, val] of Object.entries(tokens)) el.style.setProperty(k, val)
+  }, [tokens])
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await ThemeApi.save(theme, accent)
+      toast('主题已保存到服务端', 'ok')
+    } catch { toast('保存失败', 'error') }
+    setSaving(false)
+  }
+
+  const handleReset = () => {
+    setAccent(seed.accent)
+    setDensity(seed.step ?? 0.043)
+    // 恢复全局变量到当前主题预设
+    const el = document.documentElement
+    const preset = generateTheme(seed)
+    for (const [k, val] of Object.entries(preset)) el.style.setProperty(k, val)
+    toast('已恢复当前主题默认值')
+  }
+
+  const handleExport = () => {
+    const css = `:root {\n${Object.entries(tokens).map(([k, v]) => `  ${k}: ${v};`).join('\n')}\n}`
+    const blob = new Blob([css], { type: 'text/css' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `pi-theme-${theme}-${accent.replace('#', '')}.css`
+    a.click(); URL.revokeObjectURL(url)
+    toast('CSS 变量已导出')
+  }
+
+  return (
+    <div className="flex h-full overflow-hidden">
+      {/* 左：控制面板 */}
+      <div className="w-72 border-r border-pi-border-soft overflow-y-auto p-4 flex flex-col gap-5">
+        <div className="text-sm font-semibold text-pi-text">主题工作台</div>
+
+        {/* 主题基底 */}
+        <div>
+          <div className="text-[11px] text-pi-dim2 font-semibold mb-2">基底主题</div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {THEME_PRESETS.map(t => (
+              <button key={t.id} onClick={() => setTheme(t.id)}
+                className={`flex flex-col items-center gap-1 p-2 rounded-pi-sm text-[10px] transition-colors
+                  ${theme === t.id ? 'bg-pi-accent-soft text-pi-accent' : 'hover:bg-pi-bg3 text-pi-dim'}`}>
+                <span className="w-6 h-6 rounded-full border border-pi-border" style={{ background: t.swatch }} />
+                {t.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 主色 */}
+        <div>
+          <div className="text-[11px] text-pi-dim2 font-semibold mb-2">主色</div>
+          <div className="flex gap-1.5 mb-2">
+            {ACCENT_PRESETS.map(a => (
+              <button key={a.color} title={a.name}
+                className={`w-7 h-7 rounded-full transition-transform hover:scale-110
+                  ${accent === a.color ? 'ring-2 ring-offset-1 ring-pi-text ring-offset-pi-bg' : ''}`}
+                style={{ background: a.color }} onClick={() => setAccent(a.color)} />
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <input type="color" value={accent} onChange={e => setAccent(e.target.value)}
+              className="w-8 h-7 rounded-pi-sm border border-pi-border-soft bg-transparent cursor-pointer p-0" />
+            <input value={accent} onChange={e => setAccent(e.target.value)}
+              className="flex-1 text-[11px] font-mono bg-pi-field border border-pi-border-soft rounded-pi-sm px-2 py-1 text-pi-text outline-none focus:border-pi-accent" />
+          </div>
+          <div className="text-[10px] text-pi-dim mt-1">
+            L={hexToOklch(accent).L.toFixed(3)} C={hexToOklch(accent).C.toFixed(3)}
+          </div>
+        </div>
+
+        {/* 密度 */}
+        <div>
+          <div className="text-[11px] text-pi-dim2 font-semibold mb-2">
+            层级密度 <span className="text-pi-dim font-normal">step={density.toFixed(3)}</span>
+          </div>
+          <input type="range" min="0.02" max="0.08" step="0.001" value={density}
+            onChange={e => setDensity(parseFloat(e.target.value))}
+            className="w-full accent-pi-accent" />
+          <div className="flex justify-between text-[9px] text-pi-dim mt-0.5">
+            <span>平坦</span><span>立体</span>
+          </div>
+        </div>
+
+        {/* 操作 */}
+        <div className="flex gap-2 mt-auto">
+          <button onClick={handleSave} disabled={saving}
+            className="flex-1 btn-primary py-2 text-xs rounded-pi-md">
+            {saving ? '保存中…' : '保存到服务端'}
+          </button>
+          <button onClick={handleReset}
+            className="px-3 py-2 text-xs rounded-pi-md border border-pi-border text-pi-dim hover:bg-pi-bg3">
+            重置
+          </button>
+        </div>
+        <button onClick={handleExport}
+          className="w-full py-2 text-xs rounded-pi-md border border-pi-border text-pi-dim hover:bg-pi-bg3">
+          导出 CSS 变量
+        </button>
+      </div>
+
+      {/* 右：实时预览 */}
+      <div ref={previewRef} className="flex-1 overflow-y-auto p-8" style={{
+        background: tokens['--pi-bg'],
+        color: tokens['--pi-text'],
+      }}>
+        <div className="max-w-2xl mx-auto space-y-6">
+          <div className="text-[17px] font-bold" style={{ color: tokens['--pi-text'] }}>实时预览</div>
+          <div className="text-[13px]" style={{ color: tokens['--pi-dim'] }}>
+            调整左侧面板，这里即时反映所有 token 变化
+          </div>
+
+          {/* 卡片 */}
+          <div className="rounded-pi-lg p-4" style={{
+            background: tokens['--pi-card-bg'],
+            border: `1px solid ${tokens['--pi-card-border']}`,
+          }}>
+            <div className="text-[13px] font-semibold mb-2" style={{ color: tokens['--pi-text'] }}>卡片组件</div>
+            <div className="text-[12px]" style={{ color: tokens['--pi-dim'] }}>
+              这是卡片内容，背景用 --pi-card-bg，边框用 --pi-card-border
+            </div>
+          </div>
+
+          {/* 按钮组 */}
+          <div className="flex gap-2 flex-wrap">
+            <button className="px-4 py-2 rounded-pi-md text-[12px] font-medium text-white"
+              style={{ background: tokens['--pi-accent'] }}>主按钮</button>
+            <button className="px-4 py-2 rounded-pi-md text-[12px] font-medium"
+              style={{ background: tokens['--pi-btn-bg'], border: `1px solid ${tokens['--pi-btn-border']}`, color: tokens['--pi-text'] }}>
+              次按钮
+            </button>
+            <button className="px-4 py-2 rounded-pi-md text-[12px] font-medium text-white"
+              style={{ background: tokens['--pi-danger'] }}>危险按钮</button>
+            <button className="px-4 py-2 rounded-pi-md text-[12px] font-medium text-white"
+              style={{ background: tokens['--pi-success'] }}>成功按钮</button>
+          </div>
+
+          {/* Badge */}
+          <div className="flex gap-2 flex-wrap">
+            <span className="px-2.5 py-0.5 rounded-pi-pill text-[10px] font-medium"
+              style={{ background: tokens['--pi-badge-bg'], color: tokens['--pi-badge-fg'] }}>信息</span>
+            <span className="px-2.5 py-0.5 rounded-pi-pill text-[10px] font-medium"
+              style={{ background: tokens['--pi-accent-soft'], color: tokens['--pi-accent'] }}>强调</span>
+            <span className="px-2.5 py-0.5 rounded-pi-pill text-[10px] font-medium"
+              style={{ background: `rgba(59,130,246,0.15)`, color: tokens['--pi-info'] }}>提示</span>
+          </div>
+
+          {/* 输入框 */}
+          <div>
+            <div className="text-[11px] mb-1" style={{ color: tokens['--pi-dim2'] }}>输入框</div>
+            <input className="w-full px-3 py-2 rounded-pi-md text-[13px] outline-none"
+              style={{
+                background: tokens['--pi-input-bg'],
+                border: `1px solid ${tokens['--pi-input-border']}`,
+                color: tokens['--pi-text'],
+              }} placeholder="输入内容…" />
+          </div>
+
+          {/* 文字层级 */}
+          <div className="space-y-1">
+            <div className="text-[17px] font-bold" style={{ color: tokens['--pi-text'] }}>标题文字 --pi-text</div>
+            <div className="text-[13px]" style={{ color: tokens['--pi-dim'] }}>辅助文字 --pi-dim</div>
+            <div className="text-[12px]" style={{ color: tokens['--pi-dim2'] }}>次要文字 --pi-dim2</div>
+            <div className="text-[11px]" style={{ color: tokens['--pi-muted'] }}>弱化文字 --pi-muted</div>
+          </div>
+
+          {/* 图表色 */}
+          <div>
+            <div className="text-[11px] mb-2" style={{ color: tokens['--pi-dim2'] }}>图表色板</div>
+            <div className="flex gap-1.5">
+              {[1, 2, 3, 4, 5].map(i => (
+                <div key={i} className="w-8 h-8 rounded-pi-sm"
+                  style={{ background: tokens[`--pi-chart-${i}` as keyof typeof tokens] }} />
+              ))}
+            </div>
+          </div>
+
+          {/* Glass 预览 */}
+          <div>
+            <div className="text-[11px] mb-2" style={{ color: tokens['--pi-dim2'] }}>Glass 效果</div>
+            <div className="rounded-pi-lg p-4 backdrop-blur-sm" style={{
+              background: tokens['--pi-glass-bg'],
+              border: `1px solid ${tokens['--pi-glass-border']}`,
+            }}>
+              <div className="text-[12px]" style={{ color: tokens['--pi-text'] }}>
+                Glass 面板 — backdrop-blur + 半透明背景
+              </div>
+            </div>
+          </div>
+
+          {/* 阴影 */}
+          <div className="flex gap-4">
+            {[['sm', '阴影 sm'], ['md', '阴影 md'], ['lg', '阴影 lg']].map(([k, label]) => (
+              <div key={k} className="w-24 h-16 rounded-pi-md flex items-center justify-center text-[10px]"
+                style={{
+                  background: tokens['--pi-card-bg'],
+                  boxShadow: tokens[`--pi-shadow-${k}` as keyof typeof tokens],
+                  color: tokens['--pi-dim2'],
+                }}>
+                {label}
+              </div>
+            ))}
+          </div>
+
+          {/* 圆角 */}
+          <div>
+            <div className="text-[11px] mb-2" style={{ color: tokens['--pi-dim2'] }}>圆角</div>
+            <div className="flex gap-3">
+              {[['sm', '4px'], ['md', '6px'], ['lg', '8px'], ['xl', '12px']].map(([k, px]) => (
+                <div key={k} className="w-12 h-12 flex items-center justify-center text-[10px]"
+                  style={{
+                    background: tokens['--pi-card-bg'],
+                    border: `1px solid ${tokens['--pi-border']}`,
+                    borderRadius: tokens[`--pi-r-${k}` as keyof typeof tokens] || px,
+                    color: tokens['--pi-dim2'],
+                  }}>
+                  r-{k}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// 包装组件：管理 theme state + 从服务端拉取
+export default function ThemeEditorPage() {
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem('pi_theme') || 'mist' } catch { return 'mist' }
+  })
+  const [accent, setAccent] = useState(() => {
+    try { return localStorage.getItem('pi_accent') || '' } catch { return '' }
+  })
+
+  // 挂载时拉服务端偏好
+  useEffect(() => {
+    ThemeApi.get().then(d => {
+      if (d?.theme) setTheme(d.theme)
+      if (d?.accent) setAccent(d.accent)
+    }).catch(() => {})
+  }, [])
+
+  // 同步到 localStorage（与 ThemeSwitcher 一致）
+  useEffect(() => {
+    try { localStorage.setItem('pi_theme', theme) } catch {}
+    try { localStorage.setItem('pi_accent', accent) } catch {}
+  }, [theme, accent])
+
+  return <App accent={accent} setAccent={setAccent} theme={theme} setTheme={setTheme} />
+}

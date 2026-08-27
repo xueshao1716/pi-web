@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
-import {MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog } from 'lucide-react'
+import {MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog, Paintbrush } from 'lucide-react'
 import TuiTerminal from './components/TuiTerminal'
 import { useApp } from './store'
 import { useIsMobile } from './hooks/useIsMobile'
@@ -23,6 +23,7 @@ const Tasks = lazy(() => import('./pages/Tasks'))
 const Apps = lazy(() => import('./pages/Apps'))
 const LingXiPage = lazy(() => import('./pages/LingXi'))
 const SystemPage = lazy(() => import('./pages/System'))
+const ThemeEditorPage = lazy(() => import('./pages/ThemeEditor'))
 const WorkshopPage = lazy(() => import('./pages/Workshop'))
 
 // 导航项（桌面 rail / 移动 TabBar 共用语义）
@@ -35,6 +36,7 @@ const NAV: { route: Route; icon: typeof MessagesSquare; label: string }[] = [
   { route: 'tasks', icon: Clock4, label: '任务' },
   { route: 'apps', icon: LayoutGrid, label: '应用' },
   { route: 'system', icon: MonitorCog, label: '系统' },
+  { route: 'theme-editor', icon: Paintbrush, label: '主题' },
 ]
 
 function PageLoader() {
@@ -49,6 +51,7 @@ function PageBody({ route }: { route: Route }) {
   if (route === 'lingxi') return <LingXiPage />
   if (route === 'workshop') return <WorkshopPage />
   if (route === 'system') return <SystemPage />
+  if (route === 'theme-editor') return <ThemeEditorPage />
   return null
 }
 
