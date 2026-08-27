@@ -76,6 +76,31 @@ export default function AppLayout() {
   const [mobileDrawer, setMobileDrawer] = useState<'none' | 'sessions'>('none')
   // ⌘K 命令面板（08-25 评审 P1：全局快捷键）
   const [paletteOpen, setPaletteOpen] = useState(false)
+
+  // ── 全局壁纸应用：读 localStorage/theme-prefs 应用到 #pi-wallpaper，任何页面都生效 ──
+  useEffect(() => {
+    const apply = () => {
+      const wp = document.getElementById('pi-wallpaper') as HTMLElement | null
+      if (!wp) return
+      try {
+        const w = localStorage.getItem('pi_wallpaper') || ''
+        if (w) {
+          wp.style.backgroundImage = `url(${w})`
+          wp.style.backgroundSize = 'cover'
+          wp.style.backgroundPosition = 'center'
+          wp.style.backgroundRepeat = 'no-repeat'
+        } else {
+          wp.style.backgroundImage = ''; wp.style.backgroundSize = ''; wp.style.backgroundPosition = ''; wp.style.backgroundRepeat = ''
+        }
+      } catch {}
+    }
+    apply()
+    // ThemeEditor 保存壁纸后派发，全局同步；挂载后 DOM 就绪也应用一次
+    window.addEventListener('pi-wallpaper-changed', apply)
+    const t = setTimeout(apply, 300)
+    return () => { window.removeEventListener('pi-wallpaper-changed', apply); clearTimeout(t) }
+  }, [])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {

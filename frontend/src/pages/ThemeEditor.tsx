@@ -71,6 +71,7 @@ function App({ accent, setAccent, theme, setTheme, wallpaper, setWallpaper }: {
     setSaving(true)
     try {
       await ThemeApi.save(theme, accent, wallpaper)
+      window.dispatchEvent(new CustomEvent('pi-wallpaper-changed')) // 通知全局应用壁纸
       toast('主题已保存到服务端', 'ok')
     } catch { toast('保存失败', 'error') }
     setSaving(false)
