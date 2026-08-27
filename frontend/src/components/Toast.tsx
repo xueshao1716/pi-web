@@ -32,7 +32,7 @@ export function Toaster() {
           role="status"
           className={`anim-enter px-4 py-2 rounded-pi-lg border text-[13px] shadow-xl backdrop-blur-xl max-w-[80vw] ${
             it.tone === 'error' ? 'bg-pi-red/15 border-pi-red/40 text-pi-red'
-            : it.tone === 'ok' ? 'bg-pi-green/15 border-emerald-500/40 text-pi-green'
+            : it.tone === 'ok' ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
             : 'bg-pi-bg1/95 border-pi-border text-pi-text'}`}>
           {it.msg}
         </div>
