@@ -3,20 +3,19 @@ import { AlertTriangle } from 'lucide-react'
 
 // ── 极轻 hash 路由（零依赖）：#/chat #/models #/assets #/tasks ──
 export type Route = 'chat' | 'models' | 'assets' | 'tasks' | 'apps' | 'lingxi' | 'workshop' | 'system' | 'theme-editor' | 'engine'
-const ROUTES: Route[] = ['chat', 'models', 'assets', 'tasks', 'apps', 'lingxi', 'workshop', 'system', 'theme-editor', 'engine']
 
-function parse(): Route {
+function parse(routes: readonly Route[]): Route {
   const h = location.hash.replace(/^#\/?/, '')
-  return (ROUTES as string[]).includes(h) ? (h as Route) : 'chat'
+  return routes.includes(h as Route) ? h as Route : 'chat'
 }
 
-export function useHashRoute(): [Route, (r: Route) => void] {
-  const [route, setRoute] = useState<Route>(parse)
+export function useHashRoute(routes: readonly Route[]): [Route, (r: Route) => void] {
+  const [route, setRoute] = useState<Route>(() => parse(routes))
   useEffect(() => {
-    const on = () => setRoute(parse())
+    const on = () => setRoute(parse(routes))
     window.addEventListener('hashchange', on)
     return () => window.removeEventListener('hashchange', on)
-  }, [])
+  }, [routes])
   const nav = (r: Route) => { location.hash = '#/' + r; setRoute(r) }
   return [route, nav]
 }

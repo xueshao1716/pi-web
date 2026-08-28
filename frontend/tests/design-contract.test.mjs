@@ -193,3 +193,11 @@ test('工具卡为非 2 态：含 ToolStatus 归属 + canceled 分支', () => {
   const missing = req.filter(s => !src.includes(s))
   assert.deepEqual(missing, [], '工具卡 5 态缺失（被改回 2 态？）: ' + missing.join(', '))
 })
+
+// ── 13. React 路由元数据单一来源 ──
+test('React 路由由单一注册表驱动导航和页面渲染', () => {
+  const src = readFileSync(join(ROOT, 'src/AppLayout.tsx'), 'utf8')
+  assert.match(src, /const PAGE_ROUTES(?:\s*:\s*[^=]+)?\s*=/, '缺少页面路由注册表')
+  assert.match(src, /PAGE_ROUTES\.find\(/, '页面渲染没有使用页面路由注册表')
+  assert.match(src, /PAGE_ROUTES\.map\(/, '导航没有使用页面路由注册表')
+})

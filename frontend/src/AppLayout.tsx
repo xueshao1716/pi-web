@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoticComponent } from 'react'
 import {MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog, Cpu } from 'lucide-react'
 import TuiTerminal from './components/TuiTerminal'
 import { useApp } from './store'
@@ -28,17 +28,30 @@ const SystemPage = lazy(() => import('./pages/System'))
 const ThemeEditorPage = lazy(() => import('./pages/ThemeEditor'))
 const WorkshopPage = lazy(() => import('./pages/Workshop'))
 
-// 导航项（桌面 rail / 移动 TabBar 共用语义）
+type PageRoute = {
+  route: Exclude<Route, 'chat'>
+  icon: typeof MessagesSquare
+  label: string
+  Page: LazyExoticComponent<ComponentType<any>>
+  nav?: boolean
+}
+
+// 页面注册表是路由、页面渲染和桌面导航的单一来源；移动端导航是刻意不同的信息架构。
+const PAGE_ROUTES: PageRoute[] = [
+  { route: 'lingxi', icon: Sparkles, label: '灵犀', Page: LingXiPage },
+  { route: 'workshop', icon: Factory, label: '专项', Page: WorkshopPage },
+  { route: 'models', icon: BrainCircuit, label: '模型', Page: ModelHub },
+  { route: 'assets', icon: Images, label: '资产', Page: Assets },
+  { route: 'tasks', icon: Clock4, label: '任务', Page: Tasks },
+  { route: 'apps', icon: LayoutGrid, label: '应用', Page: Apps },
+  { route: 'engine', icon: Cpu, label: '引擎', Page: EnginePage },
+  { route: 'system', icon: MonitorCog, label: '系统', Page: SystemPage },
+  { route: 'theme-editor', icon: Settings2, label: '主题编辑', Page: ThemeEditorPage, nav: false },
+]
+const APP_ROUTES: Route[] = ['chat', ...PAGE_ROUTES.map(p => p.route)]
 const NAV: { route: Route; icon: typeof MessagesSquare; label: string }[] = [
   { route: 'chat', icon: MessagesSquare, label: '对话' },
-  { route: 'lingxi', icon: Sparkles, label: '灵犀' },
-  { route: 'workshop', icon: Factory, label: '专项' },
-  { route: 'models', icon: BrainCircuit, label: '模型' },
-  { route: 'assets', icon: Images, label: '资产' },
-  { route: 'tasks', icon: Clock4, label: '任务' },
-  { route: 'apps', icon: LayoutGrid, label: '应用' },
-  { route: 'engine', icon: Cpu, label: '引擎' },
-  { route: 'system', icon: MonitorCog, label: '系统' },
+  ...PAGE_ROUTES.filter(p => p.nav !== false).map(({ route, icon, label }) => ({ route, icon, label })),
 ]
 
 function PageLoader() {
@@ -46,22 +59,18 @@ function PageLoader() {
 }
 
 function PageBody({ route }: { route: Route }) {
-  if (route === 'models') return <ModelHub />
-  if (route === 'assets') return <Assets />
-  if (route === 'tasks') return <Tasks />
-  if (route === 'apps') return <Apps />
-  if (route === 'engine') return <EnginePage />
-  if (route === 'lingxi') return <LingXiPage />
-  if (route === 'workshop') return <WorkshopPage />
-  if (route === 'system') return <SystemPage />
-  if (route === 'theme-editor') return <ThemeEditorPage />
+  const page = PAGE_ROUTES.find(p => p.route === route)
+  if (page) {
+    const Page = page.Page
+    return <Page />
+  }
   return null
 }
 
 export default function AppLayout() {
   const { authed } = useApp()
   const isMobile = useIsMobile()
-  const [route, nav] = useHashRoute()
+  const [route, nav] = useHashRoute(APP_ROUTES)
   // 桌面会话栏折叠（08-26）：持久化到 localStorage
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem('pi_sidebar_collapsed') === '1' } catch { return false }
