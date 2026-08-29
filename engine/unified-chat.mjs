@@ -202,7 +202,7 @@ export async function unifiedChat(model, messages, opts = {}) {
         }
         if (opts.onToolEnd) opts.onToolEnd(tc.id, fnName, args, out);
         // 注入防线（08-25 Odysseus 路线）：外部来源输出包装为"数据"，防提示注入
-        history.push({ role: "tool", tool_call_id: tc.id, content: wrapUntrusted(fnName, out.text) });
+        history.push({ role: "tool", tool_call_id: tc.id, content: wrapUntrusted(fnName, spillIfHuge(fnName, out.text)) });
       }
       continue;
     }
@@ -223,7 +223,7 @@ export async function unifiedChat(model, messages, opts = {}) {
         if (opts.onTool) opts.onTool(s.id, s.name, s.args);
         const out = await _executeUnifiedTool(s.name, s.args);
         if (opts.onToolEnd) opts.onToolEnd(s.id, s.name, s.args, out);
-        history.push({ role: "tool", tool_call_id: s.id, content: wrapUntrusted(s.name, out.text) });
+        history.push({ role: "tool", tool_call_id: s.id, content: wrapUntrusted(s.name, spillIfHuge(s.name, out.text)) });
       }
       continue;
     }
@@ -567,4 +567,27 @@ export function handleAgentEventIn(req, res, body) {
 
 export function handleAgentEventOut(res) {
   return json(res, 200, { events: agentEventRing.slice(-80) });
+}
+
+// ── 工具大响应落盘（08-29 TrueForge 策略②对标）：>50KB 写文件，上下文只留预览+路径 ──
+// 之前 truncate 直接丢信息；落盘后模型可用 read 工具按需读全文。目录按日分桶，7 天前的自动清。
+const TOOL_SPILL_DIR = "D:/pi-web/.toolout";
+const TOOL_SPILL_LIMIT = 50 * 1024;
+function spillIfHuge(toolName, text) {
+  const s = String(text || "");
+  if (s.length <= TOOL_SPILL_LIMIT) return s;
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    const dir = path.join(TOOL_SPILL_DIR, day);
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${toolName}-${Date.now()}.txt`);
+    fs.writeFileSync(file, s);
+    // 清 7 天前
+    for (const d of fs.readdirSync(TOOL_SPILL_DIR)) {
+      const p = path.join(TOOL_SPILL_DIR, d);
+      if (d < new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10)) { try { fs.rmSync(p, { recursive: true, force: true }); } catch {} }
+    }
+    const preview = s.slice(0, 800);
+    return `${preview}\n\n[完整输出 ${s.length} 字符已落盘: ${file} — 需要更多内容时用 read 工具读取该路径]`;
+  } catch { return s.slice(0, TOOL_SPILL_LIMIT) + "\n...[截断]"; }
 }
