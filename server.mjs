@@ -67,6 +67,7 @@ import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
 import { createCodeMode } from "./code-mode/code-mode.mjs";
 import { createTimeEngine } from "./engine/time-engine.mjs";
+import { sanitizeSessionFile } from "./engine/session-sanitize.mjs";
 const memoryApi = await import("./engine/memory.mjs");
 const emotion = await import("./engine/emotion.mjs");
 emotion.init(CONFIG.cwd); // 基因系统：加载人格基因 + 提案池
@@ -859,6 +860,19 @@ async function handleChat(req, res, body) {
       } else if (event.type === "turn_end") {
         writer.push("turn_end", {});
         busEmit("turn_end", {});
+        // P1 活跃会话按轮卫生：turn_end 时检查文件大小，超阈值先 sanitize 再 compact
+        try {
+          const sf = entry.sm?.getSessionFile?.();
+          if (sf && fs.existsSync(sf)) {
+            const sz = fs.statSync(sf).size;
+            if (sz > 5 * 1024 * 1024) { // >5MB 触发 sanitize
+              sanitizeSessionFile(sf);
+              if (sz > 10 * 1024 * 1024) { // >10MB 额外触发 compact
+                compactSession(sf, effModel || defaultModel, true).catch(() => {});
+              }
+            }
+          }
+        } catch {}
         // 情绪实时推送：每轮结束把最新情绪快照推给前端（emo 指示器实时跳动，不再是只发/收时更新）
         try {
           const esKey = sessionId || findKeyByEntry(entry) || "new";
@@ -997,6 +1011,15 @@ async function handleChat(req, res, body) {
         }
       }
     }
+    // P0 卫生防线：agent.prompt 前截断会话里的超大 thinkingSignature/thinking/工具结果
+    // 防止 reasoning 模型签名膨胀导致上游 400/502（10MiB 单字段限制+200k 上下文超限）
+    try {
+      const sf = entry.sm?.getSessionFile?.();
+      if (sf) {
+        const sr = sanitizeSessionFile(sf);
+        if (sr.truncated) console.log(`[sanitize] 会话 ${sessionId || "new"}: 截断 ${sr.truncated} 条超大消息`);
+      }
+    } catch (e) { console.log(`[sanitize] 预处理失败(不阻断): ${String(e?.message || e).slice(0, 80)}`); }
     try {
       await agent.prompt(promptMsg, { images });
     } finally {
