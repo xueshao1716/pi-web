@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoticComponent } from 'react'
-import {MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog, Cpu, Palette } from 'lucide-react'
+import {MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog, Cpu, Palette, Database } from 'lucide-react'
 import TuiTerminal from './components/TuiTerminal'
 import { useApp } from './store'
 import { useIsMobile } from './hooks/useIsMobile'
@@ -26,6 +26,7 @@ const EnginePage = lazy(() => import('./pages/Engine'))
 const LingXiPage = lazy(() => import('./pages/LingXi'))
 const SystemPage = lazy(() => import('./pages/System'))
 const ThemesPage = lazy(() => import('./pages/Themes'))
+const SessionDbPage = lazy(() => import('./pages/SessionDb'))
 const WorkshopPage = lazy(() => import('./pages/Workshop'))
 
 type PageRoute = {
@@ -46,6 +47,7 @@ const PAGE_ROUTES: PageRoute[] = [
   { route: 'apps', icon: LayoutGrid, label: '应用', Page: Apps },
   { route: 'engine', icon: Cpu, label: '引擎', Page: EnginePage },
   { route: 'themes', icon: Palette, label: '主题', Page: ThemesPage },
+  { route: 'sessiondb', icon: Database, label: '会话库', Page: SessionDbPage },
   { route: 'system', icon: MonitorCog, label: '系统', Page: SystemPage },
 ]
 const APP_ROUTES: Route[] = ['chat', ...PAGE_ROUTES.map(p => p.route)]

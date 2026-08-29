@@ -68,6 +68,7 @@ import { CodeRuntime } from "./code-mode/code-runtime.mjs";
 import { createCodeMode } from "./code-mode/code-mode.mjs";
 import { createTimeEngine } from "./engine/time-engine.mjs";
 import { sanitizeSessionFile } from "./engine/session-sanitize.mjs";
+import { initSessionDb, handleDbList, handleDbRebuild, handleDbSanitize, handleDbMeta, handleDbStats } from "./engine/session-db.mjs";
 const memoryApi = await import("./engine/memory.mjs");
 const emotion = await import("./engine/emotion.mjs");
 emotion.init(CONFIG.cwd); // 基因系统：加载人格基因 + 提案池
@@ -209,6 +210,7 @@ initMediaApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, authPath: AUT
 initAsrApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, httpJsonFetch }); // 语音转文字（mimo-v2.5-asr 免费通道）
 initDshKeys({ dshWebPort: 3080, readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, ModelRuntime, refreshModelList, setModelList: (l) => { modelList = l; }, getDefaultModel: () => defaultModel, setDefaultModel: (m) => { defaultModel = m; }, setModelRuntime: (r) => { modelRuntime = r; }, getModelRuntime: () => modelRuntime, keepModels: KEEP_MODELS, resetModelHealth }); // dsh/keys/模型管理注入
 initStatsApi({ getAgentDir, cwd: CONFIG.cwd, DefaultResourceLoader, openSession, ensureAgent, getDefaultModel: () => defaultModel }); // 统计/技能/导出注入（08-29 补注入 openSession/ensureAgent——三个 handler 裸引用坏了 9 天）
+initSessionDb({ agentDir: getAgentDir(), cwd: CONFIG.cwd }); // 会话数据库（编号/健康度/标签）
 initModelClient({ readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, resolveAuth, getModelList: () => modelList, getDefaultModel: () => defaultModel, unifiedChat, detectMediaIntents, generateMediaAsync, extractMediaPrompt, readEntriesFromFile, createSseWriter }); // 直调模型客户端注入
 initSelfHeal({ directChat, runGit: (...args) => runGit(...args), cwd: CONFIG.cwd, getModelList: () => modelList, getDefaultModel: () => defaultModel, piPackage: CONFIG.piPackage }); // 自愈/更新/设计器注入（REPAIR_BACKUP_FILES 已随块迁入模块）
 initImproveApi({ root: CONFIG.cwd, statsProvider: null, healProvider: null }); // 自我改进提案（2026-08-21）
@@ -1387,6 +1389,12 @@ function handleAgentStatus(res) {
 }
 
 const API_ROUTES = [
+  // ── 会话数据库（08-29 真落地：编号/健康度/批量清理；必须先于 :id 正则路由）──
+  ["GET", "/api/sessions/db/list", (res) => handleDbList(res)],
+  ["GET", "/api/sessions/db/stats", (res) => handleDbStats(res)],
+  ["POST", "/api/sessions/db/rebuild", (res) => handleDbRebuild(res)],
+  ["POST", "/api/sessions/db/sanitize", async (res, req) => handleDbSanitize(res, await readBody(req))],
+  ["PATCH", "/api/sessions/db/meta", async (res, req) => handleDbMeta(res, await readBody(req))],
   // ── 会话 ──
   ["GET", "/api/emotion", (res, req, url) => handleEmotion(res, url)],
   ["GET", "/api/agent-status", (res) => handleAgentStatus(res)],
