@@ -90,6 +90,9 @@ function killPort() {
 }
 
 async function startServer() {
+  // 防抢占（2026-08-29）：若端口已有健康 HTTP 实例（人工/其他守护启动的），不 killPort 不抢占，直接待命
+  // 修复场景：双实例拉锯时 watchdog 会 killPort 杀掉正在服务的健康实例，用户会话中断
+  if (await portOpen()) { log("端口已有健康实例在服务，本次跳过启动（不抢占）"); return; }
   // 重启限频：10 秒内最多重启 1 次，防死循环风暴
   const now = Date.now();
   if (now - lastRestartAt < 10000) {
@@ -114,11 +117,25 @@ async function startServer() {
   killPort();
   await new Promise(r => setTimeout(r, 2000));
   if (child) { try { child.kill(); } catch {} child = null; }
-  child = spawn("node", ["server.mjs"], { cwd: WEB_DIR, stdio: "ignore", windowsHide: true });
+  // stdout/stderr 不再 ignore：环形缓冲最近输出，崩溃时把尾部写进 watchdog.log 留证据
+  // （此前 stdio:"ignore" 把崩溃堆栈全吞了，导致运行时错误无法定位）
+  let outBuf = [];
+  const pushOut = (buf) => {
+    const s = buf.toString("utf8");
+    outBuf.push(s);
+    if (outBuf.length > 200) outBuf = outBuf.slice(-200);
+  };
+  child = spawn("node", ["server.mjs"], { cwd: WEB_DIR, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+  child.stdout.on("data", pushOut);
+  child.stderr.on("data", pushOut);
   lastStartAt = Date.now();
   log(`已启动 server (pid ${child.pid})，累计重启 ${restartCount} 次`);
   child.on("exit", (code, sig) => {
     log(`server 退出 code=${code} signal=${sig}`);
+    if (code !== 0 && outBuf.length) {
+      const tail = outBuf.join("").split("\n").slice(-60).join("\n");
+      log(`── 崩溃前最近输出 ──\n${tail}\n── 输出结束 ──`);
+    }
     child = null;
     if (code !== 0) {
       restartCount++;
