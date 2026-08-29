@@ -6,11 +6,11 @@ import path from "node:path";
 import { invalidateSessionCache, getSessionList } from "./session-files.mjs";
 
 let _cwd = "", _sessionsDir = "", _tools = [], _getModelList = () => [], _getDefaultModel = () => null, _activeSessions = null, _createAgentSessionServices = null, _createAgentSessionFromServices = null, _getModelRuntime = () => null,
-    _SessionManager = null, _SettingsManager = null, _DefaultResourceLoader = null, _getAgentDir = () => "", _readJsonFile = null, _writeJsonFile = null,
+    _SessionManager = null, _SettingsManager = null, _DefaultResourceLoader = null, _getAgentDir = () => "", _readJsonFile = null, _writeJsonFile = null, _piPackage = "", _isModelBlocked = () => false,
     _initSearchTool = async () => null, _initShareTool = async () => null, _initDshTool = async () => null, _isExternalThinking = () => false, _THINK_TOOL = null,
     _modelCapabilities = null, _bindOutputGuardDeps = null, _extractMessages = null, _createSseWriter = null, _unifiedChat = null, _loadSessionModelKey = null;
-export function initSessionManager({ cwd = "", sessionsDir = "", tools = [], getModelList = null, getDefaultModel = null, activeSessions = null, SessionManager = null, SettingsManager = null, DefaultResourceLoader = null, getAgentDir = null, readJsonFile = null, writeJsonFile = null, initSearchTool = null, initShareTool = null, initDshTool = null, isExternalThinking = null, THINK_TOOL = null, modelCapabilities = null, bindOutputGuardDeps = null, extractMessages = null, createSseWriter = null, unifiedChat = null, createAgentSessionServices = null, createAgentSessionFromServices = null, getModelRuntime = null, loadSessionModelKey = null } = {}) {
-  _cwd = cwd; _sessionsDir = sessionsDir; _tools = tools; _activeSessions = activeSessions; _SessionManager = SessionManager; _SettingsManager = SettingsManager; _DefaultResourceLoader = DefaultResourceLoader; _readJsonFile = readJsonFile; _writeJsonFile = writeJsonFile;
+export function initSessionManager({ cwd = "", sessionsDir = "", tools = [], piPackage = "", isModelBlocked = null, getModelList = null, getDefaultModel = null, activeSessions = null, SessionManager = null, SettingsManager = null, DefaultResourceLoader = null, getAgentDir = null, readJsonFile = null, writeJsonFile = null, initSearchTool = null, initShareTool = null, initDshTool = null, isExternalThinking = null, THINK_TOOL = null, modelCapabilities = null, bindOutputGuardDeps = null, extractMessages = null, createSseWriter = null, unifiedChat = null, createAgentSessionServices = null, createAgentSessionFromServices = null, getModelRuntime = null, loadSessionModelKey = null } = {}) {
+  _cwd = cwd; _sessionsDir = sessionsDir; _tools = tools; _piPackage = piPackage; if (isModelBlocked) _isModelBlocked = isModelBlocked; _activeSessions = activeSessions; _SessionManager = SessionManager; _SettingsManager = SettingsManager; _DefaultResourceLoader = DefaultResourceLoader; _readJsonFile = readJsonFile; _writeJsonFile = writeJsonFile;
   if (createAgentSessionServices) _createAgentSessionServices = createAgentSessionServices; if (createAgentSessionFromServices) _createAgentSessionFromServices = createAgentSessionFromServices; if (getModelRuntime) _getModelRuntime = getModelRuntime; if (loadSessionModelKey) _loadSessionModelKey = loadSessionModelKey;
   if (getModelList) _getModelList = getModelList; if (getDefaultModel) _getDefaultModel = getDefaultModel; if (getAgentDir) _getAgentDir = getAgentDir;
   if (initSearchTool) _initSearchTool = initSearchTool; if (initShareTool) _initShareTool = initShareTool; if (initDshTool) _initDshTool = initDshTool; if (isExternalThinking) _isExternalThinking = isExternalThinking; if (THINK_TOOL) _THINK_TOOL = THINK_TOOL;
@@ -274,7 +274,7 @@ export async function initSearchTool() {
     // 用 _piPackage（引擎入口路径，server 顶部已验证可用）解析 typebox
     const req2 = createRequire(_piPackage);
     const { Type } = req2("typebox");
-    const fb = await import("./engine/filebox.mjs");
+    const fb = await import("./filebox.mjs");
     searchToolDef = {
       name: "search_files",
       label: "搜索工作空间文件",
@@ -407,9 +407,11 @@ export async function createSessionAgent(sm, model) {
         const auth = _readJsonFile(path.join(_getAgentDir(), "auth.json")) || {};
         // zai 优先（用户智谱 coding plan 刚充值且实测 agent 工具链可用）；
         // deepseek 殿后——有 key 但余额状态未知，历史 402 教训
+        // ⚙️ 2026-08-28：跳过已冷却的 provider（之前撞过 401/402/403/429/529），避免外层 effModel 已换备选但这套兜底又把冷却 provider 捡回来
         for (const p of ["zai-coding-cn", "xiaomi-token-plan-cn", "nvidia", "deepseek"]) {
           if (!auth[p]?.key) continue;
           const m = models.find(x => x.provider === p);
+          if (m && _isModelBlocked(m)) { console.log(`[agent] 兑底候选 ${p}/${m.id} 已冷却，跳过`); continue; }
           if (m) { fullModel = m; console.log(`[agent] 兑底模型 → ${p}/${m.id}`); break; }
         }
       } catch {}
