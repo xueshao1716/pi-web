@@ -1377,7 +1377,7 @@ const API_ROUTES = [
     json(res, 200, { ok: true, ...r });
   }],
   ["GET", "/api/theme-prefs", (res) => json(res, 200, loadThemePrefs())],
-  ["POST", "/api/theme-prefs", async (res, req) => { const b = await readBody(req); return json(res, 200, saveThemePrefs(b || {})) }],
+  ["POST", "/api/theme-prefs", async (res, req) => { const b = await readBody(req, 12); return json(res, 200, saveThemePrefs(b || {})) }],
   ["GET", "/api/system/info", (res) => json(res, 200, buildSystemInfo(WS_ROOT, AGENT_DIR))],
   ["POST", "/api/system/network", async (res, req) => {
     const b = await readBody(req);
