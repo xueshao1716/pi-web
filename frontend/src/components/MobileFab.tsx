@@ -118,7 +118,7 @@ export default function MobileFab({ nav, route, onSettings, onOpenSessions, onOp
             <span className="text-[13px] font-medium text-pi-text">全部功能</span>
             <button className="btn-tool !px-1.5 touch-hit" aria-label="关闭" onClick={() => setOpen(false)}><X className="w-4 h-4" /></button>
           </div>
-          <div className="grid grid-cols-3 gap-1.5 p-3">
+          <div className="grid grid-cols-4 gap-1.5 p-3">
             {FAB_NAV.map(n => (
               <button key={n.route} aria-label={n.label}
                 className={`touch-hit flex flex-col items-center gap-1.5 rounded-pi-md px-1 py-2.5 transition-colors ${route === n.route ? 'bg-pi-accent/15' : 'hover:bg-pi-bg-hover/50'}`}
@@ -127,26 +127,18 @@ export default function MobileFab({ nav, route, onSettings, onOpenSessions, onOp
                 <span className="text-[11px] text-pi-text leading-none">{n.label}</span>
               </button>
             ))}
-          </div>
-          {/* 快捷操作：会话/右栏/主题/设置 */}
-          <div className="border-t border-pi-border-soft px-3 py-2 grid grid-cols-3 gap-1.5">
+            {/* 动作项：会话抽屉 / 右栏（08-29 伙伴拍板：并入网格，取消底部第二排） */}
             <button aria-label="会话"
-              className="touch-hit flex flex-col items-center gap-1 rounded-pi-md px-1 py-2 transition-colors hover:bg-pi-bg-hover/50"
+              className="touch-hit flex flex-col items-center gap-1.5 rounded-pi-md px-1 py-2.5 transition-colors hover:bg-pi-bg-hover/50"
               onClick={() => { setOpen(false); onOpenSessions() }}>
               <FolderClosed className="w-5 h-5 text-pi-accent" strokeWidth={1.8} />
-              <span className="text-[10px] text-pi-text leading-none">会话</span>
+              <span className="text-[11px] text-pi-text leading-none">会话</span>
             </button>
             <button aria-label="右栏"
-              className="touch-hit flex flex-col items-center gap-1 rounded-pi-md px-1 py-2 transition-colors hover:bg-pi-bg-hover/50"
+              className="touch-hit flex flex-col items-center gap-1.5 rounded-pi-md px-1 py-2.5 transition-colors hover:bg-pi-bg-hover/50"
               onClick={() => { setOpen(false); onOpenPanel('terminal') }}>
               <PanelRight className="w-5 h-5 text-sky-300" strokeWidth={1.8} />
-              <span className="text-[10px] text-pi-text leading-none">右栏</span>
-            </button>
-            <button aria-label="主题"
-              className="touch-hit flex flex-col items-center gap-1 rounded-pi-md px-1 py-2 transition-colors hover:bg-pi-bg-hover/50"
-              onClick={() => { setOpen(false); onOpenTheme() }}>
-              <Palette className="w-5 h-5 text-pink-300" strokeWidth={1.8} />
-              <span className="text-[10px] text-pi-text leading-none">主题</span>
+              <span className="text-[11px] text-pi-text leading-none">右栏</span>
             </button>
           </div>
         </div>
