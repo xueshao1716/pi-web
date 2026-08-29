@@ -24,6 +24,16 @@ export default function ThemeSwitcher() {
   const [theme, setTheme] = useState(initialTheme)
   const [accent, setAccent] = useState(() => { try { return localStorage.getItem('pi_accent') || '' } catch { return '' } })
   const [menuOpen, setMenuOpen] = useState(false)
+  // 跨组件同步（08-29）：ThemesPage 改主题时广播 pi-theme-changed，这里同步 state 避免显示漂移
+  useEffect(() => {
+    const onExt = (e: Event) => {
+      const d = (e as CustomEvent).detail || {}
+      if (d.theme) setTheme(d.theme)
+      if (typeof d.accent === 'string') setAccent(d.accent)
+    }
+    window.addEventListener('pi-theme-changed', onExt)
+    return () => window.removeEventListener('pi-theme-changed', onExt)
+  }, [])
   // 跨端同步（08-26）：挂载时拉服务端偏好（一端更新→各端打开一致），之后变更回写服务端；localStorage 作本地回退
   const remoteReady = useRef(false)
   useEffect(() => {
@@ -99,7 +109,7 @@ export default function ThemeSwitcher() {
             </div>
             <div className="h-px bg-pi-border-soft my-1" />
             <button className="w-full text-left px-2 py-1.5 text-[11px] text-pi-dim hover:text-pi-text hover:bg-pi-bg3 rounded-pi-sm transition-colors"
-              onClick={() => { location.hash = '#/theme-editor'; setMenuOpen(false) }}>
+              onClick={() => { location.hash = '#/themes'; setMenuOpen(false) }}>
               编辑主题 →
             </button>
           </div>

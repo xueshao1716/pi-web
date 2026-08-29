@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoticComponent } from 'react'
-import {MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog, Cpu } from 'lucide-react'
+import {MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog, Cpu, Palette } from 'lucide-react'
 import TuiTerminal from './components/TuiTerminal'
 import { useApp } from './store'
 import { useIsMobile } from './hooks/useIsMobile'
@@ -25,7 +25,7 @@ const Apps = lazy(() => import('./pages/Apps'))
 const EnginePage = lazy(() => import('./pages/Engine'))
 const LingXiPage = lazy(() => import('./pages/LingXi'))
 const SystemPage = lazy(() => import('./pages/System'))
-const ThemeEditorPage = lazy(() => import('./pages/ThemeEditor'))
+const ThemesPage = lazy(() => import('./pages/Themes'))
 const WorkshopPage = lazy(() => import('./pages/Workshop'))
 
 type PageRoute = {
@@ -45,8 +45,8 @@ const PAGE_ROUTES: PageRoute[] = [
   { route: 'tasks', icon: Clock4, label: '任务', Page: Tasks },
   { route: 'apps', icon: LayoutGrid, label: '应用', Page: Apps },
   { route: 'engine', icon: Cpu, label: '引擎', Page: EnginePage },
+  { route: 'themes', icon: Palette, label: '主题', Page: ThemesPage },
   { route: 'system', icon: MonitorCog, label: '系统', Page: SystemPage },
-  { route: 'theme-editor', icon: Settings2, label: '主题编辑', Page: ThemeEditorPage, nav: false },
 ]
 const APP_ROUTES: Route[] = ['chat', ...PAGE_ROUTES.map(p => p.route)]
 const NAV: { route: Route; icon: typeof MessagesSquare; label: string }[] = [
@@ -217,7 +217,7 @@ export default function AppLayout() {
             onSettings={() => { setMobileDrawer('none'); nav('models') }}
             onOpenSessions={() => { setMobileDrawer('sessions') }}
             onOpenPanel={(k) => { setMobileDrawer('none'); nav('chat'); setRightPanel(k) }}
-            onOpenTheme={() => { setMobileDrawer('none'); nav('theme-editor') }}
+            onOpenTheme={() => { setMobileDrawer('none'); nav('themes') }}
           />
         )}
 

@@ -88,6 +88,16 @@ export const SEEDS = {
             overrides: { '--pi-green': '#158039', '--pi-red': '#bb2c27', '--pi-yellow': '#a16207',
                          '--pi-accent-glow': 'rgba(180,83,9,0.14)', '--pi-glow-purple': 'rgba(146,98,10,0.07)', '--pi-glow-cyan': 'rgba(120,90,20,0.05)',
                          '--pi-shadow-sm': 'rgba(92,58,16,0.16)', '--pi-shadow-md': 'rgba(92,58,16,0.26)', '--pi-shadow-lg': 'rgba(80,50,12,0.36)' } },
+  // 08-29 主题系统专门页新增（threeui 色板气质：sepia/moss/azure）
+  sepia:  { bg: '#171310', text: '#ede4d8', accent: '#d97706', step: 0.042,
+            overrides: { '--pi-green': '#5fae6e', '--pi-red': '#e06c5f', '--pi-yellow': '#d9a441',
+                         '--pi-accent-glow': 'rgba(217,119,6,0.26)', '--pi-glow-purple': 'rgba(180,130,60,0.10)', '--pi-glow-cyan': 'rgba(150,120,60,0.05)',
+                         '--pi-shadow-sm': 'rgba(20,12,4,0.22)', '--pi-shadow-md': 'rgba(20,12,4,0.30)', '--pi-shadow-lg': 'rgba(16,10,2,0.40)' } },
+  moss:   { bg: '#0c120e', text: '#e2ece4', accent: '#3f9e6e', step: 0.040,
+            overrides: { '--pi-green': '#4ade80', '--pi-red': '#e07a6c', '--pi-yellow': '#d9b259',
+                         '--pi-accent-glow': 'rgba(63,158,110,0.28)', '--pi-glow-purple': 'rgba(90,140,110,0.10)', '--pi-glow-cyan': 'rgba(80,150,120,0.06)' } },
+  azure:  { bg: '#0a101c', text: '#e0eaff', accent: '#38bdf8', step: 0.041,
+            overrides: { '--pi-accent2': '#7dd3fc', '--pi-accent-deep': '#0284c7', '--pi-accent-glow': 'rgba(56,189,248,0.30)', '--pi-glow-purple': 'rgba(80,120,200,0.12)', '--pi-glow-cyan': 'rgba(56,189,248,0.10)' } },
 }
 
 const SEMANTIC = { green: '#3ecf8e', red: '#f47067', yellow: '#f5b759' }

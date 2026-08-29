@@ -14,6 +14,7 @@ const FAB_NAV: { route: Route; icon: typeof MessagesSquare; label: string; color
   { route: 'tasks', icon: Clock4, label: '任务', color: 'text-amber-300' },
   { route: 'apps', icon: LayoutGrid, label: '应用', color: 'text-pi-accent' },
   { route: 'engine', icon: Cpu, label: '引擎', color: 'text-sky-300' },
+  { route: 'themes', icon: Palette, label: '主题', color: 'text-fuchsia-300' },
   { route: 'system', icon: MonitorCog, label: '系统', color: 'text-pi-accent2' },
 ]
 
