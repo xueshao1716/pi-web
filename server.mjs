@@ -526,8 +526,10 @@ async function handleChat(req, res, body) {
     if (!entry) return json(res, 404, { error: "会话不存在" });
   } else {
     // 未命名会话：body.fresh=true 表示用户点了「新建会话」→ 新建；否则复用上一个（打断续发同一会话）
-    if (body.fresh || !lastUnnamedEntry || activeSessions.get(lastUnnamedId) !== lastUnnamedEntry) {
-      const id = await createSession();
+    // 测试标记（2026-08-29）：x-pi-test 头 → 总是新建独立会话（不复用 lastUnnamed，防污染用户对话流），名字加 [真测] 前缀归入真测分组
+    const isTest = String(req.headers?.["x-pi-test"] || "") === "1";
+    if (isTest || body.fresh || !lastUnnamedEntry || activeSessions.get(lastUnnamedId) !== lastUnnamedEntry) {
+      const id = await createSession(isTest ? `[真测] ${message.slice(0, 30) || "API测试"}` : undefined);
       lastUnnamedId = id;
       lastUnnamedEntry = activeSessions.get(id);
       entry = lastUnnamedEntry;
@@ -1333,6 +1335,7 @@ process.on("unhandledRejection", (reason) => {
   console.error("[pi-web] unhandledRejection:", String(reason?.stack || reason || "").slice(0, 500));
 });
 process.on("uncaughtException", (err) => {
+  try { fs.appendFileSync(path.join(WEB_DIR, "crash.log"), `[${new Date().toLocaleString("zh-CN")}] uncaughtException: ${String(err?.stack || err)}\n`); } catch {}
   console.error("[pi-web] uncaughtException:", String(err?.stack || err || "").slice(0, 500));
 });
 
