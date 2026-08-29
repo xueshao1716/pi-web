@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { bindOutputGuardDeps, classifyAnomaly, isRepeatReply, normReply, recordReply, sanitizeUndefined } from "./engine/output-guard.mjs";
 import { initOutputInspector, inspectOutput } from "./engine/output-inspector.mjs";
 import { initModelProbe, probeModel, pickHealthyModel } from "./engine/model-health.mjs";
+import { rateLimit, rateLimitKey } from "./engine/rate-limit.mjs";
 // ── Reasonix 机制（esengine/DeepSeek-Reasonix 借鉴）：工具结果压缩 / NEEDS_PRO 自报升级 / scavenge 捞回 ──
 import { shrinkToolResult, NEEDS_PRO_RE, scavengeToolCalls } from "./engine/reasonix-tools.mjs";
 // ── 会话解析纯函数（拆模块）：消息/文本/图片/文件提取 ──
@@ -28,7 +29,7 @@ import { safeJoin } from "./engine/tools/security.mjs";
 import { createDshTool } from "./engine/dsh-tool.mjs";
 
 // ── 模型路由层（拆模块）：429 降级 / 复杂度分类 / Auto 路由 / pro 候选 ──
-import { initModelRouter, isOcGoBlocked, markModelBlocked, markOcGoBlocked, ocGoCandidate, pickFallbackDefault, pickFallbackExcluding, resetModelHealth, isAutoModel, routeForAuto, routeProCandidate, markSticky, ROUTER_AUTO, isAuthErrorStatus } from "./engine/model-router.mjs";
+import { initModelRouter, isOcGoBlocked, isModelBlocked, markModelBlocked, markOcGoBlocked, ocGoCandidate, pickFallbackDefault, pickFallbackExcluding, resetModelHealth, isAutoModel, routeForAuto, routeProCandidate, markSticky, ROUTER_AUTO, isAuthErrorStatus } from "./engine/model-router.mjs";
 // ── 模型能力探测与发现（拆模块）：能力推断 / 真实API探测(24h缓存) / 自定义 provider 发现 ──
 import { modelCapabilities, probeModelCapabilities, discoverCustomModels } from "./engine/model-probe.mjs";
 import { CONFIG } from "./config.mjs";
@@ -779,7 +780,7 @@ const executeUnifiedTool = createUnifiedToolExecutor({
   },
 });
 
-initSessionManager({ cwd: CONFIG.cwd, sessionsDir: SESSIONS_DIR, tools: CONFIG.tools, createAgentSessionServices, createAgentSessionFromServices, getModelRuntime: () => modelRuntime, loadSessionModelKey, getModelList: () => modelList, getDefaultModel: () => defaultModel, activeSessions, SessionManager, SettingsManager, DefaultResourceLoader, getAgentDir, readJsonFile, writeJsonFile, isExternalThinking, THINK_TOOL, modelCapabilities, bindOutputGuardDeps, extractMessages, createSseWriter, unifiedChat }); // 会话管理注入
+initSessionManager({ cwd: CONFIG.cwd, sessionsDir: SESSIONS_DIR, tools: CONFIG.tools, piPackage: CONFIG.piPackage, isModelBlocked, createAgentSessionServices, createAgentSessionFromServices, getModelRuntime: () => modelRuntime, loadSessionModelKey, getModelList: () => modelList, getDefaultModel: () => defaultModel, activeSessions, SessionManager, SettingsManager, DefaultResourceLoader, getAgentDir, readJsonFile, writeJsonFile, isExternalThinking, THINK_TOOL, modelCapabilities, bindOutputGuardDeps, extractMessages, createSseWriter, unifiedChat }); // 会话管理注入
 initUnifiedChat({ executeUnifiedTool, findKeyByEntry, readJsonFile, getModelList: () => modelList, getDefaultModel: () => defaultModel, authPath: AUTH_PATH, modelsPath: MODELS_PATH, cwd: CONFIG.cwd, piPackage: CONFIG.piPackage, UNIFIED_TOOLS, getAgentDir }); // 统一对话通道注入
 initRefineApi({ cwd: CONFIG.cwd }); // 经验沉淀台注入
 initMcpServer({ modelRouter: (await import("./engine/model-router.mjs")), memoryApi: memoryApi, emotion, getDefaultModel: () => defaultModel, wsRoot: () => CONFIG.cwd, json }); // MCP 认知层注入
@@ -827,6 +828,10 @@ try {
 async function handleChat(req, res, body) {
   let message = typeof body.message === "string" ? body.message.trim() : "";
   const sessionId = typeof body.sessionId === "string" ? body.sessionId : null;
+  // 限速（2026-08-29）：公网暴露下防脚本刷模型接口烧钱，30 次/分钟 per token+IP
+  if (!rateLimit(rateLimitKey(req, "chat"), 30, 60000)) {
+    return json(res, 429, { error: "请求过于频繁（30次/分钟），请稍后再试" });
+  }
   // 外部思考调试开关：请求级 body.think=true 或全局 CONFIG.externalThinking
   const thinkOn = body.think === true || isExternalThinking();
   // 记录对话开始时会话行数（基线）：交付时只提取本轮新增的文件，避免历史文件重复推
@@ -1040,7 +1045,7 @@ async function handleChat(req, res, body) {
     const onClose = () => { try { abortCtrl.abort(); } catch {} };
     req.on("close", onClose);
     try {
-      await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl.signal, undefined, thinkOn, body.taskKey);
+      await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl.signal, undefined, thinkOn, body.taskKey, (entry.modelKey && !isAutoModel(entry.modelKey)) ? entry.modelKey : null);
     } catch (e) {
       try { sseWrite(res, "error", { message: String(e?.message || e) }); } catch {}
     } finally {
@@ -1060,7 +1065,18 @@ async function handleChat(req, res, body) {
       autoRoute = routeForAuto(message, sessionId);
       return autoRoute.model;
     }
-    if (entry.modelKey) return modelList.find(m => m.provider === entry.modelKey.provider && m.id === entry.modelKey.id) || defaultModel;
+    if (entry.modelKey) {
+      const picked = modelList.find(m => m.provider === entry.modelKey.provider && m.id === entry.modelKey.id) || defaultModel;
+      // 主动避让：用户显式选中的模型已在冷却中(之前撞过 401/402/403/429/529) → 不进 SDK 重试循环，直接换备选
+      // （上游错误文本常是中文（如智谱/opencode-go 的额度提醒），pi SDK 内部可重试判定用英文关键词正则匹配不上不可重试模式，
+      // 会把额度耗尽误判成可重试，平白多等 3 次退避（共 ~14s）才降级）
+      if (isModelBlocked(picked)) {
+        const alt = pickFallbackExcluding(picked);
+        console.log(`[pi-web] 主动避让冷却模型: ${picked?.provider}/${picked?.id} 已冷却 → 换 ${alt?.provider}/${alt?.id}`);
+        return alt || picked;
+      }
+      return picked;
+    }
     // 未设置会话模型：默认走 Auto 路由（对标 Cursor 默认 Auto；PI_AUTO_ROUTE=0 可关闭）
     autoRoute = routeForAuto(message, sessionId);
     return autoRoute.model;
@@ -1189,6 +1205,15 @@ async function handleChat(req, res, body) {
       } else if (event.type === "auto_retry_start") {
         writer.push("note", { text: `⚠️ 自动重试中（第 ${event.attempt} 次）：${event.errorMessage}` });
         busEmit("note", { text: `⚠️ 自动重试中（第 ${event.attempt} 次）：${event.errorMessage}` });
+        // 主动避让：重试事件带真实错误文本，命中额度/权限错误码提前标冷却，下一轮进入 effModel 选择时就能直接避开
+        // （中文额度错误文本 SDK 重试判定正则匹配不上不可重试模式，重试耗尽后不抛异常 catch 块无机会标冷却，事件里的 errorMessage 是唯一可靠信号源）
+        try {
+          const st = String(event.errorMessage || "").match(/HTTP\s*(\d{3})|status.?(\d{3})|^(\d{3}):/);
+          const code = st ? parseInt(st[1] || st[2] || st[3], 10) : 0;
+          if ([401, 402, 403, 429, 529].includes(code) && effModel) {
+            markModelBlocked(effModel, { reason: `HTTP ${code} (重试中提前标冷却)` });
+          }
+        } catch {}
       } else if (event.type === "compaction_start") {
         writer.push("note", { text: "🧹 上下文压缩中…" });
         busEmit("note", { text: "🧹 上下文压缩中…" });
@@ -1259,7 +1284,7 @@ async function handleChat(req, res, body) {
     } catch {}
     // 条件注入全量记忆（任务型消息才带）：人格保底用常驻索引（agent 创建时已注入），干活时全量
     if (shouldInjectFullMemory(message)) {
-      _lastUserQuery = String(message || "");
+      setLastUserQuery(message);
       try {
         const fullMem = loadMemory();
         console.log(`[tiered] 任务型注入: msg="${message.slice(0, 30)}" mem=${fullMem.length ? fullMem.reduce((a, c) => a + c.length, 0) : 0}c`);
@@ -1329,6 +1354,7 @@ async function handleChat(req, res, body) {
     }
     // 空回复兜底：agent 完成但无任何文本输出（部分推理模型偶发把回答全放 <think>）→ 直调模型接口补一次
     if (!sawDelta) {
+      // （重试中提前标冷却已在 auto_retry_start 事件里处理，这里只负责换备选提供回答）
       // 修复 B：空回复兕底用安全模型（避开 opencode-go 429 且排除当前模型，不再死磕 defaultModel）
       const fbModel = pickFallbackExcluding(effModel);
       const fallback = fbModel ? await directChat(fbModel, message) : null;
@@ -1551,8 +1577,10 @@ async function handleChat(req, res, body) {
         console.log(`[pi-web] 通断探测 → 好模型顶上: ${healthy.provider}/${healthy.id}`);
       }
     } else if (effModel) {
-      const st = agentErr.match(/HTTP (\d{3})|status.?(\d{3})/);
-      const code = st ? parseInt(st[1] || st[2], 10) : 0;
+      // ⚙️ 2026-08-28 修复：原正则只识 "HTTP 429"/"status 429" 格式，漏掉上游直接抛 "429: {...}" 的情况
+      // （实测智谱 zai-coding-cn 套餐额度耗尽的真实错误格式）——code=0 永远不命中，冷却一直没被标记，每轮都白撞
+      const st = agentErr.match(/HTTP\s*(\d{3})|status.?(\d{3})|^(\d{3}):/);
+      const code = st ? parseInt(st[1] || st[2] || st[3], 10) : 0;
       if ([401, 402, 403, 429, 529].includes(code)) {
         markModelBlocked(effModel, { reason: `HTTP ${code} (agent管线)` });
         const reason = code === 429 ? "额度/限流" : code === 400 ? "请求被拒" : "权限/服务问题";
@@ -1814,8 +1842,14 @@ const API_ROUTES = [
   ["POST", "/api/share/stop", (res) => handleShareStop(res)],
   // ── 文件传输：上传任意文件到工作空间，写入会话 file 消息（聊天界面可见可下载）──
   ["POST", "/api/files/upload", async (res, req) => {
+    // 限速（2026-08-29）：20MB 上传端点防灌盘，10 次/分钟
+    if (!rateLimit(rateLimitKey(req, "upload"), 10, 60000)) {
+      return json(res, 429, { error: "上传过于频繁（10次/分钟），请稍后再试" });
+    }
     const body = await readBody(req, 24);
     const name = String(body.name || "").slice(0, 120);
+    // 路径穿越防护（2026-08-29）：拒绝路径分隔符与 ..，防止写入任意路径
+    if (!name || /[\\/:*?"<>|]/.test(name) || name.includes("..")) return json(res, 400, { error: "文件名不合法" });
     const data = String(body.data || "");
     const sessionId = String(body.sessionId || "");
     if (!name || !data) return json(res, 400, { error: "name 和 data 必填" });

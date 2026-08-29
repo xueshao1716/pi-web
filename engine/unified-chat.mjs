@@ -235,6 +235,18 @@ export async function unifiedChat(model, messages, opts = {}) {
       if (!think) think = String(m?.[1] || "").trim();
       text = content.replace(/<think>[\s\S]*?<\/think>\s*/g, "").trim();
     }
+    // 诊断：text 空时记录上游响应细节（2026-08-29 临时排查 hy4 空回复）
+    if (!text) {
+      try {
+        const fsdiag = await import("node:fs");
+        fsdiag.appendFileSync("D:/pi-web/unified-debug.log", JSON.stringify({
+          t: new Date().toISOString(), model: model.provider + "/" + model.id, turn,
+          content_len: content.length, reasoning_len: think.length,
+          tool_calls: Array.isArray(tcs) ? tcs.length : (msg.tool_calls?.length || 0),
+          content_head: content.slice(0, 120), reasoning_head: think.slice(0, 120),
+        }) + "\n");
+      } catch {}
+    }
     return { think, text: text || null, history, usedModel };
   }
   // 超过轮数上限：尽量返回中间结果（不直接丢错误）
@@ -369,10 +381,15 @@ except Exception as e:
 // SSE 心跳：每 20s 发注释行保持连接活跃（对抗公网隧道/代理的 idle 超时）
 
 // 统一通道：所有模型走 unifiedChat（对话 + 工具 + 思考 + 媒体 + 压缩 + 重试）
-export async function handleUnifiedChat(res, entry, message, sessionId, params, signal, writer, thinkOn, taskKey) {
+export async function handleUnifiedChat(res, entry, message, sessionId, params, signal, writer, thinkOn, taskKey, modelOverride = null) {
   const taskId = taskKey || sessionId;
-  // 修复 B：兕底通道用安全模型（opencode-go 429 标记期间避开，不撞额度墙）
-  const chatModel = pickFallbackDefault();
+  // 兕底通道用安全模型（opencode-go 429 标记期间避开）；用户显式选中的非原生模型优先（2026-08-29 修复：
+  // 之前无论选什么都用 pickFallbackDefault，导致选中 hy4-preview/claude-relay 等被静默换成商汤）
+  let chatModel = pickFallbackDefault();
+  try {
+    const _auth = _readJsonFile(_authPath);
+    if (modelOverride && _auth[modelOverride.provider]?.key) chatModel = modelOverride;
+  } catch {}
   writer = writer || createSseWriter(res);
   touchTask(taskId, { stage: "处理中" });
   let hist = [];
@@ -398,6 +415,10 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
   // 注入项目规则（.pi-rules.md，借鉴 Windsurf rules），确保不挤占历史上下文
   const rules = loadProjectRules();
   if (rules.length) history = [{ role: "system", content: rules.join("\n") }, ...history];
+  // 驱动模型身份注入（2026-08-29）：模型默认不知道自己的部署版本（Opus 被渠道污染成 Kiro、hy4 自称 Gemini），如实告知
+  try {
+    if (chatModel?.id) history.unshift({ role: "system", content: `【驱动模型】本轮由 ${chatModel.provider} 通道的 ${chatModel.id} 模型驱动，运行在 pi-web 工作台（助手角色：小语）。用户问及你的模型/版本/能力时，以此如实回答；不要自称其他产品名。` });
+  } catch {}
   // dsh time-context 借鉴：每轮注入当前时间（agent 时间感知，涉及时效/定时判断不靠猜）
   try {
     const t = new Date();

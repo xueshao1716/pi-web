@@ -1,6 +1,7 @@
 // pi-web 记忆服务：三层记忆统一管理（固定记忆 + 记忆日志 + 自动沉淀）
 // 借鉴 xi-system 记忆理念：重要信息自动写入、跨会话长期有效
 import fs from "node:fs";
+import { atomicWriteText } from "./atomic-io.mjs";
 import path from "node:path";
 import { syncMemoryToTui } from "./memory-sync.mjs";
 
@@ -40,7 +41,7 @@ export function autoMemorize(wsRoot, { userMsg = "", assistantMsg = "", files = 
     const entry = `### ${stamp}\n- ${notes.join("；")}\n${head ? `- 要点：${head}\n` : ""}`;
     let log = "";
     try { log = fs.readFileSync(paths.log, "utf8"); } catch {}
-    fs.writeFileSync(paths.log, log + entry + "\n", "utf8");
+    atomicWriteText(paths.log, log + entry + "\n");
     return { wrote: true, note: entry };
   } catch { return { wrote: false }; }
 }
@@ -172,7 +173,7 @@ export function appendState(wsRoot, line) {
       // 无今日节 → 追加到文件末尾
       s = s.replace(/\n*$/, "") + `\n\n${marker}\n- ${line}\n`;
     }
-    fs.writeFileSync(paths.fixed, s, "utf8");
+    atomicWriteText(paths.fixed, s);
     // 同步到 TUI（两端记忆相通）
     try { syncMemoryToTui(); } catch {}
     return true;
@@ -198,7 +199,7 @@ export function saveCorrection(wsRoot, { trigger = "", correction = "" } = {}) {
     const entry = `### ${stamp}\n- 触发: ${trigger || "（未指明场景）"}\n- 纠正: ${correction}\n`;
     let content = "";
     try { content = fs.readFileSync(p.file, "utf8"); } catch {}
-    fs.writeFileSync(p.file, content + entry + "\n", "utf8");
+    atomicWriteText(p.file, content + entry + "\n");
     try { syncMemoryToTui(); } catch {}
     return { ok: true, entry };
   } catch (e) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
@@ -236,7 +237,7 @@ export function saveRelation(wsRoot, { aspect = "", detail = "" } = {}) {
     const key = `${aspect}·${detail}`;
     if (content.includes(detail.slice(0, 20))) return { ok: false, reason: "已存在" };
     const entry = `## ${aspect}\n- ${detail}（${stamp}）\n`;
-    fs.writeFileSync(p.file, content + entry + "\n", "utf8");
+    atomicWriteText(p.file, content + entry + "\n");
     try { syncMemoryToTui(); } catch {}
     return { ok: true };
   } catch (e) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
@@ -274,7 +275,7 @@ export function saveSnapshot(wsRoot, reason = "manual") {
         if (fs.existsSync(f)) snap.files[path.basename(f)] = fs.readFileSync(f, "utf8");
       } catch {}
     }
-    fs.writeFileSync(path.join(p.dir, `${id}.json`), JSON.stringify(snap, null, 2), "utf8");
+    atomicWriteText(path.join(p.dir, `${id}.json`), JSON.stringify(snap, null, 2));
     return { ok: true, id };
   } catch (e) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
 }
@@ -331,7 +332,7 @@ export function distillMemory(wsRoot, { max = 60, scanN = 80, dryRun = false } =
       s = s.replace(/\n*$/, "") + `\n\n${anchor}\n` + out.map(l => `- ${l}`).join("\n") + "\n";
       applied = out.length;
     }
-    fs.writeFileSync(paths.fixed, s, "utf8");
+    atomicWriteText(paths.fixed, s);
     try { syncMemoryToTui(); } catch {}
     return { ok: true, distilled, applied };
   } catch (e) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
@@ -360,7 +361,7 @@ export function archiveStateSections(wsRoot, keep = 5) {
       s = s.slice(0, idx) + `## ${title}（已归档）· ${first}\n` + s.slice(endIdx);
       archived++;
     }
-    fs.writeFileSync(paths.fixed, s, "utf8");
+    atomicWriteText(paths.fixed, s);
     try { syncMemoryToTui(); } catch {}
     return { ok: true, archived };
   } catch (e) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
@@ -378,7 +379,7 @@ export function restoreSnapshot(wsRoot, id) {
         : name === "记忆日志.md" ? memoryPaths(wsRoot).log
         : name === CORRECTION_FILE ? correctionPaths(wsRoot).file
         : relationPaths(wsRoot).file;
-      if (target) { fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, content, "utf8"); }
+      if (target) { fs.mkdirSync(path.dirname(target), { recursive: true }); atomicWriteText(target, content); }
     }
     try { syncMemoryToTui(); } catch {}
     return { ok: true, id: snap.id, reason: snap.reason };

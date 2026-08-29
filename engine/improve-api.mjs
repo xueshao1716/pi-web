@@ -6,6 +6,7 @@
 //   - self-heal 自愈次数（自愈频繁 → 根因提案）
 // 提案池：工程/经验库/improvements.jsonl（与 gene.mjs 的 proposals.json 分离，面向"行为改进"而非"基因基线"）
 import fs from "node:fs";
+import { atomicWriteText } from "./atomic-io.mjs";
 import path from "node:path";
 import { getCooldownHits } from "./model-router.mjs";
 
@@ -34,7 +35,7 @@ function load() {
 
 function save(list) {
   fs.mkdirSync(path.dirname(file()), { recursive: true });
-  fs.writeFileSync(file(), list.map((p) => JSON.stringify(p)).join("\n") + "\n", "utf8");
+  atomicWriteText(file(), list.map((p) => JSON.stringify(p)).join("\n") + "\n");
 }
 
 function makeProposal(kind, title, evidence, suggestion, priority) {

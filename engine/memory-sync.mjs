@@ -2,6 +2,7 @@
 // 作用：把 pi-web 的记忆文件（记忆.md/记忆日志/经验库）同步到 TUI 项目级 APPEND_SYSTEM.md
 // 这样 TUI 在 D:\pi-workspace 下运行时，加载同一份记忆，两端记忆相通
 import fs from "node:fs";
+import { atomicWriteText } from "./atomic-io.mjs";
 import path from "node:path";
 
 const WS = "D:/pi-workspace";
@@ -115,7 +116,7 @@ ${log ? log.split("\n### ").slice(-8).map(b => "### " + b.trim()).join("\n") : "
 ${expRecent || "（无）"}
 `;
     fs.mkdirSync(path.dirname(OUT), { recursive: true });
-    fs.writeFileSync(OUT, content, "utf8");
+    atomicWriteText(OUT, content);
     console.log(`[memory-sync] 已同步记忆到 TUI: ${OUT} (${content.length}B)`);
     return true;
   } catch (e) {
