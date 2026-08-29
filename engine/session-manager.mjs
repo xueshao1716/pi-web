@@ -241,6 +241,7 @@ export async function openSession(id) {
   }
   evictInactiveSessions();
   const found = getSessionList().find(s => s.id === id);
+  if (!found) return null; // 08-29 修复：不存在的 id 直接 null（原来 found.file 直接炸 TypeError，调用方 404 分支永远走不到）
   // DEBUG（2026-08-22 会话不存在排查）：临时日志
   // 超大会话先瘦身（避免加载 20MB+ 历史）
   await slimSessionImages(found.file);

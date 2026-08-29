@@ -208,7 +208,7 @@ initThemePrefs(path.join(AGENT_DIR, "theme-prefs.json")); // 主题偏好跨端�
 initMediaApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, authPath: AUTH_PATH, getModelList: () => modelList }); // 媒体生成层注入
 initAsrApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, httpJsonFetch }); // 语音转文字（mimo-v2.5-asr 免费通道）
 initDshKeys({ dshWebPort: 3080, readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, ModelRuntime, refreshModelList, setModelList: (l) => { modelList = l; }, getDefaultModel: () => defaultModel, setDefaultModel: (m) => { defaultModel = m; }, setModelRuntime: (r) => { modelRuntime = r; }, getModelRuntime: () => modelRuntime, keepModels: KEEP_MODELS, resetModelHealth }); // dsh/keys/模型管理注入
-initStatsApi({ getAgentDir, cwd: CONFIG.cwd, DefaultResourceLoader }); // 统计/技能/导出注入
+initStatsApi({ getAgentDir, cwd: CONFIG.cwd, DefaultResourceLoader, openSession, ensureAgent, getDefaultModel: () => defaultModel }); // 统计/技能/导出注入（08-29 补注入 openSession/ensureAgent——三个 handler 裸引用坏了 9 天）
 initModelClient({ readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, resolveAuth, getModelList: () => modelList, getDefaultModel: () => defaultModel, unifiedChat, detectMediaIntents, generateMediaAsync, extractMediaPrompt, readEntriesFromFile, createSseWriter }); // 直调模型客户端注入
 initSelfHeal({ directChat, runGit: (...args) => runGit(...args), cwd: CONFIG.cwd, getModelList: () => modelList, getDefaultModel: () => defaultModel, piPackage: CONFIG.piPackage }); // 自愈/更新/设计器注入（REPAIR_BACKUP_FILES 已随块迁入模块）
 initImproveApi({ root: CONFIG.cwd, statsProvider: null, healProvider: null }); // 自我改进提案（2026-08-21）
