@@ -15,6 +15,10 @@ import { bindOutputGuardDeps, classifyAnomaly, isRepeatReply, normReply, recordR
 import { initOutputInspector, inspectOutput } from "./engine/output-inspector.mjs";
 import { initModelProbe, probeModel, pickHealthyModel } from "./engine/model-health.mjs";
 import { rateLimit, rateLimitKey } from "./engine/rate-limit.mjs";
+import { createMiscApi } from "./engine/misc-api.mjs";
+import { createModelKeys } from "./engine/model-keys.mjs";
+import { createSessionBus } from "./engine/session-bus.mjs";
+import { createModelSessionApi } from "./engine/model-session.mjs";
 // ── Reasonix 机制（esengine/DeepSeek-Reasonix 借鉴）：工具结果压缩 / NEEDS_PRO 自报升级 / scavenge 捞回 ──
 import { shrinkToolResult, NEEDS_PRO_RE, scavengeToolCalls } from "./engine/reasonix-tools.mjs";
 // ── 会话解析纯函数（拆模块）：消息/文本/图片/文件提取 ──
@@ -184,60 +188,6 @@ let lastUnnamedId = null;           // 最近创建/复用的未命名会话（�
 let lastUnnamedEntry = null;
 
 // 带中文偏好系统提示的资源加载器
-function scanRecentArtifacts(withinMs = 2 * 60 * 1000, max = 10) {
-  try {
-    const root = path.resolve(CONFIG.cwd);
-    if (!fs.existsSync(root)) return [];
-    const now = Date.now();
-    const out = [];
-    // 只扫关键目录：根目录 + 生成物/ + 收发文件/今天 + 工程/（含子目录，专项工作台产物都在这）
-    // 避免把工程/ 子目录的历史文件当本轮产物：靠 withinMs 时间窗 + 只收成品类型
-    const today = new Date().toISOString().slice(0, 10);
-    const scanDirs = [root, path.join(root, "生成物"), path.join(root, "收发文件", today), path.join(root, "工程")];
-    const seenNames = new Set();
-    // 递归收集（工程/ 要递归子目录；其余平扫）
-    const collect = (dir, recursive) => {
-      let items;
-      try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-      for (const it of items) {
-        if (it.name.startsWith(".") || it.name.startsWith("_")) continue; // 排除隐藏 + 临时验证脚本（_前缀）
-        if (SCAN_EXCLUDE.test(dir + path.sep + it.name)) continue;
-        if (it.isDirectory()) {
-          if (recursive && it.name !== "node_modules") collect(path.join(dir, it.name), true);
-          continue;
-        }
-        const full = path.join(dir, it.name);
-        let st;
-        try { st = fs.statSync(full); } catch { continue; }
-        if (st.size <= 0 || now - st.mtimeMs >= withinMs) continue;
-        // 只收常见产物类型
-        const ext = path.extname(it.name).toLowerCase();
-        if (!/^\.(html|htm|md|txt|js|css|json|py|png|jpg|jpeg|gif|webp|pdf|docx?|xlsx?|pptx?|mp3|wav|mp4|webm|svg|zip)$/.test(ext)) continue;
-        // 同名去重（不同目录的同一产物只推最新一份）
-        if (seenNames.has(it.name)) continue;
-        seenNames.add(it.name);
-        out.push({
-          name: it.name,
-          path: path.relative(root, full).replace(/\\/g, "/"),
-          size: st.size,
-          mime: "",
-          mtimeMs: st.mtimeMs,
-        });
-      }
-    };
-    for (const dir of scanDirs) collect(dir, dir === path.join(root, "工程"));
-    // 按"成品优先级"排序：网页/文档/图片类优先（脚本/验证文件靠后）
-    const priority = (name) => {
-      const ext = path.extname(name).toLowerCase();
-      if (/^\.(html?|md|pdf|docx?|pptx?|png|jpe?g|gif|webp)$/.test(ext)) return 0;
-      if (/^\.(zip|mp4|mp3|wav|svg|json)$/.test(ext)) return 1;
-      if (/^\.(js|css|py|txt|ts)$/.test(ext)) return 2;
-      return 3;
-    };
-    return out.sort((a, b) => priority(a.name) - priority(b.name) || (b.mtimeMs || 0) - (a.mtimeMs || 0)).slice(0, max);
-  } catch { return []; }
-}
-
 // 输出质量守卫依赖注入（engine/output-guard.mjs 需要读会话文件做复读基准恢复）
 try { bindOutputGuardDeps({ readEntriesFromFile, extractText }); } catch {}
 
@@ -259,7 +209,7 @@ initAsrApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, httpJsonFetch }
 initDshKeys({ dshWebPort: 3080, readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, ModelRuntime, refreshModelList, setModelList: (l) => { modelList = l; }, getDefaultModel: () => defaultModel, setDefaultModel: (m) => { defaultModel = m; }, setModelRuntime: (r) => { modelRuntime = r; }, getModelRuntime: () => modelRuntime, keepModels: KEEP_MODELS, resetModelHealth }); // dsh/keys/模型管理注入
 initStatsApi({ getAgentDir, cwd: CONFIG.cwd, DefaultResourceLoader }); // 统计/技能/导出注入
 initModelClient({ readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, resolveAuth, getModelList: () => modelList, getDefaultModel: () => defaultModel, unifiedChat, detectMediaIntents, generateMediaAsync, extractMediaPrompt, readEntriesFromFile, createSseWriter }); // 直调模型客户端注入
-initSelfHeal({ directChat, runGit, cwd: CONFIG.cwd, getModelList: () => modelList, getDefaultModel: () => defaultModel, piPackage: CONFIG.piPackage }); // 自愈/更新/设计器注入（REPAIR_BACKUP_FILES 已随块迁入模块）
+initSelfHeal({ directChat, runGit: (...args) => runGit(...args), cwd: CONFIG.cwd, getModelList: () => modelList, getDefaultModel: () => defaultModel, piPackage: CONFIG.piPackage }); // 自愈/更新/设计器注入（REPAIR_BACKUP_FILES 已随块迁入模块）
 initImproveApi({ root: CONFIG.cwd, statsProvider: null, healProvider: null }); // 自我改进提案（2026-08-21）
 // 启动时构建模型列表：原生 provider（pi 内置目录）+ store 自定义，只显示配置过 Key 的
 {
@@ -379,41 +329,21 @@ ${corrected.text}`;
 
 // ══ 会话级模型选择持久化（2026-08-19 修复 A）════
 // 现象：模型切换只存内存 entry.modelKey，会话 LRU 淘汰/服务重启后丢失 → 悄悄回 Auto → 429 场景下持续报错。
-// 修复：切换写入 AGENT_DIR/session-model-keys.json，openSession 恢复；删除会话时清理。
-const SESSION_KEYS_FILE = path.join(AGENT_DIR, "session-model-keys.json");
-function saveSessionModelKey(sid, mk) {
-  if (!sid) return;
-  try { const d = readJsonFile(SESSION_KEYS_FILE); d[sid] = mk; fs.writeFileSync(SESSION_KEYS_FILE, JSON.stringify(d, null, 1)); } catch {}
-}
-function loadSessionModelKey(sid) {
-  try {
-    const mk = readJsonFile(SESSION_KEYS_FILE)[sid] || null;
-    if (!mk) return null;
-    // ⚠️ 校验：会话存的模型若已下架/被清理(不在当前模型列表)，视为未设置 → 走默认路由。
-    // 否则显示与实际不符、调用失败后静默降级（用户看到 A 实际跑 B）
-    const exists = (modelList || []).some(m => m.provider === mk.provider && m.id === mk.id);
-    return exists ? mk : null;
-  } catch { return null; }
-}
-
-// ══ 全局最后模型（2026-08-19 新增）══
-// 现象：新建会话 createSession 不恢复模型选择 → 新会话永远回 Auto → 降级链落 mimo，用户上次选的千问不继承 → “智能路由乱了”
-// 修复：用户切过具体模型后记录全局 lastModel，新会话继承（agent 直接用该模型）；切回 Auto 时清空
-const LAST_MODEL_FILE = path.join(AGENT_DIR, "last-model.json");
-function saveLastModel(mk) {
-  try {
-    if (!mk || (mk.provider === "auto" && mk.id === "auto")) { fs.writeFileSync(LAST_MODEL_FILE, JSON.stringify({}, null, 1)); return; }
-    fs.writeFileSync(LAST_MODEL_FILE, JSON.stringify({ provider: mk.provider, id: mk.id }, null, 1));
-  } catch {}
-}
-let lastModelKey = (() => { try { const d = readJsonFile(LAST_MODEL_FILE); return d?.provider && d?.id ? { provider: d.provider, id: d.id } : null; } catch { return null; } })();
-
 // Plan 模式只读工具集（工具级硬限制）：读文件 + 搜索，不给写/执行工具
 const PLAN_READONLY_SET = ["read", "search_files"];
 
 function readJsonFile(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return {}; } }
 function writeJsonFile(p, obj) { try { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(obj, null, 2), "utf8"); return true; } catch { return false; } }
 const CRLF = "\r\n";
+
+// ── 模块化拆分接线（2026-08-29 #7 红线治理）：workspace杂项API / model-keys / session-bus / model-session ──
+const modelKeysApi = createModelKeys({ readJsonFile, getAgentDir, getModelList: () => modelList });
+const { saveSessionModelKey, loadSessionModelKey, saveLastModel } = modelKeysApi;
+const miscApi = createMiscApi({ json, readJsonFile, writeJsonFile, getAgentDir, authPath: AUTH_PATH, modelsPath: MODELS_PATH, openSession, ensureAgent, getDefaultModel: () => defaultModel, refreshModelList, scanSessionFiles, extractText, parseSessionFile, cwd: CONFIG.cwd, scanExclude: /(^|[\\/])(node_modules|\.git|\.cache|backups?|temp|tmp|\.token)([\\/]|$)/i });
+const { scanRecentArtifacts, handlePrompts, handleSessionTree, handleSessionBranch, handleModelsRemove, handleSearch, runGit, handleGitStatus, handleGitDiff } = miscApi;
+const sessionBusApi = createSessionBus({ json });
+const { busGet, busPush, handleSessionStream } = sessionBusApi;
+const { handleModels, handleSwitchModel } = createModelSessionApi({ json, readJsonFile, resolveAuth, modelCapabilities, modelsPath: MODELS_PATH, getModelList: () => modelList, getDefaultModel: () => defaultModel, getModelRuntime: () => modelRuntime, getConfig: () => CONFIG, activeSessions, createSessionAgent, saveLastModel, saveSessionModelKey });
 
 // ── 隔离子任务执行器初始化（P2）──
 // 复用系统代理栈 + 模型配置；flash 候选走千问（成本优先，子任务不值得 pro）
@@ -438,178 +368,12 @@ try { emotion.bindSkillIndex(() => loadSkillIndex()); } catch {}
 // POST /api/models/remove {provider}
 // 内置 provider（走 pi agent）；其余自定义 provider 走直调通道
 // GET /api/prompts —— 提示词模板列表（~/.pi/agent/prompts/*.md）
-async function handlePrompts(res) {
-  const dir = path.join(getAgentDir(), "prompts");
-  const list = [];
-  try {
-    for (const f of fs.readdirSync(dir)) {
-      if (!f.endsWith(".md")) continue;
-      const content = fs.readFileSync(path.join(dir, f), "utf8");
-      const name = f.replace(/\.md$/, "");
-      let desc = "";
-      let body = content;
-      const fm = content.match(/^---\n([\s\S]*?)\n---\n?/);
-      if (fm) {
-        const dm = fm[1].match(/description:\s*(.+)/);
-        if (dm) desc = dm[1].trim();
-        body = content.slice(fm[0].length);
-      }
-      list.push({ name, description: desc || (body.split("\n")[0] || "").slice(0, 60), content: body.trim() });
-    }
-  } catch {}
-  json(res, 200, { prompts: list });
-}
-
-// GET /api/sessions/:id/tree —— 会话分支树
-async function handleSessionTree(res, id) {
-  const entry = await openSession(id);
-  if (!entry) return json(res, 404, { error: "会话不存在" });
-  const sm = entry.sm;
-  const roots = sm.getTree();
-  const leafId = sm.getLeafId();
-  // 只保留消息节点，限制深度与宽度（防大会话递归溢出）
-  const isMsg = (n) => n.entry?.type === "message" && ["user", "assistant"].includes(n.entry?.message?.role);
-  const simplify = (node, depth = 0, budget = { n: 0 }) => {
-    budget.n++;
-    if (depth > 8 || budget.n > 400) return null;
-    const children = (node.children || [])
-      .map(c => simplify(c, depth + 1, budget))
-      .filter(Boolean)
-      .slice(0, 30);
-    if (!isMsg(node)) {
-      if (!children.length) return null;
-      return { id: node.entry.id, type: node.entry.type, children };
-    }
-    const content = node.entry.message?.content || [];
-    const text = (content.filter(b => b.type === "text").map(b => b.text || "").join("") || node.entry.message?.text || "").slice(0, 50);
-    return { id: node.entry.id, role: node.entry.message.role, text, ts: node.entry.timestamp, children };
-  };
-  json(res, 200, { tree: roots.map(s => simplify(s)).filter(Boolean), leafId });
-}
-
-// POST /api/sessions/:id/branch {entryId} —— 从某条消息分叉
-async function handleSessionBranch(res, id, body) {
-  const entry = await openSession(id);
-  if (!entry) return json(res, 404, { error: "会话不存在" });
-  const entryId = body?.entryId;
-  if (!entryId) return json(res, 400, { error: "缺少 entryId" });
-  try {
-    entry.sm.branch(entryId);
-    // 分支后重建 agent（从文件加载新分支上下文）
-    if (entry.agent) { try { entry.agent.dispose(); } catch {} entry.agent = null; }
-    await ensureAgent(entry, defaultModel);
-    json(res, 200, { ok: true, leafId: entry.sm.getLeafId() });
-  } catch (e) {
-    json(res, 500, { error: String(e?.message || e).slice(0, 150) });
-  }
-}
-
-// POST /api/sessions/:id/remove —— 删除会话
-async function handleModelsRemove(res, body) {
-  const { provider } = body || {};
-  if (!provider) return json(res, 400, { error: "缺少 provider" });
-  const auth = readJsonFile(AUTH_PATH); delete auth[provider]; writeJsonFile(AUTH_PATH, auth);
-  const store = readJsonFile(MODELS_PATH); delete store[provider]; writeJsonFile(MODELS_PATH, store);
-  await refreshModelList();
-  json(res, 200, { ok: true });
-}
-
-// GET /api/search?q= —— 搜索所有会话历史
-async function handleSearch(res, q) {
-  q = (q || "").trim();
-  if (q.length < 2) return json(res, 200, { results: [] });
-  const ql = q.toLowerCase();
-  const results = [];
-  for (const file of scanSessionFiles()) {
-    try {
-      const lines = fs.readFileSync(file, "utf8").split("\n").filter(Boolean);
-      const hits = [];
-      for (const line of lines) {
-        let e; try { e = JSON.parse(line); } catch { continue; }
-        if (e.type !== "message" || !e.message) continue;
-        const text = extractText(e.message.content);
-        if (!text || !text.toLowerCase().includes(ql)) continue;
-        hits.push({ role: e.message.role, snippet: text.replace(/\s+/g, " ").slice(0, 160) });
-        if (hits.length >= 3) break;
-      }
-      if (hits.length) {
-        const info = parseSessionFile(file);
-        results.push({ sessionId: info.id, name: info.name || "会话", preview: info.preview, hits });
-      }
-    } catch {}
-  }
-  json(res, 200, { results: results.slice(0, 20) });
-}
-
-// GET /api/git/status 、 /api/git/diff —— Git 集成
-function runGit(args) {
-  return new Promise((resolve) => {
-    execFile("git", ["-C", CONFIG.cwd, ...args], { encoding: "utf8", timeout: 8000, maxBuffer: 2 * 1024 * 1024 }, (err, stdout) => {
-      if (err) {
-        const msg = String(err.message || "");
-        if (msg.includes("not a git repository") || msg.includes("Not a git repository")) {
-          return resolve({ ok: false, isRepo: false, output: "" });
-        }
-        return resolve({ ok: false, isRepo: true, output: msg.split("\n").slice(-5).join("\n") });
-      }
-      resolve({ ok: true, output: stdout });
-    });
-  });
-}
-async function handleGitStatus(res) {
-  const r = await runGit(["status", "--short", "--branch"]);
-  json(res, 200, { isRepo: r.isRepo !== false, output: r.output || "" });
-}
-async function handleGitDiff(res) {
-  const r = await runGit(["diff", "--stat"]);
-  json(res, 200, { isRepo: r.isRepo !== false, output: r.output || "" });
-}
-
 // ── 鉴权 ───────────────────────────────────────────────────────────
 function checkAuth(req) {
   const h = req.headers.authorization || "";
   if (h === `Bearer ${CONFIG.token}`) return true;
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   return url.searchParams.get("token") === CONFIG.token;
-}
-
-// ── 会话事件总线：任务事件统一入缓冲 + 广播给所有订阅者（多端实时观看）──
-const sessionBus = new Map(); // key: taskId/sessionId → { seq, events: [], subs: Set }
-function busGet(key) {
-  if (!key) return null;
-  if (!sessionBus.has(key)) sessionBus.set(key, { seq: 0, events: [], subs: new Set() });
-  return sessionBus.get(key);
-}
-function busPush(key, type, data) {
-  const b = busGet(key);
-  if (!b) return null;
-  const ev = { type, seq: ++b.seq, data: data || {}, ts: Date.now() };
-  b.events.push(ev);
-  if (b.events.length > 500) b.events.splice(0, b.events.length - 500); // 环形缓冲 500
-  // 任务结束：清空缓冲，避免完成后订阅端重放（历史已从 /messages 拿）
-  if (type === "turn_end") b.events.length = 0;
-  for (const sub of b.subs) {
-    try { sub.write(`event: ${type}\ndata: ${JSON.stringify(ev)}\n\n`); } catch {}
-  }
-  return ev;
-}
-
-// GET /api/sessions/:id/stream —— 会话实时订阅（多端观看）：补发 after 之后历史 + 实时广播 + 心跳
-async function handleSessionStream(res, req, url, id) {
-  const key = decodeURIComponent(id || "");
-  if (!key) return json(res, 400, { error: "缺少会话 ID" });
-  res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache", Connection: "keep-alive", "X-Accel-Buffering": "no" });
-  const b = busGet(key);
-  const after = parseInt(url?.searchParams?.get("after") || "0", 10) || 0;
-  // 补发 after 之后的历史事件（断线续流/晚加入观看）
-  for (const ev of b.events) if (ev.seq > after) {
-    try { res.write(`event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`); } catch {}
-  }
-  try { res.write(`event: subscribed\ndata: ${JSON.stringify({ key, lastSeq: b.seq })}\n\n`); } catch {}
-  const sub = { write: (s) => { if (!res.writableEnded) { try { res.write(s); } catch {} } } };
-  b.subs.add(sub);
-  const hb = setInterval(() => { try { sub.write(": ping\n\n"); } catch {} }, 20000);
-  req.on("close", () => { clearInterval(hb); b.subs.delete(sub); });
 }
 
 // ── 路由 ───────────────────────────────────────────────────────────
@@ -639,109 +403,6 @@ const SW_UNREGISTER = "self.addEventListener('install',()=>self.skipWaiting());s
 
 async function handleStatic(req, res) {
   return staticServer.handle(req, res);
-}
-
-function handleModels(res) {
-  // 只返回已配置 Key 的 provider 的模型（auth.json 或环境变量），避免列出无法使用的模型
-  // 2026-08-20：附带 free/note（store 模型条目标注：免费通道/限时免费等）供前端展示种类与免费标记
-  const store = readJsonFile(MODELS_PATH);
-  const list = modelList
-    .filter(m => resolveAuth(m.provider))
-    .map(m => {
-      const sm = (store[m.provider]?.models || []).find(x => x.id === m.id) || {};
-      return {
-        provider: m.provider, id: m.id, name: m.name || m.id,
-        contextWindow: m.contextWindow,
-        vision: Array.isArray(m.input) && m.input.includes("image"),
-        reasoning: !!m.reasoning,
-        capabilities: m.capabilities || modelCapabilities(m.id),
-        free: sm.free,       // true=免费通道（undefined=未知/付费）
-        note: sm.note || "", // 标注：限时免费 / 免费额度 等
-      };
-    });
-  json(res, 200, {
-    models: list,
-    current: defaultModel ? { provider: defaultModel.provider, id: defaultModel.id } : null,
-    autoDefault: !CONFIG.model, // 未显式配置默认模型 → Auto（智能路由）为全局默认
-    cwd: CONFIG.cwd,
-    tools: CONFIG.tools,
-  });
-}
-
-async function handleSwitchModel(req, res, body) {
-  // Auto 路由特殊处理（Cursor Router 简化版）：不绑定具体模型，每条消息按复杂度路由
-  if (body.provider === "auto" || (body.modelId && /^auto(-smart)?$/i.test(body.modelId))) {
-    lastModelKey = null; saveLastModel(null); // 用户切回 Auto → 新会话也回 Auto（2026-08-19）
-    if (body.sessionId && activeSessions.has(body.sessionId)) {
-      const entry2 = activeSessions.get(body.sessionId);
-      try { entry2.modelKey = { provider: "auto", id: "auto" }; } catch {}
-      saveSessionModelKey(body.sessionId, { provider: "auto", id: "auto" }); // 修复 A：持久化
-      // 重建 agent 用默认 flash 暂代，下条消息 handleChat 按复杂度实时路由
-      if (entry2.agent && !entry2.busy) {
-        try { entry2.agent.dispose(); } catch {}
-        entry2.agent = null;
-        try { const ag = await createSessionAgent(entry2.sm, defaultModel); entry2.agent = ag; entry2.agentModel = { provider: defaultModel.provider, id: defaultModel.id }; } catch {}
-      }
-      json(res, 200, { ok: true, model: { provider: "auto", id: "auto" }, sessionScoped: true, auto: true });
-      return;
-    }
-    json(res, 200, { ok: true, model: { provider: "auto", id: "auto" }, deferred: true, auto: true });
-    return;
-  }
-  const m = modelList.find(x => x.provider === body.provider && x.id === body.modelId);
-  if (!m) return json(res, 404, { error: `模型未找到: ${body.provider}/${body.modelId}` });
-  const switched = !(defaultModel?.provider === m.provider && defaultModel?.id === m.id);
-  // 完整 runtime 模型（含 compat/thinkingFormat，简版模型会导致 agent 通道 reasoning 处理异常）
-  let fullModel = m;
-  try {
-    fullModel = modelRuntime.getModels().find(x => x.provider === m.provider && x.id === m.id) || m;
-  } catch {}
-  // 会话级切换：只改指定会话的模型，不动全局 defaultModel（避免污染其他会话）
-  if (body.sessionId && activeSessions.has(body.sessionId)) {
-    const entry2 = activeSessions.get(body.sessionId);
-    // 记录会话自己的模型选择（会话重启时恢复）
-    try { entry2.modelKey = { provider: m.provider, id: m.id }; } catch {}
-    saveSessionModelKey(body.sessionId, { provider: m.provider, id: m.id }); // 修复 A：持久化
-    // 2026-08-19 收敛：不再写全局 lastModel——新会话一律默认千问，用户切模型只锁当前会话
-    // 如果 agent 空闲，立即重建生效；busy 则标记（下次消息 handleChat 对比重建）
-    if (entry2.agent && !entry2.busy) {
-      try { entry2.agent.dispose(); } catch {}
-      entry2.agent = null;
-      try {
-        const ag = await createSessionAgent(entry2.sm, fullModel);
-        entry2.agent = ag;
-        entry2.agentModel = { provider: m.provider, id: m.id };
-        if (switched) { try { await syncContextAfterSwitch(entry2, m); } catch {} }
-      } catch {}
-    } else if (entry2.agent && entry2.busy) {
-      // busy：不改 agentModel（保持旧值），handleChat 下次对比发现不一致会重建
-      console.log(`[pi-web] 会话 busy，模型切换延迟到下次消息生效 → ${m.provider}/${m.id}`);
-    }
-    json(res, 200, { ok: true, model: { provider: m.provider, id: m.id }, sessionScoped: true });
-    return;
-  }
-  // 无 sessionId → 不改全局默认（新会话还没创建，切换无意义；前端已用 pendingModel 等会话创建后按会话应用）
-  // 防止旧客户端/直调 API 污染全局 defaultModel（曾导致默认模型被切到 opencode-go）
-  json(res, 200, { ok: true, model: { provider: m.provider, id: m.id }, deferred: true });
-}
-
-// 切换模型后的上下文灌输：注入一条简短的模型信息提示（不再让模型 read 会话文件——
-// 那会导致模型反复读文件卡住；新模型从 pi 引擎组装的历史中自然获得上下文）
-async function syncContextAfterSwitch(entry, model) {
-  try {
-    const mName = model?.name || model?.id || "新模型";
-    // 2026-08-24 修复：不再伪造 user 消息（污染历史→模型反复输出模板回复）；
-    // 改用 customType=context 注入——不进会话历史，仅当前轮生效
-    try {
-      await entry.agent?.sendCustomMessage?.(
-        { customType: "context", content: [{ type: "text", text: "（提示）当前会话已切换模型为 " + mName + "。请直接根据对话历史继续回答，无需重复确认。" }] },
-        { deliverAs: "nextTurn" }
-      );
-    } catch {
-      // agent 未就绪时静默跳过
-    }
-    console.log(`[pi-web] 模型切换为 ${mName}，已注入上下文提示（context 注入，不污染历史）`);
-  } catch {}
 }
 
 // POST /api/chat —— SSE 流式
@@ -2095,7 +1756,8 @@ const server = http.createServer(async (req, res) => {
   try {
     // 安全响应头（CSP 限制脚本来源，防止第三方注入执行；禁 MIME 嗅探；防 clickjacking）
     // OMEGA 页需连 OpenIM(10002/10001) 与 Gateway(9000)，connect-src/worker-src 已放行本地服务
-    res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' ws: wss: http://127.0.0.1:10002 http://127.0.0.1:9000 ws://127.0.0.1:10001 ws://127.0.0.1:9000 https://fastly.jsdelivr.net https://cubism.live2d.com https://v1.hitokoto.cn; worker-src 'self' blob:; font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com; frame-ancestors 'none'");
+    // 2026-08-29 安全收紧：去掉 unsafe-eval（产物无 eval/new Function，playwright 回归验证无 CSP 违规）
+    res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' ws: wss: http://127.0.0.1:10002 http://127.0.0.1:9000 ws://127.0.0.1:10001 ws://127.0.0.1:9000 https://fastly.jsdelivr.net https://cubism.live2d.com https://v1.hitokoto.cn; worker-src 'self' blob:; font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com; frame-ancestors 'none'");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Referrer-Policy", "no-referrer");
