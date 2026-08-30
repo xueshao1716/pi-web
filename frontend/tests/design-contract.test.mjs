@@ -201,3 +201,18 @@ test('React 路由由单一注册表驱动导航和页面渲染', () => {
   assert.match(src, /PAGE_ROUTES\.find\(/, '页面渲染没有使用页面路由注册表')
   assert.match(src, /PAGE_ROUTES\.map\(/, '导航没有使用页面路由注册表')
 })
+
+// ── 14. 原生控件主题化 ──
+test('原生控件遵循 React 主题控件层', () => {
+  const required = [
+    'select {',
+    'input[type="time"]',
+    'input[type="date"]',
+    'input[type="range"]',
+    'input[type="color"]',
+    'audio {',
+    ':focus-visible',
+  ]
+  const missing = required.filter(selector => !css.includes(selector))
+  assert.deepEqual(missing, [], '缺少原生控件主题规则：' + missing.join(', '))
+})
