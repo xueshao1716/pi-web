@@ -17,6 +17,8 @@ pub fn run() {
                 .title("元枢 · 个人智能系统")
                 .inner_size(1280.0, 820.0)
                 .min_inner_size(420.0, 360.0)
+                .decorations(false)   // 去系统标题栏：前端自绘（TitleBar.tsx）跟随主题
+                .shadow(true)
                 .build()?;
                 let _ = win;
             }

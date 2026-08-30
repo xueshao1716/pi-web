@@ -131,6 +131,7 @@ ul[class], ol[class] { list-style: none; margin: 0; padding: 0; }
   --pi-space-xxl: 24px;
   --pi-space-xxxl: 32px;
   --pi-z-rightpanel: 80;
+  --pi-z-topbar: 60; /* 元枢壳自绘标题栏：高于内容层(20)，低于右栏(80)——右栏用 top-9 避开它 */
   --pi-z-dialog: 100;
   --pi-z-dialog-top: 101;
   --pi-z-toast: 100;

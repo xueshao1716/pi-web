@@ -1,10 +1,11 @@
-import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoticComponent } from 'react'
-import {MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog, Cpu, Palette, Database } from 'lucide-react'
+import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoticComponent, type ReactNode } from 'react'
+import {MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog, Cpu, Palette, Database, LogOut } from 'lucide-react'
 import TuiTerminal from './components/TuiTerminal'
 import { useApp } from './store'
 import { useIsMobile } from './hooks/useIsMobile'
 import { useHashRoute, PageErrorBoundary, type Route } from './hooks/useHashRoute'
 import Login from './components/Login'
+import TitleBar from './components/TitleBar'
 import SetupWizard from './components/SetupWizard'
 import { KeysApi } from './api'
 import Sidebar from './components/Sidebar'
@@ -62,6 +63,17 @@ function PageLoader() {
   return <div className="flex-1 flex items-center justify-center text-pi-dim2 text-sm">加载中…</div>
 }
 
+// 元枢壳框架：顶部自绘标题栏（浏览器里渲染为 null 不占位）+ 内容区占满剩余高度
+const inShell = typeof window !== 'undefined' && !!(window as any).__TAURI__
+function ShellFrame({ children }: { children: ReactNode }) {
+  return (
+    <div className="h-screen flex flex-col relative overflow-hidden">
+      <TitleBar />
+      <div className="flex-1 flex min-h-0">{children}</div>
+    </div>
+  )
+}
+
 function PageBody({ route }: { route: Route }) {
   const page = PAGE_ROUTES.find(p => p.route === route)
   if (page) {
@@ -72,7 +84,7 @@ function PageBody({ route }: { route: Route }) {
 }
 
 export default function AppLayout() {
-  const { authed } = useApp()
+  const { authed, logout } = useApp()
   // 首启向导（M1）：登录后零密钥 → 引导初始化；?setup=1 强制唤出
   const [needsSetup, setNeedsSetup] = useState(false)
   useEffect(() => {
@@ -150,8 +162,8 @@ export default function AppLayout() {
       onRightPanel={p => setRightPanel(p)} onModelManager={() => setModelOpen(true)} />
   )
 
-  if (!authed) return <Login />
-  if (needsSetup) return <SetupWizard onDone={() => setNeedsSetup(false)} />
+  if (!authed) return <ShellFrame><Login /></ShellFrame>
+  if (needsSetup) return <ShellFrame><SetupWizard onDone={() => setNeedsSetup(false)} /></ShellFrame>
 
   /* ── 页面容器（非 chat 路由共用）── */
   // min-w-0：flex 子项默认 min-width:auto，内部宽表格会把整页撑出横向滚动（M3 手机审计修复）
@@ -242,7 +254,8 @@ export default function AppLayout() {
 
   /* ── 桌面布局：图标 rail + 会话列表 + 主区 + 动态右栏 ── */
   return (
-    <div className="h-screen flex text-pi-text relative">
+    <ShellFrame>
+    <div className="flex-1 flex min-w-0 text-pi-text relative">
       <div id="pi-wallpaper" className="fixed inset-0 z-0 pointer-events-none" />
       {/* 图标导航 rail（08-23：col-sidebar 顶部天光，拉开与中栏层次） */}
       <nav className="w-[60px] flex-shrink-0 flex flex-col items-center py-4 gap-2 col-sidebar border-r border-pi-border relative z-20">
@@ -275,6 +288,7 @@ export default function AppLayout() {
         <div className="mt-auto mb-2 flex flex-col gap-1.5">
           <ThemeSwitcher />
           <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-colors" title="模型与通道" aria-label="模型与通道" onClick={() => nav('models')}><Settings2 className="w-[18px] h-[18px]" strokeWidth={1.8} /></button>
+          <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-pi-dim2 hover:text-pi-red hover:bg-pi-bg3 transition-colors" title="退出登录" aria-label="退出登录" onClick={logout}><LogOut className="w-[18px] h-[18px]" strokeWidth={1.8} /></button>
         </div>
       </nav>
 
@@ -285,9 +299,9 @@ export default function AppLayout() {
         {route === 'chat' ? <ChatArea rightPanel={rightPanel} onRightPanel={setRightPanel} /> : pageArea}
       </div>
 
-      {/* 动态右栏（全屏覆盖；08-23 col-right 独立亮度层，08-27 改为全屏） */}
+      {/* 动态右栏（全屏覆盖；08-23 col-right 独立亮度层，08-27 改为全屏；元枢壳里下移避开自绘标题栏） */}
       {route === 'chat' && rightPanel !== 'chat' && (
-        <div className="fixed inset-0 z-[var(--pi-z-rightpanel)] col-right glass-strong flex flex-col min-h-0">
+        <div className="fixed inset-x-0 bottom-0 z-[var(--pi-z-rightpanel)] col-right glass-strong flex flex-col min-h-0" style={{ top: inShell ? 36 : 0 }}>
           <div className="flex items-center gap-1 px-3 h-10 border-b border-pi-border-soft flex-shrink-0">
             {([['workspace', '工作空间'], ['deliveries', '交付物'], ['terminal', '终端'], ['activity', '活动'], ['tui', 'TUI']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setRightPanel(k)}
@@ -307,5 +321,6 @@ export default function AppLayout() {
       <ModelManager visible={modelOpen} onClose={() => setModelOpen(false)} />
       {palette}
     </div>
+    </ShellFrame>
   )
 }

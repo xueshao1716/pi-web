@@ -19,7 +19,7 @@ export default function Login() {
 
   return (
     // 方案A：主题驱动 WebGL 光场背景（深色科技风），radial-gradient 作降级回退；面板提上一层
-    <div className="relative h-screen flex items-center justify-center overflow-hidden" style={{ background: 'radial-gradient(1100px 550px at 50% -10%, var(--pi-bg2) 0%, var(--pi-bg) 60%)' }}>
+    <div className="relative h-full flex items-center justify-center overflow-hidden" style={{ background: 'radial-gradient(1100px 550px at 50% -10%, var(--pi-bg2) 0%, var(--pi-bg) 60%)' }}>
       <WebglBackdrop className="absolute inset-0" dim={0.22} />
       <div className="relative z-10 panel w-88 p-10">
         <div className="text-center mb-6">

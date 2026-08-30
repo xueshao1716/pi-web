@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "remote-piweb",
+  "description": "元枢壳加载本机 pi-web 远程页面：授权窗口控制（自绘标题栏拖动/最小化/最大化/关闭）",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:8787", "http://localhost:8787", "http://127.0.0.1:8787/*", "http://localhost:8787/*"]
+  },
+  "permissions": [
+    "core:window:allow-minimize",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging"
+  ],
+  "local": true
+}
