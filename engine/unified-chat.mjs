@@ -78,6 +78,12 @@ export async function unifiedChat(model, messages, opts = {}) {
   // 2026-08-21 修复：anthropic 协议端点（glm-5.3 等）不支持 pi 的工具格式（直测 422/400）——不传 tools 做纯对话
   // 或模型声明 compat.supportsTools:false 时同样不传
   const noTools = mdef?.api === "anthropic-messages" || mdef?.compat?.supportsTools === false;
+  // 2026-08-30 修复：无工具模型注入「无工具模式」提示。agent 训练背景的模型（hy4-preview 等）
+  // 被要求看文件/跑命令时会编造 <tool_call> 文本幻觉，用户看到假调用却永远等不到结果。
+  // 显式告知无工具 + 引导向用户要内容，大幅减少该幻觉。
+  if (noTools) {
+    history.unshift({ role: "system", content: "【无工具模式】本次对话你没有工具可用（不能读写文件、执行命令、搜索网页）。不要输出 <tool_call>、<function_call> 等任何形式的工具调用——那只是文本，没有系统会执行它们。若任务需要文件内容或命令输出，请直接请用户粘贴相关内容，再基于内容回答。" });
+  }
   const toolDefs = opts.tools === false || noTools ? undefined : (opts.tools || _unifiedTools);
   // 官方理念：按模型声明的 reasoning/compat/thinkingLevelMap 统一适配（不按厂商特判）
   const isReasoning = mdef?.reasoning === true || model.reasoning === true;
