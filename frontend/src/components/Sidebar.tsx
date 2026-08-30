@@ -107,7 +107,7 @@ export default function Sidebar({ onNavigated, onCollapse }: { onNavigated?: () 
                   s.id === currentSessionId ? 'accent-soft' : 'surface-hover'
                 }`}
                 onClick={() => { selectSession(s.id); onNavigated?.() }}>
-                <div className={`w-6 h-6 rounded-pi-sm flex items-center justify-center text-xs font-bold flex-shrink-0 ${s.id === currentSessionId ? 'bg-pi-accent text-white' : 'bg-pi-default text-pi-dim'}`}>
+                <div className={`w-6 h-6 rounded-pi-sm flex items-center justify-center text-xs font-bold flex-shrink-0 transition-all duration-200 ${s.id === currentSessionId ? 'bg-pi-accent text-white shadow-[0_0_10px_rgba(84,104,255,0.3)]' : 'bg-pi-default text-pi-dim'}`}>
                   {s.name?.charAt(0) || '会'}
                 </div>
                 <div className="flex-1 min-w-0">

@@ -837,6 +837,45 @@ body {
   background: rgba(255, 255, 255, 0.015);
 }
 
+/* ── 欢迎页打字机效果 ── */
+@keyframes typewriter {
+  from { width: 0; }
+  to { width: 100%; }
+}
+@keyframes blinkCaret {
+  0%,100% { border-color: var(--pi-accent); }
+  50% { border-color: transparent; }
+}
+.welcome-typewriter {
+  overflow: hidden;
+  white-space: nowrap;
+  border-right: 2px solid var(--pi-accent);
+  animation:
+    typewriter 1.2s steps(16) 0.4s both,
+    blinkCaret 0.8s steps(2) 1.6s 4;
+}
+/* ── 欢迎快捷卡升级：hover 浮起 + 左侧彩色指示条 ── */
+.welcome-card {
+  position: relative;
+  overflow: hidden;
+  transition: transform var(--pi-motion-base), box-shadow var(--pi-motion-base), border-color var(--pi-motion-base);
+}
+.welcome-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.28), 0 0 0 1px color-mix(in oklab, var(--pi-accent) 20%, transparent);
+}
+.welcome-card::after {
+  content: "";
+  position: absolute;
+  left: 0; top: 20%; bottom: 20%;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--_card-accent, var(--pi-accent));
+  opacity: 0;
+  transition: opacity var(--pi-motion-base);
+}
+.welcome-card:hover::after { opacity: 1; }
+
 [data-theme="mist"] .stat-card { border-color: var(--pi-border-soft); background: #fff; }
 [data-theme="mist"] .card-hover:hover { box-shadow: 0 12px 30px rgba(60, 70, 120, 0.14), 0 0 0 1px rgba(74, 88, 250, 0.18); }
 
@@ -881,6 +920,26 @@ body {
 /* ══ Phase4 视觉层次升级 ══ */
 
 /* ── 助手消息：左侧渐变竖条 + hover 提亮 ── */
+.msg-assistant {
+  position: relative;
+  padding-left: 2px;
+  transition: background-color var(--pi-motion-fast);
+}
+.msg-assistant::before {
+  content: "";
+  position: absolute;
+  left: -6px; top: 8px; bottom: 8px;
+  width: 2.5px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--pi-accent) 0%, color-mix(in oklab, var(--pi-accent2) 60%, transparent) 70%, transparent 100%);
+  opacity: 0.5;
+  transition: opacity var(--pi-motion-base), height var(--pi-motion-base);
+}
+.msg-assistant:hover::before { opacity: 0.85; }
+.msg-assistant:hover {
+  background: color-mix(in oklab, var(--pi-accent) 3%, transparent);
+  border-radius: var(--pi-r-md);
+}
 
 /* ── 用户气泡升级 ── */
 .msg-bubble-user {
@@ -917,7 +976,24 @@ body {
   opacity: 0.3;
 }
 
-/* ── 发送按钮一次性旋转反馈 ── */
+/* ── 发送按钮渐变回归（有 presence 的 accent 而非平底）── */
+.btn-send {
+  background: var(--pi-grad-accent);
+  box-shadow: 0 2px 12px color-mix(in oklab, var(--pi-accent) 30%, transparent);
+  transition: transform var(--pi-motion-fast), box-shadow var(--pi-motion-fast), opacity var(--pi-motion-fast);
+}
+.btn-send:hover:not(:disabled) {
+  transform: translateY(-1px) scale(1.06);
+  box-shadow: 0 4px 18px color-mix(in oklab, var(--pi-accent) 40%, transparent);
+}
+.btn-send:active:not(:disabled) { transform: scale(0.92); }
+.btn-send:disabled { opacity: 0.35; }
+
+/* ── 消息入场阶梯延迟（让对话流从上到下依次浮现）── */
+.msg-stagger-1 { animation-delay: 0.04s; }
+.msg-stagger-2 { animation-delay: 0.08s; }
+.msg-stagger-3 { animation-delay: 0.12s; }
+
 /* ── 骨架屏加载（08-25 去重：合并两套 shimmer/骨架定义为单一系统）── */
 @keyframes skeletonShimmer {
   0% { background-position: 120% 0; }

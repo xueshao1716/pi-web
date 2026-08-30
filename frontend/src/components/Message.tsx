@@ -155,9 +155,9 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
     )
   }
 
-  // 助手：无气泡，内容全宽铺开（现代 AI 聊天惯例），左侧小标识
+  // 助手：无气泡，内容全宽铺开（现代 AI 聊天惯例），左侧小标识 + accent 渐变竖条
   return (
-    <div className="group/msg flex gap-2.5 py-3 anim-enter">
+    <div className="group/msg flex gap-2.5 py-3 msg-assistant anim-enter">
       <div className="w-6 h-6 rounded-lg avatar-grad flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 mt-0.5">语</div>
       <div className="min-w-0 flex-1">
         {msg.notes?.length ? (

@@ -347,16 +347,19 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
       <div className="relative z-10 text-center max-w-lg anim-enter">
         <div className="w-16 h-16 mx-auto rounded-pi-xl bg-gradient-to-br from-pi-accent via-pi-accent2 to-purple-400 flex items-center justify-center text-3xl font-bold text-white mb-5 anim-enter" style={{ boxShadow: '0 8px 28px color-mix(in oklab, var(--pi-accent) 22%, transparent)' }}>语</div>
         <div className="text-[22px] font-extrabold text-pi-text mb-1.5 tracking-tight anim-enter anim-enter-delay-1">小语 · AI 工作台</div>
-        <div className="text-pi-dim mb-7 text-[13px] anim-enter anim-enter-delay-2">基于 pi 引擎的 AI 工作伙伴 · 从一个动作开始</div>
+        <div className="text-pi-dim mb-7 text-[13px] anim-enter anim-enter-delay-2">
+          <span className="welcome-typewriter inline-block">从一个动作开始，让 AI 帮你写代码</span>
+        </div>
         <div className="grid grid-cols-2 gap-2.5 max-w-md mx-auto text-left anim-enter anim-enter-delay-3">
           {[
-            { Icon: Plus, label: '新建会话', desc: '开一段新对话', act: newSession, chip: 'chip-blue', c: 'text-pi-accent2' },
-            { Icon: SquareTerminal, label: '终端 REPL', desc: '写代码调工具', act: () => openPanel('terminal'), chip: 'chip-green', c: 'text-emerald-300' },
-            { Icon: LayoutGrid, label: '模型中心', desc: '浏览与切换模型', act: () => { location.hash = '#/models' }, chip: 'chip-violet', c: 'text-purple-300' },
-            { Icon: Command, label: '命令面板', desc: 'Ctrl / ⌘ + K', act: () => window.dispatchEvent(new CustomEvent('pi-open-palette')), chip: 'chip-amber', c: 'text-amber-300' },
-          ].map((f) => (
+            { Icon: Plus, label: '新建会话', desc: '开一段新对话', act: newSession, chip: 'chip-blue', c: 'text-pi-accent2', accent: 'var(--pi-accent)' },
+            { Icon: SquareTerminal, label: '终端 REPL', desc: '写代码调工具', act: () => openPanel('terminal'), chip: 'chip-green', c: 'text-emerald-300', accent: 'var(--pi-green)' },
+            { Icon: LayoutGrid, label: '模型中心', desc: '浏览与切换模型', act: () => { location.hash = '#/models' }, chip: 'chip-violet', c: 'text-purple-300', accent: 'var(--pi-accent2)' },
+            { Icon: Command, label: '命令面板', desc: 'Ctrl / ⌘ + K', act: () => window.dispatchEvent(new CustomEvent('pi-open-palette')), chip: 'chip-amber', c: 'text-amber-300', accent: 'var(--pi-yellow)' },
+          ].map((f, i) => (
             <button key={f.label} onClick={f.act}
-              className={`rounded-pi-lg border px-4 py-3 transition-colors duration-200 cursor-pointer press anim-enter text-left accent-soft ${f.chip}`} style={{ animationDelay: '0.12s' }}>
+              className={`welcome-card rounded-pi-lg border px-4 py-3 cursor-pointer press anim-enter text-left accent-soft ${f.chip}`}
+              style={{ animationDelay: `${0.2 + i * 0.06}s`, '--_card-accent': f.accent } as React.CSSProperties}>
               <f.Icon className={`w-[18px] h-[18px] mb-1.5 ${f.c}`} strokeWidth={1.8} />
               <div className="text-[13px] font-semibold text-pi-text">{f.label}</div>
               <div className="text-[11px] text-pi-dim2">{f.desc}</div>

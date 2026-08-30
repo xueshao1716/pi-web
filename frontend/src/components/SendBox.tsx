@@ -319,7 +319,7 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
             </button>
           ) : (
             <button onClick={doSend} title="发送 (Enter)"
-              className="press btn-grad h-7 w-7 rounded-full text-white flex items-center justify-center disabled:opacity-40 touch-hit"
+              className="press btn-send h-7 w-7 rounded-full text-white flex items-center justify-center disabled:opacity-40 touch-hit"
               disabled={!value.trim() && files.length === 0}>
               <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="12 19 12 5"/><polyline points="5 12 12 5 19 12"/></svg>
             </button>
