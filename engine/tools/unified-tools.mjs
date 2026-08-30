@@ -15,7 +15,7 @@ import {
 // ── 工具 schema（OpenAI function 格式）──
 export const BASE_TOOL_SCHEMAS = [
   { type: "function", function: { name: "bash", description: "运行 shell 命令（Windows cmd），如 dir、node、python、git", parameters: { type: "object", properties: { command: { type: "string", description: "要运行的命令" } }, required: ["command"] } } },
-  { type: "function", function: { name: "read", description: "读取工作空间内文件内容", parameters: { type: "object", properties: { path: { type: "string", description: "文件路径（相对工作空间）" } }, required: ["path"] } } },
+  { type: "function", function: { name: "read", description: "读取文件内容（工作空间内相对路径，或磁盘上的绝对路径如 D:/proj/file.json）", parameters: { type: "object", properties: { path: { type: "string", description: "文件路径" } }, required: ["path"] } } },
   { type: "function", function: { name: "write", description: "写入文件（自动创建目录）", parameters: { type: "object", properties: { path: { type: "string", description: "文件路径（相对工作空间）" }, content: { type: "string", description: "文件内容" } }, required: ["path", "content"] } } },
   { type: "function", function: { name: "edit", description: "用精确文本替换修改文件（先 read 再 edit）", parameters: { type: "object", properties: { path: { type: "string" }, oldText: { type: "string" }, newText: { type: "string" } }, required: ["path", "oldText", "newText"] } } },
   { type: "function", function: { name: "web_search", description: "联网搜索（Bing，无需 key）。查询资料、最新信息、验证事实时使用。返回前 5 条结果标题+摘要+链接", parameters: { type: "object", properties: { query: { type: "string", description: "搜索关键词（中文/英文均可）" } }, required: ["query"] } } },
@@ -213,8 +213,20 @@ export function createUnifiedToolExecutor(deps = {}) {
         }
       }
       if (name === "read") {
-        const p = safePath(args?.path);
-        if (!p || !fs.existsSync(p)) return { text: `文件不存在: ${args?.path}`, isError: true };
+        let p = safePath(args?.path);
+        if (!p) {
+          // 2026-08-30 read 放宽：工作空间外的磁盘绝对路径允许只读（与 bash 实际能力对齐）。
+          // 原先一刀切拒绝且误报「文件不存在」——pi-web 自身源码在 D:/pi-web（工作空间 D:/pi-workspace 外），
+          // 模型读不到被迫绕道 bash。相对路径 ../ 越界仍然拒绝（保留目录穿越防护）；写/编辑仍严格限工作空间。
+          const raw = String(args?.path || "");
+          if (/^[a-zA-Z]:[\\/]/.test(raw) || raw.startsWith("\\\\")) {
+            try {
+              const real = fs.realpathSync(path.resolve(raw)); // 不存在会 throw → 保持拒绝
+              if (fs.statSync(real).isFile()) p = real;
+            } catch {}
+          }
+        }
+        if (!p || !fs.existsSync(p)) return { text: `文件不存在或不可读: ${args?.path}（read 支持工作空间内相对路径与磁盘绝对路径；写操作仅限工作空间内）`, isError: true };
         if (fs.statSync(p).isDirectory()) return { text: "这是一个目录，请指定文件", isError: true };
         // 二进制/图片文件不能按 utf8 硬读（2026-08-24 修复"read 一直失败"）
         const ext = path.extname(p).toLowerCase();
