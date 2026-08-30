@@ -5,6 +5,9 @@ import path from "node:path";
 import os from "node:os";
 import * as memoryApi from "./memory.mjs"; // 命名空间导入（server.mjs 动态 import 同款语义）
 
+// ESM 兼容：__dirname 在 ESM 里未定义，用 import.meta.dirname（Node 21.2+）代替
+const __dirname = import.meta.dirname;
+
 let _cwd = "";
 let _DefaultResourceLoader = null;
 export function initContextLoader({ cwd = "", DefaultResourceLoader = null } = {}) {
@@ -94,7 +97,15 @@ export function readRulesWithImports(filePath) {
   const out = [];
   for (const ln of raw.split("\n")) {
     const m = ln.match(/^\s*@(\S+\.md)\s*$/);
-    if (m) { try { out.push(fs.readFileSync(path.join(base, m[1]), "utf8").trim()); } catch {} }
+    if (m) {
+      // P0 安全修复：阻止路径穿越（@../../../etc/passwd.md）
+      const target = path.resolve(base, m[1]);
+      if (!target.startsWith(base + path.sep) && target !== base) {
+        console.log(`[rules] 拦截路径穿越: @${m[1]} → ${target}`);
+        continue;
+      }
+      try { out.push(fs.readFileSync(target, "utf8").trim()); } catch {}
+    }
     else out.push(ln);
   }
   return out.join("\n").trim();
@@ -172,7 +183,13 @@ export function loadSkillIndex() {
 }
 // activate_skill 工具执行：返回 SKILL.md 全文 + 资源文件清单（大文件由模型再 read）
 export function execActivateSkill(name) {
-  const dir = path.join(__dirname, "skills", String(name || ""));
+  // P0 安全修复：阻止技能名穿越（../../etc）
+  const safeName = String(name || "").replace(/[\\/]/g, "").replace(/\.\./g, "");
+  const skillsRoot = path.join(__dirname, "skills");
+  const dir = path.resolve(skillsRoot, safeName);
+  if (!dir.startsWith(skillsRoot + path.sep) && dir !== skillsRoot) {
+    return { text: `技能名非法：${name}`, isError: true };
+  }
   const f = path.join(dir, "SKILL.md");
   if (!fs.existsSync(f)) {
     return { text: `技能 ${name} 不存在。可用技能：${loadSkillIndex().map(s => s.name).join(", ")}`, isError: true };

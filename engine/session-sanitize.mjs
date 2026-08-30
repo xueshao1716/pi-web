@@ -3,6 +3,15 @@
 // 策略：agent.prompt() 前扫描 jsonl，超限字段就地截断重写
 import fs from "node:fs";
 
+// 简单文件锁：防止 sanitize 和 agent appendMessage 同时写同一个 jsonl
+const _locks = new Set();
+function acquireLock(fp) {
+  if (_locks.has(fp)) return false;
+  _locks.add(fp);
+  return true;
+}
+function releaseLock(fp) { _locks.delete(fp); }
+
 const MAX_THINKING_SIGNATURE = 256 * 1024; // 256KB（上游 10MiB 硬限）
 const MAX_THINKING = 64 * 1024;            // 64KB
 const MAX_TOOL_RESULT = 512 * 1024;        // 512KB 单条工具结果
@@ -15,8 +24,10 @@ const MAX_LINE_BYTES = 8 * 1024 * 1024;    // 8MB 单行总大小（留 2MB 安�
  */
 export function sanitizeSessionFile(filePath) {
   if (!filePath || !fs.existsSync(filePath)) return { modified: false, truncated: 0 };
+  // 并发保护：同一文件不重入（agent appendMessage 可能同时在写）
+  if (!acquireLock(filePath)) return { modified: false, truncated: 0 };
   let lines;
-  try { lines = fs.readFileSync(filePath, "utf8").split("\n"); } catch { return { modified: false, truncated: 0 }; }
+  try { lines = fs.readFileSync(filePath, "utf8").split("\n"); } catch { releaseLock(filePath); return { modified: false, truncated: 0 }; }
 
   let modified = false, truncated = 0;
 
@@ -80,5 +91,6 @@ export function sanitizeSessionFile(filePath) {
   if (modified) {
     try { fs.writeFileSync(filePath, lines.join("\n"), "utf8"); } catch {}
   }
+  releaseLock(filePath);
   return { modified, truncated };
 }

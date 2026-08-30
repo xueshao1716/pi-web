@@ -87,10 +87,24 @@ export async function saveArtifact(artifact) {
       const b64 = artifact.url.split(",")[1];
       fs.writeFileSync(file, Buffer.from(b64, "base64"));
     } else if (artifact.url.startsWith("http")) {
+      // P0 安全修复：SSRF 防护——禁止下载内网/回环地址
+      try {
+        const u = new URL(artifact.url);
+        const host = u.hostname;
+        if (host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "0.0.0.0"
+            || host.startsWith("10.") || host.startsWith("192.168.") || /^172\.(1[6-9]|2\d|3[01])/.test(host)
+            || host.endsWith(".local") || host.endsWith(".internal")) {
+          console.log(`[saveArtifact] SSRF 拦截: ${artifact.url}`);
+          return artifact.url;
+        }
+      } catch { return artifact.url; }
       // 原生 fetch 下载（自动系统代理、二进制安全；替代 python urlretrieve）
       const r = await httpBufferFetch(artifact.url, { timeout: 60000 });
       if (!r.ok) throw new Error(`下载失败 HTTP ${r.status}`);
-      fs.writeFileSync(file, r.buffer());
+      const buf = r.buffer();
+      // 响应体大小限制：50MB（防 OOM）
+      if (buf.length > 50 * 1024 * 1024) throw new Error(`下载内容超过 50MB 限制`);
+      fs.writeFileSync(file, buf);
     } else {
       return artifact.url;
     }
