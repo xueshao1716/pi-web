@@ -1362,6 +1362,9 @@ process.on("unhandledRejection", (reason) => {
 process.on("uncaughtException", (err) => {
   try { fs.appendFileSync(path.join(WEB_DIR, "crash.log"), `[${new Date().toLocaleString("zh-CN")}] uncaughtException: ${String(err?.stack || err)}\n`); } catch {}
   console.error("[pi-web] uncaughtException:", String(err?.stack || err || "").slice(0, 500));
+  // P1 graceful shutdown：异常后不再接新请求，2s 后退出（watchdog 会拉起）
+  try { server?.close?.(); } catch {}
+  setTimeout(() => process.exit(1), 2000).unref();
 });
 
 // ── 路由表（声明式：method + 匹配器 + handler，替代 if/else 链）──

@@ -3,6 +3,7 @@
 // 任何 allow 都不能覆盖 deny；命中即拒绝并给出规则 id 方便排查。
 
 import path from "node:path";
+import fs from "node:fs";
 
 // ── User 层 deny 规则（宪法硬性红线 → 代码硬拦截，deny 永远赢）──
 // 来源：宪法.json 条款（no-tunnel / no-secrets / no-engine-edit 等）
@@ -47,8 +48,17 @@ export function matchDenyRule(cmd) {
   return null;
 }
 
-// 工作空间路径安全：解析后必须落在 root 内（防 ../ 越权）。越权返回 null
+// 工作空间路径安全：解析后必须落在 root 内（防 ../ 越权 + symlink 越权）
 export function safeJoin(root, p) {
   const resolved = path.resolve(root, String(p || "").replace(/^\/+/, ""));
-  return resolved === root || resolved.startsWith(root + path.sep) ? resolved : null;
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) return null;
+  // P1 安全加固：symlink 越权防护——解析真实路径后再校验边界
+  try {
+    if (fs.existsSync(resolved)) {
+      const real = fs.realpathSync(resolved);
+      const rootReal = fs.realpathSync(root);
+      if (real !== rootReal && !real.startsWith(rootReal + path.sep)) return null;
+    }
+  } catch {}
+  return resolved;
 }

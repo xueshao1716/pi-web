@@ -1,6 +1,16 @@
 // engine/http-utils.mjs —— HTTP 通用工具（2026-08-20 从 server.mjs 拆出）
 // json()/readBody()：纯 node res/req 操作，无外部依赖，全库 300+ 调用点零改动
+
+// P1 错误响应脱敏：移除可能泄露密钥/内部路径/上游错误详情的内容
+const SENSITIVE_RE = /(?:sk-[a-zA-Z0-9]{8,}|Bearer\s+[^\s]{8,}|api[_-]?key[=:]\s*\S+|token[=:]\s*\S+|password[=:]\s*\S+|-----BEGIN\s+\w+\s+PRIVATE\s+KEY)/gi;
+function sanitizeError(msg) {
+  if (typeof msg !== "string") return msg;
+  return msg.replace(SENSITIVE_RE, "[REDACTED]").slice(0, 500);
+}
+
 export function json(res, code, obj) {
+  // 自动脱敏 error 字段
+  if (obj && typeof obj.error === "string") obj = { ...obj, error: sanitizeError(obj.error) };
   res.writeHead(code, { "Content-Type": "application/json" });
   res.end(JSON.stringify(obj));
 }
