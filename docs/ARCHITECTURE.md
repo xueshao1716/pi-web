@@ -34,8 +34,7 @@ pi-companion/
 ├── server.mjs           # 服务端入口（现布局保留，迁移动画后进 server/）
 ├── engine/              # 服务端全部能力模块（现有）
 ├── frontend/            # React SPA（现有）→ 所有客户端的共用界面
-├── desktop/             # Tauri 2 · Windows / Linux 壳
-├── android/             # Tauri 2 · Android 壳
+├── app/                 # Tauri 2 壳（一套代码出 Windows/Linux/Android；含移动端连接页）
 ├── docs/                # 架构/部署/规范文档（本目录）
 ├── scripts/             # dev / build / release 脚本
 ├── tests/               # 单元 + e2e（node --test）

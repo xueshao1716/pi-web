@@ -60,3 +60,8 @@ frontend/smoke-react.png
 android/*.idsig
 .toolout/
 unified-debug.log
+app/src-tauri/target/
+app/node_modules/
+app/src-tauri/target/
+app/node_modules/
+.watchdog.lock

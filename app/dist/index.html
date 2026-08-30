@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>元枢 · 连接服务</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(1100px 550px at 50% -10%, #1a1d33 0%, #0d0f1a 60%);
+    font-family: "Microsoft YaHei", system-ui, sans-serif; color: #e8eaf6; padding: 24px;
+  }
+  .panel { width: 100%; max-width: 360px; text-align: center; }
+  .brand { font-size: 34px; font-weight: 900; color: #5468ff; letter-spacing: -0.5px; }
+  .sub { color: #8b90b0; font-size: 13px; margin: 8px 0 32px; }
+  input {
+    width: 100%; padding: 12px 14px; margin-bottom: 12px; border-radius: 12px;
+    border: 1px solid #2a2d45; background: #14162a; color: #e8eaf6; font-size: 14px; outline: none;
+  }
+  input:focus { border-color: #5468ff; }
+  button {
+    width: 100%; padding: 12px; border: none; border-radius: 12px; cursor: pointer;
+    background: linear-gradient(135deg, #5468ff, #a855f7); color: #fff; font-size: 15px; font-weight: 600;
+  }
+  button:disabled { opacity: .5; }
+  .hint { color: #565a78; font-size: 11px; margin-top: 16px; line-height: 1.6; }
+  .status { font-size: 12px; margin-top: 10px; min-height: 16px; }
+  .ok { color: #4ade80; } .bad { color: #f87171; }
+</style>
+</head>
+<body>
+  <div class="panel">
+    <div class="brand">◈ 元枢</div>
+    <div class="sub">连接你的个人智能系统 · 小语为你值守</div>
+    <input id="url" placeholder="服务地址，如 http://192.168.1.10:8787" autocomplete="off">
+    <button id="go">连接</button>
+    <div class="status" id="st"></div>
+    <div class="hint">电脑与手机需在同一局域网；或填云隧道地址。<br>服务地址 = 运行元枢的那台电脑的 IP : 8787</div>
+  </div>
+<script>
+  const $ = id => document.getElementById(id);
+  const saved = localStorage.getItem('yuanshu_server');
+  if (saved) $('url').value = saved;
+
+  async function connect() {
+    let u = $('url').value.trim().replace(/\/+$/, '');
+    if (!u) { $('st').textContent = '请输入服务地址'; $('st').className = 'status bad'; return; }
+    if (!/^https?:\/\//.test(u)) u = 'http://' + u;
+    $('go').disabled = true; $('st').textContent = '探测中…'; $('st').className = 'status';
+    try {
+      const r = await fetch(u + '/api/health', { signal: AbortSignal.timeout(5000) });
+      if (r.ok) {
+        localStorage.setItem('yuanshu_server', u);
+        $('st').textContent = '已连接，进入…'; $('st').className = 'status ok';
+        setTimeout(() => location.replace(u + '/'), 400);
+        return;
+      }
+      $('st').textContent = '服务可达但响应异常（HTTP ' + r.status + '）'; $('st').className = 'status bad';
+    } catch (e) {
+      $('st').textContent = '连不上：检查地址与同一局域网/防火墙'; $('st').className = 'status bad';
+    }
+    $('go').disabled = false;
+  }
+  $('go').onclick = connect;
+  $('url').addEventListener('keydown', e => e.key === 'Enter' && connect());
+  // 记住过地址 → 自动重连；失败则留在本页可改
+  if (saved) connect();
+</script>
+</body>
+</html>
