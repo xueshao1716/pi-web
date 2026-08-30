@@ -41,6 +41,15 @@ extensions/pi-reasonix/
 
 # Android 构建产物
 android/.gradle/
+app/src-tauri/gen/android/app/build/
+app/src-tauri/gen/android/build/
+app/src-tauri/gen/android/.gradle/
+app/src-tauri/gen/android/buildSrc/build/
+app/src-tauri/gen/android/buildSrc/.gradle/
+app/src-tauri/gen/android/buildSrc/.kotlin/
+app/src-tauri/gen/android/app/src/main/jniLibs/
+app/src-tauri/gen/android/app/src/main/java/**/generated/
+app/src-tauri/Cargo.lock
 android/build/
 android/app/build/
 android/local.properties
@@ -65,3 +74,7 @@ app/node_modules/
 app/src-tauri/target/
 app/node_modules/
 .watchdog.lock
+!app/dist/
+!app/dist/**
+tmp-*.cjs
+*.log

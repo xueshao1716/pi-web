@@ -1792,6 +1792,12 @@ const server = http.createServer(async (req, res) => {
   // 请求级 request-id：排查并发问题时能关联同一次请求的日志（小米 4.13）
   const reqId = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
   res.setHeader("X-Request-Id", reqId);
+  // CORS：安卓/桌面客户端以自定义 origin（tauri://localhost 等）跨域 fetch 本服务，浏览器层同源策略需服务端显式放行（鉴权靠 token 不靠 origin，安全性不依赖 CORS）（2026-08-31 修：之前缺失导致安卓客户端 fetch 报 TypeError: Failed to fetch）
+  res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
   const t0 = Date.now();
   try {
     // 安全响应头（CSP 限制脚本来源，防止第三方注入执行；禁 MIME 嗅探；防 clickjacking）
@@ -1804,8 +1810,9 @@ const server = http.createServer(async (req, res) => {
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Referrer-Policy", "no-referrer");
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-    const isStatic = (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/sw.js" || WORKSHOP_PAGES[url.pathname])) ||
+    const isStatic = (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/sw.js" || url.pathname === "/api/health" || WORKSHOP_PAGES[url.pathname])) ||
                      (req.method === "GET" && (url.pathname.startsWith("/static/") || url.pathname.startsWith("/assets/") || url.pathname.startsWith("/legacy/") || url.pathname === "/vite.svg" || url.pathname === "/manifest.webmanifest" || url.pathname.startsWith("/icons/")));
+    // 健康探活接口免 token（只返回 {ok:true}，无敏感信息）：安卓客户端连接页需在没有 token 时也能探地址是否可达（2026-08-31 修：之前需鉴权导致探活永远 401，客户端误判为连不上）
     // 签名文件链接（filebox 签名）免 token：签名本身是凭证
     let isSignedFile = false;
     try {

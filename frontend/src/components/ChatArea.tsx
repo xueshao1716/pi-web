@@ -183,6 +183,14 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         ts: new Date().toISOString(),
         ...(model ? { model } : {}),
       }])
+      // 安卓原生任务完成提醒：只在页面不可见（App 在后台/锁屏）时弹，正盯着屏幕就不需要再提醒一次
+      try {
+        const bridge = (window as any).YuanshuBridge
+        if (bridge?.notify && document.visibilityState === 'hidden') {
+          const preview = (s.text || '').replace(/\s+/g, ' ').trim().slice(0, 60) || (s.error ? `出错：${s.error}` : '有新回复')
+          bridge.notify('小语 · 任务完成', preview)
+        }
+      } catch {}
     }
     streamRef.current = null
     setStream(null)
@@ -423,6 +431,10 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     else if (stream || remoteBusy) setAgentStatus('busy')
     else setAgentStatus('idle')
   }, [stream, remoteBusy])
+  // 安卓原生桥接：将全局忙/闲状态同步给桌面小组件（没有 YuanshuBridge 时（桌面/网页版）静默跳过）
+  useEffect(() => {
+    try { (window as any).YuanshuBridge?.setStatus?.(agentStatus) } catch {}
+  }, [agentStatus])
   const busyFromBackground = !stream && remoteBusy === 'other'
   // 四色语义：绿=就绪 红=本页执行 橙=后台执行 品红闪=异常（看颜色一眼明白）
   const dotCls = agentStatus === 'busy' ? (busyFromBackground ? 'status-dot-bg' : 'status-dot-busy') : `status-dot-${agentStatus}`

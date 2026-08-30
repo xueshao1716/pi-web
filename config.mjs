@@ -56,7 +56,7 @@ function defaultCwd() {
 
 export const CONFIG = {
   port: parseInt(process.env.PI_WEB_PORT || "8787", 10),
-  host: process.env.PI_WEB_HOST || "127.0.0.1",
+  host: process.env.PI_WEB_HOST || "0.0.0.0", // 2026-08-31 改默认监听全网卡，修手机局域网直连连不上的问题（此前 127.0.0.1 只回环可达，外网靠隧道走通掩盖了这个缺陷）
   token: loadToken(),
   tokenFile: TOKEN_FILE,
   // 工作目录：优先环境变量；默认主目录/pi-workspace（跨平台，不硬编码）
@@ -64,7 +64,7 @@ export const CONFIG = {
   // 允许的工具集，逗号分隔
   tools: (process.env.PI_WEB_TOOLS || "read,write,edit,bash").split(",").map(s => s.trim()).filter(Boolean),
   // 默认模型，空 = 使用第一个可用模型
-  model: process.env.PI_WEB_MODEL || "",
+  model: process.env.PI_WEB_MODEL || "zhipu-paid/glm-5.3-flash", // 2026-08-31 默认主力切智谱付费 glm-5.3-flash（env PI_WEB_MODEL 可覆盖）
   // 外部思考调试开关（externalThinking）：给模型挂 think 工具导出推理草稿（默认关）
   externalThinking: process.env.PI_WEB_EXTERNAL_THINKING === "1",
   // pi 包路径（跨平台推导）

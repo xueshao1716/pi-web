@@ -25,7 +25,7 @@
   }
   button:disabled { opacity: .5; }
   .hint { color: #565a78; font-size: 11px; margin-top: 16px; line-height: 1.6; }
-  .status { font-size: 12px; margin-top: 10px; min-height: 16px; }
+  .status { font-size: 12px; margin-top: 10px; min-height: 16px; white-space: pre-wrap; word-break: break-all; }
   .ok { color: #4ade80; } .bad { color: #f87171; }
 </style>
 </head>
@@ -46,26 +46,52 @@
   async function connect() {
     let u = $('url').value.trim().replace(/\/+$/, '');
     if (!u) { $('st').textContent = '请输入服务地址'; $('st').className = 'status bad'; return; }
-    if (!/^https?:\/\//.test(u)) u = 'http://' + u;
-    $('go').disabled = true; $('st').textContent = '探测中…'; $('st').className = 'status';
+    if (!/^https?:\/\//.test(u)) {
+      // 局域网 IP / localhost → 明文 http；公网域名 → https（release 包禁明文 HTTP，域名必须 https 才发得出请求）
+      const host = u.split(':')[0].split('/')[0];
+      const isLan = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) || /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+      u = (isLan ? 'http://' : 'https://') + u;
+    }
+    const target = u + '/api/health';
+    $('go').disabled = true; $('st').textContent = '探测中… ' + target; $('st').className = 'status';
+    // 手动 AbortController 代替 AbortSignal.timeout（兼容较旧 WebView，避免该 API 不存在或行为异常导致深层异常无法定位）
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
     try {
-      const r = await fetch(u + '/api/health', { signal: AbortSignal.timeout(5000) });
+      const r = await fetch(target, { signal: ctrl.signal });
+      clearTimeout(timer);
       if (r.ok) {
         localStorage.setItem('yuanshu_server', u);
         $('st').textContent = '已连接，进入…'; $('st').className = 'status ok';
         setTimeout(() => location.replace(u + '/'), 400);
         return;
       }
-      $('st').textContent = '服务可达但响应异常（HTTP ' + r.status + '）'; $('st').className = 'status bad';
+      $('st').textContent = '服务可达但响应异常（HTTP ' + r.status + '，' + target + '）'; $('st').className = 'status bad';
     } catch (e) {
-      $('st').textContent = '连不上：检查地址与同一局域网/防火墙'; $('st').className = 'status bad';
+      clearTimeout(timer);
+      // 把真实异常名/消息直接显示出来，不再绞盖真实原因（方便远程诊断）
+      const msg = (e && (e.name || 'Error')) + ': ' + (e && e.message ? e.message : String(e));
+      $('st').textContent = '连接失败（' + target + '）\n' + msg; $('st').className = 'status bad';
     }
     $('go').disabled = false;
   }
   $('go').onclick = connect;
   $('url').addEventListener('keydown', e => e.key === 'Enter' && connect());
-  // 记住过地址 → 自动重连；失败则留在本页可改
-  if (saved) connect();
+  // 生物识别门锁：只拦自动重连这一步（商系手动重新输入/点连接不拦，防止验证失败时锁死进不去）。
+  // 没有 YuanshuBridge（桌面/普通浏览器）时直接跳过，不影响原有行为。
+  window.onYuanshuAuthResult = function (ok) {
+    if (ok) { connect(); }
+    else { $('st').textContent = '身份验证未通过，可手动输入地址连接'; $('st').className = 'status bad'; }
+  };
+  if (saved) {
+    const bridge = window.YuanshuBridge;
+    if (bridge && bridge.canAuthenticate && bridge.canAuthenticate()) {
+      $('st').textContent = '验证身份中…'; $('st').className = 'status';
+      bridge.authenticate();
+    } else {
+      connect();
+    }
+  }
 </script>
 </body>
 </html>
