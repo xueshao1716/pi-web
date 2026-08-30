@@ -9,8 +9,9 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { httpJsonFetch } from "../http.mjs";
 import {
-  matchDenyRule, isProtectedPath, DANGEROUS_CMD_RE, PI_CMDS, INTERACTIVE_CMD_RE,
+  matchDenyRule, isProtectedPath, DANGEROUS_CMD_RE, PI_CMDS, INTERACTIVE_CMD_RE, safeJoin,
 } from "./security.mjs";
+import { isSensitivePath, commandTouchesSensitive, redactSecrets } from "./secrets-guard.mjs";
 
 // ── 工具 schema（OpenAI function 格式）──
 export const BASE_TOOL_SCHEMAS = [
@@ -102,6 +103,11 @@ export async function webSearchTool(query, httpFetch = httpJsonFetch) {
 export function createUnifiedToolExecutor(deps = {}) {
   const getCwd = deps.cwd || (() => process.cwd());
   const safePath = deps.safePath || ((p) => path.resolve(getCwd(), p || ""));
+  // 2026-08-30 双根白名单：工作空间（CONFIG.cwd）+ 系统本体目录（server.mjs 所在 D:/pi-web）。
+  // 自进化系统：模型需要能读写 pi-web 自身源码。注入 deps.systemDir 后 read/write/edit 双根可达；
+  // 其余磁盘仍仅 read 只读。敏感凭据文件由 secrets-guard 在通道层拦截。
+  const systemDir = deps.systemDir || "";
+  const resolveToolPath = (p) => safePath(p) || (systemDir ? safeJoin(systemDir, p) : null);
   const activateSkill = deps.activateSkill || (() => ({ text: "技能系统未接入", isError: true }));
   const getTimeEngine = deps.timeEngine || (() => null);
   const httpFetch = deps.httpFetch || httpJsonFetch;
@@ -149,6 +155,8 @@ export function createUnifiedToolExecutor(deps = {}) {
       if (name === "bash") {
         const cmd = String(args?.command || "").trim();
         if (!cmd) return { text: "空命令", isError: true };
+        // ② 凭据防护：命令引用敏感文件 → 拒绝（混淆绕过由③输出脱敏兑底）
+        if (commandTouchesSensitive(cmd)) return { text: `⛔ 拒绝执行 [凭据防护]：命令引用了敏感凭据文件（auth.json/.token/.env/密钥等），不允许通过对话通道访问（密钥管理是宿主职权）`, isError: true };
         // User 层 deny：宪法红线硬拦截（先于内置默认层检查）
         const deny = matchDenyRule(cmd);
         if (deny) {
@@ -213,20 +221,21 @@ export function createUnifiedToolExecutor(deps = {}) {
         }
       }
       if (name === "read") {
-        let p = safePath(args?.path);
+        // ① 凭据防护：敏感文件对话通道一律不见
+        if (isSensitivePath(String(args?.path || ""))) return { text: `⛔ 拒绝读取 [凭据防护]：${args?.path} 是敏感凭据文件，不允许通过对话通道访问（密钥管理是宿主职权）`, isError: true };
+        let p = resolveToolPath(args?.path);
         if (!p) {
-          // 2026-08-30 read 放宽：工作空间外的磁盘绝对路径允许只读（与 bash 实际能力对齐）。
-          // 原先一刀切拒绝且误报「文件不存在」——pi-web 自身源码在 D:/pi-web（工作空间 D:/pi-workspace 外），
-          // 模型读不到被迫绕道 bash。相对路径 ../ 越界仍然拒绝（保留目录穿越防护）；写/编辑仍严格限工作空间。
+          // 2026-08-30 read 放宽：双根外的磁盘绝对路径允许只读（与 bash 实际能力对齐）。
+          // 相对路径 ../ 越界仍然拒绝（保留目录穿越防护）；写/编辑仅限双根白名单。
           const raw = String(args?.path || "");
           if (/^[a-zA-Z]:[\\/]/.test(raw) || raw.startsWith("\\\\")) {
             try {
               const real = fs.realpathSync(path.resolve(raw)); // 不存在会 throw → 保持拒绝
-              if (fs.statSync(real).isFile()) p = real;
+              if (fs.statSync(real).isFile() && !isSensitivePath(real)) p = real;
             } catch {}
           }
         }
-        if (!p || !fs.existsSync(p)) return { text: `文件不存在或不可读: ${args?.path}（read 支持工作空间内相对路径与磁盘绝对路径；写操作仅限工作空间内）`, isError: true };
+        if (!p || !fs.existsSync(p)) return { text: `文件不存在或不可读: ${args?.path}（read 支持工作空间/系统目录内相对路径与磁盘绝对路径）`, isError: true };
         if (fs.statSync(p).isDirectory()) return { text: "这是一个目录，请指定文件", isError: true };
         // 二进制/图片文件不能按 utf8 硬读（2026-08-24 修复"read 一直失败"）
         const ext = path.extname(p).toLowerCase();
@@ -243,8 +252,10 @@ export function createUnifiedToolExecutor(deps = {}) {
         return { text: c.slice(0, 50000), isError: false };
       }
       if (name === "write") {
-        const p = safePath(args?.path);
-        if (!p) return { text: "路径越权", isError: true };
+        // ① 凭据防护 + 双根白名单（自进化：系统本体可写）
+        if (isSensitivePath(String(args?.path || ""))) return { text: `⛔ 拒绝写入 [凭据防护]：${args?.path} 是敏感凭据文件`, isError: true };
+        const p = resolveToolPath(args?.path);
+        if (!p) return { text: "路径越权（write 仅限工作空间与系统目录内）", isError: true };
         if (isProtectedPath(p)) return { text: `⛔ 拒绝写入 [仓库法律]：${args?.path} 是受保护文件（人格/宪法/凭据），只读不写`, isError: true };
         fs.mkdirSync(path.dirname(p), { recursive: true });
         const content = String(args?.content ?? "");
@@ -252,8 +263,10 @@ export function createUnifiedToolExecutor(deps = {}) {
         return { text: `✅ 已写入 ${args?.path}（${content.length} 字符）`, isError: false };
       }
       if (name === "edit") {
-        const p = safePath(args?.path);
-        if (!p || !fs.existsSync(p)) return { text: `文件不存在: ${args?.path}`, isError: true };
+        // ① 凭据防护 + 双根白名单
+        if (isSensitivePath(String(args?.path || ""))) return { text: `⛔ 拒绝修改 [凭据防护]：${args?.path} 是敏感凭据文件`, isError: true };
+        const p = resolveToolPath(args?.path);
+        if (!p || !fs.existsSync(p)) return { text: `文件不存在或路径越权（edit 仅限工作空间与系统目录内）: ${args?.path}`, isError: true };
         if (isProtectedPath(p)) return { text: `⛔ 拒绝修改 [仓库法律]：${args?.path} 是受保护文件（人格/宪法/凭据），只读不写`, isError: true };
         const c = fs.readFileSync(p, "utf8");
         const oldT = String(args?.oldText ?? "");
@@ -269,5 +282,18 @@ export function createUnifiedToolExecutor(deps = {}) {
     } catch (e) {
       return { text: `工具执行失败: ${String(e?.message || e).slice(0, 200)}`, isError: true };
     }
+  };
+}
+
+// 包装导出：③ 输出层兑底脱敏——所有工具输出过密钥值正则（防①②漏网，如 python 读凭据文件后打印）
+export function createUnifiedToolExecutorGuarded(deps = {}) {
+  const inner = createUnifiedToolExecutor(deps);
+  return async function executeUnifiedTool(name, args) {
+    const r = await inner(name, args);
+    if (r && typeof r?.text === "string") {
+      const redacted = redactSecrets(r.text);
+      if (redacted !== r.text) r.text = redacted + "\n[secrets-guard: 输出含疑似凭据已脱敏]";
+    }
+    return r;
   };
 }

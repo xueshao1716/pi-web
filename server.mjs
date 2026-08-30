@@ -27,7 +27,7 @@ import { initSessionFiles, scanSessionFiles, parseSessionFile, parseSessionFileC
 // ── 统一 HTTP 客户端（拆模块）：原生 fetch + 自动系统代理（env → Windows 注册表），替代 python 子进程 ──
 import { httpJsonFetch, httpBufferFetch } from "./engine/http.mjs";
 // ── 统一工具集（拆模块）：schema + 执行器；安全线（deny/危险命令/受保护路径/路径越权）在 engine/tools/security.mjs ──
-import { BASE_TOOL_SCHEMAS, createUnifiedToolExecutor } from "./engine/tools/unified-tools.mjs";
+import { BASE_TOOL_SCHEMAS, createUnifiedToolExecutorGuarded } from "./engine/tools/unified-tools.mjs";
 import { safeJoin } from "./engine/tools/security.mjs";
 // ── dsh 执行臂工具（拆模块）：双引擎派单/并发控制/结构化回传解析 ──
 import { createDshTool } from "./engine/dsh-tool.mjs";
@@ -427,8 +427,9 @@ const isExternalThinking = () => !!(CONFIG.externalThinking || globalThis.__piWe
 
 // 统一工具执行器：实现已抽到 engine/tools/unified-tools.mjs（大脑可移植第一步）。
 // server 侧注入：工作目录 / 工作空间路径安全 / 技能激活 / 时间引擎。
-const executeUnifiedTool = createUnifiedToolExecutor({
+const executeUnifiedTool = createUnifiedToolExecutorGuarded({
   cwd: () => CONFIG.cwd,
+  systemDir: __dirname, // 双根白名单：系统本体目录（自进化可写）
   safePath: wsSafePath,
   activateSkill: (name) => execActivateSkill(name),
   timeEngine: () => timeEngine,
