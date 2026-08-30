@@ -5,6 +5,8 @@ import { useApp } from './store'
 import { useIsMobile } from './hooks/useIsMobile'
 import { useHashRoute, PageErrorBoundary, type Route } from './hooks/useHashRoute'
 import Login from './components/Login'
+import SetupWizard from './components/SetupWizard'
+import { KeysApi } from './api'
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
 import ActivityFeed from './components/ActivityFeed'
@@ -71,6 +73,13 @@ function PageBody({ route }: { route: Route }) {
 
 export default function AppLayout() {
   const { authed } = useApp()
+  // 首启向导（M1）：登录后零密钥 → 引导初始化；?setup=1 强制唤出
+  const [needsSetup, setNeedsSetup] = useState(false)
+  useEffect(() => {
+    if (!authed) return
+    try { if (new URLSearchParams(location.search).get('setup') === '1') { setNeedsSetup(true); return } } catch {}
+    KeysApi.status().then((s: any) => { if (s && Array.isArray(s.pi) && s.pi.length === 0) setNeedsSetup(true) }).catch(() => {})
+  }, [authed])
   const isMobile = useIsMobile()
   const [route, nav] = useHashRoute(APP_ROUTES)
   // 桌面会话栏折叠（08-26）：持久化到 localStorage
@@ -142,6 +151,7 @@ export default function AppLayout() {
   )
 
   if (!authed) return <Login />
+  if (needsSetup) return <SetupWizard onDone={() => setNeedsSetup(false)} />
 
   /* ── 页面容器（非 chat 路由共用）── */
   const pageArea = (route !== 'chat') && (
