@@ -30,6 +30,7 @@ export default function Login() {
         <input className="input-pi mb-4" type="password" placeholder="访问令牌" value={token} onChange={e => setToken(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} />
         <button className="btn-primary w-full py-2.5" disabled={loading} onClick={submit}>{loading ? '连接中…' : '连接'}</button>
         {err && <div className="text-pi-red text-xs mt-3">{err}</div>}
+        <div className="text-pi-dim2 text-[11px] mt-4 leading-relaxed text-center">本机服务：访问令牌在服务器 D:\pi-web\.token 文件里（记事本打开复制）</div>
       </div>
     </div>
   )

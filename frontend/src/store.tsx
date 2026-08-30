@@ -79,9 +79,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [modelsData, currentModel])
 
   const login = useCallback(async (tk: string, apiBase?: string) => {
+    // 先服务端真验证再放行（修「输错 token 也进主界面」的幽灵登录态）；用原生 fetch 不走 api()，避免触发全局 401 踢出
+    const base = (apiBase || (() => { try { return localStorage.getItem('pi_api_base') || '' } catch { return '' } })()).replace(/\/+$/, '')
+    const ctrl = new AbortController(); const tmo = setTimeout(() => ctrl.abort(), 8000)
+    try {
+      const r = await fetch(base + '/api/models', { headers: { Authorization: `Bearer ${tk}` }, signal: ctrl.signal })
+      if (r.status === 401) { const e: any = new Error('令牌无效'); e.status = 401; throw e }
+      if (!r.ok) { const e: any = new Error('服务无响应 (HTTP ' + r.status + ')'); e.status = r.status; throw e }
+    } catch (e: any) {
+      if (e?.name === 'AbortError') { const x: any = new Error('连接超时'); x.status = 0; throw x }
+      throw e
+    } finally { clearTimeout(tmo) }
     setToken(tk); if (apiBase) { try { localStorage.setItem('pi_api_base', apiBase) } catch {} }
     setT(tk); setAuthed(true)
   }, [])
+
 
   const logout = useCallback(() => {
     try { localStorage.removeItem('pi_web_token') } catch {}
@@ -89,6 +101,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     globalMutate('sessions', undefined, { revalidate: false })
     globalMutate('models', undefined, { revalidate: false })
   }, [])
+
+  // 全局 401 踢出：主界面里任何接口鉴权失败 → 清令牌回登录页（幽灵态不可停留）
+  useEffect(() => {
+    const onUn = () => { if (getToken()) logout() }
+    window.addEventListener('pi-unauthorized', onUn)
+    return () => window.removeEventListener('pi-unauthorized', onUn)
+  }, [logout])
 
   // 首次登录后自动恢复上次会话
   useEffect(() => {

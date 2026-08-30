@@ -34,6 +34,8 @@ export async function api<T = any>(path: string, opts: any = {}): Promise<T> {
     const ct = r.headers.get('content-type') || ''
     const data = ct.includes('json') ? await r.json() : null
     if (!r.ok) {
+      // 401 = 令牌失效/无效：广播全局事件，store 踢回登录页（消除“幽灵登录态”）
+      if (r.status === 401) { try { window.dispatchEvent(new Event('pi-unauthorized')) } catch {} }
       // error 可能是字符串或对象（如 code/run 的 {kind, message}）——统一转成可读字符串
       let emsg: string
       if (data && typeof data.error === 'string') emsg = data.error
