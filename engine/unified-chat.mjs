@@ -2,6 +2,7 @@
 // unifiedChat/handleUnifiedChat：对话 + 工具循环 + 思考 + 媒体 + 压缩 + 重试 + 任务进度
 // 依赖注入：initUnifiedChat({ executeUnifiedTool, findKeyByEntry, readJsonFile, getModelList, getDefaultModel, authPath, modelsPath, cwd })
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { json, readBody } from "./http-utils.mjs";
 import { markModelBlocked, isAuthErrorStatus, pickFallbackDefault, pickFallbackExcluding, routeProCandidate } from "./model-router.mjs";
@@ -246,7 +247,8 @@ export async function unifiedChat(model, messages, opts = {}) {
     if (!text) {
       try {
         const fsdiag = await import("node:fs");
-        fsdiag.appendFileSync("D:/pi-web/unified-debug.log", JSON.stringify({
+        // M1 路径外部化：调试日志进系统临时目录，不再写死盘符
+        fsdiag.appendFileSync(path.join(os.tmpdir(), "pi-web-unified-debug.log"), JSON.stringify({
           t: new Date().toISOString(), model: model.provider + "/" + model.id, turn,
           content_len: content.length, reasoning_len: think.length,
           tool_calls: Array.isArray(tcs) ? tcs.length : (msg.tool_calls?.length || 0),
@@ -578,7 +580,8 @@ export function handleAgentEventOut(res) {
 
 // ── 工具大响应落盘（08-29 TrueForge 策略②对标）：>50KB 写文件，上下文只留预览+路径 ──
 // 之前 truncate 直接丢信息；落盘后模型可用 read 工具按需读全文。目录按日分桶，7 天前的自动清。
-const TOOL_SPILL_DIR = "D:/pi-web/.toolout";
+// M1 路径外部化：落盘目录进系统临时目录，跨机器可移植
+const TOOL_SPILL_DIR = path.join(os.tmpdir(), "pi-web-toolout");
 const TOOL_SPILL_LIMIT = 50 * 1024;
 function spillIfHuge(toolName, text) {
   const s = String(text || "");

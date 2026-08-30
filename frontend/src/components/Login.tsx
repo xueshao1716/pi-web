@@ -23,8 +23,8 @@ export default function Login() {
       <WebglBackdrop className="absolute inset-0" dim={0.22} />
       <div className="relative z-10 panel w-88 p-10">
         <div className="text-center mb-6">
-          <div className="text-4xl font-black text-pi-accent tracking-tight mb-1">◈ 小语</div>
-          <div className="text-pi-dim text-sm">· AI 工作台</div>
+          <div className="text-4xl font-black text-pi-accent tracking-tight mb-1">◈ 元枢</div>
+          <div className="text-pi-dim text-sm">个人智能系统 · 小语为你值守</div>
         </div>
         <input className="input-pi mb-3" placeholder="服务器地址（留空=本机）" value={apiBase} onChange={e => setApiBase(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} />
         <input className="input-pi mb-4" type="password" placeholder="访问令牌" value={token} onChange={e => setToken(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} />

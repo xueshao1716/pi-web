@@ -14,7 +14,7 @@ let _getModelRouter = null;   // model-router 引用（classifyTaskComplexity/ro
 let _memoryApi = null;        // engine/memory.mjs
 let _emotion = null;          // engine/emotion.mjs
 let _getDefaultModel = () => null;
-let _getWsRoot = () => "D:/pi-workspace";
+let _getWsRoot = () => process.cwd(); // M1：兜底可移植（server.mjs 启动时会注入真实 wsRoot）
 let _json = null;             // http-utils json
 
 export function initMcpServer({ modelRouter, memoryApi, emotion, getDefaultModel, wsRoot, json }) {

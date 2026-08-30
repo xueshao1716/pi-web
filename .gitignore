@@ -58,3 +58,5 @@ android/release.keystore
 .test-*.mjs
 frontend/smoke-react.png
 android/*.idsig
+.toolout/
+unified-debug.log

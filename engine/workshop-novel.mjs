@@ -169,7 +169,7 @@ export async function handleBookWrite(ctx, res, body) {
     const chPath = path.join(bd, "chapters", chName);
     if (fs.existsSync(chPath)) {
       const st = fs.statSync(chPath);
-      write("file", { name: chName, path: path.relative("D:/pi-workspace", chPath).replace(/\\/g, "/"), size: st.size });
+      write("file", { name: chName, path: path.relative(path.dirname(novelsDir()), chPath).replace(/\\/g, "/"), size: st.size });
       write("note", { text: `✅ 第 ${chNo} 章完成：novels/${sid}/chapters/${chName}` });
       write("done", { ok: true, chapter: chName, no: chNo });
     } else {

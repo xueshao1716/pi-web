@@ -4,10 +4,24 @@
 import fs from "node:fs";
 import { atomicWriteText } from "./atomic-io.mjs";
 import path from "node:path";
+import os from "node:os";
 
-const WS = "D:/pi-workspace";
-const OUT = path.join(WS, ".pi", "APPEND_SYSTEM.md");
-const CONSTITUTION_FILE = path.join(WS, "宪法.json");
+// M1 路径外部化：工作空间根不再写死盘符——
+// 优先 initMemorySync(wsRoot) 注入（server.mjs），退回 PI_WEB_CWD 环境，再退回多盘符探测（与 config.defaultCwd 同策略）
+let _wsOverride = "";
+export function initMemorySync({ wsRoot } = {}) { if (wsRoot) _wsOverride = wsRoot; }
+function defaultWs() {
+  if (process.env.PI_WEB_CWD) return process.env.PI_WEB_CWD;
+  for (const drive of ["D:", "E:", "C:"]) {
+    const p = path.join(drive, path.sep === "\\" ? "pi-workspace" : "pi-workspace");
+    try { if (fs.statSync(p).isDirectory()) return p; } catch {}
+  }
+  try { const p = path.join(os.homedir(), "pi-workspace"); if (fs.statSync(p).isDirectory()) return p; } catch {}
+  return process.cwd();
+}
+const WS = () => _wsOverride || defaultWs();
+const OUT = () => path.join(WS(), ".pi", "APPEND_SYSTEM.md");
+const CONSTITUTION_FILE = () => path.join(WS(), "宪法.json");
 
 function read(p) {
   try { return fs.readFileSync(p, "utf8").trim(); } catch { return ""; }
@@ -46,7 +60,7 @@ function fnv1a64(str) {
 
 function renderConstitution() {
   let raw;
-  try { raw = fs.readFileSync(CONSTITUTION_FILE, "utf8"); } catch { return null; }
+  try { raw = fs.readFileSync(CONSTITUTION_FILE(), "utf8"); } catch { return null; }
   let doc;
   try { doc = JSON.parse(raw); } catch {
     console.log("[memory-sync] ⚠️ 宪法.json 解析失败，跳过宪法渲染");
@@ -85,10 +99,10 @@ function renderConstitution() {
 
 export function syncMemoryToTui() {
   try {
-    const memory = read(path.join(WS, "记忆.md"));
-    const log = read(path.join(WS, "记忆", "记忆日志.md"));
-    const exp = read(path.join(WS, "工程", "经验库", "experience.md"));
-    const skills = read(path.join(WS, "记忆", "技能记忆.md"));
+    const memory = read(path.join(WS(), "记忆.md"));
+    const log = read(path.join(WS(), "记忆", "记忆日志.md"));
+    const exp = read(path.join(WS(), "工程", "经验库", "experience.md"));
+    const skills = read(path.join(WS(), "记忆", "技能记忆.md"));
 
     const expRecent = exp ? exp.split(/\n### /).slice(-6).map(b => "### " + b.trim()).join("\n") : "";
 
@@ -115,9 +129,9 @@ ${log ? log.split("\n### ").slice(-8).map(b => "### " + b.trim()).join("\n") : "
 
 ${expRecent || "（无）"}
 `;
-    fs.mkdirSync(path.dirname(OUT), { recursive: true });
-    atomicWriteText(OUT, content);
-    console.log(`[memory-sync] 已同步记忆到 TUI: ${OUT} (${content.length}B)`);
+    fs.mkdirSync(path.dirname(OUT()), { recursive: true });
+    atomicWriteText(OUT(), content);
+    console.log(`[memory-sync] 已同步记忆到 TUI: ${OUT()} (${content.length}B)`);
     return true;
   } catch (e) {
     console.log("[memory-sync] 同步失败:", String(e?.message || e).slice(0, 100));

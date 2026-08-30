@@ -1,5 +1,5 @@
 {
-  "name": "pi-web",
+  "name": "yuanshu",
   "version": "1.0.0",
   "private": true,
   "description": "pi coding agent web interface (SSE chat over pi SDK)",

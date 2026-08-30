@@ -2,10 +2,10 @@
   <img src="docs/logo-xiaoyu-hd.png" width="96" alt="小语 AI logo">
 </p>
 
-# 小语 · AI 工作台（pi-web）
+# 元枢 · 个人智能系统（Yuanshu）
 
 <p align="center">
-  <b>一个有记忆、有情绪、会进化的 AI 工作伙伴</b>
+  <b>一个大脑，全端皮肤 —— 有记忆、有情绪、会进化的个人专属 AI 伙伴</b>
 </p>
 
 <p align="center">
@@ -18,7 +18,9 @@
 
 > 🧠 **记忆系统** · ❤️ **情绪引擎** · 🧬 **进化系统** · 📦 **智能文件交付** · 📡 **一键外网分享**
 
-基于 [pi 引擎](https://github.com/earendil-works/pi-coding-agent) 的 Web 工作台——把终端里的 AI agent 变成完整的浏览器工作伙伴：会话、工具调用、媒体生成、工作空间管理，前后端一体，纯原生实现零构建。
+基于 [pi 引擎](https://github.com/earendil-works/pi-coding-agent) 的个人智能系统中枢——把终端里的 AI agent 变成完整的全平台工作伙伴：会话、工具调用、媒体生成、工作空间管理，Windows / Linux / Android / Web / 手机页面全端覆盖。
+
+> **品牌层级**：元枢 = 整个系统 · 小语 = 伙伴人格（与你对话的那个她）· 架构详见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ## 🎯 装完你能得到
 

@@ -70,6 +70,8 @@ import { createTimeEngine } from "./engine/time-engine.mjs";
 import { sanitizeSessionFile } from "./engine/session-sanitize.mjs";
 import { initSessionDb, handleDbList, handleDbRebuild, handleDbSanitize, handleDbMeta, handleDbStats } from "./engine/session-db.mjs";
 const memoryApi = await import("./engine/memory.mjs");
+const { initMemorySync } = await import("./engine/memory-sync.mjs");
+initMemorySync({ wsRoot: CONFIG.cwd }); // M1 路径外部化：记忆同步的工作空间根随配置注入
 const emotion = await import("./engine/emotion.mjs");
 emotion.init(CONFIG.cwd); // 基因系统：加载人格基因 + 提案池
 // 隔离子任务执行器（P2）：注入模型适配依赖（复用系统代理栈）
@@ -1803,7 +1805,7 @@ const server = http.createServer(async (req, res) => {
     res.setHeader("Referrer-Policy", "no-referrer");
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
     const isStatic = (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/sw.js" || WORKSHOP_PAGES[url.pathname])) ||
-                     (req.method === "GET" && (url.pathname.startsWith("/static/") || url.pathname.startsWith("/assets/") || url.pathname.startsWith("/legacy/") || url.pathname === "/vite.svg"));
+                     (req.method === "GET" && (url.pathname.startsWith("/static/") || url.pathname.startsWith("/assets/") || url.pathname.startsWith("/legacy/") || url.pathname === "/vite.svg" || url.pathname === "/manifest.webmanifest" || url.pathname.startsWith("/icons/")));
     // 签名文件链接（filebox 签名）免 token：签名本身是凭证
     let isSignedFile = false;
     try {
@@ -1832,8 +1834,8 @@ const server = http.createServer(async (req, res) => {
       }
       return handleStatic(req, res);
     }
-    // Vite 指纹资产
-    if (reactStatic && req.method === "GET" && (url.pathname.startsWith("/assets/") || url.pathname === "/vite.svg")) return reactStatic.handle(req, res);
+    // Vite 指纹资产 + PWA 资源（manifest/图标无敏感内容，免 token 供安装器拉取）
+    if (reactStatic && req.method === "GET" && (url.pathname.startsWith("/assets/") || url.pathname === "/vite.svg" || url.pathname === "/manifest.webmanifest" || url.pathname.startsWith("/icons/"))) return reactStatic.handle(req, res);
     // 旧版入口：/legacy/* → public/*
     if (req.method === "GET" && url.pathname.startsWith("/legacy/")) {
       req.url = url.pathname.slice("/legacy".length) || "/index.html";

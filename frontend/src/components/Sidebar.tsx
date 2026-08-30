@@ -63,7 +63,7 @@ export default function Sidebar({ onNavigated, onCollapse }: { onNavigated?: () 
           style={{ boxShadow: '0 3px 10px color-mix(in oklab, var(--pi-accent) 20%, transparent)' }}>语</div>
         <div>
           <div className="font-semibold text-[14px] leading-tight">小语</div>
-          <div className="text-pi-dim2 text-[11px] leading-tight">工作台</div>
+          <div className="text-pi-dim2 text-[11px] leading-tight">元枢工作台</div>
         </div>
         {onCollapse && (
           <button className="ml-auto touch-hit p-1.5 text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 rounded-pi-sm transition-colors"
