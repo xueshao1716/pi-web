@@ -154,8 +154,9 @@ export default function AppLayout() {
   if (needsSetup) return <SetupWizard onDone={() => setNeedsSetup(false)} />
 
   /* ── 页面容器（非 chat 路由共用）── */
+  // min-w-0：flex 子项默认 min-width:auto，内部宽表格会把整页撑出横向滚动（M3 手机审计修复）
   const pageArea = (route !== 'chat') && (
-    <div key={route} className="flex-1 flex flex-col min-h-0 page-enter">
+    <div key={route} className="flex-1 flex flex-col min-h-0 min-w-0 overflow-x-hidden page-enter">
       <Suspense fallback={<PageLoader />}>
         <PageErrorBoundary page={NAV.find(n => n.route === route)?.label || route}>
           <PageBody route={route} />
