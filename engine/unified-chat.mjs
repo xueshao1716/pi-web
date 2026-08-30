@@ -117,7 +117,8 @@ export async function unifiedChat(model, messages, opts = {}) {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
     body: JSON.stringify(buildBody(withThinking)),
-    timeout: 300000, // 思考模型多轮工具调用可能很慢（每轮 30-60s），120s 不够
+    timeout: 300000,
+    signal: opts.signal, // P2: 客户端断开时取消 fetch
   });
   let usedThinking = thinkingParam !== null;
   let turn = 0;

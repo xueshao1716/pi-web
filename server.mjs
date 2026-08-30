@@ -1793,8 +1793,10 @@ const server = http.createServer(async (req, res) => {
   try {
     // 安全响应头（CSP 限制脚本来源，防止第三方注入执行；禁 MIME 嗅探；防 clickjacking）
     // OMEGA 页需连 OpenIM(10002/10001) 与 Gateway(9000)，connect-src/worker-src 已放行本地服务
-    // 2026-08-29 安全收紧：去掉 unsafe-eval（产物无 eval/new Function，playwright 回归验证无 CSP 违规）
-    res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' ws: wss: http://127.0.0.1:10002 http://127.0.0.1:9000 ws://127.0.0.1:10001 ws://127.0.0.1:9000 https://fastly.jsdelivr.net https://cubism.live2d.com https://v1.hitokoto.cn; worker-src 'self' blob:; font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com; frame-ancestors 'none'");
+    // P2 CSP 加固：React 版无内联脚本 → 去掉 script-src unsafe-inline；vanilla 版保留（有内联 <script>）
+    const isVanillaReq = req.url?.includes("vanilla=");
+    const scriptSrc = isVanillaReq ? "script-src 'self' 'unsafe-inline'" : "script-src 'self'";
+    res.setHeader("Content-Security-Policy", `default-src 'self'; ${scriptSrc}; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' ws: wss: http://127.0.0.1:10002 http://127.0.0.1:9000 ws://127.0.0.1:10001 ws://127.0.0.1:9000 https://fastly.jsdelivr.net https://cubism.live2d.com https://v1.hitokoto.cn; worker-src 'self' blob:; font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com; frame-ancestors 'none'`);
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Referrer-Policy", "no-referrer");

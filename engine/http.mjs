@@ -115,6 +115,11 @@ async function rawFetch(url, options = {}) {
   const controller = new AbortController();
   const timeout = options.timeout || 60000;
   const timer = setTimeout(() => controller.abort(), timeout);
+  // P2 abort 补全：外部 signal（客户端断开）也能取消 fetch
+  const extSignal = options.signal;
+  const onExtAbort = () => controller.abort();
+  if (extSignal && !extSignal.aborted) extSignal.addEventListener("abort", onExtAbort, { once: true });
+  if (extSignal?.aborted) controller.abort();
   try {
     const headers = { ...options.headers };
     if (!headers["User-Agent"] && !headers["user-agent"]) {
@@ -134,6 +139,7 @@ async function rawFetch(url, options = {}) {
     throw err;
   } finally {
     clearTimeout(timer);
+    if (extSignal) try { extSignal.removeEventListener("abort", onExtAbort); } catch {}
   }
 }
 
