@@ -153,10 +153,10 @@ body {
 /* ── 全局背景（08-26 去 AI 味：环境光斑退场。工具软件的底是干净的）── */
 #root { position: relative; z-index: 1; }
 
-/* ── 滚动条 ── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-thumb { background: rgba(128,128,128,.22); border-radius: 999px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,.38); }
+/* ── 滚动条（更细更透明）── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-thumb { background: rgba(128,128,128,.18); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,.32); }
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* ══ 面板材质（08-26 去 AI 味改版：
@@ -186,7 +186,7 @@ body {
 }
 
 /* ── 三栏层次（08-23）：左栏微亮+顶部天光，中栏最深做画布，右栏居中 —— 拉开前中后景 */
-/* ── 三栏层次（08-26 改版：实底 token 色，随四主题自适应。侧栏最亮 / 画布最深 / 右栏居中）── */
+/* ── 三栏层次（升级：边框更轻，层次靠微妙明度差而非重边框）── */
 .col-sidebar { background: var(--pi-bg2); }
 .col-canvas { background: var(--pi-bg); }
 .col-right { background: var(--pi-bg1); }
@@ -296,16 +296,16 @@ body {
   background: var(--pi-accent);
 }
 
-/* ── 消息气泡（08-26 去玻璃化：实底 surface，去 backdrop-blur；投影收敛为一道）── */
+/* ── 消息气泡（升级：更大圆角、更明确的层次）── */
 .msg-bubble {
   background: color-mix(in oklab, var(--pi-surface) 94%, var(--pi-bg));
-  border: 1px solid color-mix(in oklab, var(--pi-border) 85%, white 15%);
-  box-shadow: var(--pi-shadow-sm);
+  border: 1px solid color-mix(in oklab, var(--pi-border) 70%, transparent);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 .msg-bubble-user {
-  background: color-mix(in oklab, var(--pi-accent) 16%, var(--pi-surface));
-  border-color: color-mix(in oklab, var(--pi-accent) 30%, transparent);
-  box-shadow: none;
+  background: color-mix(in oklab, var(--pi-accent) 18%, var(--pi-surface));
+  border-color: color-mix(in oklab, var(--pi-accent) 35%, transparent);
+  box-shadow: 0 2px 8px color-mix(in oklab, var(--pi-accent) 12%, transparent);
 }
 
 /* ── 字母头像（08-26：渐变→实底，保留 accent 深度）── */
@@ -1033,12 +1033,17 @@ body {
 .btn-tool-sm:hover:not(:disabled) { background: var(--pi-bg3); color: var(--pi-text); }
 .btn-tool-sm:disabled { opacity: .5; cursor: default; }
 
-/* ── SendBox 聚焦：静态光晕（08-25 去呼吸动画：聚焦环+光标闪烁+扫光三动画并发超载）── */
+/* ── SendBox 聚焦：广域光晕环（对标 ChatGPT 浮动输入框）── */
+.sendbox-shell {
+  box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+  transition: box-shadow 0.3s var(--pi-ease), border-color 0.3s var(--pi-ease);
+}
 .sendbox-shell:focus-within {
+  border-color: color-mix(in oklab, var(--pi-accent) 50%, var(--pi-field-border)) !important;
   box-shadow:
-    0 0 0 3px color-mix(in oklab, var(--pi-accent) 14%, transparent),
-    0 4px 24px rgba(0,0,0,0.25),
-    0 0 28px color-mix(in oklab, var(--pi-accent) 10%, transparent);
+    0 0 0 3px color-mix(in oklab, var(--pi-accent) 12%, transparent),
+    0 8px 32px rgba(0,0,0,0.20),
+    0 0 48px color-mix(in oklab, var(--pi-accent) 8%, transparent);
 }
 
 /* ── 录音波形条 ── */

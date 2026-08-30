@@ -343,28 +343,47 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   const openPanel = (p: string) => window.dispatchEvent(new CustomEvent('pi-open-panel', { detail: p }))
   const welcome = (
     <div className="relative overflow-hidden flex items-center justify-center h-full px-6">
-      <WebglBackdrop className="absolute inset-0" dim={0.12} />
-      <div className="relative z-10 text-center max-w-lg anim-enter">
-        <div className="w-16 h-16 mx-auto rounded-pi-xl bg-gradient-to-br from-pi-accent via-pi-accent2 to-purple-400 flex items-center justify-center text-3xl font-bold text-white mb-5 anim-enter" style={{ boxShadow: '0 8px 28px color-mix(in oklab, var(--pi-accent) 22%, transparent)' }}>语</div>
-        <div className="text-[22px] font-extrabold text-pi-text mb-1.5 tracking-tight anim-enter anim-enter-delay-1">小语 · AI 工作台</div>
-        <div className="text-pi-dim mb-7 text-[13px] anim-enter anim-enter-delay-2">
-          <span className="welcome-typewriter inline-block">从一个动作开始，让 AI 帮你写代码</span>
-        </div>
-        <div className="grid grid-cols-2 gap-2.5 max-w-md mx-auto text-left anim-enter anim-enter-delay-3">
+      <WebglBackdrop className="absolute inset-0" dim={0.08} />
+      <div className="relative z-10 text-center max-w-2xl anim-enter">
+        {/* 品牌圈 */}
+        <div className="w-20 h-20 mx-auto rounded-2xl bg-gradient-to-br from-pi-accent via-pi-accent2 to-purple-400 flex items-center justify-center text-4xl font-bold text-white mb-8 anim-enter"
+          style={{ boxShadow: '0 12px 40px color-mix(in oklab, var(--pi-accent) 28%, transparent)' }}>语</div>
+
+        {/* 标题 */}
+        <h1 className="text-[28px] font-extrabold text-pi-text mb-2 tracking-tight anim-enter anim-enter-delay-1"
+          style={{ fontFamily: 'var(--pi-font-display)' }}>你好，我是小语</h1>
+        <p className="text-pi-dim text-[15px] mb-10 anim-enter anim-enter-delay-2 leading-relaxed">
+          你的 AI 工作伙伴。写代码、做设计、整理文档——从一句话开始。
+        </p>
+
+        {/* 快捷入口：宽松的卡片布局，更多呼吸感 */}
+        <div className="grid grid-cols-2 gap-4 max-w-lg mx-auto anim-enter anim-enter-delay-3">
           {[
-            { Icon: Plus, label: '新建会话', desc: '开一段新对话', act: newSession, chip: 'chip-blue', c: 'text-pi-accent2', accent: 'var(--pi-accent)' },
-            { Icon: SquareTerminal, label: '终端 REPL', desc: '写代码调工具', act: () => openPanel('terminal'), chip: 'chip-green', c: 'text-emerald-300', accent: 'var(--pi-green)' },
-            { Icon: LayoutGrid, label: '模型中心', desc: '浏览与切换模型', act: () => { location.hash = '#/models' }, chip: 'chip-violet', c: 'text-purple-300', accent: 'var(--pi-accent2)' },
-            { Icon: Command, label: '命令面板', desc: 'Ctrl / ⌘ + K', act: () => window.dispatchEvent(new CustomEvent('pi-open-palette')), chip: 'chip-amber', c: 'text-amber-300', accent: 'var(--pi-yellow)' },
+            { Icon: Plus, label: '新建对话', desc: '开始一段新的工作', act: newSession, c: 'from-blue-500/20 to-blue-600/5 border-blue-500/20 hover:border-blue-400/40', ic: 'text-blue-400', accent: 'var(--pi-accent)' },
+            { Icon: SquareTerminal, label: '终端', desc: '写代码调工具', act: () => openPanel('terminal'), c: 'from-emerald-500/20 to-emerald-600/5 border-emerald-500/20 hover:border-emerald-400/40', ic: 'text-emerald-400', accent: 'var(--pi-green)' },
+            { Icon: LayoutGrid, label: '模型中心', desc: '浏览与切换模型', act: () => { location.hash = '#/models' }, c: 'from-violet-500/20 to-violet-600/5 border-violet-500/20 hover:border-violet-400/40', ic: 'text-violet-400', accent: 'var(--pi-accent2)' },
+            { Icon: Command, label: '命令面板', desc: 'Ctrl / ⌘ + K', act: () => window.dispatchEvent(new CustomEvent('pi-open-palette')), c: 'from-amber-500/20 to-amber-600/5 border-amber-500/20 hover:border-amber-400/40', ic: 'text-amber-400', accent: 'var(--pi-yellow)' },
           ].map((f, i) => (
             <button key={f.label} onClick={f.act}
-              className={`welcome-card rounded-pi-lg border px-4 py-3 cursor-pointer press anim-enter text-left accent-soft ${f.chip}`}
-              style={{ animationDelay: `${0.2 + i * 0.06}s`, '--_card-accent': f.accent } as React.CSSProperties}>
-              <f.Icon className={`w-[18px] h-[18px] mb-1.5 ${f.c}`} strokeWidth={1.8} />
-              <div className="text-[13px] font-semibold text-pi-text">{f.label}</div>
-              <div className="text-[11px] text-pi-dim2">{f.desc}</div>
+              className={`welcome-card group rounded-xl border px-5 py-4 cursor-pointer text-left bg-gradient-to-br ${f.c} backdrop-blur-sm`}
+              style={{ animationDelay: `${0.25 + i * 0.07}s`, '--_card-accent': f.accent } as React.CSSProperties}>
+              <f.Icon className={`w-5 h-5 mb-2.5 ${f.ic} transition-transform group-hover:scale-110`} strokeWidth={1.7} />
+              <div className="text-[14px] font-semibold text-pi-text mb-0.5">{f.label}</div>
+              <div className="text-[12px] text-pi-dim2 leading-relaxed">{f.desc}</div>
             </button>
           ))}
+        </div>
+
+        {/* 快捷提示 */}
+        <div className="mt-10 flex items-center justify-center gap-4 text-[11px] text-pi-dim2 anim-enter anim-enter-delay-4">
+          <span className="px-2 py-0.5 rounded bg-pi-bg3/80 font-mono">⌘K</span>
+          <span>命令面板</span>
+          <span className="w-px h-3 bg-pi-border" />
+          <span className="px-2 py-0.5 rounded bg-pi-bg3/80 font-mono">/</span>
+          <span>斜杠命令</span>
+          <span className="w-px h-3 bg-pi-border" />
+          <span className="px-2 py-0.5 rounded bg-pi-bg3/80 font-mono">@</span>
+          <span>引用文件</span>
         </div>
       </div>
     </div>
@@ -419,7 +438,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         <RefreshCw className={`w-4 h-4 text-pi-dim ${pull.spin ? 'animate-spin' : ''}`} strokeWidth={2} />
       </div>
       {/* 顶栏 */}
-      <div className="flex items-center px-5 h-12 border-b border-pi-border-soft glass flex-shrink-0 gap-2">
+      <div className="flex items-center px-5 h-14 border-b border-pi-border-soft/50 flex-shrink-0 gap-2" style={{ background: 'color-mix(in oklab, var(--pi-bg2) 70%, transparent)', backdropFilter: 'blur(8px)' }}>
         {!compactHeader && <div className="font-medium text-[15px] text-pi-text">会话</div>}
         <div className="ml-auto" />
         {/* 执行状态（对标老版 .status-pill；aria-live 让屏幕阅读器感知流式开始/结束）*/}
@@ -535,7 +554,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
           回到底部
         </button>
       )}
-      <div className="border-t border-pi-border-soft glass px-4 sm:px-6 py-2.5 flex-shrink-0">
+      <div className="border-t border-pi-border-soft/50 px-4 sm:px-6 py-3 flex-shrink-0" style={{ background: 'color-mix(in oklab, var(--pi-bg) 60%, transparent)', backdropFilter: 'blur(12px)' }}>
         <div className="max-w-3xl mx-auto">
           <SendBox key={currentSessionId ?? 'none'} streaming={!!stream} onStop={stop} onSend={send} onCommand={runCommand}
             voiceBusy={voiceBusy} onVoice={handleVoice} onVoiceTextReady={fn => { voiceTextRef.current = fn }} />

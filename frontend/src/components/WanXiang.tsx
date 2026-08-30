@@ -1,5 +1,5 @@
-import { useState, useCallback, useMemo } from 'react'
-import { Sparkles, Copy, Check, Dice5, Settings, X } from 'lucide-react'
+import { useState, useCallback } from 'react'
+import { Sparkles, Copy, Check, Dice5 } from 'lucide-react'
 
 // ── 万像人物 · 写真提示词生成器（React化）──
 // 纯前端：选场景 → 五要素 → 光影风格 → 输出提示词（即梦/MJ/SD通用）
@@ -156,25 +156,38 @@ export default function WanXiang() {
   const selectScene = useCallback((k: keyof typeof SCENES) => {
     setScene(k); const s = SCENES[k]
     setLook(s.look); setOutfit(s.outfit); setPose(s.pose); setBg(s.bg); setStyle(s.style)
-    const lm: Record<string, string> = { '华丽光影': '窗边柔光', '电影级冷暖光对冲': '电影级冷暖光对冲', '戏剧聚光': '戏剧聚光', '赛博霓虹光效': '赛博霓虹光对冲' }
+    const lm: Record<string, string> = { '华丽光影': '梦幻柔焦', '电影级冷暖光': '电影级冷暖光对冲', '戏剧聚光': '戏剧聚光', '赛博霓虹光效': '电影级冷暖光对冲' }
     const lm2 = Object.entries(lm).find(([f]) => s.lighting.includes(f))
-    setLighting(lm2 ? lm2[1] : '窗边柔光')
+    // 映射不到时回退到下拉列表内已有的值，避免 select 落在不存在值上显示空白
+    setLighting(lm2 ? lm2[1] : (s.style === '工笔画' ? '金色辉光' : '窗边柔光'))
   }, [])
 
   // 生成提示词
   const generate = useCallback(() => {
-    const g = gender, sk = skintone
+    // 赌图：按概率随机覆写风格/身形/光影（旧版万像核心玩法）；性别默认锁定可解锁
+    let g = gender
+    let _style = style, _body = body, _lighting = lighting
+    const gambled: string[] = []
+    if (gamble) {
+      const roll = <T,>(dim: keyof typeof GAMBLE, pool: readonly T[]): T | null =>
+        (gambleLocks.has(dim) ? null : (Math.random() < gambleChance ? PICK([...pool]) : null))
+      if (!gambleLocks.has('gender')) { const v = roll('gender', GAMBLE.gender); if (v) g = v as string }
+      const st = roll('style', GAMBLE.style); if (st) { _style = st; gambled.push('风格') }
+      const bd = roll('body', GAMBLE.body); if (bd) { _body = bd; gambled.push('身形') }
+      const lt = roll('lighting', GAMBLE.lighting); if (lt) { _lighting = lt; gambled.push('光影') }
+    }
+    const sk = skintone
     const _look = look || '面容端正，五官协调'
     const _outfit = outfit || '简约得体的服装'
     const _pose = pose || '自然站姿，重心稳定'
     const _expr = expression || '自然微笑，眼神有神'
     const _bg = bg || '纯色背景'
     const _skin = SKIN_MAP[sk] || sk
-    const bodyDesc = g === '女性' ? `${height}cm/${weight}kg/${body}身形，腰臀比0.65-0.7` : `${height}cm/${weight}kg/${body}身形，肩髋比1.2-1.35`
+    const bodyDesc = g === '女性' ? `${height}cm/${weight}kg/${_body}身形，腰臀比0.65-0.7` : `${height}cm/${weight}kg/${_body}身形，肩髋比1.2-1.35`
 
     const main = `${ptype}，${g}，${age}岁，${face}，${_look}，${_skin}，${bodyDesc}，${_expr}`
     const comp = `${shot}，${angle}，${_pose}`
-    let light = lighting
+    let light = _lighting
     if (zero) light += '（零器材模式：自然天幕光，无电线，无灯架，无器材入镜）'
     const amb = `${light}，${mood}氛围`
 
@@ -184,7 +197,7 @@ export default function WanXiang() {
     if (composition) tech.push('黄金分割构图，引导线引导视线，画面平衡有张力')
     if (emotion) tech.push('情绪光晕，光晕自然扩散，氛围感强')
 
-    const parts = [main, _outfit, comp, amb, style, _bg, tech.join('，')].filter(Boolean)
+    const parts = [main, _outfit, comp, amb, _style, _bg, tech.join('，')].filter(Boolean)
 
     if (platform === 'dreamina') {
       const negArr: string[] = []
@@ -195,7 +208,7 @@ export default function WanXiang() {
       const wParts = ['五官端正:0.85', '肢体自然:0.85', '真实皮肤纹理:0.85']
       if (uhq) wParts.unshift('超清画质:0.9')
       const negPairs = negJoined.split('，').filter(Boolean).map(x => `${NEG_TO_CN[x] || x}:0.85`).join(', ')
-      setOutput(`【画面描述】\n${parts.join('，')}\n\n【权重调整】\n${wParts.join(', ')}${negPairs ? '\n' + negPairs : ''}\n\n【质量保障】\n${negJoined}`)
+      setOutput((gambled.length ? `【赌图命中】${gambled.join(' / ')}\n\n` : '') + `【画面描述】\n${parts.join('，')}\n\n【权重调整】\n${wParts.join(', ')}${negPairs ? '\n' + negPairs : ''}\n\n【质量保障】\n${negJoined}`)
     } else if (platform === 'mj') {
       const negArr: string[] = []
       if (negUniversal) negArr.push(...NEG_UNIVERSAL.split('，'))
@@ -208,7 +221,7 @@ export default function WanXiang() {
       if (negBg) negArr.push(...NEG_BG.split('，'))
       setOutput(parts.join(', ') + '\n\nNegative prompt: ' + negArr.filter(Boolean).join(', ') + '\n\nControlNet: openpose + depth | LoRA: <lora:body_proportion_v2:0.7>')
     }
-  }, [gender, age, ptype, look, height, weight, body, face, skintone, outfit, shot, angle, pose, expression, lighting, mood, style, bg, uhq, zero, deai, composition, emotion, platform, negUniversal, negReal, negBg])
+  }, [gender, age, ptype, look, height, weight, body, face, skintone, outfit, shot, angle, pose, expression, lighting, mood, style, bg, uhq, zero, deai, composition, emotion, platform, negUniversal, negReal, negBg, gamble, gambleChance, gambleLocks])
 
   const copyToClipboard = useCallback(async () => {
     if (!output) return
@@ -305,6 +318,30 @@ export default function WanXiang() {
           <Toggle v={negUniversal} set={setNegUniversal} label="通用质量过滤" />
           <Toggle v={negReal} set={setNegReal} label="写实强化" />
           <Toggle v={negBg} set={setNegBg} label="纯净背景" />
+        </div>
+        <hr className="border-pi-border-soft my-2" />
+        {/* 赌图模式 */}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <Toggle v={gamble} set={setGamble} label="🎲 赌图模式" />
+          {gamble && (
+            <>
+              <label className="text-[11px] text-pi-dim flex items-center gap-1.5">命中概率
+                <input type="range" min={10} max={90} step={5} value={Math.round(gambleChance * 100)} onChange={e => setGambleChance(+e.target.value / 100)} className="w-24 accent-pi-accent" />
+                <span className="text-pi-text font-mono w-8 text-right">{Math.round(gambleChance * 100)}%</span>
+              </label>
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-pi-dim2">锁定:</span>
+                {(['gender', 'style', 'body', 'lighting'] as const).map(dim => (
+                  <button key={dim} onClick={() => setGambleLocks(prev => {
+                    const next = new Set(prev); next.has(dim) ? next.delete(dim) : next.add(dim); return next
+                  })}
+                    className={`px-1.5 py-0.5 rounded-full text-[10px] border ${gambleLocks.has(dim) ? 'bg-pi-accent/15 text-pi-accent border-pi-accent/40' : 'bg-transparent text-pi-dim2 border-pi-border-soft'}`}>
+                    {{ gender: '性别', style: '风格', body: '身形', lighting: '光影' }[dim]}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 

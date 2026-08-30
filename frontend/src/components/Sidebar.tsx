@@ -56,12 +56,15 @@ export default function Sidebar({ onNavigated, onCollapse }: { onNavigated?: () 
   })
 
   return (
-    <aside className="w-full md:w-60 flex-shrink-0 flex flex-col col-sidebar md:border-r border-pi-border min-h-0 h-full relative z-10">
+    <aside className="w-full md:w-64 flex-shrink-0 flex flex-col col-sidebar md:border-r border-pi-border/50 min-h-0 h-full relative z-10">
       {/* 品牌头 */}
-      <div className="flex items-center gap-2 px-4 h-12 border-b border-pi-border-soft flex-shrink-0">
-        <div className="w-7 h-7 rounded-pi-md avatar-grad flex items-center justify-center text-white font-bold">语</div>
-        <div className="font-semibold text-[15px]">小语</div>
-        <div className="text-pi-dim2 text-xs">·工作台</div>
+      <div className="flex items-center gap-2.5 px-4 h-14 border-b border-pi-border-soft/50 flex-shrink-0">
+        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-pi-accent to-pi-accent2 flex items-center justify-center text-white font-bold text-sm"
+          style={{ boxShadow: '0 3px 10px color-mix(in oklab, var(--pi-accent) 20%, transparent)' }}>语</div>
+        <div>
+          <div className="font-semibold text-[14px] leading-tight">小语</div>
+          <div className="text-pi-dim2 text-[11px] leading-tight">工作台</div>
+        </div>
         {onCollapse && (
           <button className="ml-auto touch-hit p-1.5 text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 rounded-pi-sm transition-colors"
             aria-label="收起会话栏" title="收起会话栏" onClick={onCollapse}>
@@ -72,7 +75,7 @@ export default function Sidebar({ onNavigated, onCollapse }: { onNavigated?: () 
 
       {/* 新建 */}
       <div className="p-3 pb-2 flex-shrink-0">
-        <button className="btn-primary w-full py-2" onClick={handleNew}>
+        <button className="btn-primary w-full py-2.5 rounded-xl" onClick={handleNew}>
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           新建会话
         </button>
@@ -103,11 +106,11 @@ export default function Sidebar({ onNavigated, onCollapse }: { onNavigated?: () 
             </button>
             {!collapsed.has(g) && groups[g].map(s => (
               <div key={s.id}
-                className={`group flex items-center gap-2.5 px-2.5 py-2 rounded-pi-md cursor-pointer mb-0.5 transition-colors duration-fast ${
-                  s.id === currentSessionId ? 'accent-soft' : 'surface-hover'
+                className={`group flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer mb-1 transition-all duration-200 ${
+                  s.id === currentSessionId ? 'bg-pi-accent/12 border border-pi-accent/20' : 'hover:bg-pi-bg-hover border border-transparent'
                 }`}
                 onClick={() => { selectSession(s.id); onNavigated?.() }}>
-                <div className={`w-6 h-6 rounded-pi-sm flex items-center justify-center text-xs font-bold flex-shrink-0 transition-all duration-200 ${s.id === currentSessionId ? 'bg-pi-accent text-white shadow-[0_0_10px_rgba(84,104,255,0.3)]' : 'bg-pi-default text-pi-dim'}`}>
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 transition-all duration-200 ${s.id === currentSessionId ? 'bg-pi-accent text-white shadow-[0_0_12px_rgba(84,104,255,0.3)]' : 'bg-pi-bg3/80 text-pi-dim'}`}>
                   {s.name?.charAt(0) || '会'}
                 </div>
                 <div className="flex-1 min-w-0">

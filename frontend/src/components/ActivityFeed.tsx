@@ -25,6 +25,7 @@ function describe(ev: AgentEvent): string {
   if (ev.type === 'user_message') return `你：${(ev.data?.text || '').slice(0, 40)}`
   if (ev.type === 'assistant_reply') return `小语：${(ev.data?.text || '').slice(0, 40)}`
   if (ev.type === 'thinking') return '思考中'
+  if (ev.type === 'task_completed') return ev.data?.text || '任务完成' // 08-29：终端交付通报直接展示内容
   return LABELS[ev.type] || ev.type
 }
 

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Database, RefreshCw, Search, Trash2, Pin, CheckSquare, Square } from 'lucide-react'
 import { toast } from '../components/Toast'
+import { useApp } from '../store'
+import { useHashRoute } from '../hooks/useHashRoute'
+import { SessionApi } from '../api'
 
 // ── 会话数据库（08-29 真落地）：编号/健康度/大小/批量清理 ──
 // 后端 /api/sessions/db/*；健康 ok<1MB / large 1-5MB / oversized>5MB

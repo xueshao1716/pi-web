@@ -1,21 +1,24 @@
 import { useState } from 'react'
-import { ImagePlus, Presentation, BookOpen } from 'lucide-react'
+import { ImagePlus, Presentation, BookOpen, Camera } from 'lucide-react'
 import GeneratePanel from '../components/GeneratePanel'
 import WorkshopView from '../components/WorkshopView'
 import NovelStudioView from '../components/NovelStudioView'
+import WanXiang from '../components/WanXiang'
 
-// ── 专项工作台（08-26 从应用中心提升为主功能路由）：AI 绘画 / PPT / 小说工坊（08-27 书架式改版）──
+// ── 专项工作台（08-26 从应用中心提升为主功能路由）：AI 绘画 / PPT / 小说工坊 / 万像出图 ──
 
-type Tab = 'image' | 'ppt' | 'novel'
+type Tab = 'image' | 'ppt' | 'novel' | 'wanxiang'
 const TABS: [Tab, typeof ImagePlus, string][] = [
   ['image', ImagePlus, 'AI 绘画'],
   ['ppt', Presentation, 'PPT 生成'],
   ['novel', BookOpen, '小说工坊'],
+  ['wanxiang', Camera, '万像出图'],
 ]
 const TAB_DESC: Record<Tab, string> = {
   image: '选模型出图，成品自动归档到资产库',
   ppt: '走 ppt-generator 技能全流程，通常需要几分钟',
   novel: '书架式创作：作品沉淀 · 真相文件一致性 · 章节递进',
+  wanxiang: '人物写真提示词工作台：场景模板 · 五要素 · 赌图 · 多平台适配（即梦/MJ/SD）',
 }
 
 export default function Workshop() {
@@ -44,6 +47,7 @@ export default function Workshop() {
         {tab === 'image' && <div className="max-w-3xl"><GeneratePanel onGenerated={() => {}} /></div>}
         {tab === 'ppt' && <WorkshopView key="ppt" kind="ppt" />}
         {tab === 'novel' && <NovelStudioView />}
+        {tab === 'wanxiang' && <div className="max-w-3xl"><WanXiang /></div>}
       </div>
     </div>
   )

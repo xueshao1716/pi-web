@@ -43,12 +43,12 @@ const PAGE_ROUTES: PageRoute[] = [
   { route: 'workshop', icon: Factory, label: '专项', Page: WorkshopPage },
   { route: 'models', icon: BrainCircuit, label: '模型', Page: ModelHub, nav: false },
   { route: 'assets', icon: Images, label: '资产', Page: Assets },
-  { route: 'tasks', icon: Clock4, label: '任务', Page: Tasks },
-  { route: 'apps', icon: LayoutGrid, label: '应用', Page: Apps },
-  { route: 'engine', icon: Cpu, label: '引擎', Page: EnginePage },
+  { route: 'tasks', icon: Clock4, label: '任务', Page: Tasks, nav: false },
+  { route: 'apps', icon: LayoutGrid, label: '应用', Page: Apps, nav: false },
+  { route: 'engine', icon: Cpu, label: '引擎', Page: EnginePage, nav: false },
   { route: 'themes', icon: Palette, label: '主题', Page: ThemesPage, nav: false },
-  { route: 'sessiondb', icon: Database, label: '会话库', Page: SessionDbPage },
-  { route: 'system', icon: MonitorCog, label: '系统', Page: SystemPage },
+  { route: 'sessiondb', icon: Database, label: '会话库', Page: SessionDbPage, nav: false },
+  { route: 'system', icon: MonitorCog, label: '系统', Page: SystemPage, nav: false },
 ]
 const APP_ROUTES: Route[] = ['chat', ...PAGE_ROUTES.map(p => p.route)]
 const NAV: { route: Route; icon: typeof MessagesSquare; label: string }[] = [
@@ -234,8 +234,9 @@ export default function AppLayout() {
     <div className="h-screen flex text-pi-text relative">
       <div id="pi-wallpaper" className="fixed inset-0 z-0 pointer-events-none" />
       {/* 图标导航 rail（08-23：col-sidebar 顶部天光，拉开与中栏层次） */}
-      <nav className="w-14 flex-shrink-0 flex flex-col items-center py-3 gap-1.5 col-sidebar border-r border-pi-border relative z-20">
-        <div className="w-8 h-8 rounded-pi-md avatar-grad flex items-center justify-center text-white font-bold mb-2">语</div>
+      <nav className="w-[60px] flex-shrink-0 flex flex-col items-center py-4 gap-2 col-sidebar border-r border-pi-border relative z-20">
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-pi-accent to-pi-accent2 flex items-center justify-center text-white font-bold text-sm mb-3"
+          style={{ boxShadow: '0 4px 14px color-mix(in oklab, var(--pi-accent) 25%, transparent)' }}>语</div>
         {sidebarCollapsed && (
           <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-colors"
             aria-label="展开会话栏" title="展开会话栏" onClick={toggleSidebar}>
@@ -246,8 +247,8 @@ export default function AppLayout() {
           <T.Root key={n.route}>
             <T.Trigger asChild>
               <button aria-label={n.label} aria-current={route === n.route ? 'page' : undefined}
-                className={`w-9 h-9 rounded-pi-md flex items-center justify-center relative transition-colors duration-150 ${
-                  route === n.route ? 'bg-pi-accent text-white shadow-sm' : 'text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3'}`}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center relative transition-all duration-200 ${
+                  route === n.route ? 'bg-pi-accent text-white shadow-md shadow-pi-accent/25' : 'text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3'}`}
                 onClick={() => nav(n.route)}>
                 <n.icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
               </button>

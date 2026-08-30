@@ -203,8 +203,8 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
 
   return (
     <div className="relative">
-      {/* 麦克风错误提示（08-25 评审 P1：替换 alert()）*/}
-      {micErr && <div className="mb-1.5 px-3 py-1.5 rounded-pi-md bg-pi-red/12 border border-pi-red/30 text-[12px] text-pi-red" role="alert">⚠ {micErr}</div>}
+      {/* 麦克风错误提示*/}
+      {micErr && <div className="mb-1.5 px-3 py-1.5 rounded-xl bg-pi-red/12 border border-pi-red/30 text-[12px] text-pi-red" role="alert">⚠ {micErr}</div>}
       {/* 斜杠命令菜单 */}
       {showSlash && (
         <div className="absolute bottom-full left-0 right-0 mb-1 panel !p-1 max-h-56 overflow-y-auto z-20" role="listbox" aria-label="斜杠命令">
@@ -248,7 +248,7 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
         </div>
       )}
 
-      <div className="sendbox-shell field-container rounded-pi-xl backdrop-blur-xl transition-colors duration-300">
+      <div className="sendbox-shell field-container rounded-2xl backdrop-blur-xl transition-all duration-300 shadow-lg shadow-black/10">
         <textarea ref={taRef} rows={2} value={value} disabled={streaming}
           placeholder='给小语发消息…　"/" 命令 · "@ 引用文件'
           role="combobox"
