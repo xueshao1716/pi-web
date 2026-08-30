@@ -21,17 +21,21 @@ function log(msg) {
   try { fs.appendFileSync(LOG, line + "\n"); } catch {}
 }
 
-// 锁文件：防止多个 watchdog 实例（旧任务+新任务同时跑会互相杀）
+// 锁：防止多个 watchdog 实例（旧任务+新任务同时跑会互相杀）
+// 2026-08-31 加固：文件锁不原子（并发启动都过 existsSync；锁文件写坏/NaN pid 一律被当旧锁已死放行）
+// → 曾积累 19 个 watchdog 互杀 60+ server。改用端口单例锁：listen 独占天然原子，进程死锁自清。
+const SINGLETON_PORT = 48787;
 function acquireLock() {
-  try {
-    if (fs.existsSync(LOCK)) {
-      const pid = parseInt(fs.readFileSync(LOCK, "utf8"), 10);
-      try { process.kill(pid, 0); return false; } catch { /* 旧锁进程已死 */ }
-    }
-    fs.writeFileSync(LOCK, String(process.pid));
-    process.on("exit", () => { try { fs.unlinkSync(LOCK); } catch {} });
-    return true;
-  } catch { return true; }
+  return new Promise((resolve) => {
+    const srv = net.createServer();
+    srv.once("error", () => resolve(false)); // 端口被占 = 已有实例
+    srv.listen(SINGLETON_PORT, "127.0.0.1", () => {
+      srv.unref(); // 不阻止退出；进程活着就一直占着锁
+      try { fs.writeFileSync(LOCK, String(process.pid)); } catch {} // 保留文件仅作信息展示
+      process.on("exit", () => { try { fs.unlinkSync(LOCK); } catch {} });
+      resolve(true);
+    });
+  });
 }
 
 function portOpen() {
@@ -158,7 +162,7 @@ async function startServer() {
 }
 
 (async () => {
-  if (!acquireLock()) {
+  if (!(await acquireLock())) {
     log("检测到已有 watchdog 实例（锁文件存在），本实例退出");
     process.exit(0);
   }

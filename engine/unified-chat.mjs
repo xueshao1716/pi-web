@@ -41,7 +41,7 @@ export function sanitizeToolCallList(tcs) {
       if (!tc || typeof tc !== "object") return null;
       if (!tc.id || !tc.function || typeof tc.function !== "object") return null;
       if (!tc.function.name) return null;
-      return { id: tc.id, type: "function", function: { name: tc.function.name, arguments: String(tc.function.arguments ?? "{}") } };
+      return { id: tc.id, type: "function", function: { name: tc.function.name, arguments: repairToolArgs(String(tc.function.arguments ?? "{}")) } };
     })
     .filter(Boolean);
 }
@@ -63,6 +63,27 @@ export function sanitizeToolCalls(messages) {
   return out;
 }
 
+// ══ 中转脏参数修复（2026-08-31，wawazz 实测）：部分中转做 anthropic→openai 流式拼接时，
+// arguments 会拼出 '{}{"path":...}' 这类空对象前缀 → JSON.parse 失败 → 工具拿到空参数。
+// 策略：仅当整串 parse 失败且存在 "{}" 前缀时剥离（正常 JSON 不动）。
+export function repairToolArgs(s) {
+  if (typeof s !== "string" || !s) return s;
+  try { JSON.parse(s); return s; } catch {}
+  let out = s;
+  while (/^\{\s*\}\s*(?=\{)/.test(out)) out = out.replace(/^\{\s*\}\s*/, "");
+  try { JSON.parse(out); return out; } catch { return s; }
+}
+
+// ══ 工具开关判定（2026-08-31 抽出）：
+// - compat.supportsTools:false → 一律不传 tools
+// - anthropic-messages 协议默认不传（2026-08-21 glm-5.3 直测 422/400），
+//   但允许 compat.supportsTools:true 显式开启（wawazz-claude 中转 OpenAI 兼容层实测支持 tools 回环）
+export function modelAllowsTools(mdef) {
+  if (mdef?.compat?.supportsTools === false) return false;
+  if (mdef?.api === "anthropic-messages") return mdef?.compat?.supportsTools === true;
+  return true;
+}
+
 export async function unifiedChat(model, messages, opts = {}) {
   const auth = _readJsonFile(_authPath);
   const key = auth[model.provider]?.key;
@@ -76,9 +97,8 @@ export async function unifiedChat(model, messages, opts = {}) {
   const base = (baseUrl || "").replace(/\/+$/, "");
   const baseNoV1 = base.endsWith("/v1") ? base.slice(0, -3) : base;
   const history = sanitizeToolCalls([...messages]);
-  // 2026-08-21 修复：anthropic 协议端点（glm-5.3 等）不支持 pi 的工具格式（直测 422/400）——不传 tools 做纯对话
-  // 或模型声明 compat.supportsTools:false 时同样不传
-  const noTools = mdef?.api === "anthropic-messages" || mdef?.compat?.supportsTools === false;
+  // 工具开关：见 modelAllowsTools（anthropic-messages 默认关，compat.supportsTools 可显式开/关）
+  const noTools = !modelAllowsTools(mdef);
   // 2026-08-30 修复：无工具模型注入「无工具模式」提示。agent 训练背景的模型（hy4-preview 等）
   // 被要求看文件/跑命令时会编造 <tool_call> 文本幻觉，用户看到假调用却永远等不到结果。
   // 显式告知无工具 + 引导向用户要内容，大幅减少该幻觉。
@@ -499,6 +519,10 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
   // 输出质量守卫（2026-08-19 机制化）：兑底通道统一检测 空回复/纯思考/复读 → 自动切 fallback 重试
   const rkU = sessionId || _findKeyByEntry(entry) || "new";
   const anomaly = classifyAnomaly({ sessionKey: rkU, text, think: result.think || "", sessionFile: entry.sm?.sessionFile });
+  // 2026-08-31 修复重复回话：守卫检测到异常（复读/空/纯思考/marker/amnesia）后，若备用模型也失败
+  //    （fallback 无文本 / 无可用备用通道），text 仍是异常原文——此时绝不能把它写入会话，否则
+  //    重复/空文本落盘，下次被当历史喂回模型 → 复读死循环。标记异常未解决，跳过 assistant 落盘。
+  let anomalyUnresolved = false;
   if (anomaly.type !== "none") {
     console.log(`[pi-web] 输出守卫(${anomaly.type}): ${chatModel.provider}/${chatModel.id} ${anomaly.reason} → 自动切换重试`);
     const fbModel = pickFallbackExcluding(chatModel);
@@ -509,9 +533,11 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
         text = fb.text;
         recordReply(rkU, text);
       } else {
+        anomalyUnresolved = true;
         writer.push("note", { text: "⚠️ 输出守卫触发，但备用模型也无回复（请手动切换模型或重试）" });
       }
     } else {
+      anomalyUnresolved = true;
       writer.push("note", { text: `⚠️ ${anomaly.reason}，且无可用备用通道（全链冷却），请稍后重试或手动切换模型` });
     }
   } else {
@@ -519,7 +545,8 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
   }
   try {
     entry.sm.appendMessage({ role: "user", content: [{ type: "text", text: message }] });
-    entry.sm.appendMessage({ role: "assistant", content: [{ type: "text", text }] });
+    // 异常未解决时不写 assistant（避免复读/空/纯思考文本落盘污染会话，防止下轮复读死循环）
+    if (!anomalyUnresolved) entry.sm.appendMessage({ role: "assistant", content: [{ type: "text", text }] });
   } catch {}
   if (entry.agent) { try { entry.agent.dispose(); } catch {} entry.agent = null; }
   if (!entry.sm.getSessionName()) { try { entry.sm.appendSessionInfo(message.slice(0, 24)); } catch {} }
