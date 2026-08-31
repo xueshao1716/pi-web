@@ -8,6 +8,27 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const SRC = join(ROOT, 'frontend', 'src')
 const read = (...parts) => readFileSync(join(SRC, ...parts), 'utf8')
 
+test('聊天与首页数据层不因焦点切换自动整页重载，外部事件只在提交边界同步', () => {
+  const store = read('store.tsx')
+  const chat = read('components', 'ChatArea.tsx')
+
+  assert.match(store, /revalidateOnFocus:\s*false/, '全局模型/会话缓存失焦恢复时不得自动整页重拉')
+  assert.match(store, /revalidateOnReconnect:\s*false/, '全局模型/会话缓存断线恢复时不得自动整页重拉')
+  assert.match(chat, /revalidateOnFocus:\s*false/, '长会话切回前台不得自动重取并替换整段消息')
+  assert.ok(chat.includes("event?.type === 'message' || event?.type === 'turn_end' || event?.type === 'session_updated'"), '会话同步只应在新消息或轮次结束边界触发')
+  assert.doesNotMatch(chat, /setTimeout\(\(\) => \{ if \(alive && !streamRef\.current\) mutateMsgs\(\) \}, 6000\)/, '连接短暂出错不得用延迟整段重载制造闪屏')
+})
+
+test('对话欢迎页提供高频工作入口，长会话阅读区有稳定的阅读列', () => {
+  const chat = read('components', 'ChatArea.tsx')
+  const turns = read('components', 'TurnList.tsx')
+  for (const label of ['新建对话', 'AI 绘画', '生成 PPT', '定时任务', '会话管理']) {
+    assert.ok(chat.includes(`label: '${label}'`), `欢迎页缺少高频入口：${label}`)
+  }
+  assert.ok(chat.includes('chat-reading-column'), '长会话消息区必须有语义阅读列')
+  assert.ok(turns.includes('chat-history-head'), '长会话折叠历史必须有明确阅读分隔')
+})
+
 test('移动底栏固定为对话、会话、资产、任务、更多，且删除可拖动 MobileFab', () => {
   const layout = read('AppLayout.tsx')
   const labels = [...layout.matchAll(/label: '([^']+)'/g)].map(match => match[1])

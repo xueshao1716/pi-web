@@ -9,11 +9,11 @@ import type { Route } from '../hooks/useHashRoute'
 export type UtilityPanelKey = 'workspace' | 'deliveries' | 'terminal' | 'activity' | 'tui'
 
 const MORE_ROUTES: { route: Route; icon: typeof Sparkles; label: string }[] = [
-  { route: 'lingxi', icon: Sparkles, label: '灵犀' },
-  { route: 'workshop', icon: Factory, label: '专项' },
-  { route: 'models', icon: BrainCircuit, label: '模型' },
-  { route: 'apps', icon: LayoutGrid, label: '应用' },
-  { route: 'engine', icon: Cpu, label: '引擎' },
+  { route: 'lingxi', icon: Sparkles, label: '灵感速记' },
+  { route: 'workshop', icon: Factory, label: '创作工坊' },
+  { route: 'models', icon: BrainCircuit, label: '模型中心' },
+  { route: 'apps', icon: LayoutGrid, label: '知识工具' },
+  { route: 'engine', icon: Cpu, label: '系统能力' },
   { route: 'themes', icon: Palette, label: '主题' },
   { route: 'sessiondb', icon: Database, label: '会话库' },
   { route: 'system', icon: MonitorCog, label: '系统' },

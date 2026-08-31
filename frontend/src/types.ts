@@ -31,6 +31,7 @@ export interface ToolCall {
   output?: string
   isError?: boolean
   running?: boolean
+  status?: ToolStatus
 }
 
 export interface ChatMessage {

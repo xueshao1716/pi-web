@@ -77,8 +77,8 @@ export default function SessionDb() {
   const hcls = (h: string) => HEALTH[h]?.cls || HEALTH.ok.cls
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-5xl mx-auto p-4 sm:p-6">
+    <div className="h-full overflow-y-auto session-db-page">
+    <div className="session-db-reading mx-auto px-4 sm:px-6 py-5 sm:py-7">
         <PageHeader
           title="会话数据库"
           description="按稳定编号查看会话体量与健康状态，并对选中会话执行安全清理。"
@@ -90,7 +90,7 @@ export default function SessionDb() {
         />
 
         {/* 工具条 */}
-        <div className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="session-db-toolbar flex flex-wrap items-center gap-2 mb-4">
           <div className="relative flex-1 min-w-[160px]">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-pi-dim2" />
             <input value={q} onChange={e => setQ(e.target.value)} placeholder="搜名称或编号…" aria-label="搜索会话名称或编号"
@@ -117,7 +117,7 @@ export default function SessionDb() {
         ) : (
           <>
             {/* 桌面表格 */}
-            <div data-slot="session-db-table" className="hidden md:block panel !p-0 overflow-x-auto rounded-pi-lg border border-pi-border">
+            <div data-slot="session-db-table" className="session-db-table hidden md:block overflow-x-auto">
               <table className="w-full text-[13px]">
                 <thead>
                   <tr className="text-left text-pi-dim2 border-b border-pi-border">
@@ -196,7 +196,7 @@ export default function SessionDb() {
             </div>
           </>
         )}
-        <p className="text-[11px] text-pi-dim2 mt-3">清理 = 截断超大推理签名/工具结果（防上游 400/502），不改会话内容。删除请回对话页操作。</p>
+        <p className="session-db-footnote text-[12px] text-pi-dim2 mt-5">清理会截断超大推理签名和工具结果，防止上游 400 / 502；不会删除对话正文。需要删除会话，请回到对话页操作。</p>
       </div>
     </div>
   )

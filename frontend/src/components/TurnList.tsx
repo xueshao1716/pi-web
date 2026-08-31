@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Wrench, Package, ChevronRight } from 'lucide-react'
+import { Wrench, Package, ChevronRight, ListFilter } from 'lucide-react'
 import Message from './Message'
 import type { ChatMessage } from '../types'
 
@@ -48,10 +48,10 @@ function TurnRow({ turn, index, open, onToggle }: { turn: Turn; index: number; o
   const hasError = turn.rest.some(m => m.tools?.some(t => t.isError))
   const status = hasError ? { c: 'bg-pi-red', t: '有工具报错' } : answer ? { c: 'bg-emerald-400', t: '已完成' } : { c: 'bg-pi-dim2', t: '无回复' }
   return (
-    <div className="my-1.5">
+    <div className="turn-history-row">
       <button onClick={onToggle}
-        className="press w-full flex items-center gap-2 px-3 py-2.5 rounded-pi-lg border border-pi-border-soft bg-pi-bg2/40 hover:bg-pi-bg-hover/60 hover:border-pi-border transition-colors text-left group/turn">
-        <span className={`w-2 h-2 rounded-full flex-shrink-0 ring-2 ${status.c} ${hasError ? "ring-pi-red/20" : answer ? "ring-emerald-500/15" : "ring-white/5"}`} title={status.t} />
+        className="turn-history-button press w-full flex items-center gap-2 text-left group/turn">
+        <span className={`turn-history-status ${status.c}`} title={status.t} />
         <span className="text-[10px] font-mono text-pi-dim2 w-7 flex-shrink-0">#{index + 1}</span>
         <span className="text-[13px] text-pi-dim truncate flex-1 min-w-0">
           <span className="text-pi-text/85">{q}</span>
@@ -65,7 +65,7 @@ function TurnRow({ turn, index, open, onToggle }: { turn: Turn; index: number; o
         </span>
       </button>
       {open && (
-        <div className="pl-2 border-l border-pi-border-soft ml-4">
+        <div className="turn-expanded-content">
           {turn.user && <Message msg={turn.user} />}
           {turn.rest.map(m => <Message key={m.id} msg={m} />)}
         </div>
@@ -93,18 +93,18 @@ export default function TurnList({ messages, streamingNode, keepExpanded = 1 }: 
   const collapsedCount = turns.filter(t => !lastKeys.has(t.key) && !expanded.has(t.key)).length
 
   return (
-    <div>
+    <div className="chat-turn-list">
       {!showAll && collapsedCount > 0 && (
-        <button className="mx-auto mb-2 block text-[11px] text-pi-dim2 hover:text-pi-accent transition-colors"
-          onClick={() => setShowAll(true)}>
-          ▤ 展开全部 {turns.length} 轮对话
-        </button>
+        <div className="chat-history-head">
+          <span><ListFilter className="w-3.5 h-3.5" /> 已收起较早的 {collapsedCount} 轮</span>
+          <button onClick={() => setShowAll(true)}>展开全部 {turns.length} 轮</button>
+        </div>
       )}
       {showAll && turns.length > keepExpanded && (
-        <button className="mx-auto mb-2 block text-[11px] text-pi-dim2 hover:text-pi-accent transition-colors"
-          onClick={() => { setShowAll(false); setExpanded(new Set()) }}>
-          ▤ 收起历史轮次
-        </button>
+        <div className="chat-history-head">
+          <span><ListFilter className="w-3.5 h-3.5" /> 正在显示全部 {turns.length} 轮</span>
+          <button onClick={() => { setShowAll(false); setExpanded(new Set()) }}>收起较早轮次</button>
+        </div>
       )}
       {turns.map((t, i) => (
         <TurnRow key={t.key} turn={t} index={i} open={isOpen(t, i)}

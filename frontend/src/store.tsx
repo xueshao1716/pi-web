@@ -33,16 +33,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [currentModel, setCurModel] = useState(() => { try { return localStorage.getItem('pi_model') || 'auto/auto' } catch { return 'auto/auto' } })
   const [currentSessionId, setCurSid] = useState<string | null>(null)
 
-  // ── swr 数据层：缓存 + 窗口聚焦重验证 + 断线重连后自动刷新 ──
+  // ── SWR 数据层：初次加载后保持稳定，避免手机回到前台时整页闪屏。
+  // 模型和会话的变更由明确动作（新建/删除/结束任务）调用 refresh* 同步。
   const { data: modelsData } = useSWR(authed ? 'models' : null, fetchers.models, {
-    revalidateOnFocus: true,
-    revalidateOnReconnect: true,
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
     dedupingInterval: 5000,
     onErrorRetry: (retry) => setTimeout(retry, 8000),
   })
   const { data: sessionsData } = useSWR(authed ? 'sessions' : null, fetchers.sessions, {
-    revalidateOnFocus: true,
-    revalidateOnReconnect: true,
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
     dedupingInterval: 3000,
     onErrorRetry: (retry) => setTimeout(retry, 8000),
   })

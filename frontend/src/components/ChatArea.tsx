@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { useApp } from '../store'
-import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, LayoutGrid, Command, ChevronDown, PanelRight, ShieldAlert } from 'lucide-react'
+import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, Command, ChevronDown, ChevronRight, PanelRight, ShieldAlert, ImagePlus, Presentation, Clock4, Database } from 'lucide-react'
 import { RefreshCw } from 'lucide-react'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
 import { RunsApi, SessionsApi, AsrApi, EmotionApi, AgentStatusApi, streamSession, LingXiApi, ConfirmApi } from '../api'
@@ -93,11 +93,12 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   const assistantMsgIdRef = useRef<string | null>(null) // 本轮 assistant 消息的固定 id，流式期间快照与最终写入用同一 id（避免重复）
   const wasBackgroundRef = useRef(false) // 本轮流式期间是否曾去过后台（哪怕又切回来了），放宽通知触发条件用
 
-  // ── swr 数据层：消息缓存 + 重验证（切会话自动换 key，断线恢复后 revalidate）──
+  // ── 消息缓存：长会话不跟随窗口焦点整段重载，避免回到 App 时闪屏。
+  // 手动下拉、当前 Run 完成、其他端真正完成一轮时才同步。
   const msgKey = currentSessionId ? ['messages', currentSessionId] : null
   const { data: msgData, isLoading, mutate: mutateMsgs } = useSWR(msgKey,
     ([, sid]: readonly [string, string]) => SessionsApi.messages(sid),
-    { revalidateOnFocus: true, dedupingInterval: 1500 })
+    { revalidateOnFocus: false, revalidateOnReconnect: false, dedupingInterval: 3000 })
   // ── 本地消息存储：从 IndexedDB 加载，与服务端数据合并 ──
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>([])
   const [localLoaded, setLocalLoaded] = useState(false)
@@ -207,23 +208,18 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     }
   }
 
-  // 移动端下拉刷新：重验证当前会话消息 + 会话列表（触屏才触发，桌面无 touch 事件）
-    // 手机息屏恢复：页面从 hidden→visible 超过 10s，强制重拉消息（补 SWR 自动同步）
-  // 同时跟踪：只要流式期间曾经 hidden 过一次（哪怕只是瞬间锅屏/切新又切回），就标记 wasBackgroundRef，
-  // 因为用户已经离开过一次，很可能没看到完整过程，完成时应该提醒（而不是仅当完成那一刻刚好在后台才提醒）。
+  // 手机息屏恢复只更新会话目录；消息正文保持阅读位置，用户可下拉主动刷新。
+  // 流式 Run 本身由持久化事件游标恢复，不依赖整段 messages 重取。
   useEffect(() => {
     let hiddenAt = 0
     const onVis = () => {
       if (document.hidden) { hiddenAt = Date.now(); if (streamRef.current) wasBackgroundRef.current = true; return }
-      if (hiddenAt && Date.now() - hiddenAt > 10_000 && currentSessionId) {
-        mutateMsgs()
-        refreshSessions()
-      }
+      if (hiddenAt && Date.now() - hiddenAt > 10_000) refreshSessions()
       hiddenAt = 0
     }
     document.addEventListener('visibilitychange', onVis)
     return () => document.removeEventListener('visibilitychange', onVis)
-  }, [currentSessionId, mutateMsgs, refreshSessions])
+  }, [refreshSessions])
 
   const pull = usePullToRefresh(async () => {
     await mutateMsgs()
@@ -281,20 +277,19 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     return () => { alive = false }
   }, [currentSessionId])
 
-  // 多端同步：订阅会话事件流，外部（手机/其他端）新消息到达时静默刷新（本地流式中不刷）；
-  // 断线由 api 层自动重连（5s），重连成功后靠下一次事件刷新
+  // 多端同步：只在新消息或一轮完成的提交边界合并历史。
+  // 不能把每个 delta/工具事件都转成整段 messages 请求，否则长会话会持续闪屏并跳阅读位置。
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (!currentSessionId) return
     let alive = true
-    const off = streamSession(currentSessionId, 0, () => {
-      if (streamRef.current || !alive) return // 本地正在生成，避免自刷新打断
-      if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
-      syncTimerRef.current = setTimeout(() => { mutateMsgs() }, 800)
-    }, () => {
-      // 连接出错：若本地也没在流式，延迟兜底重验证一次
+    const syncCommittedHistory = () => {
       if (streamRef.current || !alive) return
-      setTimeout(() => { if (alive && !streamRef.current) mutateMsgs() }, 6000)
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
+      syncTimerRef.current = setTimeout(() => { if (alive && !streamRef.current) mutateMsgs() }, 500)
+    }
+    const off = streamSession(currentSessionId, 0, (event) => {
+      if (event?.type === 'message' || event?.type === 'turn_end' || event?.type === 'session_updated') syncCommittedHistory()
     })
     return () => { alive = false; off(); if (syncTimerRef.current) clearTimeout(syncTimerRef.current) }
   }, [currentSessionId]) // eslint-disable-line
@@ -651,53 +646,56 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     } finally { setVoiceBusy(false) }
   }
 
-  // 桌面欢迎页：可操作快捷入口（08-25 layout：静态功能介绍 → 行动引导）
+  // 首页：不做空洞欢迎卡，直接给高频任务入口。
   const newSession = async () => {
     try { const d = await SessionsApi.create(); await refreshSessions(); selectSession(d.id) } catch { toast('新建会话失败，请重试', 'error') }
   }
   const openPanel = (p: string) => window.dispatchEvent(new CustomEvent('pi-open-panel', { detail: p }))
+  const openWorkshop = (tab: 'image' | 'ppt') => {
+    try { localStorage.setItem('pi_workshop_tab', tab) } catch {}
+    location.hash = '#/workshop'
+  }
+  const welcomeActions = [
+    { Icon: Plus, label: '新建对话', desc: '从一个问题或任务开始', act: newSession },
+    { Icon: ImagePlus, label: 'AI 绘画', desc: '一句描述生成图片', act: () => openWorkshop('image') },
+    { Icon: Presentation, label: '生成 PPT', desc: '把主题整理成演示文稿', act: () => openWorkshop('ppt') },
+    { Icon: Clock4, label: '定时任务', desc: '让小语按时间自动完成工作', act: () => { location.hash = '#/tasks' } },
+    { Icon: Database, label: '会话管理', desc: '查看、筛选与清理长会话', act: () => { location.hash = '#/sessiondb' } },
+    { Icon: SquareTerminal, label: '终端', desc: '查看命令执行与工程状态', act: () => openPanel('terminal') },
+  ]
   const welcome = (
-    <div className="relative overflow-hidden flex items-center justify-center h-full px-6">
-      <div className="relative z-10 text-center max-w-2xl">
-        {/* 品牌标识：实底圆形，不用渐变 */}
-        <div className="w-20 h-20 mx-auto rounded-2xl bg-pi-accent flex items-center justify-center text-4xl font-bold text-white mb-8"
-          style={{ boxShadow: 'var(--pi-shadow-sm)' }}>语</div>
-
-        {/* 标题 */}
-        <h1 className="text-[22px] font-extrabold text-pi-text mb-2 tracking-tight-delay-1"
-          style={{ fontFamily: 'var(--pi-font-display)' }}>你好，我是小语</h1>
-        <p className="text-pi-dim text-[15px] mb-10-delay-2 leading-relaxed">
-          你的 AI 工作伙伴。写代码、做设计、整理文档——从一句话开始。
-        </p>
-
-        {/* 快捷入口：实底卡片，不用渐变和模糊 */}
-        <div className="grid grid-cols-2 gap-4 max-w-lg mx-auto-delay-3">
-          {[
-            { Icon: Plus, label: '新建对话', desc: '开始一段新的工作', act: newSession },
-            { Icon: SquareTerminal, label: '终端', desc: '写代码调工具', act: () => openPanel('terminal') },
-            { Icon: LayoutGrid, label: '模型中心', desc: '浏览与切换模型', act: () => { location.hash = '#/models' } },
-            { Icon: Command, label: '命令面板', desc: 'Ctrl / ⌘ + K', act: () => window.dispatchEvent(new CustomEvent('pi-open-palette')) },
-          ].map((f, i) => (
-            <button key={f.label} onClick={f.act}
-              className="group rounded-xl border border-pi-border bg-pi-bg1 px-5 py-4 cursor-pointer text-left hover:border-pi-accent/30 hover:bg-pi-bg2 transition-colors"
-              style={{ animationDelay: `${0.25 + i * 0.07}s` }}>
-              <f.Icon className="w-5 h-5 mb-2.5 text-pi-accent transition-transform group-hover:scale-105" strokeWidth={1.7} />
-              <div className="text-[15px] font-semibold text-pi-text mb-0.5">{f.label}</div>
-              <div className="text-[12px] text-pi-dim2 leading-relaxed">{f.desc}</div>
-            </button>
-          ))}
+    <div className="chat-welcome h-full overflow-y-auto px-4 py-8 sm:px-8 sm:py-12">
+      <div className="chat-reading-column welcome-content">
+        <div className="welcome-intro">
+          <div className="welcome-mark" aria-hidden="true">语</div>
+          <div>
+            <h1 className="page-title">今天想完成什么？</h1>
+            <p className="text-[14px] text-pi-dim leading-relaxed mt-2 max-w-[52ch]">从一句话开始，也可以直接进入一个工具。小语会把过程、产物和后续任务都留在同一个工作空间。</p>
+          </div>
         </div>
 
-        {/* 快捷提示 */}
-        <div className="mt-10 flex items-center justify-center gap-4 text-[11px] text-pi-dim2-delay-4">
-          <span className="px-2 py-0.5 rounded bg-pi-bg2 border border-pi-border font-mono">⌘K</span>
-          <span>命令面板</span>
-          <span className="w-px h-3 bg-pi-border" />
-          <span className="px-2 py-0.5 rounded bg-pi-bg2 border border-pi-border font-mono">/</span>
-          <span>斜杠命令</span>
-          <span className="w-px h-3 bg-pi-border" />
-          <span className="px-2 py-0.5 rounded bg-pi-bg2 border border-pi-border font-mono">@</span>
-          <span>引用文件</span>
+        <section className="mt-9" aria-labelledby="quick-actions-title">
+          <div className="chat-section-head">
+            <h2 id="quick-actions-title">常用功能</h2>
+            <span>快速进入，不用翻菜单</span>
+          </div>
+          <div className="quick-action-grid">
+            {welcomeActions.map(({ Icon, label, desc, act }) => (
+              <button key={label} onClick={act} className="quick-action-item">
+                <span className="quick-action-icon"><Icon className="w-[18px] h-[18px]" strokeWidth={1.8} /></span>
+                <span className="min-w-0 flex-1 text-left">
+                  <span className="block text-[14px] font-semibold text-pi-text">{label}</span>
+                  <span className="block text-[12px] text-pi-dim2 mt-0.5 leading-relaxed">{desc}</span>
+                </span>
+                <ChevronRight className="quick-action-chevron w-4 h-4 flex-shrink-0" strokeWidth={1.8} />
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <div className="welcome-hint mt-8">
+          <Command className="w-4 h-4" strokeWidth={1.8} />
+          <span><kbd>Ctrl / ⌘ K</kbd> 打开全局命令面板；在输入框输入 <kbd>/</kbd> 使用快捷命令。</span>
         </div>
       </div>
     </div>
@@ -803,9 +801,9 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
       )}
 
       {/* 消息区 */}
-      <div ref={(el) => { scrollRef.current = el; pull.containerRef.current = el }} className="flex-1 min-h-0 overflow-y-auto pl-[14px] pr-[18px] sm:px-4 py-3">
+      <div ref={(el) => { scrollRef.current = el; pull.containerRef.current = el }} className="chat-scroll-region flex-1 min-h-0 overflow-y-auto">
         {loading ? (
-          <div className="max-w-3xl w-full mx-auto px-6 py-6 space-y-5" aria-label="加载中">
+          <div className="chat-reading-column w-full py-8 space-y-5" aria-label="加载中">
             {[520, 380, 460].map((w, i) => (
               <div key={i} className="flex gap-3" style={{ animationDelay: `${i * 0.08}s` }}>
                 <div className="w-7 h-7 rounded-lg skeleton-block flex-shrink-0" />
@@ -819,7 +817,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
           </div>
         ) : messages.length === 0 && !stream && !draftMsg ? welcome
           : (
-            <div className="max-w-3xl w-full sm:mx-auto">
+            <div className="chat-reading-column w-full py-4 sm:py-6">
               <TurnList
                 messages={normalMessages}
                 streamingNode={stream ? (
@@ -884,7 +882,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         </button>
       )}
       <div className="border-t border-pi-border bg-pi-bg1 px-3 sm:px-4 py-2.5 flex-shrink-0">
-        <div className="max-w-3xl mx-auto">
+        <div className="chat-reading-column mx-auto">
           <SendBox key={currentSessionId ?? 'none'} streaming={!!stream} onStop={stop} onSend={send} onCommand={runCommand}
             voiceBusy={voiceBusy} onVoice={handleVoice} onVoiceTextReady={fn => { voiceTextRef.current = fn }} />
         </div>

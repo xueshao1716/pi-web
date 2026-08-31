@@ -111,8 +111,8 @@ export const cssVars: Record<string, string> = {
   '--pi-green': colors.green,
   '--pi-red': colors.red,
   '--pi-yellow': colors.yellow,
-  '--pi-glow-purple': colors.glowPurple,
-  '--pi-glow-cyan': colors.glowCyan,
+  '--pi-glow-purple': colors.accentGlow,
+  '--pi-glow-cyan': colors.accentGlow,
   // 语义层级 token（HeroUI surface/overlay/field 体系，Phase1）
   '--pi-surface': colors.bg1,
   '--pi-surface-fg': colors.text,

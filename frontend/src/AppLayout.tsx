@@ -44,13 +44,13 @@ type PageRoute = {
 
 // 页面注册表是路由、页面渲染和桌面导航的单一来源；移动端导航是刻意不同的信息架构。
 const PAGE_ROUTES: PageRoute[] = [
-  { route: 'lingxi', icon: Sparkles, label: '灵犀', Page: LingXiPage },
-  { route: 'workshop', icon: Factory, label: '专项', Page: WorkshopPage },
+  { route: 'lingxi', icon: Sparkles, label: '灵感', Page: LingXiPage },
+  { route: 'workshop', icon: Factory, label: '创作', Page: WorkshopPage },
   { route: 'models', icon: BrainCircuit, label: '模型', Page: ModelHub, nav: false },
   { route: 'assets', icon: Images, label: '资产', Page: Assets },
   { route: 'tasks', icon: Clock4, label: '任务', Page: Tasks },
-  { route: 'apps', icon: LayoutGrid, label: '应用', Page: Apps },
-  { route: 'engine', icon: Cpu, label: '引擎', Page: EnginePage },
+  { route: 'apps', icon: LayoutGrid, label: '知识', Page: Apps },
+  { route: 'engine', icon: Cpu, label: '能力', Page: EnginePage },
   { route: 'themes', icon: Palette, label: '主题', Page: ThemesPage, nav: false },
   { route: 'sessiondb', icon: Database, label: '会话库', Page: SessionDbPage },
   { route: 'system', icon: MonitorCog, label: '系统', Page: SystemPage },
