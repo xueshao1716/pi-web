@@ -41,6 +41,10 @@ import { CONFIG } from "./config.mjs";
 import { createGateway } from "./engine/gateway.mjs";
 import { sseWrite, createSseWriter, startSseHeartbeat } from "./engine/sse.mjs";
 import { json, readBody } from "./engine/http-utils.mjs";
+import { createRunStore } from "./engine/run-store.mjs";
+import { createRunEventLog } from "./engine/run-event-log.mjs";
+import { createRunManager } from "./engine/run-manager.mjs";
+import { createRunApi } from "./engine/run-api.mjs";
 import { initThemePrefs, loadThemePrefs, saveThemePrefs } from "./engine/theme-prefs.mjs";
 import { initWorkspaceApi, WS_ROOT, findWorkspaceFiles, wsSafePath, saveArtifact, handleWsTree, handleWsFile, handleWsRead, handleWsWrite, handleWsArtifacts, wsNextVersion, wsCopyDir, handleWsDeliver, handleWsPackage, handleWsDeliveries, handleWsRename, handleWsDelete, handleWsSearch, handleWsProjectCreate, handleWsConvert } from "./engine/workspace-api.mjs";
 import { initContextLoader, makeLoader, loadExperience, readRulesWithImports, loadContextRules, jitRulesForPath, loadProjectRules, loadSkillIndex, execActivateSkill, ACTIVATE_SKILL_TOOL, WORK_PROTOCOL, loadMemory, loadMemoryIndex, loadExperienceIndex, shouldInjectFullMemory, setLastUserQuery } from "./engine/context-loader.mjs";
@@ -1394,6 +1398,20 @@ function handleAgentStatus(res) {
   json(res, 200, { busy, anyBusy: busy.length > 0 });
 }
 
+const RUNS_DIR = path.join(AGENT_DIR, "pi-web-runs");
+const RUN_INSTANCE_ID = `${process.pid}-${Date.now().toString(36)}`;
+const runStore = createRunStore({ rootDir: RUNS_DIR });
+const runEventLog = createRunEventLog({ rootDir: RUNS_DIR });
+const runManager = createRunManager({
+  store: runStore,
+  eventLog: runEventLog,
+  executeChat: handleChat,
+  instanceId: RUN_INSTANCE_ID,
+});
+const recoveredRuns = runManager.recover();
+if (recoveredRuns.length) console.log(`[runs] 已将 ${recoveredRuns.length} 个旧实例任务标记为 interrupted`);
+const runApi = createRunApi({ manager: runManager, json });
+
 const API_ROUTES = [
   // ── 会话数据库（08-29 真落地：编号/健康度/批量清理；必须先于 :id 正则路由）──
   ["GET", "/api/sessions/db/list", (res) => handleDbList(res)],
@@ -1624,6 +1642,10 @@ const API_ROUTES = [
     if (!t || t.status !== "running") return json(res, 200, { active: false, taskKey: tk || null, sessionId: sid || null });
     return json(res, 200, { active: true, taskKey: tk || null, sessionId: sid || null, stage: t.stage, toolName: t.toolName || null, startedAt: t.startedAt, updatedAt: t.updatedAt });
   }],
+  ["POST", "/api/runs", async (res, req) => runApi.create(res, await readBody(req, 12), req)],
+  ["GET", /^\/api\/runs\/([^/]+)$/, (res, req, url, m) => runApi.get(res, decodeURIComponent(m[1]))],
+  ["GET", /^\/api\/runs\/([^/]+)\/events$/, (res, req, url, m) => runApi.events(res, req, url, decodeURIComponent(m[1]))],
+  ["POST", /^\/api\/runs\/([^/]+)\/stop$/, (res, req, url, m) => runApi.stop(res, decodeURIComponent(m[1]))],
   ["POST", "/api/chat", async (res, req) => handleChat(req, res, await readBody(req, 12))],
   ["POST", "/api/compare", async (res, req) => handleCompare(res, await readBody(req))],
   // ── Agent 活动事件（pi 事件广播扩展 → 前端实时显示小语在干嘛）──
@@ -1795,7 +1817,7 @@ const server = http.createServer(async (req, res) => {
   // CORS：安卓/桌面客户端以自定义 origin（tauri://localhost 等）跨域 fetch 本服务，浏览器层同源策略需服务端显式放行（鉴权靠 token 不靠 origin，安全性不依赖 CORS）（2026-08-31 修：之前缺失导致安卓客户端 fetch 报 TypeError: Failed to fetch）
   res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Last-Event-ID");
   res.setHeader("Access-Control-Allow-Credentials", "true");
   if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
   const t0 = Date.now();
