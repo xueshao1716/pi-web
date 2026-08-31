@@ -27,11 +27,18 @@
 
 - 仅删除 `frontend/src/components/ModelChannels.tsx` 中未使用的 Lucide `X` import，未做其他 Task 3 改动。
 
+### 网络状态语义窄修
+
+- reviewer 指出 `lanIPs/domains` 只能证明系统信息中存在入口，不能证明网络“可用”或“已配置”。网络 `StatusTile` 因此改为只显示“已发现入口 / 未发现入口”，加载期间显示占位并说明“等待系统信息”。
+- detail 只汇总入口总数、局域网入口数与非空公网域名数；状态色使用 `info/neutral`，不表达连通成功或故障。
+- 未修改后端 `engine/system-panel.mjs`、配置、System API 或 LAN URL 生成/复制逻辑。
+
 ## TDD 证据
 
 1. 先扩展 `tests/unit/frontend-ui-structure.test.mjs`，增加 6 条 Task 4 契约。
 2. 首次运行：16 项中 10 通过、6 失败，失败覆盖公共页头、主题开发者折叠、10px、系统状态摘要、能力折叠、固定色/emoji/实际端口比较。
 3. 实现后结构测试与设计契约合跑：34/34 通过。
+4. 网络语义窄修先新增结构契约，单测首次运行 0/1，按预期因旧实现缺少入口计数且仍使用“可用/待配置”而 RED；实现后同一契约 1/1 GREEN，完整结构与设计契约 35/35 通过。
 
 ## 行为/API 保留证据
 
@@ -45,7 +52,9 @@
 ## 验证
 
 - RED：`node --test tests/unit/frontend-ui-structure.test.mjs` → 10/16 通过，6 条新增契约按预期失败。
-- `node --test tests/unit/frontend-ui-structure.test.mjs frontend/tests/design-contract.test.mjs` → 34/34 通过。
+- 网络语义 RED：`node --test --test-name-pattern="系统网络摘要" tests/unit/frontend-ui-structure.test.mjs` → 0/1，按预期失败。
+- 网络语义 GREEN：同一命令 → 1/1 通过。
+- `node --test tests/unit/frontend-ui-structure.test.mjs frontend/tests/design-contract.test.mjs` → 35/35 通过。
 - `cd frontend && npx tsc --noEmit -p .` → 通过，无输出。
 - `npm test` → 246/246 通过。
 - `cd frontend && npm run build` → 成功，4286 modules transformed；仅既有 UnoCSS shortcut、Vite deprecated option 和 chunk size 提示。构建产物已还原，不纳入提交。
@@ -68,6 +77,7 @@
 
 ## 残余风险
 
+- reviewer 发现既有后端 `engine/system-panel.mjs` 的 System API 将 `port` 固定返回为 `8787`，非默认端口运行时可能使前端拿到错误端口；这是既有后端 API 数据风险，本轮 UI 边界明确 defer，未修改后端、配置或 LAN URL 逻辑。
 - 未执行浏览器四视口截图与真实交互验收；按计划留给 Task 6。
 - Impeccable `--diff` 的两条既有告警仍存在，但 Task 4 目标文件单独扫描为零发现，未扩大范围处理。
 - worktree 中 `.pi-subagents/` 是任务运行目录，保持未跟踪，不纳入提交。

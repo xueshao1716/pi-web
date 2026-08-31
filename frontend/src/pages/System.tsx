@@ -48,7 +48,9 @@ export default function System() {
   const dirty = rows !== null
   const port = info.port || 8787
   const serviceReady = !!data
-  const networkReady = !!data && ((info.network?.lanIPs || []).length > 0 || domains.length > 0)
+  const lanEntryCount = (info.network?.lanIPs || []).length
+  const domainEntryCount = domains.filter(row => row.domain.trim()).length
+  const networkEntryCount = lanEntryCount + domainEntryCount
 
   const editRow = (i: number, key: keyof DomainRow, v: string) =>
     setRows(domains.map((r, idx) => (idx === i ? { ...r, [key]: v } : r)))
@@ -102,10 +104,10 @@ export default function System() {
             />
             <StatusTile
               label="网络状态"
-              value={networkReady ? '可用' : data ? '待配置' : '检测中'}
-              detail={info.port ? `端口 ${info.port} · ${info.network?.lanIPs?.length || 0} 个局域网入口` : '等待网络信息'}
+              value={data ? networkEntryCount > 0 ? '已发现入口' : '未发现入口' : '—'}
+              detail={data ? `${networkEntryCount} 个入口 · ${lanEntryCount} 个局域网 · ${domainEntryCount} 个公网域名` : '等待系统信息'}
               icon={Wifi}
-              tone={networkReady ? 'success' : 'warning'}
+              tone={data && networkEntryCount > 0 ? 'info' : 'neutral'}
             />
           </div>
         </section>

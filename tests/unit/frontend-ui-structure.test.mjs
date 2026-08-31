@@ -203,6 +203,19 @@ test('系统页以公共页头和四项真实状态摘要开场，主任务位�
   }
 })
 
+test('系统网络摘要只陈述已发现入口，不把配置数据解释为网络可达性', () => {
+  const system = read('pages', 'System.tsx')
+  const networkTileStart = system.indexOf('label="网络状态"')
+  const networkTileEnd = system.indexOf('/>', networkTileStart)
+  assert.ok(networkTileStart >= 0 && networkTileEnd > networkTileStart, '系统页必须提供网络状态摘要')
+  const networkTile = system.slice(networkTileStart, networkTileEnd)
+  assert.ok(system.includes('const networkEntryCount ='), '网络摘要必须基于入口计数描述已知事实')
+  assert.match(networkTile, /已发现入口/, '存在 lanIPs 或 domains 时只能表述为已发现入口')
+  assert.match(networkTile, /未发现入口/, '系统信息已返回但入口为空时只能表述为未发现入口')
+  assert.match(networkTile, /等待系统信息/, '系统信息未返回时必须明确等待系统信息')
+  assert.doesNotMatch(networkTile, /可用|未配置|待配置|在线|离线/, '网络摘要不得把入口配置解释为网络可达性')
+})
+
 test('系统能力默认折叠，保留更新、网络编辑保存与实际端口 LAN 复制行为', () => {
   const system = read('pages', 'System.tsx')
   const detailsStart = system.indexOf('<details')
