@@ -19,6 +19,7 @@ import ThemeSwitcher from './components/ThemeSwitcher'
 import CommandPalette from './components/CommandPalette'
 import MobileFab from './components/MobileFab'
 import * as T from '@radix-ui/react-tooltip'
+import { installVisualViewportHeight } from './lib/viewport'
 
 // 页面 lazy（路线图：每路由 lazy + ErrorBoundary）
 const ModelHub = lazy(() => import('./pages/ModelHub'))
@@ -109,6 +110,8 @@ export default function AppLayout() {
   // ⌘K 命令面板（08-25 评审 P1：全局快捷键）
   const [paletteOpen, setPaletteOpen] = useState(false)
 
+  useEffect(() => installVisualViewportHeight(), [])
+
   // ── 全局壁纸应用：读 localStorage/theme-prefs 应用到 #pi-wallpaper，任何页面都生效 ──
   useEffect(() => {
     const apply = () => {
@@ -180,7 +183,7 @@ export default function AppLayout() {
   /* ── 移动端布局：TabBar 五入口（对话/会话/资产/任务/设置；模型在对话页下拉） ── */
   if (isMobile) {
     return (
-      <div className="h-screen flex flex-col text-pi-text relative"
+      <div className="mobile-app-root flex flex-col text-pi-text relative"
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <div id="pi-wallpaper" className="fixed inset-0 z-0 pointer-events-none" />
         <div className="absolute inset-0 pointer-events-none z-[1]"

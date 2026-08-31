@@ -170,64 +170,114 @@ export async function clearAllMessages(): Promise<void> {
   })
 }
 
-/**
- * 合并服务端消息与本地消息
- * - 本地优先（本地有的不覆盖）
- * - 服务端有但本地没有的补充进来
- * - 本地草稿消息（draft: true）保留
- */
-export function mergeMessages(localMsgs: LocalMessage[], serverMsgs: any[]): LocalMessage[] {
-  const localIds = new Set(localMsgs.map(m => m.id))
-  const merged = [...localMsgs]
+function mergeTools(localTools: any[] = [], serverTools: any[] = []): any[] {
+  const merged = localTools.map(tool => ({ ...tool }))
+  const indexById = new Map<string, number>()
+  merged.forEach((tool, index) => {
+    if (tool?.id) indexById.set(tool.id, index)
+  })
 
-  // 内容指纹：服务端消息的 id 与前端本地生成的 id 格式完全不同（引擎自己生成 id），
-  // 光比对 id 会导致同一句话在本地写一次、服务端落盘后又取回一次而重复显示两遍。
-  // 去重改用 role+文本内容+时间窗口（120s）匹配，命中则认为是同一条，保留本地版本、跳过服务端版本。
-  const contentKeyOf = (role: string, text: string) => `${role}|${(text || '').trim().slice(0, 300)}`
-  const localByContent = new Map<string, number[]>() // contentKey -> [ts_ms,...]
-  for (const m of localMsgs) {
-    if (!m.text || !m.text.trim()) continue // 空文本（纯工具调用）不参与内容匹配，避免误删
-    const key = contentKeyOf(m.role, m.text)
-    const arr = localByContent.get(key) || []
-    arr.push(new Date(m.ts).getTime())
-    localByContent.set(key, arr)
-  }
-
-  for (const sMsg of serverMsgs) {
-    // 1. id 直接命中（本地记录本身就是从服务端加载的情况）
-    const sId = sMsg.id || `${sMsg.role}_${new Date(sMsg.ts).getTime()}`
-    if (localIds.has(sId)) continue
-
-    // 2. 内容+时间窗口命中（同一句话本地已写过，服务端落盘后取回的是另一个 id）
-    if (sMsg.text && sMsg.text.trim()) {
-      const key = contentKeyOf(sMsg.role, sMsg.text)
-      const tsList = localByContent.get(key)
-      if (tsList) {
-        const sTs = new Date(sMsg.ts).getTime()
-        if (tsList.some(t => Math.abs(t - sTs) < 120_000)) continue // 命中，跳过
-      }
+  for (const serverTool of serverTools) {
+    const toolId = serverTool?.id
+    if (!toolId || !indexById.has(toolId)) {
+      if (toolId) indexById.set(toolId, merged.length)
+      merged.push({ ...serverTool })
+      continue
     }
 
-    // 转换成本地格式
+    const index = indexById.get(toolId)!
+    const localTool = merged[index]
+    const finalResult = Object.prototype.hasOwnProperty.call(serverTool, 'output')
+      || Object.prototype.hasOwnProperty.call(serverTool, 'isError')
+    merged[index] = {
+      ...localTool,
+      ...serverTool,
+      ...(finalResult ? {
+        running: false,
+        status: serverTool.isError ? 'error' : 'completed',
+      } : {}),
+    }
+  }
+  return merged
+}
+
+function mergeServerMessage(local: LocalMessage, server: any): LocalMessage {
+  return {
+    ...local,
+    text: local.text || server.text || '',
+    think: local.think || server.think,
+    tools: mergeTools(local.tools, server.tools),
+    notes: local.notes?.length ? local.notes : server.notes,
+    files: local.files?.length ? local.files : server.files,
+    images: local.images?.length ? local.images : server.images,
+    audios: local.audios?.length ? local.audios : server.audios,
+    model: local.model || server.model,
+    // 本地消息的 draft/streaming/synced 状态描述本地生命周期，不能被服务端副本抹掉。
+    draft: local.draft,
+    streaming: local.streaming,
+    synced: local.synced,
+  }
+}
+
+/**
+ * 合并服务端消息与本地消息：先按消息 id/文本指纹，再按 toolCallId 归并工具消息。
+ * 工具只按 id 识别；相同 name/args 但 id 不同的调用必须分别保留。
+ */
+export function mergeMessages(localMsgs: LocalMessage[], serverMsgs: any[]): LocalMessage[] {
+  const merged: LocalMessage[] = localMsgs.map(message => ({
+    ...message,
+    tools: message.tools?.map(tool => ({ ...tool })),
+  }))
+  const contentKeyOf = (role: string, text: string) => `${role}|${(text || '').trim().slice(0, 300)}`
+
+  const findMessageIndex = (server: any, serverId: string): number => {
+    const idIndex = merged.findIndex(message => message.id === serverId)
+    if (idIndex >= 0) return idIndex
+
+    if (server.text?.trim()) {
+      const key = contentKeyOf(server.role, server.text)
+      const serverTs = new Date(server.ts).getTime()
+      const contentIndex = merged.findIndex(message => (
+        message.text?.trim()
+        && contentKeyOf(message.role, message.text) === key
+        && Math.abs(new Date(message.ts).getTime() - serverTs) < 120_000
+      ))
+      if (contentIndex >= 0) return contentIndex
+    }
+
+    const serverToolIds = new Set<string>((server.tools || []).map((tool: any) => tool?.id).filter(Boolean))
+    if (serverToolIds.size) {
+      return merged.findIndex(message => message.tools?.some(tool => serverToolIds.has(tool.id)))
+    }
+    return -1
+  }
+
+  for (const server of serverMsgs) {
+    const serverId = server.id || `${server.role}_${new Date(server.ts).getTime()}`
+    const matchIndex = findMessageIndex(server, serverId)
+    if (matchIndex >= 0) {
+      merged[matchIndex] = mergeServerMessage(merged[matchIndex], server)
+      continue
+    }
+
     merged.push({
-      id: sId,
-      sessionId: sMsg.sessionId || '',
-      role: sMsg.role,
-      text: sMsg.text || '',
-      think: sMsg.think,
-      tools: sMsg.tools,
-      notes: sMsg.notes,
-      files: sMsg.files,
-      images: sMsg.images,
-      audios: sMsg.audios,
-      model: sMsg.model,
-      ts: sMsg.ts,
-      synced: true,  // 服务端来的消息默认已同步
+      id: serverId,
+      sessionId: server.sessionId || '',
+      role: server.role,
+      text: server.text || '',
+      think: server.think,
+      tools: mergeTools([], server.tools),
+      notes: server.notes,
+      files: server.files,
+      images: server.images,
+      audios: server.audios,
+      model: server.model,
+      ts: server.ts,
+      synced: true,
       draft: false,
     })
   }
 
-  // 按时间排序
   merged.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
   return merged
 }

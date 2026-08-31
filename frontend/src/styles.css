@@ -10,6 +10,11 @@ html { -webkit-text-size-adjust: 100%; }
 html { color-scheme: dark; }
 html[data-theme="mist"] { color-scheme: light; }
 html, body, #root { height: 100%; }
+.mobile-app-root {
+  height: 100vh;
+  height: 100dvh;
+  height: var(--pi-viewport-height);
+}
 body { line-height: 1.5; }
 button {
   appearance: none;

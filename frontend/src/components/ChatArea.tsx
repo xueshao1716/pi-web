@@ -16,6 +16,7 @@ import type { ChatMessage, RunningTool } from '../types'
 import WebglBackdrop from './WebglBackdrop'
 import { saveMessage, getMessages, deleteMessage, mergeMessages, type LocalMessage } from '../lib/local-db'
 import { notifyTaskDone } from '../lib/notify'
+import { upsertRunningTool } from '../lib/chat-stream'
 
 // 流式状态：覆盖服务端全部 SSE 事件（delta/think/think_end/tool/tool_output/
 // tool_end/turn_end/file/image/media/note/emotion/done/error）
@@ -436,14 +437,11 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         case 'think_end':
           updStream(p => ({ ...p, thinkDone: true }))
           break
-        case 'tool':
-          updStream(p => {
-            const argsText = typeof d.args === 'object' && d.args !== null
-              ? (d.args.command || d.args.path || JSON.stringify(d.args))
-              : String(d.args || '')
-            return { ...p, tools: [...p.tools, { id: d.id || 't' + Date.now(), name: d.name || 'tool', argsText, output: '', running: true, status: 'running' }] }
-          })
+        case 'tool': {
+          const id = d.id || `t${Date.now()}-${Math.random().toString(36).slice(2)}`
+          updStream(p => ({ ...p, tools: upsertRunningTool(p.tools, { ...d, id }) }))
           break
+        }
         case 'tool_output':
           updStream(p => ({ ...p, tools: p.tools.map(t => t.id === d.id ? { ...t, output: t.output + (d.text || '') } : t) }))
           break
