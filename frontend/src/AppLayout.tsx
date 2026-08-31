@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoticComponent, type ReactNode } from 'react'
-import {MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog, Cpu, Palette, Database, LogOut } from 'lucide-react'
+import { MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog, Cpu, Palette, Database, LogOut, Ellipsis } from 'lucide-react'
 import TuiTerminal from './components/TuiTerminal'
 import { useApp } from './store'
 import { useIsMobile } from './hooks/useIsMobile'
@@ -17,7 +17,8 @@ import TerminalPanel from './components/TerminalPanel'
 import ModelManager from './components/ModelManager'
 import ThemeSwitcher from './components/ThemeSwitcher'
 import CommandPalette from './components/CommandPalette'
-import MobileFab from './components/MobileFab'
+import MobileMoreMenu, { type UtilityPanelKey } from './components/MobileMoreMenu'
+import UtilityPanel from './components/UtilityPanel'
 import * as T from '@radix-ui/react-tooltip'
 import { installVisualViewportHeight } from './lib/viewport'
 
@@ -65,7 +66,6 @@ function PageLoader() {
 }
 
 // 元枢壳框架：顶部自绘标题栏（浏览器里渲染为 null 不占位）+ 内容区占满剩余高度
-const inShell = typeof window !== 'undefined' && !!(window as any).__TAURI__
 function ShellFrame({ children }: { children: ReactNode }) {
   return (
     <div className="h-screen flex flex-col relative overflow-hidden">
@@ -103,10 +103,12 @@ export default function AppLayout() {
     try { localStorage.setItem('pi_sidebar_collapsed', v ? '0' : '1') } catch {}
     return !v
   })
-  const [rightPanel, setRightPanel] = useState<'chat' | 'workspace' | 'deliveries' | 'terminal' | 'activity' | 'tui'>('chat')
+  const [rightPanel, setRightPanel] = useState<'chat' | UtilityPanelKey>('chat')
+  const [panelExpanded, setPanelExpanded] = useState(false)
   const [modelOpen, setModelOpen] = useState(false)
-  // 移动端：sessions 抽屉
+  // 移动端：sessions 抽屉与统一“更多”菜单
   const [mobileDrawer, setMobileDrawer] = useState<'none' | 'sessions'>('none')
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
   // ⌘K 命令面板（08-25 评审 P1：全局快捷键）
   const [paletteOpen, setPaletteOpen] = useState(false)
 
@@ -164,6 +166,11 @@ export default function AppLayout() {
     <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} nav={nav}
       onRightPanel={p => setRightPanel(p)} onModelManager={() => setModelOpen(true)} />
   )
+  const panelContents = rightPanel === 'workspace' ? <WorkSpace />
+    : rightPanel === 'deliveries' ? <Deliveries />
+      : rightPanel === 'activity' ? <ActivityFeed />
+        : rightPanel === 'tui' ? <div className="flex-1 min-h-0 flex flex-col"><TuiTerminal /></div>
+          : <TerminalPanel />
 
   if (!authed) return <ShellFrame><Login /></ShellFrame>
   if (needsSetup) return <ShellFrame><SetupWizard onDone={() => setNeedsSetup(false)} /></ShellFrame>
@@ -198,56 +205,51 @@ export default function AppLayout() {
             <div className="flex-1 flex flex-col min-w-0 min-h-0">
               <ChatArea compactHeader />
               {rightPanel !== 'chat' && (
-                <div className="fixed inset-0 z-[var(--pi-z-rightpanel)] glass-strong flex flex-col"
-                  style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-                  <div className="flex items-center gap-1 px-3 h-10 border-b border-pi-border-soft flex-shrink-0">
-                    {([['workspace', '工作空间'], ['deliveries', '交付物'], ['terminal', '终端'], ['activity', '活动'], ['tui', 'TUI']] as const).map(([k, label]) => (
-                      <button key={k} onClick={() => setRightPanel(k)}
-                        className={`touch-hit text-xs px-3 py-1.5 rounded-pi-md transition-colors ${rightPanel === k ? 'bg-pi-accent/15 text-pi-accent font-medium' : 'text-pi-dim'}`}>
-                        {label}
-                      </button>
-                    ))}
-                    <span className="ml-auto" />
-                    <button className="btn-tool !px-2 touch-hit" onClick={() => setRightPanel('chat')}>✕</button>
-                  </div>
-                  {rightPanel === 'workspace' ? <WorkSpace /> : rightPanel === 'deliveries' ? <Deliveries /> : rightPanel === 'activity' ? <ActivityFeed /> : rightPanel === 'tui' ? <div className='flex-1 min-h-0 flex flex-col'><TuiTerminal /></div> : <TerminalPanel />}
-                </div>
+                <UtilityPanel
+                  active={rightPanel}
+                  onChange={setRightPanel}
+                  onClose={() => { setPanelExpanded(false); setRightPanel('chat') }}
+                  expanded={panelExpanded}
+                  onToggleExpanded={() => setPanelExpanded(value => !value)}
+                >
+                  {panelContents}
+                </UtilityPanel>
               )}
             </div>
           ) : pageArea}
         </div>
 
-        {/* 底部 TabBar（会话抽屉打开时隐藏——避免列表底部误触 TabBar 跳到资产/任务等） */}
-        {mobileDrawer !== 'sessions' && (
-          <nav className="flex h-12 border-t border-pi-border-soft glass-strong flex-shrink-0 relative z-20 pb-[env(safe-area-inset-bottom)]">
-            {([
-              { key: 'chat', icon: MessagesSquare, label: '对话', active: route === 'chat', onClick: () => { setMobileDrawer('none'); nav('chat') } },
-              { key: 'sessions', icon: FolderClosed, label: '会话', active: false, onClick: () => setMobileDrawer('sessions') },
-              { key: 'assets', icon: Images, label: '资产', active: route === 'assets', onClick: () => { setMobileDrawer('none'); nav('assets') } },
-              { key: 'tasks', icon: Clock4, label: '任务', active: route === 'tasks', onClick: () => { setMobileDrawer('none'); nav('tasks') } },
-              { key: 'settings', icon: Settings2, label: '设置', active: route === 'models', onClick: () => { setMobileDrawer('none'); nav('models') } },
-            ] as const).map(item => (
-              <button key={item.key} aria-label={item.label}
-                className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${item.active ? 'text-pi-accent' : 'text-pi-dim2'}`}
-                onClick={item.onClick}>
-                <item.icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
-                <span className="text-[11px] leading-none">{item.label}</span>
-              </button>
-            ))}
-          </nav>
-        )}
+        {/* 底部 TabBar：固定五入口，设置类页面统一归入“更多”活跃态。 */}
+        <nav className="mobile-tab-bar flex flex-shrink-0 relative z-20 border-t border-pi-border-soft glass-strong" aria-label="主要导航">
+          {([
+            { key: 'chat', icon: MessagesSquare, label: '对话', active: route === 'chat' && mobileDrawer === 'none', onClick: () => { setMobileMoreOpen(false); setMobileDrawer('none'); nav('chat') } },
+            { key: 'sessions', icon: FolderClosed, label: '会话', active: mobileDrawer === 'sessions', onClick: () => { setMobileMoreOpen(false); setMobileDrawer('sessions') } },
+            { key: 'assets', icon: Images, label: '资产', active: route === 'assets' && mobileDrawer === 'none', onClick: () => { setMobileMoreOpen(false); setMobileDrawer('none'); nav('assets') } },
+            { key: 'tasks', icon: Clock4, label: '任务', active: route === 'tasks' && mobileDrawer === 'none', onClick: () => { setMobileMoreOpen(false); setMobileDrawer('none'); nav('tasks') } },
+            { key: 'more', icon: Ellipsis, label: '更多', active: mobileMoreOpen || (mobileDrawer === 'none' && !['chat', 'assets', 'tasks'].includes(route)), onClick: () => { setMobileDrawer('none'); setMobileMoreOpen(open => !open) } },
+          ] as const).map(item => (
+            <button
+              key={item.key}
+              aria-label={item.label}
+              aria-current={item.active ? 'page' : undefined}
+              aria-expanded={item.key === 'more' ? mobileMoreOpen : undefined}
+              className={`mobile-tab-button flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${item.active ? 'text-pi-accent' : 'text-pi-dim2'}`}
+              onClick={item.onClick}
+            >
+              <item.icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
+              <span className="text-[11px] leading-none">{item.label}</span>
+            </button>
+          ))}
+        </nav>
 
-        {/* 悬浮功能按钮（FAB）：默认显示；会话抽屉打开时隐藏——避免挡住会话列表点击(真bug) */}
-        {mobileDrawer !== 'sessions' && (
-          <MobileFab
-            nav={nav}
-            route={route}
-            onSettings={() => { setMobileDrawer('none'); nav('models') }}
-            onOpenSessions={() => { setMobileDrawer('sessions') }}
-            onOpenPanel={(k) => { setMobileDrawer('none'); nav('chat'); setRightPanel(k) }}
-            onOpenTheme={() => { setMobileDrawer('none'); nav('themes') }}
-          />
-        )}
+        <MobileMoreMenu
+          open={mobileMoreOpen}
+          onClose={() => setMobileMoreOpen(false)}
+          route={route}
+          nav={(nextRoute) => { setMobileDrawer('none'); nav(nextRoute) }}
+          onOpenPanel={(panel) => { setMobileDrawer('none'); nav('chat'); setRightPanel(panel) }}
+          onOpenTheme={() => { setMobileDrawer('none'); nav('themes') }}
+        />
 
         <ModelManager visible={modelOpen} onClose={() => setModelOpen(false)} />
         {palette}
@@ -302,21 +304,17 @@ export default function AppLayout() {
         {route === 'chat' ? <ChatArea rightPanel={rightPanel} onRightPanel={setRightPanel} /> : pageArea}
       </div>
 
-      {/* 动态右栏（全屏覆盖；08-23 col-right 独立亮度层，08-27 改为全屏；元枢壳里下移避开自绘标题栏） */}
+      {/* 默认是真右栏；仅终端与 TUI 可由用户显式展开。 */}
       {route === 'chat' && rightPanel !== 'chat' && (
-        <div className="fixed inset-x-0 bottom-0 z-[var(--pi-z-rightpanel)] col-right glass-strong flex flex-col min-h-0" style={{ top: inShell ? 36 : 0 }}>
-          <div className="flex items-center gap-1 px-3 h-10 border-b border-pi-border-soft flex-shrink-0">
-            {([['workspace', '工作空间'], ['deliveries', '交付物'], ['terminal', '终端'], ['activity', '活动'], ['tui', 'TUI']] as const).map(([k, label]) => (
-              <button key={k} onClick={() => setRightPanel(k)}
-                className={`text-xs px-3 py-1.5 rounded-pi-md transition-colors ${rightPanel === k ? 'bg-pi-accent/15 text-pi-accent font-medium' : 'text-pi-dim hover:text-pi-text hover:bg-pi-bg3'}`}>
-                {label}
-              </button>
-            ))}
-            <span className="ml-auto" />
-            <button className="btn-tool !px-2" title="收起右栏" onClick={() => setRightPanel('chat')}>✕</button>
-          </div>
-          {rightPanel === 'workspace' ? <WorkSpace /> : rightPanel === 'deliveries' ? <Deliveries /> : rightPanel === 'activity' ? <ActivityFeed /> : rightPanel === 'tui' ? <div className='flex-1 min-h-0 flex flex-col'><TuiTerminal /></div> : <TerminalPanel />}
-        </div>
+        <UtilityPanel
+          active={rightPanel}
+          onChange={setRightPanel}
+          onClose={() => { setPanelExpanded(false); setRightPanel('chat') }}
+          expanded={panelExpanded}
+          onToggleExpanded={() => setPanelExpanded(value => !value)}
+        >
+          {panelContents}
+        </UtilityPanel>
       )}
 
       {/* 右栏开关已入 ChatArea 顶栏（与状态胶囊并排，不再悬浮遮挡） */}
