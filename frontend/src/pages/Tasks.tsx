@@ -1,8 +1,11 @@
-import { useState } from 'react'
-import { Trash2, Play, Pause, RotateCcw, Archive, ChevronDown, ChevronRight, Loader2, Square } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Trash2, Play, Pause, RotateCcw, Archive, ChevronDown, ChevronRight, Loader2, Square, CalendarClock, Clock3, AlertTriangle, Plus } from 'lucide-react'
 import useSWR from 'swr'
 import { TasksApi } from '../api'
 import type { TimeTask } from '../api'
+import EmptyState from '../components/EmptyState'
+import PageHeader from '../components/PageHeader'
+import SectionHeader from '../components/SectionHeader'
 
 // ── 任务中心 v2（08-25，MyAgents 路线）：状态机 / 手动执行 / 运行历史 ──
 
@@ -16,8 +19,8 @@ function describe(t: TimeTask): string {
 }
 
 const STATE_BADGE: Record<string, { label: string; color: string; icon: typeof Play }> = {
-  active:   { label: '调度中', color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30', icon: Play },
-  paused:   { label: '已暂停', color: 'bg-amber-500/15 text-amber-400 border-amber-500/30', icon: Pause },
+  active:   { label: '调度中', color: 'bg-pi-success/15 text-pi-success border-pi-success/30', icon: Play },
+  paused:   { label: '已暂停', color: 'bg-pi-warning/15 text-pi-warning border-pi-warning/30', icon: Pause },
   done:     { label: '已完成', color: 'bg-pi-bg3 text-pi-dim border-pi-border', icon: RotateCcw },
   archived: { label: '已归档', color: 'bg-pi-bg3 text-pi-dim2 border-pi-border-soft', icon: Archive },
 }
@@ -40,7 +43,7 @@ function RunHistory({ id }: { id: string }) {
     <div className="space-y-1.5 pt-2">
       {hist.slice(0, 10).map(h => (
         <div key={h.queueId} className="flex items-start gap-2 text-[11px]">
-          <span className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${h.status === 'ok' ? 'bg-emerald-400' : h.status === 'error' ? 'bg-pi-red' : 'bg-amber-400'}`} />
+          <span className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${h.status === 'ok' ? 'bg-pi-success' : h.status === 'error' ? 'bg-pi-danger' : 'bg-pi-warning'}`} />
           <div className="flex-1 min-w-0">
             <span className="text-pi-dim">{new Date(h.startedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
             <span className="ml-2 text-pi-dim2">({h.durationMs}ms · {h.status === 'ok' ? '成功' : h.status === 'error' ? '失败' : '停止'})</span>
@@ -60,8 +63,14 @@ export default function Tasks() {
   const [busy, setBusy] = useState(false)
   const [actionBusy, setActionBusy] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const formRef = useRef<HTMLElement>(null)
+  const formPromptRef = useRef<HTMLTextAreaElement>(null)
 
   const toggleHistory = (id: string) => setExpanded(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const focusCreateForm = () => {
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    formPromptRef.current?.focus({ preventScroll: true })
+  }
 
   const doAction = async (id: string, fn: () => Promise<any>) => {
     setActionBusy(id)
@@ -88,28 +97,32 @@ export default function Tasks() {
   return (
     <div className="flex-1 overflow-y-auto relative z-10">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
-        <div className="mb-5">
-          <h1 className="page-title">任务中心</h1>
-          <p className="text-xs text-pi-dim2 mt-1.5">
-            想法 → 任务 → 调度 → 复盘 · 到点自动执行，运行历史可追溯
-            {activeCount > 0 && <span className="ml-2 text-pi-accent">· {activeCount} 个调度中</span>}
-            {runningCount > 0 && <span className="ml-2 text-emerald-400">· {runningCount} 个执行中</span>}
-          </p>
-        </div>
+        <PageHeader
+          title="任务中心"
+          description="把想法安排为可调度任务，并在同一处追踪执行状态与运行历史。"
+          meta={(activeCount > 0 || runningCount > 0) ? (
+            <div className="flex items-center gap-3 text-[11px]">
+              {activeCount > 0 && <span className="text-pi-accent">{activeCount} 个调度中</span>}
+              {runningCount > 0 && <span className="text-pi-success">{runningCount} 个执行中</span>}
+            </div>
+          ) : undefined}
+        />
 
         {/* 任务列表 */}
-        <div className="space-y-2.5 mb-8">
-          {isLoading && <div className="text-center text-pi-dim2 text-sm py-8">加载中…</div>}
+        <section className="mb-8">
+          <SectionHeader title="任务列表" description="查看调度状态、立即执行或展开最近的运行记录。" />
+          <div className="space-y-2.5">
+          {isLoading && <div className="text-center text-pi-dim2 text-[13px] py-8">加载中…</div>}
           {!isLoading && !tasks.length && (
-            <div className="empty-state py-12 text-center">
-              <div className="text-3xl mb-2 opacity-60">⏰</div>
-              <div className="text-sm text-pi-dim">还没有任务</div>
-              <div className="text-[11px] text-pi-dim2 mt-1">用下面的表单建第一个，比如每天早上让小语整理工作空间</div>
-            </div>
+            <EmptyState
+              icon={CalendarClock}
+              title="还没有任务"
+              hint="创建第一个任务，比如每天早上让小语整理工作空间。"
+              action={{ label: '创建第一个任务', onClick: focusCreateForm }}
+            />
           )}
           {tasks.map(t => {
             const isExpanded = expanded.has(t.id)
-            const b = STATE_BADGE[t.state || 'active'] || STATE_BADGE.active
             const canRun = t.state === 'active' && !t.running
             const canPause = t.state === 'active'
             const canResume = t.state === 'paused'
@@ -135,7 +148,7 @@ export default function Tasks() {
                     </div>
                     <div className="text-[11px] text-pi-dim2 mt-0.5 line-clamp-2">{t.prompt}</div>
                     <div className="text-[11px] text-pi-dim2 mt-1.5 flex gap-3 flex-wrap items-center">
-                      <span className="px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3">⏰ {describe(t)}</span>
+                      <span className="px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3 inline-flex items-center gap-1"><Clock3 className="w-3 h-3" aria-hidden="true" />{describe(t)}</span>
                       <span className="px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3">已跑 {t.runs || 0} 次</span>
                       {t.lastRun && <span className="px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3">上次 {new Date(t.lastRun).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</span>}
                       {t.history?.length > 0 && (
@@ -150,14 +163,14 @@ export default function Tasks() {
                     {/* 立即执行 */}
                     {canRun && (
                       <button title="立即执行" aria-label="立即执行" disabled={actionBusy === t.id}
-                        className="btn-tool !px-2 text-pi-dim2 hover:text-emerald-400 disabled:opacity-50"
+                        className="btn-tool !px-2 text-pi-dim2 hover:text-pi-success disabled:opacity-50"
                         onClick={() => doAction(t.id, () => TasksApi.runNow(t.id))}>
                         <Play className="w-4 h-4" />
                       </button>
                     )}
                     {t.running && (
                       <button title="停止" aria-label="停止执行" disabled={actionBusy === t.id}
-                        className="btn-tool !px-2 text-pi-dim2 hover:text-amber-400 disabled:opacity-50"
+                        className="btn-tool !px-2 text-pi-dim2 hover:text-pi-warning disabled:opacity-50"
                         onClick={() => doAction(t.id, () => TasksApi.stopRun(t.id))}>
                         <Square className="w-3.5 h-3.5" />
                       </button>
@@ -165,14 +178,14 @@ export default function Tasks() {
                     {/* 暂停/恢复 */}
                     {canPause && (
                       <button title="暂停" aria-label="暂停任务" disabled={actionBusy === t.id}
-                        className="btn-tool !px-2 text-pi-dim2 hover:text-amber-400 disabled:opacity-50"
+                        className="btn-tool !px-2 text-pi-dim2 hover:text-pi-warning disabled:opacity-50"
                         onClick={() => doAction(t.id, () => TasksApi.setState(t.id, 'pause'))}>
                         <Pause className="w-3.5 h-3.5" />
                       </button>
                     )}
                     {canResume && (
                       <button title="恢复" aria-label="恢复任务" disabled={actionBusy === t.id}
-                        className="btn-tool !px-2 text-pi-dim2 hover:text-emerald-400 disabled:opacity-50"
+                        className="btn-tool !px-2 text-pi-dim2 hover:text-pi-success disabled:opacity-50"
                         onClick={() => doAction(t.id, () => TasksApi.setState(t.id, 'resume'))}>
                         <Play className="w-3.5 h-3.5" />
                       </button>
@@ -185,7 +198,7 @@ export default function Tasks() {
                       </button>
                     )}
                     <button title="删除任务" aria-label={`删除任务 ${t.label || t.prompt.slice(0, 20)}`}
-                      className="btn-tool !px-2 text-pi-dim2 hover:text-pi-red"
+                      className="btn-tool !px-2 text-pi-dim2 hover:text-pi-danger"
                       onClick={() => doAction(t.id, () => TasksApi.remove(t.id))}>
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -200,11 +213,13 @@ export default function Tasks() {
               </div>
             )
           })}
-        </div>
+          </div>
+        </section>
 
         {/* 新建表单 */}
-        <h2 className="text-sm font-semibold text-pi-text mb-2">新建任务</h2>
-        <div className="panel !p-4 space-y-3">
+        <section ref={formRef} className="scroll-mt-6">
+          <SectionHeader title="新建任务" description="设置执行频率和指令；创建后仍可暂停、恢复、归档或删除。" />
+          <div className="panel !p-4 space-y-3">
           <div className="flex gap-2 flex-wrap items-center">
             <div className="flex rounded-pi-md overflow-hidden border border-pi-border">
               {(['daily', 'weekly', 'once'] as const).map(tp => (
@@ -227,17 +242,19 @@ export default function Tasks() {
                 onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
             )}
           </div>
-          <textarea className="input-pi text-[13px] resize-none" rows={3} placeholder="到点让小语做什么？如：整理今天工作空间的生成图片，发一份清单到会话"
+          <textarea ref={formPromptRef} className="input-pi text-[13px] resize-none" rows={3} placeholder="到点让小语做什么？如：整理今天工作空间的生成图片，发一份清单到会话"
             value={form.prompt} onChange={e => setForm(f => ({ ...f, prompt: e.target.value }))} />
           <div className="flex items-center gap-2">
             <input className="input-pi !py-1.5 text-xs flex-1" placeholder="任务名（可选）" value={form.label}
               onChange={e => setForm(f => ({ ...f, label: e.target.value }))} />
-            <button className="btn-primary text-xs px-4 py-1.5 disabled:opacity-60" onClick={submit} disabled={busy}>
-              {busy ? '创建中…' : '+ 创建'}
+            <button className="btn-primary text-xs px-4 py-1.5 disabled:opacity-60 inline-flex items-center gap-1.5" onClick={submit} disabled={busy}>
+              {!busy && <Plus className="w-3.5 h-3.5" aria-hidden="true" />}
+              {busy ? '创建中…' : '创建'}
             </button>
           </div>
-          {err && <div className="text-xs text-pi-red">⚠ {err}</div>}
-        </div>
+          {err && <div className="text-[12px] text-pi-danger inline-flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />{err}</div>}
+          </div>
+        </section>
       </div>
     </div>
   )

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { TOOL_COLORS, COLOR_ERROR, COLOR_TOOL_FALLBACK } from '../theme/palettes'
-import { Brain, FileText, Check, X, Pencil, ChevronRight, Square } from 'lucide-react'
+import { Brain, FileText, Check, X, Pencil, ChevronRight, Square, Info } from 'lucide-react'
 import Markdown from './Markdown'
 import { withFileToken } from '../api'
 import type { ChatMessage, RunningTool, ToolStatus } from '../types'
@@ -20,13 +20,13 @@ function ToolCard({ tool }: { tool: Partial<RunningTool> & { name: string } }) {
   } catch { /* 保持原文本 */ }
 
   return (
-    <div className={`my-2.5 rounded-xl border overflow-hidden text-[13px] bg-pi-bg1/60 transition-[background-color,border-color,box-shadow] duration-200 ${tool.isError ? 'border-pi-red/40' : 'border-pi-border-soft/60 hover:border-pi-border hover:shadow-md hover:shadow-black/10'}`}>
+    <div className={`my-2.5 rounded-xl border overflow-hidden text-[13px] bg-pi-bg1/60 transition-[background-color,border-color,box-shadow] duration-200 ${isError ? 'border-pi-danger/40' : 'border-pi-border-soft/60 hover:border-pi-border hover:shadow-md hover:shadow-black/10'}`}>
       <div
         className="press w-full flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-pi-bg-hover/60 active:bg-pi-bg-active/50 transition-colors text-left"
         style={{ boxShadow: `inset 3px 0 0 ${tc}` }}
         onClick={() => setOpen(!open)}
       >
-        <span className="w-5 h-5 rounded-pi-sm flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 font-mono" style={{ background: `linear-gradient(135deg, ${tc}, ${tc}b3)`, boxShadow: `0 0 10px ${tc}40` }}>{icon}</span>
+        <span className="w-5 h-5 rounded-pi-sm flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0 font-mono" style={{ background: `linear-gradient(135deg, ${tc}, ${tc}b3)`, boxShadow: `0 0 10px ${tc}40` }}>{icon}</span>
         <span className="font-mono font-semibold text-[11px] px-1.5 py-0.5 rounded-pi-sm flex-shrink-0" style={{ color: tc, background: `${tc}14` }}>{tool.name}</span>
         <span className="text-pi-dim truncate flex-1 font-mono text-[12px]">{argsText}</span>
         {status === 'running' ? (
@@ -39,7 +39,7 @@ function ToolCard({ tool }: { tool: Partial<RunningTool> & { name: string } }) {
             <Square className="w-3 h-3" /> 已停止
           </span>
         ) : (
-          <span className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${isError ? 'bg-pi-red/15 text-pi-red' : 'bg-emerald-500/15 text-emerald-400'}`}>
+          <span className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${isError ? 'bg-pi-danger/15 text-pi-danger' : 'bg-pi-success/15 text-pi-success'}`}>
             {isError ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
           </span>
         )}
@@ -62,19 +62,19 @@ function Thinking({ text, live }: { text: string; live?: boolean }) {
   if (!text) return null
   return (
     <div className="my-2">
-      <div className="inline-flex items-center gap-1.5 text-purple-300/90 text-[11px] font-medium cursor-pointer transition-colors rounded-full px-2.5 py-1 -ml-1 bg-purple-500/12 border border-purple-400/25 hover:bg-purple-500/20 hover:text-purple-200"
+      <div className="inline-flex items-center gap-1.5 text-pi-accent text-[11px] font-medium cursor-pointer transition-colors rounded-full px-2.5 py-1 -ml-1 bg-pi-accent/12 border border-pi-accent/25 hover:bg-pi-accent/20"
         onClick={() => setOpen(!open)}>
-        <Brain className="w-3 h-3 text-purple-300" />
+        <Brain className="w-3 h-3 text-pi-accent" />
         {live && (
           <span className="relative flex h-1.5 w-1.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-60" />
-            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-purple-300" />
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pi-accent opacity-60" />
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-pi-accent" />
           </span>
         )}
         <span>{live && !open ? '思考中…' : '思考过程'}</span>
         <ChevronRight className={`w-2.5 h-2.5 transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />
       </div>
-      {open && <div className="pl-4 border-l border-purple-500/25 my-1 text-pi-dim text-[13px] opacity-80"><Markdown text={text} /></div>}
+      {open && <div className="pl-4 border-l border-pi-accent/25 my-1 text-pi-dim text-[13px] opacity-80"><Markdown text={text} /></div>}
     </div>
   )
 }
@@ -112,7 +112,7 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
   if (isSystem) {
     return (
       <div className="flex justify-center py-1.5">
-        <div className="text-[12px] text-sky-300/90 bg-sky-500/8 border border-sky-500/20 rounded-pi-pill px-3 py-1">ℹ️ {msg.text}</div>
+        <div className="text-[12px] text-pi-info bg-pi-info/8 border border-pi-info/20 rounded-pi-pill px-3 py-1 inline-flex items-center gap-1.5"><Info className="w-3.5 h-3.5" aria-hidden="true" />{msg.text}</div>
       </div>
     )
   }
@@ -150,7 +150,7 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
             </>
           )}
         </div>
-        <div className="w-6 h-6 rounded-lg bg-red-500/90 text-white flex items-center justify-center text-[11px] font-bold flex-shrink-0 mt-0.5">我</div>
+        <div className="w-6 h-6 rounded-lg bg-pi-accent text-white flex items-center justify-center text-[11px] font-bold flex-shrink-0 mt-0.5">我</div>
       </div>
     )
   }
@@ -164,7 +164,7 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
         {msg.notes?.length ? (
           <div className="mb-2 space-y-1">
             {msg.notes.map((n, i) => (
-              <div key={i} className="text-[12px] text-sky-300/90 bg-sky-500/8 border border-sky-500/20 rounded-pi-sm px-2.5 py-1 w-fit">ℹ️ {n}</div>
+              <div key={i} className="text-[12px] text-pi-info bg-pi-info/8 border border-pi-info/20 rounded-pi-sm px-2.5 py-1 w-fit inline-flex items-center gap-1.5"><Info className="w-3.5 h-3.5" aria-hidden="true" />{n}</div>
             ))}
           </div>
         ) : null}

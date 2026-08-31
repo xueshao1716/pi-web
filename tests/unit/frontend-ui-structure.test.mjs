@@ -248,3 +248,72 @@ test('主题与系统页清除固定 emerald、非 badge 10px 与 emoji 式勾�
   const channels = read('components', 'ModelChannels.tsx')
   assert.doesNotMatch(channels, /\bX\b/, 'ModelChannels 不得保留未使用 X import')
 })
+
+test('应用中心使用公共页头、桌面分组侧栏与移动单一选择器', () => {
+  const apps = read('pages', 'Apps.tsx')
+  assert.ok(apps.includes('<PageHeader'), '应用中心必须使用 PageHeader')
+  assert.doesNotMatch(apps, /<h1\b/, '应用中心不得手写 h1 页面头')
+  assert.ok(apps.includes('aria-label="应用工具导航"'), '桌面工具导航必须有可访问名称')
+  assert.ok(apps.includes('aria-current={tab === tool.key ? \'page\' : undefined}'), '桌面工具导航必须暴露当前工具')
+  assert.match(apps, /<aside[^>]*className="[^"]*hidden md:block/, '桌面端必须显示左侧工具导航')
+  assert.match(apps, /<select[^>]*aria-label="选择应用工具"[^>]*className="[^"]*md:hidden/, '移动端必须使用单一紧凑工具选择器')
+  for (const group of ['知识资产', '系统改进']) assert.ok(apps.includes(group), `应用导航缺少分组：${group}`)
+  for (const view of ['<RefineView', '<SkillsView', '<PromptsView', '<ImproveView', '<GardenerView']) {
+    assert.ok(apps.includes(view), `应用中心必须保留内部 View：${view}`)
+  }
+  assert.ok(apps.includes('<SectionHeader'), '当前工具必须显示自己的标题与说明')
+})
+
+test('任务中心统一页头、区块头、Lucide 空状态与创建首个任务动作', () => {
+  const tasks = read('pages', 'Tasks.tsx')
+  assert.ok(tasks.includes('<PageHeader'), '任务中心必须使用 PageHeader')
+  assert.ok((tasks.match(/<SectionHeader/g) || []).length >= 2, '任务列表和新建表单必须使用 SectionHeader')
+  assert.ok(tasks.includes('<EmptyState'), '任务空结果必须使用 EmptyState')
+  assert.ok(tasks.includes('icon={CalendarClock}'), '任务空状态必须使用 Lucide 图标')
+  assert.ok(tasks.includes("action={{ label: '创建第一个任务', onClick: focusCreateForm }}"), '空状态必须引导到现有创建表单')
+  assert.ok(tasks.includes('formRef.current?.scrollIntoView'), '创建首个任务动作必须滚动到现有表单')
+  assert.ok(tasks.includes('formPromptRef.current?.focus'), '创建首个任务动作必须聚焦现有指令输入')
+  assert.doesNotMatch(tasks, /(?:emerald|amber)-/, '任务状态、历史和 hover 色必须使用语义 token')
+  assert.doesNotMatch(tasks, /[⏰⚠]/, '任务中心不得使用结构 emoji')
+  assert.doesNotMatch(tasks, />\s*\+ 创建\s*</, '创建按钮不得使用文本加号作为结构图标')
+})
+
+test('会话库使用公共页头，并为桌面表格和移动卡片提供等价信息', () => {
+  const sessionDb = read('pages', 'SessionDb.tsx')
+  assert.ok(sessionDb.includes('<PageHeader'), '会话库必须使用 PageHeader')
+  assert.match(sessionDb, /data-slot="session-db-table"[^>]*className="[^"]*hidden md:block/, '桌面表格必须在 md 以下隐藏')
+  assert.match(sessionDb, /data-slot="session-db-cards"[^>]*className="[^"]*md:hidden/, '移动卡片必须在 md 及以上隐藏')
+  for (const marker of ['选择会话', '编号', '健康', '大小', '消息', '更新', '取消置顶', '置顶']) {
+    assert.ok(sessionDb.includes(marker), `移动卡片缺少字段或动作：${marker}`)
+  }
+  assert.ok(sessionDb.includes('<EmptyState'), '空搜索结果必须使用 EmptyState')
+  assert.match(sessionDb, /className="[^"]*min-h-11 min-w-11[^"]*" aria-label={`选择会话/, '移动选择按钮触控目标不得小于 44px')
+  assert.match(sessionDb, /className={`[^`]*min-h-11 min-w-11[^`]*`}[^>]*aria-label={`\$\{r\.pinned/, '移动置顶按钮触控目标不得小于 44px')
+  assert.doesNotMatch(sessionDb, /(?:emerald|amber|red)-/, '会话健康与置顶必须使用语义 token')
+  assert.doesNotMatch(sessionDb, /📌/, '置顶不得使用 emoji')
+})
+
+test('任务与会话库保留既有 API 行为', () => {
+  const tasks = read('pages', 'Tasks.tsx')
+  for (const api of ['TasksApi.list()', 'TasksApi.history(id)', 'TasksApi.create(body)', 'TasksApi.runNow(t.id)', "TasksApi.setState(t.id, 'pause')", "TasksApi.setState(t.id, 'resume')", "TasksApi.setState(t.id, 'archive')", 'TasksApi.stopRun(t.id)', 'TasksApi.remove(t.id)']) {
+    assert.ok(tasks.includes(api), `任务中心必须保留：${api}`)
+  }
+  const sessionDb = read('pages', 'SessionDb.tsx')
+  for (const behavior of ["api('/list')", "api('/stats')", "api('/rebuild'", "api('/sanitize'", "api('/meta'"]) {
+    assert.ok(sessionDb.includes(behavior), `会话库必须保留：${behavior}`)
+  }
+})
+
+test('消息视觉只使用 pi 语义色，并保留角色、Markdown、Thinking 与 ToolCard 分支', () => {
+  const message = read('components', 'Message.tsx')
+  assert.doesNotMatch(message, /(?:purple|sky|red|emerald)-/, 'Message 不得使用固定 purple/sky/red/emerald 色类')
+  assert.doesNotMatch(message, /pi-red/, 'Message 错误状态必须使用 pi-danger')
+  assert.ok(message.includes('Info'), '系统提示和通知必须使用 Lucide Info')
+  assert.doesNotMatch(message, /ℹ️/, '信息提示不得使用 emoji')
+  assert.doesNotMatch(message, /bg-red-/, '用户头像不得硬编码红色')
+  assert.ok(message.includes("${isError ? 'border-pi-danger/40'"), '工具错误外框必须使用归一化 isError 状态')
+  assert.doesNotMatch(message, /w-5 h-5[^"\n]*text-\[10px\][^"\n]*font-mono/, '工具字母/符号图标不是 badge，不得使用 10px')
+  for (const branch of ['function ToolCard', 'function Thinking', 'if (isSystem)', 'if (isUser)', '<Markdown text={msg.text}', '<ToolCard']) {
+    assert.ok(message.includes(branch), `消息逻辑分支必须保留：${branch}`)
+  }
+})
