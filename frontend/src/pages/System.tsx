@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { MonitorCog, RefreshCw, CheckCircle2, AlertTriangle, Plus, Trash2, Save, Copy,
-  MessagesSquare, Sparkles, Clock, Factory, Image, Brain, FlaskConical, Sprout, TerminalSquare, Globe } from 'lucide-react'
+  MessagesSquare, Sparkles, Clock, Factory, Image, Brain, FlaskConical, Sprout, TerminalSquare, Globe,
+  Server, GitBranch, Timer, Wifi, ChevronDown } from 'lucide-react'
 import useSWR from 'swr'
 import { SystemApi } from '../api'
-
-// ── 系统页（08-26，从弹窗改为独立页面）：能力清单 / 运行状态 / 检测更新 / 外网配置（可编辑）──
+import PageHeader from '../components/PageHeader'
+import SectionHeader from '../components/SectionHeader'
+import StatusTile from '../components/StatusTile'
 
 const CAP_ICONS: Record<string, any> = {
   chat: MessagesSquare, sparkles: Sparkles, clock: Clock, factory: Factory,
@@ -13,7 +15,6 @@ const CAP_ICONS: Record<string, any> = {
 const CAP_FALLBACK = MonitorCog
 
 type DomainRow = { domain: string; desc: string }
-type Filter = never // 占位无
 
 function KV({ k, v }: { k: string; v?: string }) {
   return (
@@ -28,16 +29,11 @@ function fmtUptime(s: number) {
   if (s >= 3600) return `${Math.floor(s / 3600)} 小时 ${Math.floor((s % 3600) / 60)} 分`
   return `${Math.floor(s / 60)} 分钟`
 }
-function fmtTime(ts: string) {
-  try { return new Date(ts).toLocaleString('zh-CN', { hour12: false }) } catch { return ts }
-}
 
-// ── 引擎面板（实用化：运行底盘 + 只读插件架构，去掉展示性注册/卸载）──
 export default function System() {
   const { data, mutate } = useSWR('system-info', () => SystemApi.info(), { dedupingInterval: 30000 })
   const info: any = data || {}
 
-  // 更新检测
   const [update, setUpdate] = useState<any>(null)
   const [checking, setChecking] = useState(false)
   const checkUpdate = async () => {
@@ -45,12 +41,14 @@ export default function System() {
     try { setUpdate(await SystemApi.checkUpdate()) } catch (e: any) { setUpdate({ ok: false, error: e?.message || String(e) }) } finally { setChecking(false) }
   }
 
-  // 外网配置（本地编辑态；null=尚未改动，跟随服务端）
   const [rows, setRows] = useState<DomainRow[] | null>(null)
   const [copiedIp, setCopiedIp] = useState('')
   const [netMsg, setNetMsg] = useState('')
   const domains: DomainRow[] = rows ?? info.network?.domains ?? []
   const dirty = rows !== null
+  const port = info.port || 8787
+  const serviceReady = !!data
+  const networkReady = !!data && ((info.network?.lanIPs || []).length > 0 || domains.length > 0)
 
   const editRow = (i: number, key: keyof DomainRow, v: string) =>
     setRows(domains.map((r, idx) => (idx === i ? { ...r, [key]: v } : r)))
@@ -61,7 +59,7 @@ export default function System() {
     try {
       const r = await SystemApi.saveNetwork({ domains })
       if ((r as any).error) { setNetMsg((r as any).error); return }
-      setRows(null); setNetMsg('✓ 已保存'); mutate(); setTimeout(() => setNetMsg(''), 2500)
+      setRows(null); setNetMsg('已保存'); mutate(); setTimeout(() => setNetMsg(''), 2500)
     } catch (e: any) { setNetMsg('保存失败：' + (e?.message || e)) }
   }
 
@@ -72,118 +70,144 @@ export default function System() {
   return (
     <div className="flex-1 min-h-0 overflow-y-auto page-enter">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
-        {/* 头部 */}
-        <div className="mb-6">
-          <h1 className="page-title">系统</h1>
-          <p className="text-xs text-pi-dim2 mt-1.5">
-            {info.name || 'pi-web 小语工作台'}{info.version ? ` · v${info.version}` : ''}
-            {info.node ? ` · ${info.node}` : ''}
-            {info.uptimeSec ? ` · 已运行 ${fmtUptime(info.uptimeSec)}` : ''}
-            {dirty ? ' · 配置有未保存修改' : ''}
-          </p>
-        </div>
+        <PageHeader
+          title="系统"
+          description="查看服务运行状态、更新来源与网络入口；系统能力等技术信息收在页面底部。"
+          meta={<span className="text-[11px] text-pi-dim2">{dirty ? '配置有未保存修改' : '服务配置中心'}</span>}
+        />
 
-        {/* 系统能力清单 */}
-        <section className="mb-8">
-          <h2 className="text-sm font-semibold text-pi-text mb-3 flex items-center gap-1.5"><MonitorCog className="w-4 h-4 text-pi-accent" />系统能力</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {(info.capabilities || []).map(c => {
-              const Icon = CAP_ICONS[c.icon] || CAP_FALLBACK
-              return (
-                <div key={c.name} className="panel !p-3.5 flex gap-3 items-start card-hover">
-                  <div className="w-8 h-8 rounded-pi-md bg-pi-accent/12 text-pi-accent flex items-center justify-center flex-shrink-0">
-                    <Icon className="w-[17px] h-[17px]" strokeWidth={1.8} />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[13px] font-medium text-pi-text">{c.name}</div>
-                    <div className="text-[11px] text-pi-dim2 mt-0.5 leading-relaxed">{c.desc}</div>
-                  </div>
-                </div>
-              )
-            })}
+        <section data-slot="system-status" className="mb-8">
+          <SectionHeader title="当前状态" description="进入页面即可判断服务是否在线、运行在哪个版本和网络入口。" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <StatusTile
+              label="服务状态"
+              value={serviceReady ? '运行中' : '加载中'}
+              detail={info.name || 'pi-web 小语工作台'}
+              icon={Server}
+              tone={serviceReady ? 'success' : 'neutral'}
+            />
+            <StatusTile
+              label="版本"
+              value={info.version ? `v${info.version}` : '—'}
+              detail={info.node || '等待服务信息'}
+              icon={GitBranch}
+              tone="info"
+            />
+            <StatusTile
+              label="运行时长"
+              value={info.uptimeSec ? fmtUptime(info.uptimeSec) : '—'}
+              detail={info.startedAt ? `启动于 ${new Date(info.startedAt).toLocaleString('zh-CN', { hour12: false })}` : '等待服务信息'}
+              icon={Timer}
+              tone="neutral"
+            />
+            <StatusTile
+              label="网络状态"
+              value={networkReady ? '可用' : data ? '待配置' : '检测中'}
+              detail={info.port ? `端口 ${info.port} · ${info.network?.lanIPs?.length || 0} 个局域网入口` : '等待网络信息'}
+              icon={Wifi}
+              tone={networkReady ? 'success' : 'warning'}
+            />
           </div>
         </section>
 
-        {/* 检测更新 */}
-        <section className="mb-8">
-          <h2 className="text-sm font-semibold text-pi-text mb-3 flex items-center gap-1.5"><RefreshCw className="w-4 h-4 text-pi-accent" />检测更新</h2>
-          <div className="panel !p-4">
-            {!update ? (
-              <button className="btn-primary text-xs px-3.5 py-1.5 inline-flex items-center gap-1.5" disabled={checking} onClick={checkUpdate}>
-                <RefreshCw className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} />{checking ? '检测中…' : '对比远端仓库'}
-              </button>
-            ) : !update.ok ? (
-              <div className="flex items-center gap-2 text-xs text-pi-warning">
-                <AlertTriangle className="w-4 h-4" />{update.error}
-                <button className="btn-tool text-[11px] !px-2 !py-1 ml-auto" onClick={checkUpdate}>重试</button>
-              </div>
-            ) : (
+        <section data-slot="system-primary" className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
+          <div>
+            <SectionHeader title="检测更新" description="对比远端仓库，确认当前工作台是否需要更新。" />
+            <div className="panel !p-4 min-h-[132px]">
+              {!update ? (
+                <button type="button" className="btn-primary text-xs px-3.5 py-1.5 inline-flex items-center gap-1.5" disabled={checking} onClick={checkUpdate}>
+                  <RefreshCw className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} aria-hidden="true" />{checking ? '检测中…' : '对比远端仓库'}
+                </button>
+              ) : !update.ok ? (
+                <div className="flex items-center gap-2 text-xs text-pi-warning">
+                  <AlertTriangle className="w-4 h-4" aria-hidden="true" />{update.error}
+                  <button type="button" className="btn-tool text-[11px] !px-2 !py-1 ml-auto" onClick={checkUpdate}>重试</button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-pi-md text-xs font-medium ${update.upToDate ? 'bg-pi-success/15 text-pi-success' : 'bg-pi-warning/15 text-pi-warning'}`}>
+                    {update.upToDate
+                      ? <><CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />已是最新（{update.source} · 本地 {update.localSha}）</>
+                      : <><AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />有更新：本地 {update.localSha} → 远端 {update.remote?.sha}</>}
+                  </div>
+                  {!update.upToDate && update.remote?.message && (
+                    <>
+                      <div className="text-[12px] text-pi-dim break-all">远端最新：{update.remote.message}</div>
+                      <div className="text-[12px] text-pi-dim2 bg-pi-bg2 rounded-pi-sm p-2 font-mono break-all">
+                        git pull && cd frontend && pnpm install --frozen-lockfile && npm run build
+                      </div>
+                    </>
+                  )}
+                  <div><button type="button" className="btn-tool text-[11px] !px-2 !py-1" onClick={checkUpdate}>重新检测</button></div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <SectionHeader title="外网配置" description="管理公网域名与局域网入口，增删改后保存即生效。" />
+            <div className="panel !p-4">
+              <p className="text-[12px] text-pi-dim2 mb-3">公网域名列表（隧道映射到本服务）。</p>
               <div className="space-y-2">
-                <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-pi-md text-xs font-medium ${update.upToDate ? 'bg-emerald-500/15 text-emerald-300' : 'bg-pi-yellow/15 text-pi-yellow'}`}>
-                  {update.upToDate
-                    ? <><CheckCircle2 className="w-3.5 h-3.5" />已是最新（{update.source} · 本地 {update.localSha}）</>
-                    : <><AlertTriangle className="w-3.5 h-3.5" />有更新：本地 {update.localSha} → 远端 {update.remote?.sha}</>}
-                </div>
-                {!update.upToDate && update.remote?.message && (
-                  <>
-                    <div className="text-[11px] text-pi-dim break-all">远端最新：{update.remote.message}</div>
-                    <div className="text-[11px] text-pi-dim2 bg-pi-bg2 rounded-pi-sm p-2 font-mono break-all">
-                      git pull && cd frontend && pnpm install --frozen-lockfile && npm run build
-                    </div>
-                  </>
-                )}
-                <div><button className="btn-tool text-[11px] !px-2 !py-1" onClick={checkUpdate}>重新检测</button></div>
-              </div>
-            )}
-          </div>
-        </section>
-
-
-        {/* 外网配置（可编辑） */}
-        <section className="mb-8">
-          <h2 className="text-sm font-semibold text-pi-text mb-3 flex items-center gap-1.5"><Globe className="w-4 h-4 text-pi-accent" />外网配置</h2>
-          <div className="panel !p-4">
-            <p className="text-[11px] text-pi-dim2 mb-3">公网域名列表（隧道映射到本服务），增删改后保存即生效。</p>
-            <div className="space-y-2">
-              {domains.map((d, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <input className="input-pi !py-1.5 text-xs font-mono flex-1 min-w-0" placeholder="example.com"
-                    value={d.domain} onChange={e => editRow(i, 'domain', e.target.value)} />
-                  <input className="input-pi !py-1.5 text-xs w-32 sm:w-44 flex-shrink-0" placeholder="说明（可选）"
-                    value={d.desc} onChange={e => editRow(i, 'desc', e.target.value)} />
-                  <button className="btn-tool touch-hit hover:!text-pi-red flex-shrink-0" title="删除此域名"
-                    onClick={() => delRow(i)}><Trash2 className="w-4 h-4" /></button>
-                </div>
-              ))}
-            </div>
-            <div className="flex items-center gap-2 mt-3">
-              <button className="btn-ghost text-xs px-3 py-1.5 inline-flex items-center gap-1.5" onClick={addRow}>
-                <Plus className="w-3.5 h-3.5" />添加域名
-              </button>
-              <button className="btn-primary text-xs px-3.5 py-1.5 ml-auto inline-flex items-center gap-1.5 disabled:opacity-40"
-                disabled={!dirty} onClick={saveNet}>
-                <Save className="w-3.5 h-3.5" />保存配置
-              </button>
-              {netMsg && <span className="text-[11px] text-pi-accent">{netMsg}</span>}
-            </div>
-
-            {/* 局域网直连 */}
-            <div className="mt-4 pt-3 border-t border-pi-border-soft">
-              <div className="text-[11px] text-pi-dim2 mb-2">局域网直连（同一 WiFi 下打开）：</div>
-              <div className="space-y-1">
-                {(info.network?.lanIPs || []).map((ip: string) => (
-                  <div key={ip} className="flex items-center gap-2 text-xs">
-                    <code className="font-mono text-pi-text bg-pi-bg2 px-2 py-0.5 rounded-pi-sm">http://{ip}:{info.port || 8787}</code>
-                    <button className="btn-tool text-[10px] !px-1.5 !py-0.5 inline-flex items-center gap-1" onClick={() => copyText(`http://${ip}:${info.port || 8787}`)}>
-                      <Copy className="w-3 h-3" />{copiedIp === `http://${ip}:8787` ? '已复制' : '复制'}
-                    </button>
+                {domains.map((d, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input aria-label={`域名 ${i + 1}`} className="input-pi !py-1.5 text-xs font-mono flex-1 min-w-0" placeholder="example.com" value={d.domain} onChange={e => editRow(i, 'domain', e.target.value)} />
+                    <input aria-label={`域名说明 ${i + 1}`} className="input-pi !py-1.5 text-xs w-32 sm:w-44 flex-shrink-0" placeholder="说明（可选）" value={d.desc} onChange={e => editRow(i, 'desc', e.target.value)} />
+                    <button type="button" className="btn-tool touch-hit hover:!text-pi-danger flex-shrink-0" title="删除此域名" aria-label="删除此域名" onClick={() => delRow(i)}><Trash2 className="w-4 h-4" /></button>
                   </div>
                 ))}
-                {!(info.network?.lanIPs || []).length && <span className="text-[11px] text-pi-dim2">未检测到局域网地址</span>}
+              </div>
+              <div className="flex items-center gap-2 mt-3">
+                <button type="button" className="btn-ghost text-xs px-3 py-1.5 inline-flex items-center gap-1.5" onClick={addRow}><Plus className="w-3.5 h-3.5" aria-hidden="true" />添加域名</button>
+                <button type="button" className="btn-primary text-xs px-3.5 py-1.5 ml-auto inline-flex items-center gap-1.5 disabled:opacity-40" disabled={!dirty} onClick={saveNet}><Save className="w-3.5 h-3.5" aria-hidden="true" />保存配置</button>
+                {netMsg && <span className="text-[12px] text-pi-accent">{netMsg}</span>}
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-pi-border-soft">
+                <div className="text-[12px] text-pi-dim2 mb-2">局域网直连（同一 WiFi 下打开）：</div>
+                <div className="space-y-1">
+                  {(info.network?.lanIPs || []).map((ip: string) => {
+                    const lanUrl = `http://${ip}:${port}`
+                    return (
+                      <div key={ip} className="flex items-center gap-2 text-xs">
+                        <code className="font-mono text-pi-text bg-pi-bg2 px-2 py-0.5 rounded-pi-sm">{lanUrl}</code>
+                        <button type="button" className="btn-tool text-[11px] !px-1.5 !py-0.5 inline-flex items-center gap-1" onClick={() => copyText(lanUrl)}>
+                          <Copy className="w-3 h-3" aria-hidden="true" />{copiedIp === lanUrl ? '已复制' : '复制'}
+                        </button>
+                      </div>
+                    )
+                  })}
+                  {!(info.network?.lanIPs || []).length && <span className="text-[12px] text-pi-dim2">未检测到局域网地址</span>}
+                </div>
               </div>
             </div>
           </div>
         </section>
+
+        <details className="panel !p-0 overflow-hidden mb-4">
+          <summary className="px-4 py-3 cursor-pointer select-none flex items-center justify-between gap-3">
+            <span className="inline-flex items-center gap-2 text-[13px] font-semibold text-pi-text"><MonitorCog className="w-4 h-4 text-pi-accent" aria-hidden="true" />系统能力</span>
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-pi-dim2 font-normal">技术信息<ChevronDown className="w-3.5 h-3.5" aria-hidden="true" /></span>
+          </summary>
+          <div className="border-t border-pi-border-soft p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {(info.capabilities || []).map(c => {
+                const Icon = CAP_ICONS[c.icon] || CAP_FALLBACK
+                return (
+                  <div key={c.name} className="panel !p-3.5 flex gap-3 items-start card-hover">
+                    <div className="w-8 h-8 rounded-pi-md bg-pi-accent/12 text-pi-accent flex items-center justify-center flex-shrink-0"><Icon className="w-[17px] h-[17px]" strokeWidth={1.8} aria-hidden="true" /></div>
+                    <div className="min-w-0"><div className="text-[13px] font-medium text-pi-text">{c.name}</div><div className="text-[12px] text-pi-dim2 mt-0.5 leading-relaxed">{c.desc}</div></div>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="mt-4 pt-3 border-t border-pi-border-soft">
+              <KV k="运行平台" v={info.platform} />
+              <KV k="工作目录" v={info.wsRoot} />
+              <KV k="启动时间" v={info.startedAt} />
+            </div>
+          </div>
+        </details>
       </div>
     </div>
   )

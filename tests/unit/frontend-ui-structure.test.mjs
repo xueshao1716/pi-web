@@ -140,3 +140,98 @@ test('模型中心保留 store、统计刷新、模型切换和通道增删契�
     assert.ok(channels.includes(api), `ModelChannels 必须保留 ${api}`)
   }
 })
+
+test('主题页使用公共页头，并按画廊、实时预览与精调、开发者选项组织', () => {
+  const themes = read('pages', 'Themes.tsx')
+  assert.ok(themes.includes('<PageHeader'), '主题页必须使用 PageHeader')
+  assert.doesNotMatch(themes, /<h1\b/, '主题页不得手写 h1 页面头')
+  const order = [
+    themes.indexOf('<PageHeader'),
+    themes.indexOf('data-slot="theme-gallery"'),
+    themes.indexOf('data-slot="theme-workbench"'),
+    themes.indexOf('<details'),
+  ]
+  assert.ok(order.every(index => index >= 0), '主题页缺少 PageHeader → 画廊 → 实时预览/精调 → 开发者选项结构')
+  assert.deepEqual([...order].sort((a, b) => a - b), order, '主题页层级顺序不正确')
+  assert.match(themes, /data-slot="theme-workbench"[^>]*className="[^"]*lg:grid-cols-/, '桌面端实时预览与精调必须形成主辅布局')
+})
+
+test('主题 Token 与 CSS 导出只位于默认关闭的开发者选项', () => {
+  const themes = read('pages', 'Themes.tsx')
+  const detailsStart = themes.indexOf('<details')
+  const detailsEnd = themes.indexOf('</details>', detailsStart)
+  assert.ok(detailsStart >= 0 && detailsEnd > detailsStart, '主题页必须提供开发者 details')
+  const details = themes.slice(detailsStart, detailsEnd)
+  assert.ok(!/<details[^>]*\sopen(?:=|\s|>)/.test(details), '开发者选项必须默认关闭')
+  for (const content of ['开发者选项', 'Token 速览', 'onClick={exportCss}', '导出 CSS']) {
+    assert.ok(details.includes(content), `开发者选项缺少：${content}`)
+  }
+  const ordinaryUi = themes.slice(themes.indexOf('return ('), detailsStart)
+  assert.ok(!ordinaryUi.includes('onClick={exportCss}'), '普通用户主界面不得出现 CSS 导出工具')
+})
+
+test('主题页保留即时应用、精调、壁纸、保存与重置行为，且非 badge 不使用 10px', () => {
+  const themes = read('pages', 'Themes.tsx')
+  for (const behavior of [
+    'applyTheme(theme, accent)',
+    'seedVars(theme, accent, density)',
+    'setWallpaper(reader.result as string)',
+    "setWallpaper('')",
+    'await ThemeApi.save(theme, accent, wallpaper)',
+    'onClick={handleReset}',
+  ]) {
+    assert.ok(themes.includes(behavior), `主题页必须保留行为：${behavior}`)
+  }
+  assert.doesNotMatch(themes, /text-\[10px\]/, '主题页不得把 10px 用于非 badge 文本或 WALL_PRESETS 按钮')
+})
+
+test('系统页以公共页头和四项真实状态摘要开场，主任务位于能力清单之前', () => {
+  const system = read('pages', 'System.tsx')
+  assert.ok(system.includes('<PageHeader'), '系统页必须使用 PageHeader')
+  assert.doesNotMatch(system, /<h1\b/, '系统页不得手写 h1 页面头')
+  const order = [
+    system.indexOf('<PageHeader'),
+    system.indexOf('data-slot="system-status"'),
+    system.indexOf('data-slot="system-primary"'),
+    system.indexOf('<details'),
+  ]
+  assert.ok(order.every(index => index >= 0), '系统页缺少 PageHeader → 状态摘要 → 主任务 → 能力折叠结构')
+  assert.deepEqual([...order].sort((a, b) => a - b), order, '系统页必须先显示真实状态和主任务，能力清单置底')
+  assert.equal((system.match(/<StatusTile\b/g) || []).length, 4, '系统顶部必须显示服务、版本、运行时长、网络四项摘要')
+  for (const label of ['服务状态', '版本', '运行时长', '网络状态']) {
+    assert.ok(system.includes(`label="${label}"`), `系统状态摘要缺少：${label}`)
+  }
+})
+
+test('系统能力默认折叠，保留更新、网络编辑保存与实际端口 LAN 复制行为', () => {
+  const system = read('pages', 'System.tsx')
+  const detailsStart = system.indexOf('<details')
+  const detailsEnd = system.indexOf('</details>', detailsStart)
+  assert.ok(detailsStart >= 0 && detailsEnd > detailsStart, '系统能力必须位于 details')
+  const details = system.slice(detailsStart, detailsEnd)
+  assert.ok(!/<details[^>]*\sopen(?:=|\s|>)/.test(details), '系统能力必须默认折叠')
+  assert.ok(details.includes('系统能力'), '折叠区必须包含系统能力清单')
+  for (const behavior of [
+    "useSWR('system-info', () => SystemApi.info(), { dedupingInterval: 30000 })",
+    'SystemApi.checkUpdate()',
+    'setRows([...domains',
+    'setRows(domains.filter',
+    'SystemApi.saveNetwork({ domains })',
+    'copyText(lanUrl)',
+    'copiedIp === lanUrl',
+  ]) {
+    assert.ok(system.includes(behavior), `系统页必须保留行为：${behavior}`)
+  }
+  assert.doesNotMatch(system, /copiedIp === `http:\/\/\$\{ip\}:8787`/, '复制状态不得硬编码 8787')
+})
+
+test('主题与系统页清除固定 emerald、非 badge 10px 与 emoji 式勾号，ModelChannels 删除未使用 X import', () => {
+  const targets = [read('pages', 'Themes.tsx'), read('pages', 'System.tsx')]
+  for (const source of targets) {
+    assert.doesNotMatch(source, /emerald-/, '主题/系统页不得使用固定 emerald 色')
+    assert.doesNotMatch(source, /text-\[10px\]/, '主题/系统页不得使用非 badge 10px')
+    assert.doesNotMatch(source, /✓/, '主题/系统页不得使用 emoji 式勾号')
+  }
+  const channels = read('components', 'ModelChannels.tsx')
+  assert.doesNotMatch(channels, /\bX\b/, 'ModelChannels 不得保留未使用 X import')
+})

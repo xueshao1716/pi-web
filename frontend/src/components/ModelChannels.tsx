@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, CheckCircle2, KeyRound, Settings2, X } from 'lucide-react'
+import { Plus, Trash2, CheckCircle2, KeyRound, Settings2 } from 'lucide-react'
 import { KeysApi } from '../api'
 
 // ── ModelChannels：服务商密钥/通道管理（从 ModelManager 抽出，供 ModelHub 嵌入）──
