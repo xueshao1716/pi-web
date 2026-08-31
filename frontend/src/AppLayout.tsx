@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoticComponent, type ReactNode } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState, type ComponentType, type LazyExoticComponent, type ReactNode } from 'react'
 import { MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog, Cpu, Palette, Database, LogOut, Ellipsis } from 'lucide-react'
 import TuiTerminal from './components/TuiTerminal'
 import { useApp } from './store'
@@ -109,6 +109,11 @@ export default function AppLayout() {
   // 移动端：sessions 抽屉与统一“更多”菜单
   const [mobileDrawer, setMobileDrawer] = useState<'none' | 'sessions'>('none')
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
+  const mobileMoreTriggerRef = useRef<HTMLButtonElement>(null)
+  const closeMobileMore = useCallback(() => {
+    setMobileMoreOpen(false)
+    requestAnimationFrame(() => mobileMoreTriggerRef.current?.focus())
+  }, [])
   // ⌘K 命令面板（08-25 评审 P1：全局快捷键）
   const [paletteOpen, setPaletteOpen] = useState(false)
 
@@ -222,14 +227,15 @@ export default function AppLayout() {
         {/* 底部 TabBar：固定五入口，设置类页面统一归入“更多”活跃态。 */}
         <nav className="mobile-tab-bar flex flex-shrink-0 relative z-20 border-t border-pi-border-soft glass-strong" aria-label="主要导航">
           {([
-            { key: 'chat', icon: MessagesSquare, label: '对话', active: route === 'chat' && mobileDrawer === 'none', onClick: () => { setMobileMoreOpen(false); setMobileDrawer('none'); nav('chat') } },
-            { key: 'sessions', icon: FolderClosed, label: '会话', active: mobileDrawer === 'sessions', onClick: () => { setMobileMoreOpen(false); setMobileDrawer('sessions') } },
-            { key: 'assets', icon: Images, label: '资产', active: route === 'assets' && mobileDrawer === 'none', onClick: () => { setMobileMoreOpen(false); setMobileDrawer('none'); nav('assets') } },
-            { key: 'tasks', icon: Clock4, label: '任务', active: route === 'tasks' && mobileDrawer === 'none', onClick: () => { setMobileMoreOpen(false); setMobileDrawer('none'); nav('tasks') } },
+            { key: 'chat', icon: MessagesSquare, label: '对话', active: !mobileMoreOpen && route === 'chat' && mobileDrawer === 'none', onClick: () => { setMobileMoreOpen(false); setMobileDrawer('none'); nav('chat') } },
+            { key: 'sessions', icon: FolderClosed, label: '会话', active: !mobileMoreOpen && mobileDrawer === 'sessions', onClick: () => { setMobileMoreOpen(false); setMobileDrawer('sessions') } },
+            { key: 'assets', icon: Images, label: '资产', active: !mobileMoreOpen && route === 'assets' && mobileDrawer === 'none', onClick: () => { setMobileMoreOpen(false); setMobileDrawer('none'); nav('assets') } },
+            { key: 'tasks', icon: Clock4, label: '任务', active: !mobileMoreOpen && route === 'tasks' && mobileDrawer === 'none', onClick: () => { setMobileMoreOpen(false); setMobileDrawer('none'); nav('tasks') } },
             { key: 'more', icon: Ellipsis, label: '更多', active: mobileMoreOpen || (mobileDrawer === 'none' && !['chat', 'assets', 'tasks'].includes(route)), onClick: () => { setMobileDrawer('none'); setMobileMoreOpen(open => !open) } },
           ] as const).map(item => (
             <button
               key={item.key}
+              ref={item.key === 'more' ? mobileMoreTriggerRef : undefined}
               aria-label={item.label}
               aria-current={item.active ? 'page' : undefined}
               aria-expanded={item.key === 'more' ? mobileMoreOpen : undefined}
@@ -244,7 +250,7 @@ export default function AppLayout() {
 
         <MobileMoreMenu
           open={mobileMoreOpen}
-          onClose={() => setMobileMoreOpen(false)}
+          onClose={closeMobileMore}
           route={route}
           nav={(nextRoute) => { setMobileDrawer('none'); nav(nextRoute) }}
           onOpenPanel={(panel) => { setMobileDrawer('none'); nav('chat'); setRightPanel(panel) }}

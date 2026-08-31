@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import {
   Activity, BrainCircuit, Cpu, Database, Factory, FolderKanban,
   LayoutGrid, MonitorCog, PackageCheck, Palette, PanelRight, Sparkles,
@@ -27,6 +27,8 @@ const PANEL_ACTIONS: { panel: UtilityPanelKey; icon: typeof Sparkles; label: str
   { panel: 'tui', icon: PanelRight, label: 'TUI' },
 ]
 
+const FOCUSABLE_SELECTOR = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
 export default function MobileMoreMenu({ open, onClose, route, nav, onOpenPanel, onOpenTheme }: {
   open: boolean
   onClose: () => void
@@ -35,10 +37,36 @@ export default function MobileMoreMenu({ open, onClose, route, nav, onOpenPanel,
   onOpenPanel: (panel: UtilityPanelKey) => void
   onOpenTheme: () => void
 }) {
+  const sheetRef = useRef<HTMLElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+
   useEffect(() => {
     if (!open) return
+    closeButtonRef.current?.focus()
+
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+        return
+      }
+      if (e.key !== 'Tab') return
+
+      const focusable = [...(sheetRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? [])]
+        .filter(element => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true')
+      if (focusable.length === 0) {
+        e.preventDefault()
+        return
+      }
+
+      const activeElement = document.activeElement
+      if (e.shiftKey && (activeElement === focusable[0] || !sheetRef.current?.contains(activeElement))) {
+        e.preventDefault()
+        focusable[focusable.length - 1]?.focus()
+      } else if (!e.shiftKey && (activeElement === focusable[focusable.length - 1] || !sheetRef.current?.contains(activeElement))) {
+        e.preventDefault()
+        focusable[0]?.focus()
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -56,6 +84,7 @@ export default function MobileMoreMenu({ open, onClose, route, nav, onOpenPanel,
     <div className="fixed inset-0 z-[var(--pi-z-dialog)] flex items-end" role="presentation">
       <button className="absolute inset-0 bg-black/45 backdrop-blur-sm" aria-label="关闭更多菜单" onClick={onClose} />
       <section
+        ref={sheetRef}
         className="mobile-more-sheet relative w-full rounded-t-pi-xl border-t border-pi-border bg-pi-bg1 shadow-2xl"
         role="dialog"
         aria-modal="true"
@@ -66,7 +95,7 @@ export default function MobileMoreMenu({ open, onClose, route, nav, onOpenPanel,
             <h2 id="mobile-more-title" className="text-[15px] font-semibold text-pi-text">更多功能</h2>
             <p className="text-xs text-pi-dim">功能页面与辅助工具</p>
           </div>
-          <button className="mobile-more-action ml-auto !min-w-11 rounded-pi-md text-pi-dim hover:bg-pi-bg3 hover:text-pi-text" aria-label="关闭更多菜单" onClick={onClose}>
+          <button ref={closeButtonRef} className="mobile-more-action ml-auto !min-w-11 rounded-pi-md text-pi-dim hover:bg-pi-bg3 hover:text-pi-text" aria-label="关闭更多菜单" onClick={onClose}>
             <X className="h-[18px] w-[18px]" />
           </button>
         </header>

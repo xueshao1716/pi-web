@@ -45,3 +45,25 @@
 - 未执行四视口真机/浏览器截图检查；结构、类型、构建和设计契约已自动验证。
 - Impeccable 的 2 条告警为既有代码，非本次引入。
 - worktree 中 `.pi-subagents/` 是任务开始前已有的未跟踪运行目录，未暂存、未提交。
+
+## Fix round：移动底栏互斥活跃态与更多菜单焦点管理
+
+### 修复
+
+- `mobileMoreOpen` 为 true 时，对话、会话、资产、任务四个底栏入口统一失活，只有更多保留 `aria-current="page"`；结构测试直接锁定四个互斥条件和底栏 `aria-current` 单点渲染。
+- `MobileMoreMenu` 打开后主动聚焦关闭按钮，并将 Tab / Shift+Tab 循环限制在 sheet 内。
+- `AppLayout` 持有更多触发按钮 ref；菜单通过关闭按钮、遮罩、Esc、路由或面板操作关闭后，焦点恢复到更多按钮。
+- 未处理手机面板底栏预留或双 Esc，也未引入依赖。
+
+### RED / GREEN
+
+- RED：`node --test tests/unit/frontend-ui-structure.test.mjs` → 6 项中 2 项新增契约失败，分别命中底栏活跃态未互斥、缺少焦点圈定/恢复。
+- GREEN：`node --test tests/unit/frontend-ui-structure.test.mjs frontend/tests/design-contract.test.mjs` → 24/24 通过。
+- `cd frontend && npx tsc --noEmit -p .` → 通过。
+- `cd frontend && npm run build` → 通过（4280 modules transformed；仅既有 UnoCSS/分包提示）。
+- `git diff --check` → 通过；仅 Git for Windows LF→CRLF 提示。
+
+### Fix round concerns
+
+- 焦点行为由静态结构契约、TypeScript 与生产构建验证；未增加浏览器自动化或真机键盘手测。
+- `.pi-subagents/` 仍为任务前已有的未跟踪运行目录，不纳入提交。
