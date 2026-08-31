@@ -181,7 +181,7 @@ export default function Apps() {
 
         <select
           aria-label="选择应用工具"
-          className="input-pi !py-2 text-[13px] w-full md:hidden mb-5"
+          className="input-pi min-h-11 !py-2 text-[13px] w-full md:hidden mb-5"
           value={tab}
           onChange={event => setTab(event.target.value as Tab)}
         >
