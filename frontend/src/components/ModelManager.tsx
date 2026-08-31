@@ -28,8 +28,8 @@ export default function ModelManager({ visible, onClose }: { visible: boolean; o
 
   if (!visible) return null
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[var(--pi-z-modal)]" onClick={onClose}>
-      <div className="glass-hi panel-glass w-[600px] max-h-[80vh] flex flex-col rounded-pi-xl anim-enter" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/55 flex items-center justify-center z-[var(--pi-z-modal)]" onClick={onClose}>
+      <div className="glass-hi panel-glass w-[600px] max-h-[80vh] flex flex-col rounded-pi-xl" onClick={e => e.stopPropagation()}>
         {/* 头部：图标+标题+关闭 */}
         <div className="flex items-center gap-2.5 px-5 h-13 py-3 border-b border-pi-border-soft flex-shrink-0">
           <div className="w-8 h-8 rounded-pi-md bg-pi-accent/12 text-pi-accent flex items-center justify-center flex-shrink-0">
@@ -92,7 +92,7 @@ export default function ModelManager({ visible, onClose }: { visible: boolean; o
       {/* 添加 API（轻弹窗）*/}
       {addOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[var(--pi-z-modal-inner)]" onClick={() => setAddOpen(false)}>
-          <div className="panel p-4 w-96 glass-hi anim-enter" style={{ animationDuration: '.18s' }} onClick={e => e.stopPropagation()}>
+          <div className="panel p-4 w-96 glass-hi" style={{ animationDuration: '.18s' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-3">
               <Settings2 className="w-4 h-4 text-pi-dim2" />
               <div className="text-sm font-semibold">添加 API</div>
@@ -112,7 +112,7 @@ export default function ModelManager({ visible, onClose }: { visible: boolean; o
       <AL.Root open={!!confirming} onOpenChange={o => !o && setConfirming(null)}>
         <AL.Portal>
           <AL.Overlay className="fixed inset-0 bg-black/40 z-[var(--pi-z-dialog)]" />
-          <AL.Content data-slot="provider-delete-dialog" className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 panel p-4 w-72 z-[var(--pi-z-dialog-top)] anim-enter" style={{ animationDuration: '.18s' }}>
+          <AL.Content data-slot="provider-delete-dialog" className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 panel p-4 w-72 z-[var(--pi-z-dialog-top)]" style={{ animationDuration: '.18s' }}>
             <AL.Title className="text-sm font-semibold mb-1.5">删除服务商配置</AL.Title>
             <AL.Description className="text-xs text-pi-dim mb-3">
               「{confirming}」的密钥配置将被移除。该服务商的模型将无法继续使用。

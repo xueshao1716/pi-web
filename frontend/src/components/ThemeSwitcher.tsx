@@ -82,7 +82,7 @@ export default function ThemeSwitcher() {
       {menuOpen && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-          <div className="absolute left-0 bottom-11 z-20 panel p-2 flex flex-col gap-1 w-44 anim-enter">
+          <div className="absolute left-0 bottom-11 z-20 panel p-2 flex flex-col gap-1 w-44">
             <div className="text-[10px] text-pi-dim2 px-2 pt-0.5 pb-1 font-semibold">主题</div>
             {THEMES.map(t => (
               <button key={t.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-pi-sm hover:bg-pi-bg3 text-xs ${theme === t.id ? 'text-pi-text' : 'text-pi-dim'}`} onClick={() => setTheme(t.id)}>

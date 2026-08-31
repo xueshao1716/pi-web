@@ -60,7 +60,7 @@ export default function SetupWizard({ onDone }: { onDone: () => void }) {
   return (
     <div className="relative min-h-screen flex items-center justify-center px-4 overflow-hidden"
       style={{ background: 'radial-gradient(1100px 550px at 50% -10%, var(--pi-bg2) 0%, var(--pi-bg) 60%)' }}>
-      <div className="relative z-10 panel w-full max-w-xl p-8 anim-enter">
+      <div className="relative z-10 panel w-full max-w-xl p-8">
         {/* 品牌头 */}
         <div className="text-center mb-6">
           <div className="text-3xl font-black text-pi-accent tracking-tight">◈ 元枢</div>

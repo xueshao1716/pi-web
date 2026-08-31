@@ -2,7 +2,7 @@
 // 依赖注入：initRefineApi({ cwd }）；emotion 基因系统直接 import（同 engine 目录）
 import fs from "node:fs";
 import path from "node:path";
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { json } from "./http-utils.mjs";
 import * as emotion from "./emotion.mjs";
 
@@ -16,6 +16,8 @@ export function initRefineApi({ cwd = "" } = {}) { _cwd = cwd; }
 const REFINE_SCRIPT = () => path.join(_cwd, "工具", "refine_proposal.py");
 const REFINE_PROPOSALS = () => path.join(_cwd, "工程", "经验库", "refine-proposals.json");
 const REFINE_LOG = () => path.join(_cwd, "工程", "经验库", "refine-log.jsonl");
+const EXPERIENCE_FILE = () => path.join(_cwd, "工程", "经验库", "experience.md");
+const SKILL_GENE_FILE = () => path.join(_cwd, "工程", "经验库", "技能基因.md");
 
 export function readRefineJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return fallback; }
@@ -23,17 +25,27 @@ export function readRefineJson(file, fallback) {
 
 export function runRefineScript(args, timeoutMs = 180000) {
   return new Promise((resolve) => {
-    let child;
+    let child, settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(to);
+      resolve(result);
+    };
+    let out = "", err = "", to = null;
     try {
       child = spawn("python", [REFINE_SCRIPT(), ...args], { windowsHide: true });
     } catch (e) {
-      return resolve({ code: -1, out: "", err: String(e?.message || e) });
+      return finish({ code: -1, out: "", err: String(e?.message || e) });
     }
-    let out = "", err = "";
-    const to = setTimeout(() => { try { child.kill(); } catch {} }, timeoutMs);
+    to = setTimeout(() => {
+      try { child.kill(); } catch {}
+      finish({ code: -1, out, err: `${err}\n执行超时（${Math.round(timeoutMs / 1000)} 秒）`.trim() });
+    }, timeoutMs);
     child.stdout.on("data", (d) => (out += d));
     child.stderr.on("data", (d) => (err += d));
-    child.on("close", (code) => { clearTimeout(to); resolve({ code, out, err }); });
+    child.on("error", (e) => finish({ code: -1, out, err: String(e?.message || e) }));
+    child.on("close", (code) => finish({ code, out, err }));
   });
 }
 
@@ -44,9 +56,29 @@ export function handleRefineStatus(res) {
     const lines = fs.readFileSync(REFINE_LOG(), "utf8").trim().split("\n").filter(Boolean);
     if (lines.length) lastLog = JSON.parse(lines[lines.length - 1]);
   } catch {}
+  let experience = { exists: false, updatedAt: null, entries: [], count: 0 };
+  try {
+    const file = EXPERIENCE_FILE();
+    const md = fs.readFileSync(file, "utf8");
+    const entries = [];
+    const re = /^(##|###)\s+(.+)$/gm;
+    let m;
+    while ((m = re.exec(md))) entries.push({ level: m[1].length, title: m[2].trim(), index: m.index });
+    experience = {
+      exists: true,
+      updatedAt: fs.statSync(file).mtime.toISOString(),
+      count: entries.length,
+      entries: entries.slice(-6).reverse().map((entry) => {
+        const next = entries.find((x) => x.index > entry.index)?.index ?? md.length;
+        const body = md.slice(entry.index, next).split("\n").slice(1).join(" ").replace(/\s+/g, " ").trim();
+        return { title: entry.title, preview: body.slice(0, 180) };
+      }),
+    };
+  } catch {}
   json(res, 200, {
     counts: { pending: data.pending?.length || 0, applied: data.applied?.length || 0, rejected: data.rejected?.length || 0 },
     lastLog,
+    experience,
   });
 }
 
@@ -56,7 +88,6 @@ export function handleRefineList(res) {
 }
 
 // ══ 基因反馈：对已应用提案打分，驱动技能基因进化 ══
-const SKILL_GENE_FILE = path.join(_cwd, "工程", "经验库", "技能基因.md");
 const DOMAIN_KEYWORDS = {
   "写作": ["写作", "文案", "剧本", "小说", "分镜", "提示词"],
   "绘图": ["绘图", "出图", "画像", "海报", "配图", "插图"],
@@ -83,7 +114,7 @@ export function handleRefineFeedback(res, body) {
   const d = domain || detectSkillDomain(target.summary + " " + JSON.stringify(target.edits || []));
   // 读取技能基因.md 并更新该领域三维评分（滑动平均 0-100%）
   try {
-    let md = fs.readFileSync(SKILL_GENE_FILE, "utf8");
+    let md = fs.readFileSync(SKILL_GENE_FILE(), "utf8");
     const seed = { efficiency: 50, reliability: 50, adaptability: 50 }; // 默认
     const get = (line) => {
       const m = line.match(/^-\s*(效率|可靠|适应)\s+\w+\s*:\s*(\d+)%/);
@@ -103,7 +134,7 @@ export function handleRefineFeedback(res, body) {
         lines[i] = update(lines[i], k, Math.max(0, Math.min(100, newVal)));
       }
     }
-    fs.writeFileSync(SKILL_GENE_FILE, lines.join("\n"), "utf8");
+    fs.writeFileSync(SKILL_GENE_FILE(), lines.join("\n"), "utf8");
     // 记录反馈日志
     const logLine = JSON.stringify({ ts: new Date().toISOString(), id, domain: d, scores, from: "refine-feedback" }) + "\n";
     fs.appendFileSync(REFINE_LOG(), logLine);
@@ -114,7 +145,7 @@ export function handleRefineFeedback(res, body) {
 }
 export function handleRefineGenes(res) {
   try {
-    const md = fs.readFileSync(SKILL_GENE_FILE, "utf8");
+    const md = fs.readFileSync(SKILL_GENE_FILE(), "utf8");
     const domains = {};
     let cur = null;
     for (const line of md.split("\n")) {

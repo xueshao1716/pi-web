@@ -66,7 +66,7 @@ export default function ModelSelect({ compact = false, zClass = 'z-50' }: { comp
 
       <DM.Portal>
         <DM.Content data-slot="model-listbox" side="top" align="start" sideOffset={6}
-          className={`w-72 max-h-80 overflow-y-auto rounded-pi-lg border border-pi-border bg-pi-bg1/95 shadow-2xl ${zClass} anim-enter`}
+          className={`w-72 max-h-80 overflow-y-auto rounded-pi-lg border border-pi-border bg-pi-bg1/95 shadow-2xl ${zClass}`}
           style={{ animationDuration: '0.15s' }}>
           <DM.RadioGroup value={currentModel} onValueChange={select}>
             {/* Auto */}

@@ -49,7 +49,7 @@ export default function ParamsPanel() {
         <SlidersHorizontal className="w-4 h-4" strokeWidth={1.8} />
       </button>
       {open && (
-        <div className="absolute bottom-full right-0 mb-2 w-64 panel !p-3 z-[var(--pi-z-dialog)] anim-enter" role="dialog" aria-label="模型参数">
+        <div className="absolute bottom-full right-0 mb-2 w-64 panel !p-3 z-[var(--pi-z-dialog)]" role="dialog" aria-label="模型参数">
           <div className="text-xs font-medium text-pi-text mb-3">模型参数</div>
 
           <label className="block mb-3">

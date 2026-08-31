@@ -11,6 +11,7 @@ export const ACCENT_LIGHT = '#6b7dff' // 靛蓝在浅色主题下的提亮变体
 
 // 主题切换器预设（08-23 从 ThemeSwitcher 迁入：色板定义归 theme/ 管辖）
 export const THEME_PRESETS = [
+  { id: 'highLum', name: '银灰', swatch: 'linear-gradient(135deg,#f5f6f8,#ffffff)', light: true, default: true }, // 新默认：高亮低饱和
   { id: 'deep', name: '深空蓝', swatch: 'linear-gradient(135deg,#080d1a,#121d36)' },
   { id: 'ink', name: '墨玉黑', swatch: 'linear-gradient(135deg,#000,#1a1a1f)' },
   { id: 'violet', name: '紫夜', swatch: 'linear-gradient(135deg,#0d0a1a,#251d52)' },

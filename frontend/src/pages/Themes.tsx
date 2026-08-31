@@ -198,7 +198,7 @@ export default function Themes() {
 
           <div>
             <SectionHeader title="精调当前主题" description="调整主色、层级密度和工作台壁纸。" />
-            <div className="panel !p-4 space-y-5">
+            <div className="panel !p-3 space-y-5">
               <div>
                 <div className="text-[12px] text-pi-dim2 font-semibold mb-2">主色</div>
                 <div className="flex flex-wrap items-center gap-2">

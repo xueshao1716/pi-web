@@ -4,6 +4,7 @@ import { Brain, FileText, Check, X, Pencil, ChevronRight, Square, Info } from 'l
 import Markdown from './Markdown'
 import { withFileToken } from '../api'
 import type { ChatMessage, RunningTool, ToolStatus } from '../types'
+import { AgentWorkflow } from './AgentWorkflow'
 
 // 兼容两种来源：流式 RunningTool / 历史消息里的 ToolCall（无 running 态）
 function ToolCard({ tool }: { tool: Partial<RunningTool> & { name: string } }) {
@@ -20,13 +21,13 @@ function ToolCard({ tool }: { tool: Partial<RunningTool> & { name: string } }) {
   } catch { /* 保持原文本 */ }
 
   return (
-    <div className={`my-2.5 rounded-xl border overflow-hidden text-[13px] bg-pi-bg1/60 transition-[background-color,border-color,box-shadow] duration-200 ${isError ? 'border-pi-danger/40' : 'border-pi-border-soft/60 hover:border-pi-border hover:shadow-md hover:shadow-black/10'}`}>
+    <div className={`my-2 rounded-xl border overflow-hidden text-[13px] bg-pi-bg1/60 transition-[background-color,border-color,box-shadow] duration-200 ${isError ? 'border-pi-danger/40' : 'border-pi-border-soft/60 hover:border-pi-border hover:shadow-md hover:shadow-black/10'}`}>
       <div
-        className="press w-full flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-pi-bg-hover/60 active:bg-pi-bg-active/50 transition-colors text-left"
+        className="press w-full flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-pi-bg-hover/60 active:bg-pi-bg-active/50 transition-colors text-left"
         style={{ boxShadow: `inset 3px 0 0 ${tc}` }}
         onClick={() => setOpen(!open)}
       >
-        <span className="w-5 h-5 rounded-pi-sm flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0 font-mono" style={{ background: `linear-gradient(135deg, ${tc}, ${tc}b3)`, boxShadow: `0 0 10px ${tc}40` }}>{icon}</span>
+        <span className="w-5 h-5 rounded-pi-sm flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0 font-mono" style={{ backgroundColor: tc, boxShadow: 'var(--pi-shadow-sm)' }}>{icon}</span>
         <span className="font-mono font-semibold text-[11px] px-1.5 py-0.5 rounded-pi-sm flex-shrink-0" style={{ color: tc, background: `${tc}14` }}>{tool.name}</span>
         <span className="text-pi-dim truncate flex-1 font-mono text-[12px]">{argsText}</span>
         {status === 'running' ? (
@@ -120,7 +121,7 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
   if (isUser) {
     // 用户：右侧玻璃气泡 + 小头像
     return (
-      <div className="group/msg flex justify-end gap-2.5 py-3">
+      <div className="group/msg flex justify-end gap-2 py-2">
         <div className="max-w-[82%] min-w-0 flex flex-col items-end">
           {editing ? (
             <div className="w-full min-w-[280px]">
@@ -136,7 +137,7 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
             <>
               <Attachments msg={msg} />
               {(msg.text || !msg.files?.length) && (
-                <div className="relative msg-bubble msg-bubble-user rounded-[20px] rounded-br-lg px-4 py-2.5 mt-0.5">
+                <div className="relative msg-bubble msg-bubble-user rounded-[20px] rounded-br-lg px-3.5 py-2 mt-0.5">
                   <span className="whitespace-pre-wrap text-[13px] text-pi-text leading-relaxed">{msg.text}</span>
                 </div>
               )}
@@ -155,12 +156,36 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
     )
   }
 
-  // 助手：无气泡，内容全宽铺开（现代 AI 聊天惯例），左侧小标识 + accent 渐变竖条
+  // 助手：实底头像，不用渐变
+  // 计算工作流阶段
+  const hasThinking = !!msg.think
+  const hasTools = (msg.tools?.length || 0) > 0
+  const hasText = !!msg.text
+  const runningTools = msg.tools?.filter(t => t.status === 'running').length || 0
+  
+  let phase: 'thinking' | 'tools' | 'result' | 'idle' = 'idle'
+  if (streaming) {
+    if (hasThinking && !hasTools && !hasText) phase = 'thinking'
+    else if (hasTools && runningTools > 0) phase = 'tools'
+    else if (hasText) phase = 'result'
+  }
+
   return (
-    <div className="group/msg flex gap-2.5 py-3 msg-assistant anim-enter">
-      <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-pi-accent to-pi-accent2 flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 mt-0.5"
-        style={{ boxShadow: '0 2px 8px color-mix(in oklab, var(--pi-accent) 20%, transparent)' }}>语</div>
+    <div className="group/msg flex gap-2 py-2 msg-assistant">
+      <div className="w-7 h-7 rounded-lg bg-pi-accent flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 mt-0.5"
+        style={{ boxShadow: 'var(--pi-shadow-sm)' }}>语</div>
       <div className="min-w-0 flex-1">
+        {/* 工作流可视化：只在流式中显示 */}
+        {streaming && phase !== 'idle' && (
+          <div className="mb-3">
+            <AgentWorkflow 
+              phase={phase}
+              thinking={hasThinking}
+              toolsRunning={runningTools}
+              toolsTotal={msg.tools?.length || 0}
+            />
+          </div>
+        )}
         {msg.notes?.length ? (
           <div className="mb-2 space-y-1">
             {msg.notes.map((n, i) => (

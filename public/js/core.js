@@ -37,14 +37,32 @@ if ("serviceWorker" in navigator) {
   });
 }
 
-// 移动端视口高度修正（解决 iOS 键盘/地址栏导致底部超出屏幕）
+// 移动端视口/软键盘修正：visualViewport 变矮时，固定输入条要抬到键盘顶。
+// 仅设置 --vvh 不够：部分 Android WebView 的 position:fixed 仍相对布局视口定位。
 const updateVH = () => {
   const vv = window.visualViewport;
-  if (vv) document.documentElement.style.setProperty("--vvh", vv.height + "px");
+  if (!vv) return;
+  const layoutHeight = window.innerHeight || document.documentElement.clientHeight || vv.height;
+  const keyboardInset = Math.max(0, Math.round(layoutHeight - vv.height - vv.offsetTop));
+  const editable = document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
+  const keyboardOpen = editable && (keyboardInset > 80 || vv.height < layoutHeight * 0.82);
+  document.documentElement.style.setProperty("--vvh", Math.round(vv.height) + "px");
+  document.documentElement.style.setProperty("--keyboard-inset", (keyboardOpen ? keyboardInset : 0) + "px");
+  document.body.classList.toggle("keyboard-open", keyboardOpen);
+
+  // 键盘动画结束后确保输入框和消息末尾处于可视区。
+  if (keyboardOpen) requestAnimationFrame(() => {
+    const input = document.getElementById("input");
+    if (input === document.activeElement) input.scrollIntoView({ block: "nearest" });
+    const messages = document.getElementById("messages");
+    if (messages) messages.scrollTop = messages.scrollHeight;
+  });
 };
 if (window.visualViewport) {
   window.visualViewport.addEventListener("resize", updateVH);
   window.visualViewport.addEventListener("scroll", updateVH);
+  document.addEventListener("focusin", updateVH);
+  document.addEventListener("focusout", () => setTimeout(updateVH, 80));
 }
 updateVH();
 

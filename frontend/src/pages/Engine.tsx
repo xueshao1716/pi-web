@@ -40,7 +40,7 @@ function StatusBadge({ have }: { have: boolean }) {
 function RunningChassis({ st }: { st: any }) {
   const comp = st.components || {}
   return (
-    <div className="panel !p-4">
+    <div className="panel !p-3">
       <div className="flex items-center gap-2 mb-3">
         <span className="text-[13px] font-medium text-pi-text">运行底盘</span>
         <span className="px-1.5 py-0.5 rounded-pi-sm bg-pi-dim2/12 text-pi-dim2 text-[10px]">当前实现</span>
@@ -71,7 +71,7 @@ function ToolRegistry({ data }: { data: any }) {
   const tools: any[] = data?.tools || []
   const [open, setOpen] = useState<Record<string, boolean>>({})
   return (
-    <div className="panel !p-4">
+    <div className="panel !p-3">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-medium text-pi-text">工具注册表</span>
@@ -100,7 +100,7 @@ function ToolRegistry({ data }: { data: any }) {
 
 function Capabilities() {
   return (
-    <div className="panel !p-4">
+    <div className="panel !p-3">
       <div className="flex items-center gap-2 mb-3">
         <span className="text-[13px] font-medium text-pi-text">可插拔能力清单</span>
         <span className="text-[11px] text-pi-dim2">对标 dsh 插件化思路 · pi-web 已具备 / 规划中</span>
@@ -129,7 +129,7 @@ function Plugins({ data, onReload }: { data: any; onReload: () => void }) {
     setBusy(id); try { await EngineApi.unregisterPlugin(id); onReload() } catch (e: any) { alert('卸载失败：' + (e?.message || e)) } finally { setBusy('') }
   }
   return (
-    <div className="panel !p-4">
+    <div className="panel !p-3">
       <div className="flex items-center justify-between mb-3">
         <span className="text-[13px] font-medium text-pi-text">已挂载插件</span>
         <span className="text-[11px] text-pi-dim2">{(data?.plugins || []).length} 个</span>

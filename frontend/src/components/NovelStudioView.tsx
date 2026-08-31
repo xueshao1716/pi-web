@@ -41,7 +41,7 @@ function BookShelf({ onOpen }: { onOpen: (id: string) => void }) {
       </div>
 
       {creating && (
-        <div className="panel !p-4 space-y-2.5">
+        <div className="panel !p-3 space-y-2.5">
           <input className="input-pi text-[13px]" placeholder="书名 *" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
           <div className="flex gap-2 flex-wrap">
             <label className="text-xs text-pi-dim flex items-center gap-1.5">题材
@@ -98,7 +98,7 @@ function ChapterReader({ id, ch, onClose }: { id: string; ch: NovelChapter; onCl
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
   return (
-    <div className={`fixed inset-0 z-[var(--pi-z-modal)] flex flex-col bg-pi-bg anim-fade`}>
+    <div className={`fixed inset-0 z-[var(--pi-z-modal)] flex flex-col bg-pi-bg`}>
       <div className="h-12 flex items-center gap-2 px-3 border-b border-pi-border-soft flex-shrink-0">
         <button className="touch-hit p-2 rounded-pi-md hover:bg-pi-bg2 text-pi-dim hover:text-pi-text" aria-label="关闭" onClick={onClose}><X className="w-4 h-4" /></button>
         <span className="text-[13px] font-medium truncate">第{String(ch.no).padStart(3, '0')}章</span>
@@ -170,7 +170,7 @@ function BookWorkbench({ id, onBack }: { id: string; onBack: () => void }) {
       </button>
 
       {/* 作品档案头 */}
-      <div className="panel !p-4">
+      <div className="panel !p-3">
         <div className="flex items-baseline gap-2.5 flex-wrap">
           <h2 className="text-[17px] font-bold text-pi-text">《{meta.title}》</h2>
           <span className="text-[11px] text-pi-dim">{genreLabel(meta.genre)} · {meta.narrator || '第三人称'} · 已写 {chapters.length} 章 · 下一步：第 {nextCh} 章</span>
@@ -193,7 +193,7 @@ function BookWorkbench({ id, onBack }: { id: string; onBack: () => void }) {
       </div>
 
       {/* 续写条 */}
-      <div className="panel !p-4 space-y-2.5">
+      <div className="panel !p-3 space-y-2.5">
         <div className="flex items-center gap-2">
           <input className="input-pi text-[13px] flex-1" placeholder={`第 ${nextCh} 章大纲（可选——留空则按既定伏笔自然推进）`} value={outline} onChange={e => setOutline(e.target.value)} />
         </div>
@@ -238,7 +238,7 @@ function BookWorkbench({ id, onBack }: { id: string; onBack: () => void }) {
       {/* 章节列表 */}
       <div className="space-y-1.5">
         <div className="text-[11px] text-pi-dim2 px-1">目录（点击阅读）</div>
-        {chapters.length === 0 && <div className="panel !p-4 text-[12px] text-pi-dim2 text-center">还没有章节——上面点「续写」开工</div>}
+        {chapters.length === 0 && <div className="panel !p-3 text-[12px] text-pi-dim2 text-center">还没有章节——上面点「续写」开工</div>}
         {chapters.map(c => (
           <button key={c.file} onClick={() => setReading(c)} className="panel !p-3 w-full flex items-center gap-2.5 text-left glow-hover">
             <BookOpen className="w-4 h-4 text-pi-dim flex-shrink-0" strokeWidth={1.8} />

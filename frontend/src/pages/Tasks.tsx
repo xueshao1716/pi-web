@@ -219,7 +219,7 @@ export default function Tasks() {
         {/* 新建表单 */}
         <section ref={formRef} className="scroll-mt-6">
           <SectionHeader title="新建任务" description="设置执行频率和指令；创建后仍可暂停、恢复、归档或删除。" />
-          <div className="panel !p-4 space-y-3">
+          <div className="panel !p-3 space-y-3">
           <div className="flex gap-2 flex-wrap items-center">
             <div className="flex rounded-pi-md overflow-hidden border border-pi-border">
               {(['daily', 'weekly', 'once'] as const).map(tp => (

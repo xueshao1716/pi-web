@@ -80,7 +80,9 @@ export async function saveArtifact(artifact) {
     const typeDir = artifact.type === "image" ? "图片" : artifact.type === "audio" ? "音频" : "视频";
     const dir = path.join(WS_ROOT, "生成物", typeDir, date);
     fs.mkdirSync(dir, { recursive: true });
-    const ts = new Date().toTimeString().slice(0, 5).replace(":", "");
+    // 精确到毫秒，避免同一分钟连续生成时静默覆盖前一张。
+    const now = new Date();
+    const ts = now.toTimeString().slice(0, 8).replace(/:/g, "") + "-" + String(now.getMilliseconds()).padStart(3, "0");
     const ext = artifact.type === "image" ? ".png" : artifact.type === "audio" ? ".wav" : ".mp4";
     const file = path.join(dir, `产物_${ts}${ext}`);
     if (artifact.url.startsWith("data:")) {

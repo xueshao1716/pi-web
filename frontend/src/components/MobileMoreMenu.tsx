@@ -82,7 +82,7 @@ export default function MobileMoreMenu({ open, onClose, route, nav, onOpenPanel,
 
   return (
     <div className="fixed inset-0 z-[var(--pi-z-dialog)] flex items-end" role="presentation">
-      <button className="absolute inset-0 bg-black/45 backdrop-blur-sm" aria-label="关闭更多菜单" onClick={onClose} />
+      <button className="absolute inset-0 bg-black/50" aria-label="关闭更多菜单" onClick={onClose} />
       <section
         ref={sheetRef}
         className="mobile-more-sheet relative w-full rounded-t-pi-xl border-t border-pi-border bg-pi-bg1 shadow-2xl"

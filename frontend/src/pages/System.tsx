@@ -115,7 +115,7 @@ export default function System() {
         <section data-slot="system-primary" className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
           <div>
             <SectionHeader title="检测更新" description="对比远端仓库，确认当前工作台是否需要更新。" />
-            <div className="panel !p-4 min-h-[132px]">
+            <div className="panel !p-3 min-h-[132px]">
               {!update ? (
                 <button type="button" className="btn-primary text-xs px-3.5 py-1.5 inline-flex items-center gap-1.5" disabled={checking} onClick={checkUpdate}>
                   <RefreshCw className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} aria-hidden="true" />{checking ? '检测中…' : '对比远端仓库'}
@@ -148,7 +148,7 @@ export default function System() {
 
           <div>
             <SectionHeader title="外网配置" description="管理公网域名与局域网入口，增删改后保存即生效。" />
-            <div className="panel !p-4">
+            <div className="panel !p-3">
               <p className="text-[12px] text-pi-dim2 mb-3">公网域名列表（隧道映射到本服务）。</p>
               <div className="space-y-2">
                 {domains.map((d, i) => (

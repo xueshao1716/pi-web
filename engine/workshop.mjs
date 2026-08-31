@@ -12,6 +12,7 @@ export const WORKSHOP_PAGES = {
   "/workshop/ppt": "workshop-ppt.html",
   "/workshop/designer": "workshop-designer.html",
   "/workshop/wanxiang": "workshop-wanxiang.html",
+  "/workshop/image": "workshop-image.html",
   "/workshop/novel": "workshop-novel.html",
   "/workshop/refine": "workshop-refine.html",
   "/workshop/article": "workshop-article.html",
