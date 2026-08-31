@@ -77,6 +77,20 @@ function solveLForContrast(baseHex, bgHex, target) {
 
 // ── Seed：每套主题只有这几个设计意图输入 ──
 export const SEEDS = {
+  // 新增：高亮低饱和（默认主题，基于 RuiRui 研究报告）
+  highLum: { bg: '#f5f6f8', text: '#2f3542', accent: '#5b7fb8', light: true, step: 0.012,
+            overrides: {
+              '--pi-accent2': '#7a9acc',
+              '--pi-accent-deep': '#4a6a9a',
+              '--pi-accent-glow': 'rgba(91,127,184,0.12)',
+              '--pi-green': '#5a9a7a',
+              '--pi-red': '#c25d5d',
+              '--pi-yellow': '#b8935a',
+              '--pi-border-hi': 'rgba(0,0,0,0.04)',
+              '--pi-shadow-sm': '0 1px 2px rgba(0,0,0,.04), 0 1px 4px rgba(0,0,0,.04)',
+              '--pi-shadow-md': '0 2px 8px rgba(0,0,0,.06), 0 1px 3px rgba(0,0,0,.04)',
+              '--pi-shadow-lg': '0 4px 16px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.04)',
+            } },
   deep:   { bg: '#0e1116', text: '#e8eef8', accent: '#5468ff', step: 0.043 },
   ink:    { bg: '#050508', text: '#eceef2', accent: '#5468ff', step: 0.045,
             overrides: { '--pi-accent-glow': 'rgba(120,120,160,0.22)', '--pi-glow-purple': 'rgba(120,120,160,0.12)', '--pi-glow-cyan': 'rgba(100,140,180,0.06)' } },

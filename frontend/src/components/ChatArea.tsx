@@ -658,11 +658,10 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   const openPanel = (p: string) => window.dispatchEvent(new CustomEvent('pi-open-panel', { detail: p }))
   const welcome = (
     <div className="relative overflow-hidden flex items-center justify-center h-full px-6">
-      <WebglBackdrop className="absolute inset-0" dim={0.08} />
       <div className="relative z-10 text-center max-w-2xl anim-enter">
-        {/* 品牌圈 */}
-        <div className="w-20 h-20 mx-auto rounded-2xl bg-gradient-to-br from-pi-accent via-pi-accent2 to-purple-400 flex items-center justify-center text-4xl font-bold text-white mb-8 anim-enter"
-          style={{ boxShadow: '0 12px 40px color-mix(in oklab, var(--pi-accent) 28%, transparent)' }}>语</div>
+        {/* 品牌标识：实底圆形，不用渐变 */}
+        <div className="w-20 h-20 mx-auto rounded-2xl bg-pi-accent flex items-center justify-center text-4xl font-bold text-white mb-8 anim-enter"
+          style={{ boxShadow: 'var(--pi-shadow-sm)' }}>语</div>
 
         {/* 标题 */}
         <h1 className="text-[22px] font-extrabold text-pi-text mb-2 tracking-tight anim-enter anim-enter-delay-1"
@@ -671,18 +670,18 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
           你的 AI 工作伙伴。写代码、做设计、整理文档——从一句话开始。
         </p>
 
-        {/* 快捷入口：宽松的卡片布局，更多呼吸感 */}
+        {/* 快捷入口：实底卡片，不用渐变和模糊 */}
         <div className="grid grid-cols-2 gap-4 max-w-lg mx-auto anim-enter anim-enter-delay-3">
           {[
-            { Icon: Plus, label: '新建对话', desc: '开始一段新的工作', act: newSession, c: 'from-blue-500/20 to-blue-600/5 border-blue-500/20 hover:border-blue-400/40', ic: 'text-blue-400', accent: 'var(--pi-accent)' },
-            { Icon: SquareTerminal, label: '终端', desc: '写代码调工具', act: () => openPanel('terminal'), c: 'from-emerald-500/20 to-emerald-600/5 border-emerald-500/20 hover:border-emerald-400/40', ic: 'text-emerald-400', accent: 'var(--pi-green)' },
-            { Icon: LayoutGrid, label: '模型中心', desc: '浏览与切换模型', act: () => { location.hash = '#/models' }, c: 'from-violet-500/20 to-violet-600/5 border-violet-500/20 hover:border-violet-400/40', ic: 'text-violet-400', accent: 'var(--pi-accent2)' },
-            { Icon: Command, label: '命令面板', desc: 'Ctrl / ⌘ + K', act: () => window.dispatchEvent(new CustomEvent('pi-open-palette')), c: 'from-amber-500/20 to-amber-600/5 border-amber-500/20 hover:border-amber-400/40', ic: 'text-amber-400', accent: 'var(--pi-yellow)' },
+            { Icon: Plus, label: '新建对话', desc: '开始一段新的工作', act: newSession },
+            { Icon: SquareTerminal, label: '终端', desc: '写代码调工具', act: () => openPanel('terminal') },
+            { Icon: LayoutGrid, label: '模型中心', desc: '浏览与切换模型', act: () => { location.hash = '#/models' } },
+            { Icon: Command, label: '命令面板', desc: 'Ctrl / ⌘ + K', act: () => window.dispatchEvent(new CustomEvent('pi-open-palette')) },
           ].map((f, i) => (
             <button key={f.label} onClick={f.act}
-              className={`welcome-card group rounded-xl border px-5 py-4 cursor-pointer text-left bg-gradient-to-br ${f.c} backdrop-blur-sm`}
-              style={{ animationDelay: `${0.25 + i * 0.07}s`, '--_card-accent': f.accent } as React.CSSProperties}>
-              <f.Icon className={`w-5 h-5 mb-2.5 ${f.ic} transition-transform group-hover:scale-110`} strokeWidth={1.7} />
+              className="group rounded-xl border border-pi-border bg-pi-bg1 px-5 py-4 cursor-pointer text-left hover:border-pi-accent/30 hover:bg-pi-bg2 transition-colors"
+              style={{ animationDelay: `${0.25 + i * 0.07}s` }}>
+              <f.Icon className="w-5 h-5 mb-2.5 text-pi-accent transition-transform group-hover:scale-105" strokeWidth={1.7} />
               <div className="text-[15px] font-semibold text-pi-text mb-0.5">{f.label}</div>
               <div className="text-[12px] text-pi-dim2 leading-relaxed">{f.desc}</div>
             </button>
@@ -691,13 +690,13 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
 
         {/* 快捷提示 */}
         <div className="mt-10 flex items-center justify-center gap-4 text-[11px] text-pi-dim2 anim-enter anim-enter-delay-4">
-          <span className="px-2 py-0.5 rounded bg-pi-bg3/80 font-mono">⌘K</span>
+          <span className="px-2 py-0.5 rounded bg-pi-bg2 border border-pi-border font-mono">⌘K</span>
           <span>命令面板</span>
           <span className="w-px h-3 bg-pi-border" />
-          <span className="px-2 py-0.5 rounded bg-pi-bg3/80 font-mono">/</span>
+          <span className="px-2 py-0.5 rounded bg-pi-bg2 border border-pi-border font-mono">/</span>
           <span>斜杠命令</span>
           <span className="w-px h-3 bg-pi-border" />
-          <span className="px-2 py-0.5 rounded bg-pi-bg3/80 font-mono">@</span>
+          <span className="px-2 py-0.5 rounded bg-pi-bg2 border border-pi-border font-mono">@</span>
           <span>引用文件</span>
         </div>
       </div>
