@@ -4,6 +4,7 @@ import { Brain, FileText, Check, X, Pencil, ChevronRight, Square, Info } from 'l
 import Markdown from './Markdown'
 import { withFileToken } from '../api'
 import type { ChatMessage, RunningTool, ToolStatus } from '../types'
+import { AgentWorkflow } from './AgentWorkflow'
 
 // 兼容两种来源：流式 RunningTool / 历史消息里的 ToolCall（无 running 态）
 function ToolCard({ tool }: { tool: Partial<RunningTool> & { name: string } }) {
@@ -156,11 +157,35 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
   }
 
   // 助手：实底头像，不用渐变
+  // 计算工作流阶段
+  const hasThinking = !!msg.think
+  const hasTools = (msg.tools?.length || 0) > 0
+  const hasText = !!msg.text
+  const runningTools = msg.tools?.filter(t => t.status === 'running').length || 0
+  
+  let phase: 'thinking' | 'tools' | 'result' | 'idle' = 'idle'
+  if (streaming) {
+    if (hasThinking && !hasTools && !hasText) phase = 'thinking'
+    else if (hasTools && runningTools > 0) phase = 'tools'
+    else if (hasText) phase = 'result'
+  }
+
   return (
     <div className="group/msg flex gap-2.5 py-3 msg-assistant">
       <div className="w-7 h-7 rounded-lg bg-pi-accent flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 mt-0.5"
         style={{ boxShadow: 'var(--pi-shadow-sm)' }}>语</div>
       <div className="min-w-0 flex-1">
+        {/* 工作流可视化：只在流式中显示 */}
+        {streaming && phase !== 'idle' && (
+          <div className="mb-3">
+            <AgentWorkflow 
+              phase={phase}
+              thinking={hasThinking}
+              toolsRunning={runningTools}
+              toolsTotal={msg.tools?.length || 0}
+            />
+          </div>
+        )}
         {msg.notes?.length ? (
           <div className="mb-2 space-y-1">
             {msg.notes.map((n, i) => (
