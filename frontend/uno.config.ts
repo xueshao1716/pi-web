@@ -45,8 +45,8 @@ export default defineConfig({
     'btn-primary': 'btn btn-grad text-white hover:brightness-110 active:scale-[.98]',
     'btn-ghost': 'btn text-pi-dim hover:text-pi-text hover:bg-pi-bg3',
     'btn-tool': 'btn w-7 h-7 p-0 text-pi-dim hover:text-pi-text hover:bg-pi-bg-hover active:bg-pi-bg-active rounded-pi-sm',
-    'card': 'rounded-pi-lg border border-pi-border bg-pi-bg2',
-    'panel': 'rounded-pi-lg glass-hi',
+    'card': 'rounded-pi-lg border border-pi-border-soft bg-pi-bg1',
+    'panel': 'rounded-pi-lg bg-pi-bg1 border border-pi-border-soft',
     'input-pi': 'w-full px-3 py-2 rounded-pi-md bg-pi-field border border-pi-field-border text-pi-text text-sm outline-none focus:border-pi-accent focus:ring-1 focus:ring-pi-accent/40 placeholder:text-pi-dim2 transition-colors',
   },
   rules: [

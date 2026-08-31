@@ -187,30 +187,18 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,.32); }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* ══ 面板材质（08-26 去 AI 味改版：
-   .glass = 常驻框架面板 → 实底主题色，零模糊；
-   .glass-strong = 弹层/遮罩（命令面板、移动 overlay、TabBar）→ 半透明+模糊保留，这是功能性景深不是装饰 ══ */
+/* ══ 面板材质（按 RuiRui 报告：实底替代玻璃模糊）══ */
 .glass {
-  background: var(--pi-bg2);
+  background: var(--pi-bg1);
 }
 .glass-strong {
-  position: relative;
-  background: color-mix(in oklab, var(--pi-bg1) 82%, transparent);
-}
-.glass-strong::before {
-  content: ""; position: absolute; inset: 0; z-index: -1;
-  border-radius: inherit;
-  pointer-events: none;
-  backdrop-filter: blur(28px) saturate(1.3);
-  -webkit-backdrop-filter: blur(28px) saturate(1.3);
-}
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .glass-strong { background: var(--pi-bg1); }
+  background: var(--pi-bg1);
+  border: 1px solid var(--pi-border-soft);
 }
 /* 高光描边简化：一条边框 + 一道投影，去掉内发光叠层 */
 .glass-hi {
-  border: 1px solid var(--pi-border);
-  box-shadow: var(--pi-shadow-lg);
+  background: var(--pi-bg1);
+  border: 1px solid var(--pi-border-soft);
 }
 
 /* ── 三栏层次（08-23）：左栏微亮+顶部天光，中栏最深做画布，右栏居中 —— 拉开前中后景 */
@@ -820,18 +808,11 @@ body {
   .page-header__actions { width: 100%; flex-wrap: wrap; }
 }
 
-/* 统计卡 */
+/* 统计卡（删除渐变和装饰光晕）*/
 .stat-card {
-  position: relative; overflow: hidden;
   border-radius: var(--pi-r-lg); padding: 14px 16px;
-  border: 1px solid var(--pi-border-hi);
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.012));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 4px 16px rgba(0,0,0,0.18);
-}
-.stat-card::after {
-  content: ""; position: absolute; right: -30px; bottom: -55px; width: 130px; height: 130px;
-  background: radial-gradient(closest-side, var(--pi-accent-glow), transparent 72%);
-  opacity: .28; pointer-events: none;
+  border: 1px solid var(--pi-border-soft);
+  background: var(--pi-bg1);
 }
 .stat-num { font-size: 22px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 
