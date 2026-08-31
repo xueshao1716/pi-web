@@ -254,7 +254,7 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
           role="combobox"
           aria-expanded={showSlash || showAt}
           aria-label="消息输入框"
-          className="w-full bg-transparent border-none outline-none px-4 pt-2.5 pb-0.5 text-[13px] text-pi-text resize-none placeholder:text-pi-dim2 disabled:opacity-60"
+          className="w-full bg-transparent border-none outline-none px-3 pt-2 pb-0.5 text-[13px] text-pi-text resize-none placeholder:text-pi-dim2 disabled:opacity-60"
           onChange={e => onChange(e.target.value)}
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.shiftKey) {

@@ -231,7 +231,7 @@ export default function WanXiang() {
   return (
     <div className="space-y-4">
       {/* 场景模板 */}
-      <div className="panel !p-4">
+      <div className="panel !p-3">
         <h3 className="text-[13px] font-semibold text-pi-text mb-2.5 flex items-center gap-2">
           <span className="w-5 h-5 rounded-full bg-pi-accent/15 text-pi-accent text-[10px] font-bold flex items-center justify-center">1</span>
           场景模板
@@ -247,7 +247,7 @@ export default function WanXiang() {
       </div>
 
       {/* 五要素 */}
-      <div className="panel !p-4 space-y-3">
+      <div className="panel !p-3 space-y-3">
         <h3 className="text-[13px] font-semibold text-pi-text mb-2.5 flex items-center gap-2">
           <span className="w-5 h-5 rounded-full bg-pi-accent/15 text-pi-accent text-[10px] font-bold flex items-center justify-center">2</span>
           基本信息
@@ -287,7 +287,7 @@ export default function WanXiang() {
       </div>
 
       {/* 光影·风格 */}
-      <div className="panel !p-4 space-y-3">
+      <div className="panel !p-3 space-y-3">
         <h3 className="text-[13px] font-semibold text-pi-text mb-2.5 flex items-center gap-2">
           <span className="w-5 h-5 rounded-full bg-pi-accent/15 text-pi-accent text-[10px] font-bold flex items-center justify-center">3</span>
           光影 · 氛围 · 风格
@@ -299,7 +299,7 @@ export default function WanXiang() {
       </div>
 
       {/* 技术增强 + 输出 */}
-      <div className="panel !p-4 space-y-2.5">
+      <div className="panel !p-3 space-y-2.5">
         <h3 className="text-[13px] font-semibold text-pi-text mb-2.5">技术增强 & 输出</h3>
         <Toggle v={uhq} set={setUhq} label="超高清画质（UHQ）" />
         <Toggle v={zero} set={setZero} label="零器材模式" />
@@ -352,7 +352,7 @@ export default function WanXiang() {
 
       {/* 输出 */}
       {output && (
-        <div className="panel !p-4 space-y-3">
+        <div className="panel !p-3 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-[13px] font-semibold text-pi-text">生成结果</span>
             <button onClick={copyToClipboard} className="btn-tool text-xs inline-flex items-center gap-1.5">

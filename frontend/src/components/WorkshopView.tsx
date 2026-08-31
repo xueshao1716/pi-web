@@ -66,7 +66,7 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
   return (
     <div className="space-y-4">
       {/* 表单 */}
-      <div className="panel !p-4 space-y-3">
+      <div className="panel !p-3 space-y-3">
           <input className="input-pi text-[13px]" placeholder="PPT 主题，如：Q3 产品复盘汇报" value={theme} onChange={e => setTheme(e.target.value)} />
           <div className="flex gap-2 flex-wrap">
             <label className="text-xs text-pi-dim flex items-center gap-1.5">页数

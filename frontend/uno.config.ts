@@ -41,7 +41,7 @@ export default defineConfig({
     },
   },
   shortcuts: {
-    'btn': 'press inline-flex items-center justify-center gap-1.5 rounded-pi-md px-3 py-1.5 text-sm font-medium cursor-pointer select-none disabled:opacity-50 disabled:pointer-events-none',
+    'btn': 'press inline-flex items-center justify-center gap-1.5 rounded-pi-md px-2.5 py-1 text-sm font-medium cursor-pointer select-none disabled:opacity-50 disabled:pointer-events-none',
     'btn-primary': 'btn btn-grad text-white hover:brightness-110 active:scale-[.98]',
     'btn-ghost': 'btn text-pi-dim hover:text-pi-text hover:bg-pi-bg3',
     'btn-tool': 'btn w-7 h-7 p-0 text-pi-dim hover:text-pi-text hover:bg-pi-bg-hover active:bg-pi-bg-active rounded-pi-sm',

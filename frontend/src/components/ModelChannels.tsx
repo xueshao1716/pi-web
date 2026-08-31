@@ -34,7 +34,7 @@ export default function ModelChannels() {
   const del = async (p: string) => { try { await KeysApi.remove(p); load() } catch {} }
 
   return (
-    <div className="panel !p-4">
+    <div className="panel !p-3">
       <div className="flex items-center justify-between mb-3">
         <div className="text-[13px] font-semibold text-pi-text flex items-center gap-2"><KeyRound className="w-4 h-4 text-pi-accent" />服务商通道</div>
         <button className="btn-primary text-xs px-3 py-1.5 inline-flex items-center gap-1.5" onClick={() => setAddOpen(true)}>
