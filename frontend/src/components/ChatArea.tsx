@@ -14,6 +14,8 @@ import { emoMeta, emoTooltip, type EmoMeta } from '../lib/emotion'
 import type { FileAttachment } from './SendBox'
 import type { ChatMessage, RunningTool } from '../types'
 import WebglBackdrop from './WebglBackdrop'
+import { saveMessage, getMessages, deleteMessage, mergeMessages, type LocalMessage } from '../lib/local-db'
+import { notifyTaskDone } from '../lib/notify'
 
 // 流式状态：覆盖服务端全部 SSE 事件（delta/think/think_end/tool/tool_output/
 // tool_end/turn_end/file/image/media/note/emotion/done/error）
@@ -52,20 +54,130 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   // ref 是唯一事实源：SSE 事件可能在一个渲染批次内全部到达，useEffect 同步会滞后导致 done 时读到旧值
   const streamRef = useRef<StreamState | null>(null)
   const lastEventAtRef = useRef(0)
+  const assistantMsgIdRef = useRef<string | null>(null) // 本轮 assistant 消息的固定 id，流式期间快照与最终写入用同一 id（避免重复）
+  const wasBackgroundRef = useRef(false) // 本轮流式期间是否曾去过后台（哪怕又切回来了），放宽通知触发条件用
 
   // ── swr 数据层：消息缓存 + 重验证（切会话自动换 key，断线恢复后 revalidate）──
   const msgKey = currentSessionId ? ['messages', currentSessionId] : null
   const { data: msgData, isLoading, mutate: mutateMsgs } = useSWR(msgKey,
     ([, sid]: readonly [string, string]) => SessionsApi.messages(sid),
     { revalidateOnFocus: true, dedupingInterval: 1500 })
-  const messages: ChatMessage[] = msgData?.messages || []
+  // ── 本地消息存储：从 IndexedDB 加载，与服务端数据合并 ──
+  const [localMessages, setLocalMessages] = useState<ChatMessage[]>([])
+  const [localLoaded, setLocalLoaded] = useState(false)
+
+  // 切会话时：加载本地消息
+  useEffect(() => {
+    if (!currentSessionId) { setLocalMessages([]); setLocalLoaded(false); return }
+    let alive = true
+    setLocalLoaded(false)
+    getMessages(currentSessionId).then(localMsgs => {
+      if (!alive) return
+      // 转换成 ChatMessage 格式
+      const msgs = localMsgs.map(lm => ({
+        id: lm.id,
+        role: lm.role,
+        text: lm.text,
+        think: lm.think,
+        tools: lm.tools,
+        notes: lm.notes,
+        files: lm.files,
+        images: lm.images,
+        audios: lm.audios,
+        model: lm.model,
+        ts: lm.ts,
+        streaming: lm.streaming,
+        isDraft: lm.draft,
+      } as ChatMessage))
+      setLocalMessages(msgs)
+      setLocalLoaded(true)
+    }).catch(() => {
+      setLocalMessages([])
+      setLocalLoaded(true)
+    })
+    return () => { alive = false }
+  }, [currentSessionId])
+
+  // 合并本地与服务端消息：本地优先，服务端补充
+  const messages: ChatMessage[] = localLoaded && msgData
+    ? mergeMessages(
+        localMessages.map(m => ({
+          id: m.id,
+          sessionId: currentSessionId || '',
+          role: m.role,
+          text: m.text || '',
+          think: m.think,
+          tools: m.tools,
+          notes: m.notes,
+          files: m.files,
+          images: m.images,
+          audios: m.audios,
+          model: m.model,
+          ts: m.ts,
+          synced: !m.isDraft,
+          draft: !!m.isDraft,
+          streaming: m.streaming,
+        })),
+        msgData.messages || []
+      ).map(lm => ({
+        id: lm.id,
+        role: lm.role,
+        text: lm.text,
+        think: lm.think,
+        tools: lm.tools,
+        notes: lm.notes,
+        files: lm.files,
+        images: lm.images,
+        audios: lm.audios,
+        model: lm.model,
+        ts: lm.ts,
+        streaming: lm.streaming,
+        isDraft: lm.draft,
+      } as ChatMessage))
+    : localLoaded
+      ? localMessages
+      : (msgData?.messages || [])
+
+  // 保存消息到本地 IndexedDB
+  const saveToLocal = async (msg: ChatMessage) => {
+    if (!currentSessionId) return
+    try {
+      await saveMessage({
+        id: msg.id,
+        sessionId: currentSessionId,
+        role: msg.role,
+        text: msg.text || '',
+        think: msg.think,
+        tools: msg.tools,
+        notes: msg.notes,
+        files: msg.files,
+        images: msg.images,
+        audios: msg.audios,
+        model: msg.model,
+        ts: msg.ts,
+        synced: !msg.streaming && !msg.isDraft,
+        draft: !!msg.isDraft || !!msg.streaming,
+        streaming: msg.streaming,
+      })
+      // 更新本地消息列表
+      setLocalMessages(prev => {
+        const exists = prev.find(m => m.id === msg.id)
+        if (exists) return prev.map(m => m.id === msg.id ? msg : m)
+        return [...prev, msg]
+      })
+    } catch (e) {
+      console.error('[local-db] 保存消息失败:', e)
+    }
+  }
 
   // 移动端下拉刷新：重验证当前会话消息 + 会话列表（触屏才触发，桌面无 touch 事件）
     // 手机息屏恢复：页面从 hidden→visible 超过 10s，强制重拉消息（补 SWR 自动同步）
+  // 同时跟踪：只要流式期间曾经 hidden 过一次（哪怕只是瞬间锅屏/切新又切回），就标记 wasBackgroundRef，
+  // 因为用户已经离开过一次，很可能没看到完整过程，完成时应该提醒（而不是仅当完成那一刻刚好在后台才提醒）。
   useEffect(() => {
     let hiddenAt = 0
     const onVis = () => {
-      if (document.hidden) { hiddenAt = Date.now(); return }
+      if (document.hidden) { hiddenAt = Date.now(); if (streamRef.current) wasBackgroundRef.current = true; return }
       if (hiddenAt && Date.now() - hiddenAt > 10_000 && currentSessionId) {
         mutateMsgs()
         refreshSessions()
@@ -80,26 +192,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     await mutateMsgs()
     await refreshSessions()
   })
-    // 恢复息屏/重载前暂存的用户消息（pi_pending_msg）：SSE 未完成就断了，引擎可能没写入 JSONL
-  useEffect(() => {
-    if (!currentSessionId || !msgData) return
-    try {
-      const raw = localStorage.getItem('pi_pending_msg')
-      if (!raw) return
-      const pending = JSON.parse(raw)
-      if (pending.sid !== currentSessionId) { localStorage.removeItem('pi_pending_msg'); return }
-      // 检查服务端消息列表里是否已有这条（引擎已写入则不重复显示）
-      const alreadyExists = (msgData.messages || []).some((m: any) => m.role === 'user' && m.text === pending.content && m.ts && Math.abs(new Date(m.ts).getTime() - pending.at) < 30_000)
-      if (!alreadyExists) {
-        mutateMsgs(prev => {
-          const msgs = prev?.messages || []
-          // 去重：避免多次恢复同一条
-          if (msgs.some((m: any) => m.role === 'user' && m.text === pending.content)) return prev
-          return { ...(prev || { messages: [] }), messages: [...msgs, { id: 'u_pending_' + pending.at, role: 'user', text: pending.content, ts: new Date(pending.at).toISOString() }] }
-        }, { revalidate: false })
-      }
-    } catch {}
-  }, [currentSessionId, msgData])
+    // 用户消息防丢现已改由 IndexedDB 本地存储承担（send() 里 appendMessage 发送时即写入本地），无需再依赖旧版 localStorage pi_pending_msg + 手动插入 SWR 缓存的方式。
 
   const loading = !!msgKey && isLoading && !msgData
 
@@ -109,7 +202,18 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     mutateMsgs(prev => ({ ...(prev || { messages: [] as ChatMessage[] }), messages: fn(prev?.messages || []) }), { revalidate: false })
   }
 
+  // 追加一条消息：同时写入 SWR 乘机缓存 + IndexedDB 本地持久化。
+  // 写本地 IndexedDB 与服务端 JSONL 完全独立，不会产生重复写入问题，因此用户消息也可以安全地立即存本地。
+  const appendMessage = (msg: ChatMessage) => {
+    updateMessages(prev => [...prev, msg])
+    saveToLocal(msg)
+  }
+
   const reload = () => { if (currentSessionId) mutateMsgs() }
+
+  // 未完成的本地草稿（刷新/重启后从 IndexedDB 恢复）：只在当前没有活跃流式时展示
+  const draftMsg = !stream ? messages.find(m => m.isDraft) : undefined
+  const normalMessages = draftMsg ? messages.filter(m => m.id !== draftMsg.id) : messages
 
   // 智能滚动（nomifun useAutoScroll 模式）：用户上翻停滚、贴底恢复、仅"真新消息"才强拉底
   const lastMsg = messages[messages.length - 1]
@@ -165,32 +269,100 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   useEffect(() => {
     if (!streaming) { setIdleSeconds(0); return }
     lastEventAtRef.current = Date.now()
-    const t = setInterval(() => setIdleSeconds(Math.floor((Date.now() - lastEventAtRef.current) / 1000)), 1000)
+    const t = setInterval(() => {
+      const idle = Math.floor((Date.now() - lastEventAtRef.current) / 1000)
+      setIdleSeconds(idle)
+      // 看门狗自动停止：超过 90s 无新事件 → 判定为死流，自动中止
+      if (idle >= 90 && streamRef.current) {
+        console.warn('[watchdog] 流式无响应超过90s，自动中止')
+        try {
+          abortRef.current?.()
+          abortRef.current = null
+          updStream(p => ({ ...p, error: (p.error || '') + (p.error ? ' · ' : '') + '⏱️ 长时间无响应已自动停止', tools: p.tools.map(t => t.status === 'running' ? { ...t, status: 'canceled' } : t) }))
+          finalize()
+          toast('模型长时间无响应，已自动停止', 'error')
+        } catch (e) {
+          console.error('[watchdog] 自动停止失败:', e)
+        }
+      }
+    }, 1000)
     return () => clearInterval(t)
   }, [streaming])
+
+  // 流式增量持久化：每 3s 快照到 IndexedDB（同 id 覆盖写入，不会重复），刷新后可从本地恢复未完成的回复
+  // 注意：只依赖 streaming（true/false）控制定时器启停，不能依赖 stream 对象本身——
+  // 否则每个 delta 到达都会重建定时器，3s 永远跡不完，快照永远不会真正触发。
+  // 定时回调里直接读 streamRef.current（它是同步的最新值，updStream 里每次都会同步写入），不依赖闭包里的 stream。
+  useEffect(() => {
+    if (!streaming || !currentSessionId) return
+    const t = setInterval(() => {
+      const s = streamRef.current
+      if (!s || !assistantMsgIdRef.current) return
+      if (!s.text && !s.tools.length && !s.think) return // 空内容不存
+      saveToLocal({
+        id: assistantMsgIdRef.current,
+        role: 'assistant',
+        text: s.text,
+        think: s.think,
+        tools: s.tools,
+        notes: s.notes,
+        files: s.files,
+        images: s.images,
+        audios: s.audios,
+        ts: new Date().toISOString(),
+        streaming: true,
+        isDraft: true,
+      })
+    }, 3000)
+    return () => clearInterval(t)
+  }, [streaming, currentSessionId])
 
   const finalize = (model?: { provider: string; id: string }) => {
     // 本轮 SSE 结束（done/finish/error 均走到这）：用户消息已由引擎写入会话文件，清除前端防丢暂存
     try { localStorage.removeItem('pi_pending_msg') } catch {}
     const s = streamRef.current
+    const finalId = assistantMsgIdRef.current
+    assistantMsgIdRef.current = null
     if (!s) return
     if (s.text || s.think || s.tools.length || s.files.length || s.images.length || s.audios.length || s.error) {
-      updateMessages(prev => [...prev, {
-        id: 'a' + Date.now(), role: 'assistant',
+      appendMessage({
+        id: finalId || ('a' + Date.now()), role: 'assistant',
         text: s.text + (s.error ? `\n\n⚠️ ${s.error}` : ''),
         think: s.think, tools: s.tools, notes: s.notes,
         files: s.files, images: s.images, audios: s.audios,
         ts: new Date().toISOString(),
+        streaming: false, isDraft: false,
         ...(model ? { model } : {}),
-      }])
-      // 安卓原生任务完成提醒：只在页面不可见（App 在后台/锁屏）时弹，正盯着屏幕就不需要再提醒一次
+      })
+      // 完成提示音：双声"叮叮"（800Hz 0.1s + 1000Hz 0.15s）
       try {
-        const bridge = (window as any).YuanshuBridge
-        if (bridge?.notify && document.visibilityState === 'hidden') {
-          const preview = (s.text || '').replace(/\s+/g, ' ').trim().slice(0, 60) || (s.error ? `出错：${s.error}` : '有新回复')
-          bridge.notify('小语 · 任务完成', preview)
-        }
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        gain.gain.value = 0.25
+        osc.frequency.value = 800
+        osc.start(ctx.currentTime)
+        osc.stop(ctx.currentTime + 0.1)
+        const osc2 = ctx.createOscillator()
+        const gain2 = ctx.createGain()
+        osc2.connect(gain2)
+        gain2.connect(ctx.destination)
+        gain2.gain.value = 0.25
+        osc2.frequency.value = 1000
+        osc2.start(ctx.currentTime + 0.15)
+        osc2.stop(ctx.currentTime + 0.3)
       } catch {}
+      // 任务完成系统通知（安卓原生桥/Windows Tauri 插件统一入口，见 lib/notify.ts）：
+      // 页面不可见（App 在后台/锁屏）或本轮流式期间曾去过后台（哪怕又切回来）都弹，
+      // 旧条件只看完成那一瞬间是否在后台，错过了“发送后切到其它 App，回来时刚好生成完成”这种典型场景。
+      const shouldNotify = document.visibilityState === 'hidden' || wasBackgroundRef.current
+      if (shouldNotify) {
+        const preview = (s.text || '').replace(/\s+/g, ' ').trim().slice(0, 60) || (s.error ? `出错：${s.error}` : '有新回复')
+        notifyTaskDone('小语 · 任务完成', preview)
+      }
+      wasBackgroundRef.current = false // 收尾已处理完，重置供下一轮使用
     }
     streamRef.current = null
     setStream(null)
@@ -230,10 +402,12 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     }
     // 用户消息防丢：引擎 agent.prompt 会自动把用户消息写入会话 JSONL（pi 引擎 message_end 时 appendMessage），
     // 这里绝不能再手动预写一份到 JSONL——否则同一条 user 被写两份、parentId 相同，正是「重复+套旧答案」的根因。
-    // 防 network error 丢消息改由前端 localStorage 暂存：发送前暂存，SSE done/error 收尾成功后清除；失败保留。
+    // 但前端自己的 IndexedDB 与服务端 JSONL 完全独立，写本地不会与引擎冲突，因此用 appendMessage 同时存本地。
     let userMsgId = 'u' + Date.now();
     try { localStorage.setItem('pi_pending_msg', JSON.stringify({ sid, content, at: Date.now() })) } catch {}
-    updateMessages(prev => [...prev, { id: userMsgId, role: 'user', text: content, ts: new Date().toISOString() }])
+    appendMessage({ id: userMsgId, role: 'user', text: content, ts: new Date().toISOString() })
+    assistantMsgIdRef.current = 'a' + (Date.now() + 1) // 本轮 assistant 消息固定 id，流式快照与最终写入用同一 id
+    wasBackgroundRef.current = false // 新一轮开始，重置后台跟踪状态
     streamRef.current = emptyStream()
     setStream({ ...streamRef.current })
     // 模型参数（ParamsPanel 存 localStorage，随请求带给 server）
@@ -512,11 +686,11 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
               </div>
             ))}
           </div>
-        ) : messages.length === 0 && !stream ? welcome
+        ) : messages.length === 0 && !stream && !draftMsg ? welcome
           : (
             <div className="max-w-3xl w-full sm:mx-auto">
               <TurnList
-                messages={messages}
+                messages={normalMessages}
                 streamingNode={stream ? (
                   <Message msg={{
                     id: '__streaming__', role: 'assistant',
@@ -525,6 +699,18 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
                     files: stream.files, images: stream.images, audios: stream.audios,
                     streaming: true,
                   }} />
+                ) : draftMsg ? (
+                  <div className="relative">
+                    <div className="absolute -left-2 top-0 bottom-0 w-1 bg-amber-500/30 rounded-full" />
+                    <div className="mb-2 flex items-center gap-2">
+                      <div className="text-xs text-amber-400 font-medium">📝 未完成的回复（本地草稿，刷新不丢）</div>
+                      <button
+                        onClick={() => { deleteMessage(draftMsg!.id).then(() => setLocalMessages(prev => prev.filter(m => m.id !== draftMsg!.id))) }}
+                        className="text-xs text-pi-dim hover:text-pi-text px-2 py-0.5 rounded border border-pi-border-soft hover:border-pi-border"
+                      >丢弃</button>
+                    </div>
+                    <Message msg={draftMsg} />
+                  </div>
                 ) : undefined}
               />
             </div>
