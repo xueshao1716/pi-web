@@ -198,8 +198,7 @@ export default function AppLayout() {
       <div className="mobile-app-root flex flex-col text-pi-text relative"
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <div id="pi-wallpaper" className="fixed inset-0 z-0 pointer-events-none" />
-        <div className="absolute inset-0 pointer-events-none z-[1]"
-          style={{ background: 'radial-gradient(720px 420px at 82% -8%, color-mix(in oklab, var(--pi-accent) 12%, transparent), transparent 62%), radial-gradient(560px 380px at 8% 108%, color-mix(in oklab, var(--pi-accent2) 7%, transparent), transparent 60%)' }} />
+        {/* 删除装饰性径向渐变背景 */}
         {/* 主内容层 */}
         <div className="flex-1 flex min-h-0 relative z-10">
           {mobileDrawer === 'sessions' ? (
@@ -224,8 +223,8 @@ export default function AppLayout() {
           ) : pageArea}
         </div>
 
-        {/* 底部 TabBar：固定五入口，设置类页面统一归入“更多”活跃态。 */}
-        <nav className="mobile-tab-bar flex flex-shrink-0 relative z-20 border-t border-pi-border-soft glass-strong" aria-label="主要导航">
+        {/* 底部 TabBar：实底，不用玻璃 */}
+        <nav className="mobile-tab-bar flex flex-shrink-0 relative z-20 border-t border-pi-border bg-pi-bg1" aria-label="主要导航">
           {([
             { key: 'chat', icon: MessagesSquare, label: '对话', active: !mobileMoreOpen && route === 'chat' && mobileDrawer === 'none', onClick: () => { setMobileMoreOpen(false); setMobileDrawer('none'); nav('chat') } },
             { key: 'sessions', icon: FolderClosed, label: '会话', active: !mobileMoreOpen && mobileDrawer === 'sessions', onClick: () => { setMobileMoreOpen(false); setMobileDrawer('sessions') } },
@@ -268,10 +267,10 @@ export default function AppLayout() {
     <ShellFrame>
     <div className="flex-1 flex min-w-0 text-pi-text relative">
       <div id="pi-wallpaper" className="fixed inset-0 z-0 pointer-events-none" />
-      {/* 图标导航 rail（08-23：col-sidebar 顶部天光，拉开与中栏层次） */}
+      {/* 图标导航 rail：实底 Logo，不用渐变 */}
       <nav className="w-[60px] flex-shrink-0 flex flex-col items-center py-4 gap-2 col-sidebar border-r border-pi-border relative z-20">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-pi-accent to-pi-accent2 flex items-center justify-center text-white font-bold text-sm mb-3"
-          style={{ boxShadow: '0 4px 14px color-mix(in oklab, var(--pi-accent) 25%, transparent)' }}>语</div>
+        <div className="w-9 h-9 rounded-xl bg-pi-accent flex items-center justify-center text-white font-bold text-sm mb-3"
+          style={{ boxShadow: 'var(--pi-shadow-sm)' }}>语</div>
         {sidebarCollapsed && (
           <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-colors"
             aria-label="展开会话栏" title="展开会话栏" onClick={toggleSidebar}>

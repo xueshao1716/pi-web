@@ -27,7 +27,7 @@ function ArtifactTile({ a, onOpen }: { a: Artifact; onOpen: () => void }) {
         {/* 悬浮遮罩：预览提示 */}
         <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center"
           style={{ background: 'linear-gradient(to top, rgba(5,8,18,.72), rgba(5,8,18,.15))' }}>
-          <span className="text-[11px] text-white/90 px-2.5 py-1 rounded-pi-pill bg-white/10 backdrop-blur-sm border border-white/15">{isImg ? '预览' : '打开'}</span>
+          <span className="text-[11px] text-white/90 px-2.5 py-1 rounded-pi-pill bg-white/20 border border-white/15">{isImg ? '预览' : '打开'}</span>
         </div>
       </div>
       <div className="text-[12px] text-pi-text truncate" title={a.name}>{a.name}</div>
@@ -116,7 +116,7 @@ export default function Assets() {
 
       {/* 图片灯箱 */}
       {viewer && (
-        <div className="fixed inset-0 z-[var(--pi-z-viewer)] bg-black/80 backdrop-blur-sm flex items-center justify-center p-8" onClick={() => setViewer(null)}>
+        <div className="fixed inset-0 z-[var(--pi-z-viewer)] bg-black/85 flex items-center justify-center p-8" onClick={() => setViewer(null)}>
           <div className="max-w-[90vw] max-h-[88vh] flex flex-col gap-2" onClick={e => e.stopPropagation()}>
             <img src={withFileToken(viewer.url)} alt={viewer.name} className="max-w-full max-h-[78vh] object-contain rounded-pi-lg border border-pi-border" />
             <div className="flex items-center gap-3 text-xs text-pi-dim">

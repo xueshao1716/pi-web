@@ -851,13 +851,16 @@ function onThinkEnd(sid) {
 }
 function onTool(sid, name, argsText, toolCallId, rawArgs) {
   const st = streams.get(sid);
-  if (st) {
+  // POST SSE 与会话订阅可能在切换/重连边界收到同一个工具事件。
+  // toolCallId 是一次调用的稳定主键，数据层按它幂等，避免重放时生成双份。
+  const seen = !!(st && toolCallId && st.tools.has(toolCallId));
+  if (st && !seen) {
     st.toolStarted = true;
     st.tools.set(toolCallId, { name, argsText, rawArgs, output: "", isError: false, done: false, start: performance.now() });
     st.toolOrder.push(toolCallId);
     pushEvent(st, { type: "tool", id: toolCallId, name, argsText, rawArgs });
   }
-  if (sid === currentKey()) addTool(name, argsText, toolCallId, rawArgs);
+  if (sid === currentKey() && !seen) addTool(name, argsText, toolCallId, rawArgs);
 }
 function onToolOutput(sid, toolCallId, text) {
   const st = streams.get(sid);
@@ -1086,6 +1089,8 @@ function appendConclusion(text) {
 }
 
 function addTool(name, argsText, toolCallId, rawArgs) {
+  // DOM 层再做一道幂等保护：历史重放、订阅重连、POST 流竞态都不能重复插卡。
+  if (toolCallId && render.toolEls.has(toolCallId)) return render.toolEls.get(toolCallId);
   const box = $("messages");
   const colorVar = "--" + (TOOL_VAR[name] || "accent");
   const icon = TOOL_ICONS[name] || "⚙";

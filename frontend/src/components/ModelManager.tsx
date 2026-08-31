@@ -28,7 +28,7 @@ export default function ModelManager({ visible, onClose }: { visible: boolean; o
 
   if (!visible) return null
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[var(--pi-z-modal)]" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/55 flex items-center justify-center z-[var(--pi-z-modal)]" onClick={onClose}>
       <div className="glass-hi panel-glass w-[600px] max-h-[80vh] flex flex-col rounded-pi-xl anim-enter" onClick={e => e.stopPropagation()}>
         {/* 头部：图标+标题+关闭 */}
         <div className="flex items-center gap-2.5 px-5 h-13 py-3 border-b border-pi-border-soft flex-shrink-0">

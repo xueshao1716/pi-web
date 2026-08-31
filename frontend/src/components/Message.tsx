@@ -26,7 +26,7 @@ function ToolCard({ tool }: { tool: Partial<RunningTool> & { name: string } }) {
         style={{ boxShadow: `inset 3px 0 0 ${tc}` }}
         onClick={() => setOpen(!open)}
       >
-        <span className="w-5 h-5 rounded-pi-sm flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0 font-mono" style={{ background: `linear-gradient(135deg, ${tc}, ${tc}b3)`, boxShadow: `0 0 10px ${tc}40` }}>{icon}</span>
+        <span className="w-5 h-5 rounded-pi-sm flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0 font-mono" style={{ backgroundColor: tc, boxShadow: 'var(--pi-shadow-sm)' }}>{icon}</span>
         <span className="font-mono font-semibold text-[11px] px-1.5 py-0.5 rounded-pi-sm flex-shrink-0" style={{ color: tc, background: `${tc}14` }}>{tool.name}</span>
         <span className="text-pi-dim truncate flex-1 font-mono text-[12px]">{argsText}</span>
         {status === 'running' ? (
@@ -155,11 +155,11 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
     )
   }
 
-  // 助手：无气泡，内容全宽铺开（现代 AI 聊天惯例），左侧小标识 + accent 渐变竖条
+  // 助手：实底头像，不用渐变
   return (
     <div className="group/msg flex gap-2.5 py-3 msg-assistant anim-enter">
-      <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-pi-accent to-pi-accent2 flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 mt-0.5"
-        style={{ boxShadow: '0 2px 8px color-mix(in oklab, var(--pi-accent) 20%, transparent)' }}>语</div>
+      <div className="w-7 h-7 rounded-lg bg-pi-accent flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 mt-0.5"
+        style={{ boxShadow: 'var(--pi-shadow-sm)' }}>语</div>
       <div className="min-w-0 flex-1">
         {msg.notes?.length ? (
           <div className="mb-2 space-y-1">

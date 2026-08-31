@@ -747,16 +747,15 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   const liveCls = agentStatus === 'busy' ? (busyFromBackground ? 'status-pill-live-bg' : 'status-pill-live-busy') : agentStatus === 'error' ? 'status-pill-live-error' : ''
 
   return (
-    <div className="relative flex-1 flex flex-col min-w-0 min-h-0"
-      style={{ background: 'color-mix(in oklab, var(--pi-bg) 45%, transparent)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}>
+    <div className="relative flex-1 flex flex-col min-w-0 min-h-0">
       {/* 下拉刷新指示器（移动端触屏；锚定头部下方，平时 opacity:0 不占位） */}
       <div aria-hidden
-        className="pointer-events-none absolute z-[var(--pi-z-toast)] left-1/2 -translate-x-1/2 top-[52px] w-9 h-9 rounded-full border border-pi-border bg-pi-bg1/90 backdrop-blur-xl shadow-xl grid place-items-center"
+        className="pointer-events-none absolute z-[var(--pi-z-toast)] left-1/2 -translate-x-1/2 top-[52px] w-9 h-9 rounded-full border border-pi-border bg-pi-bg1 shadow-xl grid place-items-center"
         style={pull.indicatorStyle}>
         <RefreshCw className={`w-4 h-4 text-pi-dim ${pull.spin ? 'animate-spin' : ''}`} strokeWidth={2} />
       </div>
       {/* 顶栏 */}
-      <div className="flex items-center px-5 h-14 border-b border-pi-border-soft/50 flex-shrink-0 gap-2" style={{ background: 'color-mix(in oklab, var(--pi-bg2) 70%, transparent)', backdropFilter: 'blur(8px)' }}>
+      <div className="flex items-center px-5 h-14 border-b border-pi-border bg-pi-bg1 flex-shrink-0 gap-2">
         {!compactHeader && <div className="font-medium text-[15px] text-pi-text">会话</div>}
         <div className="ml-auto" />
         {/* 执行状态（对标老版 .status-pill；aria-live 让屏幕阅读器感知流式开始/结束）*/}
@@ -853,7 +852,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
       {/* 危险操作确认浮层（dsh user-approval seam）：后端弹 confirm 事件时出现 */}
       {confirm && (
         <div className="absolute inset-0 z-[var(--pi-z-toast)] flex items-center justify-center p-4 pointer-events-none">
-          <div className="pointer-events-auto max-w-sm w-full rounded-pi-xl bg-pi-bg1/95 backdrop-blur-xl border border-pi-red/30 shadow-2xl p-5 anim-enter">
+          <div className="pointer-events-auto max-w-sm w-full rounded-pi-xl bg-pi-bg1 border border-pi-red/30 shadow-2xl p-5 anim-enter">
             <div className="flex items-center gap-2 mb-3">
               <div className="w-8 h-8 rounded-pi-md bg-pi-red/15 text-pi-red flex items-center justify-center flex-shrink-0"><ShieldAlert className="w-4 h-4" /></div>
               <div>
@@ -878,13 +877,13 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         <button
           aria-label="回到底部"
           onClick={() => scroll(true)}
-          className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-pi-border bg-pi-bg1/90 backdrop-blur-xl text-[12px] text-pi-dim hover:text-pi-text glow-hover shadow-xl transition-colors duration-200 anim-fade touch-hit"
+          className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-pi-border bg-pi-bg1 text-[12px] text-pi-dim hover:text-pi-text glow-hover shadow-xl transition-colors duration-200 anim-fade touch-hit"
         >
           <ChevronDown className="w-3.5 h-3.5" strokeWidth={2} />
           回到底部
         </button>
       )}
-      <div className="border-t border-pi-border-soft/50 px-4 sm:px-6 py-3 flex-shrink-0" style={{ background: 'color-mix(in oklab, var(--pi-bg) 60%, transparent)', backdropFilter: 'blur(12px)' }}>
+      <div className="border-t border-pi-border bg-pi-bg1 px-4 sm:px-6 py-3 flex-shrink-0">
         <div className="max-w-3xl mx-auto">
           <SendBox key={currentSessionId ?? 'none'} streaming={!!stream} onStop={stop} onSend={send} onCommand={runCommand}
             voiceBusy={voiceBusy} onVoice={handleVoice} onVoiceTextReady={fn => { voiceTextRef.current = fn }} />
