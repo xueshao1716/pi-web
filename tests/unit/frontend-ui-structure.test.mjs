@@ -78,3 +78,65 @@ test('移动导航与面板交互目标至少 44px，并尊重底部安全区', 
   assert.match(css, /\.mobile-more-action\s*\{[\s\S]*?min-height:\s*44px/, '更多菜单操作触控高度不得小于 44px')
   assert.ok(css.includes('env(safe-area-inset-bottom'), '固定移动导航必须尊重底部安全区')
 })
+
+test('模型中心拆分为窄职责组件，第一屏按当前模型、筛选、结果网格排列', () => {
+  const hub = read('pages', 'ModelHub.tsx')
+  for (const component of ['ActiveModelHero', 'ModelFilterBar', 'ModelCard']) {
+    const file = join(SRC, 'components', 'models', `${component}.tsx`)
+    assert.ok(existsSync(file), `模型中心缺少 ${component} 组件`)
+    assert.ok(hub.includes(`<${component}`), `ModelHub 必须使用 ${component}`)
+  }
+  const order = [
+    hub.indexOf('<PageHeader'),
+    hub.indexOf('<ActiveModelHero'),
+    hub.indexOf('<ModelFilterBar'),
+    hub.indexOf('data-slot="model-results"'),
+  ]
+  assert.ok(order.every(index => index >= 0), 'ModelHub 缺少 PageHeader → hero → 筛选 → 结果网格结构标记')
+  assert.deepEqual([...order].sort((a, b) => a - b), order, '模型中心第一屏顺序必须为 PageHeader → 当前模型 → 筛选 → 结果网格')
+})
+
+test('模型通道、累计用量和 Provider 明细统一位于默认折叠的通道与用量区', () => {
+  const hub = read('pages', 'ModelHub.tsx')
+  const detailsStart = hub.indexOf('<details')
+  const detailsEnd = hub.indexOf('</details>', detailsStart)
+  assert.ok(detailsStart >= 0 && detailsEnd > detailsStart, '模型中心必须提供 details 折叠区')
+  const details = hub.slice(detailsStart, detailsEnd)
+  assert.ok(!/<details[^>]*\sopen(?:=|\s|>)/.test(details), '通道与用量必须默认折叠')
+  for (const content of ['通道与用量', '累计成本', '累计消息', '<ModelChannels', 'Provider 用量']) {
+    assert.ok(details.includes(content), `通道与用量折叠区缺少：${content}`)
+  }
+})
+
+test('模型中心业务组件只使用语义状态色，不含固定 emerald、purple、sky 色类', () => {
+  const files = [
+    ['pages', 'ModelHub.tsx'],
+    ['components', 'ModelChannels.tsx'],
+    ['components', 'models', 'ActiveModelHero.tsx'],
+    ['components', 'models', 'ModelFilterBar.tsx'],
+    ['components', 'models', 'ModelCard.tsx'],
+  ]
+  const offenders = []
+  for (const parts of files) {
+    const file = join(SRC, ...parts)
+    if (!existsSync(file)) continue
+    const source = read(...parts)
+    if (/(?:emerald|purple|sky)-/.test(source)) offenders.push(parts.join('/'))
+  }
+  assert.deepEqual(offenders, [], `固定状态色应改用 pi-success/pi-info/pi-accent：${offenders.join(', ')}`)
+})
+
+test('模型中心保留 store、统计刷新、模型切换和通道增删契约，排序不突变 models', () => {
+  const hub = read('pages', 'ModelHub.tsx')
+  const channels = read('components', 'ModelChannels.tsx')
+  for (const storeValue of ['models', 'currentModel', 'cwd']) {
+    assert.match(hub, new RegExp(`\\b${storeValue}\\b`), `ModelHub 必须保留 ${storeValue}`)
+  }
+  assert.ok(hub.includes("useSWR('provider-stats', () => StatsApi.providers(), { refreshInterval: 60000 })"), 'Provider 统计必须继续每 60 秒刷新')
+  assert.ok(hub.includes('await KeysApi.switchModel({ provider: model.provider, modelId: model.id })'), '模型切换必须继续调用 KeysApi.switchModel')
+  assert.doesNotMatch(hub, /\bmodels\.sort\(/, '不得直接 sort store 的 models 数组')
+  assert.match(hub, /\[\.\.\.filteredModels\]\.sort\(/, '免费优先排序必须基于筛选结果的新数组')
+  for (const api of ['KeysApi.manage()', 'KeysApi.add(', 'KeysApi.remove(']) {
+    assert.ok(channels.includes(api), `ModelChannels 必须保留 ${api}`)
+  }
+})

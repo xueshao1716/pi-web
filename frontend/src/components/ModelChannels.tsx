@@ -49,8 +49,8 @@ export default function ModelChannels() {
           <input className="input-pi !py-1.5 text-xs font-mono" placeholder="服务商（如 openrouter / deepseek / bigmodel）" value={addProvider} onChange={e => setAddProvider(e.target.value)} />
           <input className="input-pi !py-1.5 text-xs font-mono" type="password" placeholder="API Key (sk-…)" value={addKey} onChange={e => setAddKey(e.target.value)} />
           <input className="input-pi !py-1.5 text-xs font-mono" placeholder="Base URL（可选，留空用官方）" value={addBaseUrl} onChange={e => setAddBaseUrl(e.target.value)} />
-          {err && <div className="text-[11px] text-pi-red">{err}</div>}
-          {ok && <div className="text-[11px] text-pi-green">{ok}</div>}
+          {err && <div className="text-[11px] text-pi-danger">{err}</div>}
+          {ok && <div className="text-[11px] text-pi-success">{ok}</div>}
           <div className="flex gap-2">
             <button className="btn-primary text-[11px] px-2.5 py-1" onClick={add}>测试并添加</button>
             <button className="btn-tool text-[11px]" onClick={() => { setAddOpen(false); setErr('') }}>取消</button>
@@ -67,19 +67,19 @@ export default function ModelChannels() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {providers.map(p => (
             <div key={p.provider} className="group flex items-center gap-3 p-3 rounded-pi-lg border border-pi-border bg-pi-bg2 hover:border-pi-accent/40 transition-colors">
-              <div className={`w-8 h-8 rounded-pi-md flex items-center justify-center flex-shrink-0 ${p.hasKey ? 'bg-emerald-500/12 text-emerald-300' : 'bg-pi-bg3 text-pi-dim2'}`}>
+              <div className={`w-8 h-8 rounded-pi-md flex items-center justify-center flex-shrink-0 ${p.hasKey ? 'bg-pi-success/10 text-pi-success' : 'bg-pi-bg3 text-pi-dim2'}`}>
                 <KeyRound className="w-4 h-4" strokeWidth={1.8} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
                   <span className="font-medium text-pi-text text-sm truncate">{p.provider}</span>
                   {p.hasKey
-                    ? <CheckCircle2 className="w-3.5 h-3.5 text-pi-green flex-shrink-0" strokeWidth={2.2} />
-                    : <span className="text-[10px] px-1 py-px rounded-pi-pill bg-pi-red/15 text-pi-red flex-shrink-0">无Key</span>}
+                    ? <CheckCircle2 className="w-3.5 h-3.5 text-pi-success flex-shrink-0" strokeWidth={2.2} />
+                    : <span className="text-[10px] px-1 py-px rounded-pi-pill bg-pi-danger/15 text-pi-danger flex-shrink-0">无Key</span>}
                 </div>
                 <div className="text-[11px] text-pi-dim2 truncate mt-0.5">{p.modelCount} 个模型 · {p.baseUrl || '官方地址'}</div>
               </div>
-              <button className="btn-tool touch-hit opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:!text-pi-red"
+              <button className="btn-tool touch-hit opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:!text-pi-danger"
                 aria-label={`删除 ${p.provider}`} onClick={() => del(p.provider)}>
                 <Trash2 className="w-4 h-4" />
               </button>
