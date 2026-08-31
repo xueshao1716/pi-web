@@ -309,11 +309,10 @@ body {
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--pi-accent) 20%, transparent);
 }
 
-/* ── 统一按压物理（08-23 对标 nomifun）：可点元素 hover 微浮起、active 压下 —— 手感全站一致 */
+/* ── 统一按压物理（简化版：只保留 active 反馈，删除 hover 浮起）*/
 .press {
-  transition: transform var(--pi-motion-fast), box-shadow var(--pi-motion-fast), background-color var(--pi-motion-fast), border-color var(--pi-motion-fast), color var(--pi-motion-fast);
+  transition: transform 150ms cubic-bezier(0.2, 0, 0, 1);
 }
-.press:hover { transform: translateY(-1px); }
 .press:active { transform: translateY(0) scale(.96); }
 @media (prefers-reduced-motion: reduce) {
   .press:hover, .press:active { transform: none; }
@@ -836,72 +835,23 @@ body {
 }
 .stat-num { font-size: 22px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 
-/* 悬浮卡 */
-.card-hover { transition: transform var(--pi-motion-base), border-color var(--pi-motion-base), box-shadow var(--pi-motion-base); }
+/* 悬浮卡（删除动画）*/
+.card-hover {}
 .card-hover:hover {
-  transform: translateY(-2px);
-  border-color: rgba(123, 150, 255, 0.38) !important;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32), 0 0 0 1px rgba(123, 150, 255, 0.14);
+  border-color: var(--pi-accent);
 }
 
-/* ── 彩色图标（nav/icon 悬浮时用 accent 色）── */
-.icon-accent { color: var(--pi-accent2); filter: drop-shadow(0 0 6px var(--pi-accent-glow)); }
+/* ── 彩色图标（删除发光滤镜）── */
+.icon-accent { color: var(--pi-accent); }
 
-/* ── 面板内发光 ── */
-.glow-edge {
-  position: relative;
-}
-.glow-edge::after {
-  content: "";
-  position: absolute; inset: 0; border-radius: inherit;
-  pointer-events: none;
-  box-shadow: inset 0 0 30px rgba(84,104,255,0.04), inset 0 1px 0 rgba(255,255,255,0.06);
-}
+/* ── 面板内发光（删除）── */
 
-/* ── 流光扫过（面板 hover 时）── */
-@keyframes shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
-}
-.shimmer-hover { overflow: hidden; position: relative; }
-.shimmer-hover::before {
-  content: "";
-  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-  background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.04) 50%, transparent 60%);
-  transform: translateX(-100%);
-  pointer-events: none;
-  transition: none;
-}
-.shimmer-hover:hover::before {
-  animation: shimmer 0.8s ease-out;
-}
+/* ── 流光扫过（删除）── */
 
-/* ── 工具卡片 hover 彩色边框 ── */
-.tool-card { transition: border-color var(--pi-motion-base), box-shadow var(--pi-motion-base); }
-.tool-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.3), 0 0 0 1px rgba(123,150,255,0.2); }
+/* ── 工具卡片（删除动画）── */
+.tool-card {}
 
-/* ── 入场动画（08-25 升级：加缩放空间感，参照 HeroUI）── */
-@keyframes fadeSlideUp {
-  from { opacity: 0; transform: translateY(12px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-@keyframes fadeSlideDown {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
-}
-.anim-enter { animation: fadeSlideUp 0.35s var(--pi-ease-sheet) both; }
-/* 纯 opacity 入场：给依赖 transform 定位的元素（如 -translate-x-1/2 居中悬浮件），
-   fadeSlideUp 的 transform 终帧会经 fill:both 永久覆盖定位 translate，导致偏移 */
-@keyframes fadeInOnly { from { opacity: 0; } to { opacity: 1; } }
-.anim-fade { animation: fadeInOnly 0.25s var(--pi-ease) both; }
-.anim-enter-delay-1 { animation-delay: 0.08s; }
-.anim-enter-delay-2 { animation-delay: 0.16s; }
-.anim-enter-delay-3 { animation-delay: 0.24s; }
-.anim-enter-delay-4 { animation-delay: 0.32s; }
+/* ── 入场动画（删除所有 anim-enter 装饰性动画）── */
 
 /* 空态 */
 .empty-state {
@@ -909,32 +859,14 @@ body {
   background: rgba(255, 255, 255, 0.015);
 }
 
-/* ── 欢迎页打字机效果 ── */
-@keyframes typewriter {
-  from { width: 0; }
-  to { width: 100%; }
-}
-@keyframes blinkCaret {
-  0%,100% { border-color: var(--pi-accent); }
-  50% { border-color: transparent; }
-}
-.welcome-typewriter {
-  overflow: hidden;
-  white-space: nowrap;
-  border-right: 2px solid var(--pi-accent);
-  animation:
-    typewriter 1.2s steps(16) 0.4s both,
-    blinkCaret 0.8s steps(2) 1.6s 4;
-}
-/* ── 欢迎快捷卡升级：hover 浮起 + 左侧彩色指示条 ── */
+/* ── 欢迎页打字机效果（删除）── */
+/* ── 欢迎快捷卡（删除浮起动画）── */
 .welcome-card {
   position: relative;
   overflow: hidden;
-  transition: transform var(--pi-motion-base), box-shadow var(--pi-motion-base), border-color var(--pi-motion-base);
 }
 .welcome-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 28px rgba(0,0,0,0.28), 0 0 0 1px color-mix(in oklab, var(--pi-accent) 20%, transparent);
+  border-color: var(--pi-accent);
 }
 .welcome-card::after {
   content: "";
@@ -944,17 +876,17 @@ body {
   border-radius: 0 2px 2px 0;
   background: var(--_card-accent, var(--pi-accent));
   opacity: 0;
-  transition: opacity var(--pi-motion-base);
 }
 .welcome-card:hover::after { opacity: 1; }
 
 [data-theme="mist"] .stat-card { border-color: var(--pi-border-soft); background: #fff; }
 [data-theme="mist"] .card-hover:hover { box-shadow: 0 12px 30px rgba(60, 70, 120, 0.14), 0 0 0 1px rgba(74, 88, 250, 0.18); }
 
-/* ── 弹窗入场动画（参照 HeroUI Modal：scale+fade）── */
-.anim-modal { animation: scaleIn 0.2s var(--pi-ease) both; }
-/* ── 通知/提示条入场（从上滑入）── */
-.anim-toast { animation: fadeSlideDown 0.2s var(--pi-ease) both; }
+/* ── 弹窗入场动画（保留：白名单）── */
+@keyframes modalIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+@keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+.anim-modal { animation: modalIn 0.2s cubic-bezier(0.2, 0, 0, 1) both; }
+.anim-toast { animation: toastIn 0.2s cubic-bezier(0.2, 0, 0, 1) both; }
 
 /* 可访问性 */
 @media (prefers-reduced-motion: reduce) {
@@ -962,16 +894,8 @@ body {
   * { scroll-behavior: auto !important; }
 }
 
-/* ── 工具卡运行态：底部流光（08-24 对话区打磨）── */
-@keyframes toolslide {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(400%); }
-}
-.tool-progress {
-  height: 100%; width: 25%;
-  background: linear-gradient(90deg, transparent, var(--pi-accent), transparent);
-  animation: toolslide 1.4s ease-in-out infinite;
-}
+/* ── 工具卡运行态（删除流光动画）── */
+.tool-progress { display: none; }
 
 /* ── 流式光标：发光竖条 ── */
 @keyframes caretBlink {
@@ -1066,17 +990,13 @@ body {
 .msg-stagger-2 { animation-delay: 0.08s; }
 .msg-stagger-3 { animation-delay: 0.12s; }
 
-/* ── 骨架屏加载（08-25 去重：合并两套 shimmer/骨架定义为单一系统）── */
-@keyframes skeletonShimmer {
-  0% { background-position: 120% 0; }
-  100% { background-position: -80% 0; }
-}
+/* ── 骨架屏加载（删除动画）── */
 
 /* ── Mist 主题适配 ── */
 [data-theme="mist"] .turn-content-line::before { opacity: 0.2; }
 
-/* ── 触屏可达（08-25 评审 P1）：hover 门控操作在无 hover 设备常显 ── */
-.hov-reveal { opacity: 0; transition: opacity var(--pi-motion-fast); }
+/* ── 触屏可达（删除动画，直接显示）── */
+.hov-reveal { opacity: 0.7; }
 .group:hover .hov-reveal,
 .group:focus-within .hov-reveal,
 [class*="group"]:hover .hov-reveal,
@@ -1136,11 +1056,9 @@ body {
 .rec-wave i:nth-child(4) { animation-delay: 0.45s; }
 .rec-wave i:nth-child(5) { animation-delay: 0.6s; }
 
-/* ── 骨架屏微光扫过 ── */
+/* ── 骨架块（删除动画）── */
 .skeleton-block {
-  background: linear-gradient(100deg, rgba(255,255,255,0.04) 40%, rgba(255,255,255,0.09) 50%, rgba(255,255,255,0.04) 60%);
-  background-size: 200% 100%;
-  animation: skeletonShimmer 1.4s ease-in-out infinite;
+  background: rgba(255,255,255,0.06);
 }
 
 /* ── mimo 评审落地（08-24）：工具卡流光加辉光 ── */
@@ -1159,19 +1077,17 @@ body {
 }
 /* ── 状态点（08-24 移植老版；08-25 四色语义：绿=就绪 红=本页执行 橙=后台执行 品红闪=异常，看颜色一眼明白）── */
 .status-dot-idle   { background: var(--pi-green); box-shadow: 0 0 6px rgba(62,207,142,0.4); }
-.status-dot-busy   { background: var(--pi-red); box-shadow: 0 0 8px rgba(244,112,103,0.5); animation: pulse 1s infinite; }
-.status-dot-bg     { background: var(--pi-yellow); box-shadow: 0 0 8px rgba(245,183,89,0.5); animation: pulse 1.4s infinite; }
-.status-dot-error  { background: #f472b6; box-shadow: 0 0 10px rgba(244,114,182,0.6); animation: statusBlink 0.5s steps(2) infinite; }
+/* ── 状态点（保留 pulse 脉动：白名单）── */
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+.status-dot-idle   { background: var(--pi-green); }
+.status-dot-busy   { background: var(--pi-red); animation: pulse 1s infinite; }
+.status-dot-bg     { background: var(--pi-yellow); animation: pulse 1.4s infinite; }
+.status-dot-error  { background: #f472b6; animation: pulse 0.8s infinite; }
 /* 胶囊边框随状态同色微亮，余光扫过也能分辨 */
 .status-pill-live-busy  { border-color: rgba(244,112,103,0.45) !important; }
 .status-pill-live-bg    { border-color: rgba(245,183,89,0.45) !important; }
 .status-pill-live-error { border-color: rgba(244,114,182,0.5) !important; }
 .status-pill:hover { border-color: var(--pi-border-hi) !important; }
-@keyframes statusBlink { 50% { opacity: 0.25; } }
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .45; }
-}
 
 /* ── 键盘焦点可见性（08-25 无障碍审计，Impeccable 五维）── */
 :focus-visible {

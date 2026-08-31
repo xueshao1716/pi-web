@@ -289,7 +289,7 @@ export default function AppLayout() {
             </T.Trigger>
             <T.Portal>
               <T.Content side="right" sideOffset={8}
-                className="px-2 py-1 rounded-pi-sm bg-pi-bg3 border border-pi-border text-[11px] text-pi-text whitespace-nowrap shadow-lg z-50 anim-enter" style={{ animationDuration: '.12s' }}>
+                className="px-2 py-1 rounded-pi-sm bg-pi-bg3 border border-pi-border text-[11px] text-pi-text whitespace-nowrap shadow-lg z-50" style={{ animationDuration: '.12s' }}>
                 {n.label}
               </T.Content>
             </T.Portal>

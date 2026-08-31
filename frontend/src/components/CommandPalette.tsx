@@ -93,7 +93,7 @@ export default function CommandPalette({ open, onClose, nav, onRightPanel, onMod
         <D.Content aria-label="命令面板"
           onOpenAutoFocus={e => { e.preventDefault(); setTimeout(() => inputRef.current?.focus(), 0) }}
           className="fixed left-1/2 top-[12vh] -translate-x-1/2 z-[var(--pi-z-palette-content)] w-full max-w-lg px-4 sm:px-0">
-          <div className="rounded-pi-xl glass-strong glass-hi overflow-hidden anim-enter" style={{ animationDuration: '.18s' }}>
+          <div className="rounded-pi-xl glass-strong glass-hi overflow-hidden" style={{ animationDuration: '.18s' }}>
             <input
               data-slot="command-input"
               ref={inputRef}

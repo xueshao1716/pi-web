@@ -157,7 +157,7 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
 
   // 助手：实底头像，不用渐变
   return (
-    <div className="group/msg flex gap-2.5 py-3 msg-assistant anim-enter">
+    <div className="group/msg flex gap-2.5 py-3 msg-assistant">
       <div className="w-7 h-7 rounded-lg bg-pi-accent flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 mt-0.5"
         style={{ boxShadow: 'var(--pi-shadow-sm)' }}>语</div>
       <div className="min-w-0 flex-1">

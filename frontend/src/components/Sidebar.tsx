@@ -136,7 +136,7 @@ export default function Sidebar({ onNavigated, onCollapse }: { onNavigated?: () 
       <AL.Root open={!!confirming} onOpenChange={o => !o && setConfirming(null)}>
         <AL.Portal>
           <AL.Overlay className="fixed inset-0 bg-black/50 z-[var(--pi-z-dialog)]" />
-          <AL.Content data-slot="session-delete-dialog" className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 panel p-4 w-72 z-[var(--pi-z-dialog-top)] anim-enter" style={{ animationDuration: '.18s' }}>
+          <AL.Content data-slot="session-delete-dialog" className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 panel p-4 w-72 z-[var(--pi-z-dialog-top)]" style={{ animationDuration: '.18s' }}>
             <AL.Title className="text-sm font-semibold mb-1.5">删除会话</AL.Title>
             <AL.Description className="text-xs text-pi-dim mb-3">
               「{confirming?.name || '新会话'}」将被永久删除，不可恢复。
@@ -153,7 +153,7 @@ export default function Sidebar({ onNavigated, onCollapse }: { onNavigated?: () 
       <D.Root open={!!renaming} onOpenChange={o => !o && setRenaming(null)}>
         <D.Portal>
           <D.Overlay className="fixed inset-0 bg-black/50 z-[var(--pi-z-dialog)]" />
-          <D.Content data-slot="session-rename-dialog" className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 panel p-4 w-72 z-[var(--pi-z-dialog-top)] anim-enter" style={{ animationDuration: '.18s' }}>
+          <D.Content data-slot="session-rename-dialog" className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 panel p-4 w-72 z-[var(--pi-z-dialog-top)]" style={{ animationDuration: '.18s' }}>
             <D.Title className="text-sm font-semibold mb-3">重命名会话</D.Title>
             <input className="input-pi mb-3" autoFocus value={renaming?.name || ''} onChange={e => renaming && setRenaming({ ...renaming, name: e.target.value })} onKeyDown={e => e.key === 'Enter' && handleRename()} />
             <div className="flex justify-end gap-2">

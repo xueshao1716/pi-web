@@ -98,7 +98,7 @@ function ChapterReader({ id, ch, onClose }: { id: string; ch: NovelChapter; onCl
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
   return (
-    <div className={`fixed inset-0 z-[var(--pi-z-modal)] flex flex-col bg-pi-bg anim-fade`}>
+    <div className={`fixed inset-0 z-[var(--pi-z-modal)] flex flex-col bg-pi-bg`}>
       <div className="h-12 flex items-center gap-2 px-3 border-b border-pi-border-soft flex-shrink-0">
         <button className="touch-hit p-2 rounded-pi-md hover:bg-pi-bg2 text-pi-dim hover:text-pi-text" aria-label="关闭" onClick={onClose}><X className="w-4 h-4" /></button>
         <span className="text-[13px] font-medium truncate">第{String(ch.no).padStart(3, '0')}章</span>

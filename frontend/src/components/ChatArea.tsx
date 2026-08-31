@@ -658,20 +658,20 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   const openPanel = (p: string) => window.dispatchEvent(new CustomEvent('pi-open-panel', { detail: p }))
   const welcome = (
     <div className="relative overflow-hidden flex items-center justify-center h-full px-6">
-      <div className="relative z-10 text-center max-w-2xl anim-enter">
+      <div className="relative z-10 text-center max-w-2xl">
         {/* 品牌标识：实底圆形，不用渐变 */}
-        <div className="w-20 h-20 mx-auto rounded-2xl bg-pi-accent flex items-center justify-center text-4xl font-bold text-white mb-8 anim-enter"
+        <div className="w-20 h-20 mx-auto rounded-2xl bg-pi-accent flex items-center justify-center text-4xl font-bold text-white mb-8"
           style={{ boxShadow: 'var(--pi-shadow-sm)' }}>语</div>
 
         {/* 标题 */}
-        <h1 className="text-[22px] font-extrabold text-pi-text mb-2 tracking-tight anim-enter anim-enter-delay-1"
+        <h1 className="text-[22px] font-extrabold text-pi-text mb-2 tracking-tight-delay-1"
           style={{ fontFamily: 'var(--pi-font-display)' }}>你好，我是小语</h1>
-        <p className="text-pi-dim text-[15px] mb-10 anim-enter anim-enter-delay-2 leading-relaxed">
+        <p className="text-pi-dim text-[15px] mb-10-delay-2 leading-relaxed">
           你的 AI 工作伙伴。写代码、做设计、整理文档——从一句话开始。
         </p>
 
         {/* 快捷入口：实底卡片，不用渐变和模糊 */}
-        <div className="grid grid-cols-2 gap-4 max-w-lg mx-auto anim-enter anim-enter-delay-3">
+        <div className="grid grid-cols-2 gap-4 max-w-lg mx-auto-delay-3">
           {[
             { Icon: Plus, label: '新建对话', desc: '开始一段新的工作', act: newSession },
             { Icon: SquareTerminal, label: '终端', desc: '写代码调工具', act: () => openPanel('terminal') },
@@ -689,7 +689,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         </div>
 
         {/* 快捷提示 */}
-        <div className="mt-10 flex items-center justify-center gap-4 text-[11px] text-pi-dim2 anim-enter anim-enter-delay-4">
+        <div className="mt-10 flex items-center justify-center gap-4 text-[11px] text-pi-dim2-delay-4">
           <span className="px-2 py-0.5 rounded bg-pi-bg2 border border-pi-border font-mono">⌘K</span>
           <span>命令面板</span>
           <span className="w-px h-3 bg-pi-border" />
@@ -807,7 +807,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         {loading ? (
           <div className="max-w-3xl w-full mx-auto px-6 py-6 space-y-5" aria-label="加载中">
             {[520, 380, 460].map((w, i) => (
-              <div key={i} className="flex gap-3 anim-enter" style={{ animationDelay: `${i * 0.08}s` }}>
+              <div key={i} className="flex gap-3" style={{ animationDelay: `${i * 0.08}s` }}>
                 <div className="w-7 h-7 rounded-lg skeleton-block flex-shrink-0" />
                 <div className="flex-1 space-y-2">
                   <div className="h-3 rounded-pi-sm skeleton-block" style={{ width: `${w * 0.7}px`, maxWidth: '80%' }} />
@@ -852,7 +852,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
       {/* 危险操作确认浮层（dsh user-approval seam）：后端弹 confirm 事件时出现 */}
       {confirm && (
         <div className="absolute inset-0 z-[var(--pi-z-toast)] flex items-center justify-center p-4 pointer-events-none">
-          <div className="pointer-events-auto max-w-sm w-full rounded-pi-xl bg-pi-bg1 border border-pi-red/30 shadow-2xl p-5 anim-enter">
+          <div className="pointer-events-auto max-w-sm w-full rounded-pi-xl bg-pi-bg1 border border-pi-red/30 shadow-2xl p-5">
             <div className="flex items-center gap-2 mb-3">
               <div className="w-8 h-8 rounded-pi-md bg-pi-red/15 text-pi-red flex items-center justify-center flex-shrink-0"><ShieldAlert className="w-4 h-4" /></div>
               <div>
@@ -877,7 +877,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         <button
           aria-label="回到底部"
           onClick={() => scroll(true)}
-          className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-pi-border bg-pi-bg1 text-[12px] text-pi-dim hover:text-pi-text glow-hover shadow-xl transition-colors duration-200 anim-fade touch-hit"
+          className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-pi-border bg-pi-bg1 text-[12px] text-pi-dim hover:text-pi-text glow-hover shadow-xl transition-colors duration-200 touch-hit"
         >
           <ChevronDown className="w-3.5 h-3.5" strokeWidth={2} />
           回到底部
