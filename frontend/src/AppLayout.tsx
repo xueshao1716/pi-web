@@ -195,8 +195,7 @@ export default function AppLayout() {
   /* ── 移动端布局：TabBar 五入口（对话/会话/资产/任务/设置；模型在对话页下拉） ── */
   if (isMobile) {
     return (
-      <div className="mobile-app-root flex flex-col text-pi-text relative"
-        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+      <div className="mobile-app-root mobile-safe-top flex flex-col text-pi-text relative">
         <div id="pi-wallpaper" className="fixed inset-0 z-0 pointer-events-none" />
         {/* 删除装饰性径向渐变背景 */}
         {/* 主内容层 */}
