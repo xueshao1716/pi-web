@@ -4,7 +4,7 @@ import { useApp } from '../store'
 import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, LayoutGrid, Command, ChevronDown, PanelRight, ShieldAlert } from 'lucide-react'
 import { RefreshCw } from 'lucide-react'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
-import { ChatApi, SessionsApi, AsrApi, EmotionApi, AgentStatusApi, streamSession, LingXiApi, ConfirmApi } from '../api'
+import { RunsApi, SessionsApi, AsrApi, EmotionApi, AgentStatusApi, streamSession, LingXiApi, ConfirmApi } from '../api'
 import Message from './Message'
 import SendBox from './SendBox'
 import TurnList from './TurnList'
@@ -17,6 +17,7 @@ import WebglBackdrop from './WebglBackdrop'
 import { saveMessage, getMessages, deleteMessage, mergeMessages, type LocalMessage } from '../lib/local-db'
 import { notifyTaskDone } from '../lib/notify'
 import { upsertRunningTool } from '../lib/chat-stream'
+import { advanceRunCursor, isTerminalRunStatus, type RunCursor, type RunEvent } from '../lib/run-events'
 
 // 流式状态：覆盖服务端全部 SSE 事件（delta/think/think_end/tool/tool_output/
 // tool_end/turn_end/file/image/media/note/emotion/done/error）
@@ -37,6 +38,35 @@ const emptyStream = (): StreamState => ({ text: '', think: '', thinkDone: false,
 // 90s 无新事件 → 看门狗提示（对齐线上版 chat.js）
 const IDLE_WARN_MS = 90_000
 
+interface ActiveRunRecord extends RunCursor {
+  sessionId: string
+  assistantMessageId: string
+  stream: StreamState
+}
+
+const activeRunKey = (sessionId: string) => `pi_active_run:${sessionId}`
+
+function loadActiveRun(sessionId: string): ActiveRunRecord | null {
+  try {
+    const value = JSON.parse(localStorage.getItem(activeRunKey(sessionId)) || 'null')
+    return value?.runId && value.sessionId === sessionId ? value : null
+  } catch { return null }
+}
+
+function saveActiveRun(record: ActiveRunRecord) {
+  try {
+    // 大图片/音频不进 localStorage；文本、工具与 seq 必须同一次写入，避免游标领先快照后无法重放。
+    localStorage.setItem(activeRunKey(record.sessionId), JSON.stringify({
+      ...record,
+      stream: { ...record.stream, images: [], audios: [] },
+    }))
+  } catch {}
+}
+
+function clearActiveRun(sessionId: string) {
+  try { localStorage.removeItem(activeRunKey(sessionId)) } catch {}
+}
+
 function toDataUri(raw: string, mime?: string): string {
   return raw.startsWith('data:') ? raw : `data:${mime || 'image/png'};base64,${raw}`
 }
@@ -48,10 +78,15 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   onRightPanel?: (p: any) => void
 } = {}) {
   const { currentSessionId, currentModel, refreshSessions, selectSession } = useApp()
+  const sessionIdRef = useRef(currentSessionId)
+  sessionIdRef.current = currentSessionId
   const [stream, setStream] = useState<StreamState | null>(null)
   const [confirm, setConfirm] = useState<any>(null) // 危险操作待确认：{ id, toolName, reason, args, sessionId }
   const [idleSeconds, setIdleSeconds] = useState(0)
-  const abortRef = useRef<(() => void) | null>(null)
+  const streamCloseRef = useRef<(() => void) | null>(null)
+  const activeRunRef = useRef<ActiveRunRecord | null>(null)
+  const pendingModelRef = useRef<{ provider: string; id: string } | undefined>(undefined)
+  const watchdogStoppingRef = useRef(false)
   // ref 是唯一事实源：SSE 事件可能在一个渲染批次内全部到达，useEffect 同步会滞后导致 done 时读到旧值
   const streamRef = useRef<StreamState | null>(null)
   const lastEventAtRef = useRef(0)
@@ -141,11 +176,12 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
 
   // 保存消息到本地 IndexedDB
   const saveToLocal = async (msg: ChatMessage) => {
-    if (!currentSessionId) return
+    const sessionId = sessionIdRef.current
+    if (!sessionId) return
     try {
       await saveMessage({
         id: msg.id,
-        sessionId: currentSessionId,
+        sessionId,
         role: msg.role,
         text: msg.text || '',
         think: msg.think,
@@ -227,8 +263,15 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     lastFromUser: lastMsg?.role === 'user' || (!!stream && !stream.text && !stream.tools.length),
   })
 
-  // 切会话：清空流式状态 + 拉取该会话的情绪快照（滚动状态由 useAutoScroll 按 sessionKey 自行重置）
-  useEffect(() => { streamRef.current = null; setStream(null) }, [currentSessionId])
+  // 切会话只关闭本端订阅，不停止服务端 Run；该会话再次进入时会按游标恢复。
+  useEffect(() => {
+    streamCloseRef.current?.()
+    streamCloseRef.current = null
+    activeRunRef.current = null
+    assistantMsgIdRef.current = null
+    streamRef.current = null
+    setStream(null)
+  }, [currentSessionId])
   useEffect(() => {
     if (!currentSessionId) return
     let alive = true
@@ -262,6 +305,9 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     if (!cur) return
     const next = fn(cur)
     streamRef.current = next
+    if (next && activeRunRef.current) {
+      activeRunRef.current = { ...activeRunRef.current, stream: next }
+    }
     setStream(next ? { ...next } : null)
   }
 
@@ -274,17 +320,13 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
       const idle = Math.floor((Date.now() - lastEventAtRef.current) / 1000)
       setIdleSeconds(idle)
       // 看门狗自动停止：超过 90s 无新事件 → 判定为死流，自动中止
-      if (idle >= 90 && streamRef.current) {
-        console.warn('[watchdog] 流式无响应超过90s，自动中止')
-        try {
-          abortRef.current?.()
-          abortRef.current = null
-          updStream(p => ({ ...p, error: (p.error || '') + (p.error ? ' · ' : '') + '⏱️ 长时间无响应已自动停止', tools: p.tools.map(t => t.status === 'running' ? { ...t, status: 'canceled' } : t) }))
-          finalize()
-          toast('模型长时间无响应，已自动停止', 'error')
-        } catch (e) {
-          console.error('[watchdog] 自动停止失败:', e)
-        }
+      if (idle >= 90 && streamRef.current && activeRunRef.current && !watchdogStoppingRef.current) {
+        console.warn('[watchdog] 流式无响应超过90s，请求服务端停止 Run')
+        watchdogStoppingRef.current = true
+        updStream(p => ({ ...p, error: (p.error || '') + (p.error ? ' · ' : '') + '⏱️ 长时间无响应，正在停止', tools: p.tools.map(t => t.status === 'running' ? { ...t, status: 'canceled' } : t) }))
+        RunsApi.stop(activeRunRef.current.runId)
+          .then(() => toast('模型长时间无响应，已请求停止', 'error'))
+          .catch(e => { watchdogStoppingRef.current = false; console.error('[watchdog] 自动停止失败:', e) })
       }
     }, 1000)
     return () => clearInterval(t)
@@ -299,6 +341,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     const t = setInterval(() => {
       const s = streamRef.current
       if (!s || !assistantMsgIdRef.current) return
+      if (activeRunRef.current) saveActiveRun({ ...activeRunRef.current, stream: s })
       if (!s.text && !s.tools.length && !s.think) return // 空内容不存
       saveToLocal({
         id: assistantMsgIdRef.current,
@@ -319,11 +362,18 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   }, [streaming, currentSessionId])
 
   const finalize = (model?: { provider: string; id: string }) => {
-    // 本轮 SSE 结束（done/finish/error 均走到这）：用户消息已由引擎写入会话文件，清除前端防丢暂存
+    // 只有持久化 Run 进入终态才收尾；普通 SSE 断线/错误事件不会结束后台任务。
     try { localStorage.removeItem('pi_pending_msg') } catch {}
+    const active = activeRunRef.current
     const s = streamRef.current
     const finalId = assistantMsgIdRef.current
+    streamCloseRef.current?.()
+    streamCloseRef.current = null
     assistantMsgIdRef.current = null
+    watchdogStoppingRef.current = false
+    pendingModelRef.current = undefined
+    if (active) clearActiveRun(active.sessionId)
+    activeRunRef.current = null
     if (!s) return
     if (s.text || s.think || s.tools.length || s.files.length || s.images.length || s.audios.length || s.error) {
       appendMessage({
@@ -367,7 +417,133 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     }
     streamRef.current = null
     setStream(null)
+    mutateMsgs()
+    refreshSessions()
   }
+
+  const applyRunEvent = (event: RunEvent) => {
+    const active = activeRunRef.current
+    if (!active) return
+    const advanced = advanceRunCursor(active, event)
+    if (!advanced.accepted) return
+    const nextActive: ActiveRunRecord = { ...active, ...advanced.cursor }
+    activeRunRef.current = nextActive
+    lastEventAtRef.current = Date.now()
+    const d = event.data || {}
+
+    switch (event.type) {
+      case 'delta':
+      case 'message': {
+        const text = d.text || d.delta?.text || ''
+        if (text) updStream(p => ({ ...p, text: p.text + text }))
+        break
+      }
+      case 'think': {
+        const text = d.think || d.text || ''
+        if (text) updStream(p => ({ ...p, think: p.think + text, thinkDone: false }))
+        break
+      }
+      case 'think_end':
+        updStream(p => ({ ...p, thinkDone: true }))
+        break
+      case 'tool': {
+        const id = d.id || `t${event.seq}`
+        updStream(p => ({ ...p, tools: upsertRunningTool(p.tools, { ...d, id }) }))
+        break
+      }
+      case 'tool_output':
+        updStream(p => ({ ...p, tools: p.tools.map(t => t.id === d.id ? { ...t, output: t.output + (d.text || '') } : t) }))
+        break
+      case 'tool_end':
+        updStream(p => ({ ...p, tools: p.tools.map(t => t.id === d.id ? { ...t, running: false, isError: !!d.isError, status: d.isError ? 'error' : 'completed', output: d.output || t.output } : t) }))
+        break
+      case 'file':
+        if (d.path) updStream(p => ({ ...p, files: [...p.files, { path: d.path, name: d.name }] }))
+        break
+      case 'image':
+        if (d.data) updStream(p => ({ ...p, images: [...p.images, toDataUri(d.data, d.mimeType)] }))
+        break
+      case 'media':
+        if (d.type === 'image' && d.url) updStream(p => ({ ...p, images: [...p.images, d.url] }))
+        else if (d.type === 'audio' && d.url) updStream(p => ({ ...p, audios: [...p.audios, d.url] }))
+        break
+      case 'note':
+        updStream(p => ({ ...p, notes: [...p.notes, d.text || d.note || ''].filter(Boolean) }))
+        break
+      case 'emotion':
+        if (d.state && typeof d.state.valence !== 'undefined') setEmo({ state: d.state, meta: emoMeta(d.state) })
+        break
+      case 'confirm':
+        setConfirm({ id: d.id, toolName: d.toolName, reason: d.reason, args: d.args || {}, sessionId: d.sessionId || '' })
+        break
+      case 'done':
+      case 'finish':
+        if (d.model) pendingModelRef.current = d.model
+        break
+      case 'error':
+        updStream(p => ({ ...p, error: d.message || d.error || '未知错误' }))
+        break
+      case 'failed':
+        updStream(p => ({ ...p, error: p.error || d.message || '任务执行失败' }))
+        finalize(pendingModelRef.current)
+        break
+      case 'stopped':
+        updStream(p => ({ ...p, error: p.error || '已手动停止', tools: p.tools.map(t => t.status === 'running' ? { ...t, running: false, status: 'canceled' } : t) }))
+        finalize(pendingModelRef.current)
+        break
+      case 'interrupted':
+        updStream(p => ({ ...p, error: p.error || '服务重启，任务已中断', tools: p.tools.map(t => t.status === 'running' ? { ...t, running: false, status: 'canceled' } : t) }))
+        finalize(pendingModelRef.current)
+        break
+      case 'completed':
+        finalize(pendingModelRef.current)
+        break
+    }
+    scroll()
+  }
+
+  const connectRun = (record: ActiveRunRecord) => {
+    streamCloseRef.current?.()
+    activeRunRef.current = record
+    assistantMsgIdRef.current = record.assistantMessageId
+    streamRef.current = record.stream
+    setStream({ ...record.stream })
+    saveActiveRun(record)
+    streamCloseRef.current = RunsApi.stream(
+      record.runId,
+      record.lastSeq,
+      applyRunEvent,
+      () => {
+        lastEventAtRef.current = Date.now()
+        updStream(p => ({ ...p, notes: p.notes.includes('连接中断，正在恢复…') ? p.notes : [...p.notes, '连接中断，正在恢复…'] }))
+      },
+    )
+  }
+
+  useEffect(() => {
+    if (!currentSessionId) return
+    const record = loadActiveRun(currentSessionId)
+    if (!record) return
+    let alive = true
+    RunsApi.get(record.runId).then(run => {
+      if (!alive) return
+      if (isTerminalRunStatus(run.status) && run.lastSeq <= record.lastSeq) {
+        activeRunRef.current = record
+        assistantMsgIdRef.current = record.assistantMessageId
+        streamRef.current = record.stream
+        setStream({ ...record.stream })
+        if (run.status !== 'completed') {
+          updStream(p => ({ ...p, error: p.error || (run.status === 'stopped' ? '已停止' : run.status === 'interrupted' ? '服务重启，任务已中断' : '任务执行失败') }))
+        }
+        finalize()
+        return
+      }
+      connectRun({ ...record, status: run.status })
+    }).catch(() => {
+      if (alive) clearActiveRun(currentSessionId)
+    })
+    return () => { alive = false; streamCloseRef.current?.(); streamCloseRef.current = null }
+  }, [currentSessionId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const runCommand = async (cmd: string) => {
     if (cmd === '/new') {
@@ -389,7 +565,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     if (!sid) {
       // 尚无会话：先建会话并选中，等切会话的 effect 跑完（清流式态）再继续，
       // 否则乐观更新的用户消息会落空、后续 SSE 事件会被 effect 清掉
-      try { const d = await SessionsApi.create(); await refreshSessions(); selectSession(d.id); sid = d.id } catch { return }
+      try { const d = await SessionsApi.create(); await refreshSessions(); selectSession(d.id); sid = d.id; sessionIdRef.current = d.id } catch { return }
       await new Promise(r => setTimeout(r, 80))
     }
     // 灵犀速记：/lx 灵感内容 → 记入「我的灵感」，不进对话流、不发给模型
@@ -414,84 +590,43 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     // 模型参数（ParamsPanel 存 localStorage，随请求带给 server）
     let params: { temperature?: number; top_p?: number } | undefined
     try { params = JSON.parse(localStorage.getItem('pi_params') || 'null') || undefined } catch {}
-    abortRef.current = ChatApi.send({
-      sessionId: sid, message: content,
-      model: currentModel === 'auto/auto' ? undefined : currentModel,
-      files: attachFiles.length ? attachFiles : undefined,
-      params,
-    }, (ev) => {
-      lastEventAtRef.current = Date.now() // 任意事件都算活跃（含 delta）
-      const d = ev.data || {}
-      switch (ev.type) {
-        case 'delta':
-        case 'message': {
-          const t = d.text || d.delta?.text || ''
-          if (t) updStream(p => ({ ...p, text: p.text + t }))
-          break
-        }
-        case 'think': {
-          const t = d.think || d.text || ''
-          if (t) updStream(p => ({ ...p, think: p.think + t, thinkDone: false }))
-          break
-        }
-        case 'think_end':
-          updStream(p => ({ ...p, thinkDone: true }))
-          break
-        case 'tool': {
-          const id = d.id || `t${Date.now()}-${Math.random().toString(36).slice(2)}`
-          updStream(p => ({ ...p, tools: upsertRunningTool(p.tools, { ...d, id }) }))
-          break
-        }
-        case 'tool_output':
-          updStream(p => ({ ...p, tools: p.tools.map(t => t.id === d.id ? { ...t, output: t.output + (d.text || '') } : t) }))
-          break
-        case 'tool_end':
-          updStream(p => ({ ...p, tools: p.tools.map(t => t.id === d.id ? { ...t, running: false, isError: !!d.isError, status: d.isError ? 'error' : 'completed', output: d.output || t.output } : t) }))
-          break
-        case 'turn_end':
-          break
-        case 'file':
-          if (d.path) updStream(p => ({ ...p, files: [...p.files, { path: d.path, name: d.name }] }))
-          break
-        case 'image':
-          if (d.data) updStream(p => ({ ...p, images: [...p.images, toDataUri(d.data || '', d.mimeType)] }))
-          break
-        case 'media':
-          // 媒体路由结果：图片/音频直接进消息区
-          if (d.type === 'image' && d.url) updStream(p => ({ ...p, images: [...p.images, d.url] }))
-          else if (d.type === 'audio' && d.url) updStream(p => ({ ...p, audios: [...p.audios, d.url] }))
-          break
-        case 'note':
-          updStream(p => ({ ...p, notes: [...p.notes, d.text || d.note || ''].filter(Boolean) }))
-          break
-        case 'emotion':
-          // 服务端每轮结束推送真实情绪快照（VAD）——镜像展示，不可点改
-          if (d.state && typeof d.state.valence !== 'undefined') setEmo({ state: d.state, meta: emoMeta(d.state) })
-          break
-        case 'confirm':
-          // 危险操作待确认：弹确认框（dsh user-approval seam）
-          setConfirm({ id: d.id, toolName: d.toolName, reason: d.reason, args: d.args || {}, sessionId: d.sessionId || '' })
-          break
-        case 'done':
-        case 'finish':
-          finalize(d.model)
-          break
-        case 'error':
-          // 错误后收尾：已生成内容保留，错误并入消息
-          updStream(p => ({ ...p, error: d.message || d.error || '未知错误' }))
-          finalize()
-          break
+    try {
+      const created = await RunsApi.create({
+        sessionId: sid,
+        clientRequestId: `web-${sid}-${userMsgId}`,
+        message: content,
+        model: currentModel === 'auto/auto' ? undefined : currentModel,
+        files: attachFiles.length ? attachFiles : undefined,
+        params,
+      })
+      const record: ActiveRunRecord = {
+        runId: created.runId,
+        sessionId: sid,
+        lastSeq: created.lastSeq || 0,
+        status: created.status,
+        assistantMessageId: assistantMsgIdRef.current!,
+        stream: streamRef.current || emptyStream(),
       }
-      scroll()
-    })
+      connectRun(record)
+    } catch (error: any) {
+      updStream(p => ({ ...p, error: error?.status === 409 ? '当前会话已有任务运行中' : (error?.message || '创建任务失败') }))
+      finalize()
+    }
     scroll()
   }
 
-  const stop = () => {
-    abortRef.current?.()
-    abortRef.current = null
-    updStream(p => ({ ...p, error: p.error || '已手动停止', tools: p.tools.map(t => t.status === 'running' ? { ...t, status: 'canceled' } : t) }))
-    finalize()
+  const stop = async () => {
+    const active = activeRunRef.current
+    if (!active || active.status === 'stopping') return
+    activeRunRef.current = { ...active, status: 'stopping' }
+    saveActiveRun(activeRunRef.current)
+    updStream(p => ({ ...p, notes: [...p.notes, '正在停止任务…'] }))
+    try { await RunsApi.stop(active.runId) }
+    catch (error: any) {
+      updStream(p => ({ ...p, error: `停止失败：${error?.message || error}` }))
+      activeRunRef.current = active
+      saveActiveRun(active)
+    }
   }
 
   // 危险操作确认：后端弹 confirm 事件 → 用户点允许/拒绝 → 回传后端（resolve 审批 allow/reject）

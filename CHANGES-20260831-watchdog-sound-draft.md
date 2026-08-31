@@ -1,18 +1,24 @@
-# 2026-08-31 流式卡死修复 + 提示音 + 增量持久化
+# 2026-08-31 持久化 Run + 流式续跑 + 移动端修复
 
 ## 修改内容
 
-### P0：流式看门狗（自动中止卡死的流式连接）
-**文件**：`frontend/src/components/ChatArea.tsx`
+### P0：聊天执行与 SSE 解耦
+**文件**：`engine/run-*.mjs`、`server.mjs`、`frontend/src/api.ts`、`frontend/src/components/ChatArea.tsx`
 
-**问题**：模型流式响应中途卡住（上游限流/网络问题），前端一直等 `reader.read()`，永远不会自动恢复，只能手动点停止或切标签页。
+**问题**：旧 `/api/chat` 把模型执行生命周期绑在浏览器请求上；刷新、切页或网络断开会触发 `req.close → agent.abort()`，任务和已生成内容一起丢失。
 
-**修复**：在已有的 `idleSeconds` 定时器里增加自动中止逻辑：
-- 超过 90 秒无任何新事件（delta/tool/think）→ 判定为死流
-- 自动调用 `abort()` + `finalize()`，标记错误信息 "⏱️ 长时间无响应已自动停止"
-- 弹 toast 提示 "模型长时间无响应，已自动停止"
+**修复**：
+- `POST /api/runs` 创建服务端持有的后台 Run，立即返回 `runId`
+- 事件先追加到每个 Run 的 JSONL 账本，再广播给订阅者
+- `GET /api/runs/:id/events` 通过 `seq`、`after`、`Last-Event-ID` 重放断点后的事件
+- 浏览器断开只取消订阅，不触碰后台执行
+- 只有 `POST /api/runs/:id/stop` 才关闭服务端执行请求并触发 agent abort
+- 同一 session 同时只允许一个 active Run，重复发送返回 `409 session_busy`
+- 服务重启时旧实例的非终态 Run 标记为 `interrupted`，不自动重放有副作用的工具
 
-**效果**：卡住不再需要手动干预，90秒后自动停止并显示已生成的内容。
+**看门狗变化**：超过 90 秒无新事件时调用 Run stop API，不再把关闭 SSE 当作停止任务。
+
+**效果**：刷新、切页、短暂断网后任务继续运行；重新进入会话后从最后 `seq` 恢复，不重复 delta 或工具卡。
 
 ---
 
@@ -30,7 +36,7 @@
 
 ---
 
-### P2：流式增量持久化（草稿自动保存）
+### P2：流式增量持久化与 Run 恢复
 **文件**：`frontend/src/components/ChatArea.tsx`
 
 **问题**：流式中途卡住/刷新页面，已经出来的内容（文字/工具输出）全部丢失，因为：
@@ -40,8 +46,8 @@
 
 **修复**：
 1. **增加草稿状态**：`const [draftMessage, setDraftMessage] = useState<ChatMessage | null>(null)`
-2. **定期快照到 localStorage**：流式期间每 5 秒把当前 `stream` 内容（text/tools/think 等）存入 `pi_stream_draft`
-3. **刷新时自动恢复**：组件加载时检查 localStorage，如果有匹配当前会话的草稿（30分钟内有效），显示出来
+2. **IndexedDB 草稿快照**：流式期间每 3 秒保存当前 `stream`（text/tools/think 等）
+3. **Run 游标恢复**：按 session 保存 `runId + lastSeq + 流式快照`；刷新后先查询 Run 状态，再从最后 seq 重放剩余事件
 4. **草稿显示样式**：左侧橙色竖条 + 顶部标签 "📝 未完成的回复（草稿）" + "丢弃"按钮
 5. **正常完成时清除**：`finalize()` 里清除 `pi_stream_draft` 和 `draftMessage` 状态
 
@@ -84,14 +90,15 @@
 - 用户消息防丢：已有的 `pi_pending_msg` localStorage 机制（刷新后恢复）
 - assistant 流式内容防丢：新增的 `pi_stream_draft` 机制（每5秒快照，刷新后显示为草稿）
 
-### 为什么不在后端做增量持久化
-**方案对比**：
-1. **后端每次 delta 就写盘**：需要改 pi SDK 的 session-manager.js，拆一条消息成多个 entry，重新加载时合并，工程量大，兼容性风险高
-2. **前端定期快照到 localStorage**：完全在前端实现，零后端改动，30分钟内有效，刷新/重启浏览器都能恢复，实现成本低
-
-选择方案 2。
+### 为什么使用独立 Run 事件账本
+不修改 pi SDK 的最终会话 JSONL schema。Run 事件以独立 append-only JSONL 保存，负责执行过程的断线重放；pi 会话文件仍是完成后的消息权威历史。这样既能恢复流式过程，也避免把一条 assistant 消息拆成大量 session entry。
 
 ---
+
+## 同批修复
+
+- Android：移动根容器改用 `visualViewport` 可见高度，Manifest Activity 增加 `windowSoftInputMode="adjustResize"`，软键盘弹出时输入框随视口收缩。
+- bash 工具卡：实时事件与本地/服务端历史均按稳定 `toolCallId` 幂等归并；不同 ID 即使命令相同也保留。
 
 ## 遗留问题
 

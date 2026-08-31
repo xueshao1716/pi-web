@@ -48,6 +48,17 @@ test('结构：样式缓动必须收敛到 token（styles.css 除 :root 定义�
   }
 })
 
+test('结构：React 聊天使用持久化 Run，关闭 SSE 不得等同停止任务', () => {
+  const chat = read('components', 'ChatArea.tsx')
+  const api = read('api.ts')
+  assert.ok(chat.includes('RunsApi.create('), '发送消息必须先创建持久化 Run')
+  assert.ok(chat.includes('RunsApi.stream('), '消息流必须订阅 Run 事件账本')
+  assert.ok(chat.includes('RunsApi.stop('), '手动停止与看门狗必须调用显式 stop API')
+  assert.ok(!chat.includes('ChatApi.send('), 'React 聊天不得退回请求即任务的旧 ChatApi')
+  assert.ok(!chat.includes('abortRef'), '关闭浏览器订阅不得再通过 abortRef 停止任务')
+  assert.ok(api.includes("'Last-Event-ID': String(cursor)"), '断线重连必须携带最后事件游标')
+})
+
 test('结构：心情胶囊是服务端情绪镜像，禁止本地点击换脸', () => {
   const chat = read('components', 'ChatArea.tsx')
   assert.ok(!chat.includes('setMood'), '不得保留本地 setMood 点击轮换逻辑')

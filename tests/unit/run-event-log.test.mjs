@@ -57,6 +57,39 @@ test('尾行 JSON 完整但缺少换行时 append 保留该事件', () => {
   } finally { log.close(); cleanup() }
 })
 
+test('事件账本脱敏凭据并省略大段图片 base64', () => {
+  const { rootDir, log, cleanup } = fixture()
+  try {
+    let liveEvent
+    log.subscribe('run-1', event => { liveEvent = event })
+    const event = log.append({
+      runId: 'run-1', sessionId: 'session-1', type: 'image',
+      data: { data: 'A'.repeat(20_000), apiKey: 'sk-secret-value', authorization: 'Bearer secret-token' },
+    })
+    const raw = fs.readFileSync(path.join(rootDir, 'events', 'run-1.jsonl'), 'utf8')
+
+    assert.doesNotMatch(raw, /sk-secret-value|Bearer secret-token/)
+    assert.equal(event.data.data, undefined)
+    assert.equal(event.data.omitted, true)
+    assert.equal(liveEvent.data.data.length, 20_000)
+    assert.equal(liveEvent.data.apiKey, '[REDACTED]')
+    assert.equal(log.readAfter('run-1', 0)[0].data.data, undefined)
+  } finally { log.close(); cleanup() }
+})
+
+test('单个 subscriber 抛错不影响事件落盘和其他 subscriber', () => {
+  const { log, cleanup } = fixture()
+  try {
+    const observed = []
+    log.subscribe('run-1', () => { throw new Error('observer failed') })
+    log.subscribe('run-1', event => observed.push(event.seq))
+
+    assert.doesNotThrow(() => log.append({ runId: 'run-1', sessionId: 'session-1', type: 'delta', data: { text: 'A' } }))
+    assert.deepEqual(observed, [1])
+    assert.equal(log.getLastSeq('run-1'), 1)
+  } finally { log.close(); cleanup() }
+})
+
 test('subscriber 只在事件成功落盘后收到通知，取消订阅后不再收到', () => {
   const { rootDir, log, cleanup } = fixture()
   try {

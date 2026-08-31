@@ -1,6 +1,36 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+import { sanitizeText } from './sanitize.mjs'
+
+const SENSITIVE_KEY = /^(authorization|api[_-]?key|token|password|secret)$/i
+
+function sanitizeEventData(type, data, omitLarge = true) {
+  if (!data || typeof data !== 'object') return typeof data === 'string' ? sanitizeText(data) : data
+  const clean = {}
+  for (const [key, value] of Object.entries(data)) {
+    if (SENSITIVE_KEY.test(key)) {
+      clean[key] = '[REDACTED]'
+    } else if (type === 'image' && key === 'data' && typeof value === 'string' && value.length > 8_192) {
+      if (omitLarge) {
+        clean.omitted = true
+        clean.size = value.length
+      } else {
+        clean[key] = value
+      }
+    } else if (typeof value === 'string') {
+      clean[key] = sanitizeText(value)
+    } else if (Array.isArray(value)) {
+      clean[key] = value.map(item => sanitizeEventData(type, item, omitLarge))
+    } else if (value && typeof value === 'object') {
+      clean[key] = sanitizeEventData(type, value, omitLarge)
+    } else {
+      clean[key] = value
+    }
+  }
+  return clean
+}
+
 function safeId(value) {
   return String(value).replace(/[^a-zA-Z0-9_-]/g, '_')
 }
@@ -18,14 +48,20 @@ function readValidLines(file) {
 export function createRunEventLog({ rootDir, now = () => new Date().toISOString() }) {
   const eventsDir = path.join(rootDir, 'events')
   const subscribers = new Map()
+  const lastSeqByRun = new Map()
   let closed = false
   fs.mkdirSync(eventsDir, { recursive: true })
 
   const fileFor = runId => path.join(eventsDir, `${safeId(runId)}.jsonl`)
-  const getLastSeq = runId => readValidLines(fileFor(runId)).reduce(
-    (last, event) => Number.isInteger(event.seq) && event.seq > last ? event.seq : last,
-    0,
-  )
+  const getLastSeq = runId => {
+    if (lastSeqByRun.has(runId)) return lastSeqByRun.get(runId)
+    const last = readValidLines(fileFor(runId)).reduce(
+      (value, event) => Number.isInteger(event.seq) && event.seq > value ? event.seq : value,
+      0,
+    )
+    lastSeqByRun.set(runId, last)
+    return last
+  }
 
   function repairIncompleteTail(file) {
     let raw
@@ -48,6 +84,7 @@ export function createRunEventLog({ rootDir, now = () => new Date().toISOString(
       if (!runId || !sessionId || !type) throw new Error('invalid_run_event')
       const file = fileFor(runId)
       repairIncompleteTail(file)
+      const liveData = sanitizeEventData(type, data ?? {}, false)
       const event = {
         v: 1,
         runId,
@@ -55,10 +92,14 @@ export function createRunEventLog({ rootDir, now = () => new Date().toISOString(
         seq: getLastSeq(runId) + 1,
         type,
         ts: now(),
-        data: data ?? {},
+        data: sanitizeEventData(type, data ?? {}, true),
       }
       fs.appendFileSync(file, `${JSON.stringify(event)}\n`, 'utf8')
-      for (const listener of subscribers.get(runId) || []) listener(event)
+      lastSeqByRun.set(runId, event.seq)
+      const liveEvent = liveData === event.data ? event : { ...event, data: liveData }
+      for (const listener of subscribers.get(runId) || []) {
+        try { listener(liveEvent) } catch {}
+      }
       return event
     },
     readAfter(runId, after = 0) {
@@ -78,6 +119,7 @@ export function createRunEventLog({ rootDir, now = () => new Date().toISOString(
     close() {
       closed = true
       subscribers.clear()
+      lastSeqByRun.clear()
     },
   }
 }

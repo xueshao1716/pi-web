@@ -1,4 +1,5 @@
 import type { Model, Session, ChatMessage, SessionMessages, Artifact } from './types'
+import { parseSseBlocks, type RunEvent, type RunStatus } from './lib/run-events'
 
 // ── 鉴权 ──
 let _token = (() => {
@@ -66,46 +67,72 @@ export const SessionsApi = {
 export const MessagesApi = {
   add: (sid: string, text: string) => api<{ ok: boolean; id: string }>(`/api/sessions/${encodeURIComponent(sid)}/messages`, { method: 'POST', body: { text } }),
 }
-export const ChatApi = {
-  // SSE 流式：返回 { writer, abort } ，onChunk 处理 delta/think/tool/note/finish
-  send: (body: any, onEvent: (ev: { type: string; data: any }) => void) => {
-    const ctrl = new AbortController()
-    ;(async () => {
+export interface RunInfo {
+  id: string
+  sessionId: string
+  status: RunStatus
+  lastSeq: number
+  [key: string]: any
+}
+
+export const RunsApi = {
+  create: (body: any) => api<{ runId: string; sessionId: string; status: RunStatus; lastSeq: number }>('/api/runs', {
+    method: 'POST', body: { ...body, stream: true }, timeoutMs: 30_000,
+  }),
+  get: (runId: string) => api<RunInfo>(`/api/runs/${encodeURIComponent(runId)}`),
+  stop: (runId: string) => api<RunInfo>(`/api/runs/${encodeURIComponent(runId)}/stop`, { method: 'POST' }),
+  stream: (
+    runId: string,
+    after: number,
+    onEvent: (event: RunEvent) => void,
+    onError?: (error: Error) => void,
+    onEnd?: () => void,
+  ) => {
+    let closed = false
+    let cursor = after
+    let ctrl: AbortController | null = null
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+
+    const connect = async () => {
+      if (closed) return
+      ctrl = new AbortController()
       try {
-        const r = await fetch(_apiBase + '/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${_token}` },
-          body: JSON.stringify({ ...body, stream: true }),
+        const response = await fetch(`${_apiBase}/api/runs/${encodeURIComponent(runId)}/events?after=${cursor}`, {
+          headers: { Authorization: `Bearer ${_token}`, 'Last-Event-ID': String(cursor) },
           signal: ctrl.signal,
         })
-        if (!r.ok || !r.body) { onEvent({ type: 'error', data: { error: `HTTP ${r.status}` } }); return }
-        const reader = r.body.getReader()
+        if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`)
+        const reader = response.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ''
-        while (true) {
+        while (!closed) {
           const { done, value } = await reader.read()
           if (done) break
           buffer += decoder.decode(value, { stream: true })
-          let idx
-          while ((idx = buffer.indexOf('\n\n')) >= 0) {
-            const chunk = buffer.slice(0, idx); buffer = buffer.slice(idx + 2)
-            // SSE event/data 解析（兼容带/不带空格前缀，与线上版一致）
-            let evType = 'message'; const dataLines: string[] = []
-            for (const line of chunk.split('\n')) {
-              if (line.startsWith('event:')) evType = line.slice(6).trim()
-              else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
-            }
-            const evData = dataLines.join('\n')
-            if (!evData) continue
-            try { onEvent({ type: evType, data: JSON.parse(evData) }) } catch {}
+          const parsed = parseSseBlocks(buffer)
+          buffer = parsed.rest
+          for (const event of parsed.events) {
+            if (event.seq <= cursor) continue
+            cursor = event.seq
+            onEvent(event)
           }
         }
-        onEvent({ type: 'finish', data: {} })
-      } catch (e: any) {
-        if (e?.name !== 'AbortError') onEvent({ type: 'error', data: { error: e.message } })
+        if (!closed) onEnd?.()
+      } catch (error: any) {
+        if (closed || error?.name === 'AbortError') return
+        onError?.(error instanceof Error ? error : new Error(String(error)))
       }
-    })()
-    return () => ctrl.abort()
+      if (!closed && !retryTimer) {
+        retryTimer = setTimeout(() => { retryTimer = null; connect() }, 1500)
+      }
+    }
+
+    connect()
+    return () => {
+      closed = true
+      if (retryTimer) clearTimeout(retryTimer)
+      ctrl?.abort()
+    }
   },
 }
 
