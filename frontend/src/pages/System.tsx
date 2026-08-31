@@ -74,7 +74,6 @@ export default function System() {
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
         {/* 头部 */}
         <div className="mb-6">
-          <div className="page-eyebrow mb-1">System</div>
           <h1 className="page-title">系统</h1>
           <p className="text-xs text-pi-dim2 mt-1.5">
             {info.name || 'pi-web 小语工作台'}{info.version ? ` · v${info.version}` : ''}

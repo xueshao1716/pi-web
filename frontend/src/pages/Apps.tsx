@@ -158,7 +158,6 @@ export default function Apps() {
     <div className="flex-1 overflow-y-auto relative z-10">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
         <div className="mb-5">
-          <div className="page-eyebrow mb-1">Apps</div>
           <h1 className="page-title">应用中心</h1>
           <p className="text-xs text-pi-dim2 mt-1.5">经验沉淀 · 专项生成 · 技能与提示词资产 · 自我改进</p>
         </div>

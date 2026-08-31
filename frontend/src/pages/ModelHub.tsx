@@ -100,7 +100,6 @@ export default function ModelHub() {
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
         {/* 头部：eyebrow + 渐变标题 */}
         <div className="mb-5">
-          <div className="page-eyebrow mb-1">Model Hub</div>
           <h1 className="page-title">模型中心</h1>
           <p className="text-xs text-pi-dim2 mt-1.5">{models.length} 个模型 · {freeCount} 免费 · 工作空间 {cwd ? cwd.split(/[\\/]/).pop() : '—'}</p>
         </div>

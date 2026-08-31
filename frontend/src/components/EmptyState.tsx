@@ -25,11 +25,11 @@ export default function EmptyState({ icon: Icon, title, hint, action, className 
         </div>
       ) : null}
       <div className="text-sm font-medium text-pi-text/90">{title}</div>
-      {hint && <div className="text-[11px] text-pi-dim2 mt-1.5 max-w-[280px] mx-auto leading-relaxed">{hint}</div>}
+      {hint && <div className="text-[12px] text-pi-dim2 mt-1.5 max-w-[280px] mx-auto leading-relaxed">{hint}</div>}
       {action && (
         <button
           onClick={action.onClick}
-          className="mt-4 px-4 py-1.5 rounded-pi-md text-xs font-medium bg-pi-accent/15 text-pi-accent border border-pi-accent/30 hover:bg-pi-accent/25 transition-colors touch-hit"
+          className="mt-4 px-4 py-1.5 rounded-pi-md text-[13px] font-medium bg-pi-accent/15 text-pi-accent border border-pi-accent/30 hover:bg-pi-accent/25 transition-colors touch-hit"
         >
           {action.label}
         </button>

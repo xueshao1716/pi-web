@@ -43,3 +43,42 @@
 - 公共组件在本 Task 只建立地基，各业务页全面迁移由后续任务完成。
 - `.pi-subagents/` 是任务启动前已有运行时未跟踪目录，未暂存、未提交。
 - 未做浏览器截图/真机手测；本 Task 依任务书完成契约测试、TypeScript 和 build。
+
+---
+
+## Fix round 1（审查修复）
+
+### 审查发现与处理
+1. **残留 `page-eyebrow`**：设计契约升级为扫描 `frontend/src` 全部 TS/TSX/CSS，要求使用数为 0。RED 实际定位 8 处（审查点名的 Engine/LingXi/ModelHub/System/Tasks/Workshop，以及同类 Apps/Assets），均仅删除英文 eyebrow 元素；未恢复禁用 CSS，未改业务逻辑，也未触碰 engine/public 下 workshop/refine/image 文件。
+2. **公共组件字号角色**：EmptyState hint 11→12px、CTA 12→13px；StatusTile label 保持 11px 元数据，detail 11→12px。
+3. **10px 角色限制**：Themes “默认”按钮 10→11px；TitleBar 符号 10→11px。新增最小角色测试锁定 PageHeader/SectionHeader/StatusTile 不使用 10px 正文字号，并精确锁定上述公共组件及两处字号。
+
+### RED
+- 命令：`node --test frontend/tests/design-contract.test.mjs`
+- 结果：按预期失败（16/18 通过、2/18 失败）。失败项明确列出 8 个 `page-eyebrow` 残留文件，并报告 EmptyState hint 不是 12px；角色断言随后会继续覆盖 CTA、StatusTile detail、Themes 默认按钮与 TitleBar 符号。
+
+### GREEN 与验证
+- `node --test frontend/tests/design-contract.test.mjs`：18/18 通过。
+- `./frontend/node_modules/.bin/tsc --noEmit -p frontend`：通过，零诊断。
+- `npm --prefix frontend run build`：通过，Vite 生产构建成功。
+- `git diff --check`：通过。
+- 构建后的 `frontend/dist` tracked/untracked 噪音已恢复/清理，未纳入提交。
+
+### Fix round 1 改动文件
+- `frontend/tests/design-contract.test.mjs`
+- `frontend/src/components/EmptyState.tsx`
+- `frontend/src/components/TitleBar.tsx`
+- `frontend/src/styles.css`
+- `frontend/src/pages/Themes.tsx`
+- `frontend/src/pages/Apps.tsx`
+- `frontend/src/pages/Assets.tsx`
+- `frontend/src/pages/Engine.tsx`
+- `frontend/src/pages/LingXi.tsx`
+- `frontend/src/pages/ModelHub.tsx`
+- `frontend/src/pages/System.tsx`
+- `frontend/src/pages/Tasks.tsx`
+- `frontend/src/pages/Workshop.tsx`
+
+### 残余问题
+- 构建仍有既有 Vite/UnoCSS/大 chunk 非阻塞警告，本轮未扩大范围处理。
+- 未做截图或真机视觉验收；机械删除 eyebrow 元素与字号角色由契约、TypeScript 和生产构建覆盖。

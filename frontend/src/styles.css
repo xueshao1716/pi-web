@@ -809,8 +809,8 @@ body {
 .status-tile__icon { display: grid; width: 32px; height: 32px; flex: 0 0 32px; place-items: center; border-radius: var(--pi-r-md); background: var(--pi-accent-soft); color: var(--pi-accent); }
 .status-tile__icon svg { width: 16px; height: 16px; }
 .status-tile__content { display: grid; min-width: 0; gap: 2px; }
-.status-tile__label,
-.status-tile__detail { color: var(--pi-dim2); font-size: var(--pi-fs-xs); line-height: var(--pi-lh-xs); }
+.status-tile__label { color: var(--pi-dim2); font-size: var(--pi-fs-xs); line-height: var(--pi-lh-xs); }
+.status-tile__detail { color: var(--pi-dim2); font-size: var(--pi-fs-sm); line-height: var(--pi-lh-sm); }
 .status-tile__value { overflow-wrap: anywhere; color: var(--pi-text); font-size: var(--pi-fs-lg); line-height: var(--pi-lh-lg); font-weight: 650; }
 .status-tile[data-tone="success"] .status-tile__icon { background: color-mix(in oklab, var(--pi-success) 14%, transparent); color: var(--pi-success); }
 .status-tile[data-tone="warning"] .status-tile__icon { background: color-mix(in oklab, var(--pi-warning) 14%, transparent); color: var(--pi-warning); }

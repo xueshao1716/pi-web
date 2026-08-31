@@ -67,7 +67,6 @@ export default function Assets() {
     <div className="flex-1 overflow-y-auto relative z-10">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
         <div className="mb-4">
-          <div className="page-eyebrow mb-1">Asset Library</div>
           <h1 className="page-title">资产库</h1>
           <p className="text-xs text-pi-dim2 mt-1.5">工作空间「生成物」{artData?.artifacts?.length || 0} 个 · 「交付」{deliveries.length} 个</p>
         </div>

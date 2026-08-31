@@ -22,7 +22,7 @@ const walkTs = (dir, out = []) => {
 }
 
 // ── 0. 公共页面视觉地基 ──
-test('公共页面组件存在且不再提供 page-eyebrow', () => {
+test('公共页面组件存在且 frontend/src 不再使用 page-eyebrow', () => {
   const required = ['PageHeader', 'SectionHeader', 'StatusTile']
   const failures = []
   for (const name of required) {
@@ -33,10 +33,28 @@ test('公共页面组件存在且不再提供 page-eyebrow', () => {
     }
     const src = readFileSync(file, 'utf8')
     if (!src.includes(`export default function ${name}`)) failures.push(`${name} 缺少默认导出`)
-    if (src.includes('page-eyebrow')) failures.push(`${name} 仍使用 page-eyebrow`)
   }
-  assert.ok(!css.includes('.page-eyebrow'), 'styles.css 仍定义 page-eyebrow')
+  for (const p of walkTs(join(ROOT, 'src'))) {
+    if (readFileSync(p, 'utf8').includes('page-eyebrow')) failures.push(`${p.replace(ROOT, '')}: page-eyebrow`)
+  }
   assert.deepEqual(failures, [], failures.join('\n'))
+})
+
+test('公共视觉组件字号角色明确，10px 只用于 badge', () => {
+  const empty = readFileSync(join(ROOT, 'src/components/EmptyState.tsx'), 'utf8')
+  const status = readFileSync(join(ROOT, 'src/components/StatusTile.tsx'), 'utf8')
+  const themes = readFileSync(join(ROOT, 'src/pages/Themes.tsx'), 'utf8')
+  const titleBar = readFileSync(join(ROOT, 'src/components/TitleBar.tsx'), 'utf8')
+  for (const name of ['PageHeader', 'SectionHeader', 'StatusTile']) {
+    const src = readFileSync(join(ROOT, `src/components/${name}.tsx`), 'utf8')
+    assert.doesNotMatch(src, /text-\[10px\]/, `${name} 不得使用 badge 字号作为正文角色`)
+  }
+  assert.match(empty, /text-\[12px\][^>]*>\{hint\}/, 'EmptyState hint 应为 12px')
+  assert.match(empty, /text-\[13px\][^>]*>[\s\S]*?\{action\.label\}/, 'EmptyState CTA 应为 13px')
+  assert.match(css, /\.status-tile__label[\s\S]*font-size:\s*var\(--pi-fs-xs\)/, 'StatusTile label 应为 11px 元数据')
+  assert.match(css, /\.status-tile__detail\s*\{[^}]*font-size:\s*var\(--pi-fs-sm\)/s, 'StatusTile detail 应为 12px')
+  assert.match(themes, /border-2 text-\[11px\][\s\S]{0,300}?title="主题默认主色">默认/, 'Themes 默认按钮应为 11px')
+  assert.match(titleBar, /text-\[11px\][^>]*>\{sym\}/, 'TitleBar 符号应为 11px')
 })
 
 test('EmptyState 只接受 Lucide icon，不再接受 emoji prop', () => {

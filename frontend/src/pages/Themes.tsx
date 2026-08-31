@@ -201,7 +201,7 @@ export default function Themes() {
             <div>
               <div className="text-[11px] text-pi-dim2 font-semibold mb-2">主色</div>
               <div className="flex flex-wrap items-center gap-2">
-                <button className={`w-8 h-8 rounded-full border-2 text-[10px] flex items-center justify-center ${!accent ? 'border-pi-accent' : 'border-pi-border'}`}
+                <button className={`w-8 h-8 rounded-full border-2 text-[11px] flex items-center justify-center ${!accent ? 'border-pi-accent' : 'border-pi-border'}`}
                   style={{ background: (SEEDS as any)[theme]?.accent, color: 'var(--pi-bg)' }}
                   onClick={() => setAccent('')} title="主题默认主色">默认</button>
                 {ACCENT_SWATCHES.map(c => (

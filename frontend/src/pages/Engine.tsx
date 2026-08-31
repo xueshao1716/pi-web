@@ -161,7 +161,6 @@ export default function Engine() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-5 sm:py-6 overflow-x-hidden">
         {/* 头部 */}
         <div className="mb-6">
-          <div className="page-eyebrow mb-1">Engine</div>
           <h1 className="page-title">引擎</h1>
           <p className="text-xs text-pi-dim2 mt-1.5">运行底盘 · 工具注册表 · 可插拔能力清单 · 插件挂载</p>
         </div>

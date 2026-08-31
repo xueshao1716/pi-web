@@ -28,7 +28,6 @@ export default function Workshop() {
     <div className="flex-1 min-h-0 overflow-y-auto page-enter">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
         <div className="mb-5">
-          <div className="page-eyebrow mb-1">Workshop</div>
           <h1 className="page-title">专项工作台</h1>
           <p className="text-xs text-pi-dim2 mt-1.5">{TAB_DESC[tab]}</p>
         </div>
