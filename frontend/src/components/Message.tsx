@@ -20,7 +20,7 @@ function ToolCard({ tool }: { tool: Partial<RunningTool> & { name: string } }) {
   } catch { /* 保持原文本 */ }
 
   return (
-    <div className={`my-2.5 rounded-xl border overflow-hidden text-[13px] bg-pi-bg1/60 transition-all duration-200 ${tool.isError ? 'border-pi-red/40' : 'border-pi-border-soft/60 hover:border-pi-border hover:shadow-md hover:shadow-black/10'}`}>
+    <div className={`my-2.5 rounded-xl border overflow-hidden text-[13px] bg-pi-bg1/60 transition-[background-color,border-color,box-shadow] duration-200 ${tool.isError ? 'border-pi-red/40' : 'border-pi-border-soft/60 hover:border-pi-border hover:shadow-md hover:shadow-black/10'}`}>
       <div
         className="press w-full flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-pi-bg-hover/60 active:bg-pi-bg-active/50 transition-colors text-left"
         style={{ boxShadow: `inset 3px 0 0 ${tc}` }}

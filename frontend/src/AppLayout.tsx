@@ -274,7 +274,7 @@ export default function AppLayout() {
           <T.Root key={n.route}>
             <T.Trigger asChild>
               <button aria-label={n.label} aria-current={route === n.route ? 'page' : undefined}
-                className={`w-10 h-10 rounded-xl flex items-center justify-center relative transition-all duration-200 ${
+                className={`w-10 h-10 rounded-xl flex items-center justify-center relative transition-[background-color,color,border-color,box-shadow,transform] duration-200 ${
                   route === n.route ? 'bg-pi-accent text-white shadow-md shadow-pi-accent/25' : 'text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3'}`}
                 onClick={() => nav(n.route)}>
                 <n.icon className="w-[18px] h-[18px]" strokeWidth={1.8} />

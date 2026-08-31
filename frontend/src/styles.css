@@ -28,6 +28,28 @@ button {
 }
 button:disabled { cursor: default; }
 input, select, textarea { font: inherit; color: inherit; }
+::selection { background: var(--pi-accent-soft); color: var(--pi-text); }
+select {
+  color-scheme: inherit;
+  background-color: var(--pi-input-bg);
+  border-color: var(--pi-input-border);
+  accent-color: var(--pi-accent);
+}
+input[type="time"],
+input[type="date"] {
+  color-scheme: inherit;
+  background-color: var(--pi-input-bg);
+  border-color: var(--pi-input-border);
+}
+input[type="range"] { accent-color: var(--pi-accent); }
+input[type="color"] {
+  color-scheme: inherit;
+  background: var(--pi-input-bg);
+  border-color: var(--pi-input-border);
+}
+select:disabled,
+input:disabled,
+textarea:disabled { opacity: .55; }
 img, svg, video, audio { max-width: 100%; }
 img, svg, video { display: block; }
 ul[class], ol[class] { list-style: none; margin: 0; padding: 0; }
@@ -135,8 +157,8 @@ ul[class], ol[class] { list-style: none; margin: 0; padding: 0; }
   --pi-space-xl: 20px;
   --pi-space-xxl: 24px;
   --pi-space-xxxl: 32px;
+  --pi-z-topbar: 60;
   --pi-z-rightpanel: 80;
-  --pi-z-topbar: 60; /* 元枢壳自绘标题栏：高于内容层(20)，低于右栏(80)——右栏用 top-9 避开它 */
   --pi-z-dialog: 100;
   --pi-z-dialog-top: 101;
   --pi-z-toast: 100;
@@ -743,16 +765,60 @@ body {
 .page-enter { animation: pageIn .3s var(--pi-ease-sheet) both; }
 @keyframes pageIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
-.page-eyebrow {
-  font-family: var(--pi-font-display);
-  font-size: 10px; font-weight: 800; letter-spacing: .2em; text-transform: uppercase;
-  color: var(--pi-accent2); opacity: .9;
-}
 .page-title {
   text-wrap: balance;
   font-family: var(--pi-font-display);
   font-size: 22px; font-weight: 800; letter-spacing: -.02em; line-height: 1.2;
   color: var(--pi-text);
+}
+
+.page-header,
+.section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--pi-space-lg);
+}
+.page-header { margin-bottom: var(--pi-space-xxl); }
+.page-header__content,
+.section-header__content { min-width: 0; }
+.page-header__description,
+.section-header__description {
+  max-width: 68ch;
+  margin-top: var(--pi-space-xs);
+  color: var(--pi-dim2);
+  font-size: var(--pi-fs-sm);
+  line-height: var(--pi-lh-sm);
+}
+.page-header__meta { margin-top: var(--pi-space-sm); }
+.page-header__actions,
+.section-header__actions { display: flex; flex: 0 0 auto; align-items: center; gap: var(--pi-space-sm); }
+.section-header { margin-bottom: var(--pi-space-md); }
+.section-header__title-row { display: flex; align-items: center; gap: var(--pi-space-sm); }
+.section-header__icon { width: 16px; height: 16px; color: var(--pi-accent); }
+.section-header__title { color: var(--pi-text); font-size: var(--pi-fs-lg); line-height: var(--pi-lh-lg); font-weight: 650; }
+.status-tile {
+  display: flex;
+  gap: var(--pi-space-md);
+  min-width: 0;
+  padding: var(--pi-space-md) var(--pi-space-lg);
+  border: 1px solid var(--pi-border-soft);
+  border-radius: var(--pi-r-lg);
+  background: var(--pi-surface);
+}
+.status-tile__icon { display: grid; width: 32px; height: 32px; flex: 0 0 32px; place-items: center; border-radius: var(--pi-r-md); background: var(--pi-accent-soft); color: var(--pi-accent); }
+.status-tile__icon svg { width: 16px; height: 16px; }
+.status-tile__content { display: grid; min-width: 0; gap: 2px; }
+.status-tile__label,
+.status-tile__detail { color: var(--pi-dim2); font-size: var(--pi-fs-xs); line-height: var(--pi-lh-xs); }
+.status-tile__value { overflow-wrap: anywhere; color: var(--pi-text); font-size: var(--pi-fs-lg); line-height: var(--pi-lh-lg); font-weight: 650; }
+.status-tile[data-tone="success"] .status-tile__icon { background: color-mix(in oklab, var(--pi-success) 14%, transparent); color: var(--pi-success); }
+.status-tile[data-tone="warning"] .status-tile__icon { background: color-mix(in oklab, var(--pi-warning) 14%, transparent); color: var(--pi-warning); }
+.status-tile[data-tone="danger"] .status-tile__icon { background: color-mix(in oklab, var(--pi-danger) 14%, transparent); color: var(--pi-danger); }
+.status-tile[data-tone="info"] .status-tile__icon { background: color-mix(in oklab, var(--pi-info) 14%, transparent); color: var(--pi-info); }
+@media (max-width: 640px) {
+  .page-header { flex-direction: column; }
+  .page-header__actions { width: 100%; flex-wrap: wrap; }
 }
 
 /* 统计卡 */

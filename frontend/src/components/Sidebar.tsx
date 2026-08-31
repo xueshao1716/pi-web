@@ -62,7 +62,7 @@ export default function Sidebar({ onNavigated, onCollapse }: { onNavigated?: () 
         <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-pi-accent to-pi-accent2 flex items-center justify-center text-white font-bold text-sm"
           style={{ boxShadow: '0 3px 10px color-mix(in oklab, var(--pi-accent) 20%, transparent)' }}>语</div>
         <div>
-          <div className="font-semibold text-[14px] leading-tight">小语</div>
+          <div className="font-semibold text-[15px] leading-tight">小语</div>
           <div className="text-pi-dim2 text-[11px] leading-tight">元枢工作台</div>
         </div>
         {onCollapse && (
@@ -106,11 +106,11 @@ export default function Sidebar({ onNavigated, onCollapse }: { onNavigated?: () 
             </button>
             {!collapsed.has(g) && groups[g].map(s => (
               <div key={s.id}
-                className={`group flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer mb-1 transition-all duration-200 ${
+                className={`group flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer mb-1 transition-[background-color,color,border-color,box-shadow,transform] duration-200 ${
                   s.id === currentSessionId ? 'bg-pi-accent/12 border border-pi-accent/20' : 'hover:bg-pi-bg-hover border border-transparent'
                 }`}
                 onClick={() => { selectSession(s.id); onNavigated?.() }}>
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 transition-all duration-200 ${s.id === currentSessionId ? 'bg-pi-accent text-white shadow-[0_0_12px_rgba(84,104,255,0.3)]' : 'bg-pi-bg3/80 text-pi-dim'}`}>
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 transition-[background-color,color,border-color,box-shadow,transform] duration-200 ${s.id === currentSessionId ? 'bg-pi-accent text-white shadow-[0_0_12px_rgba(84,104,255,0.3)]' : 'bg-pi-bg3/80 text-pi-dim'}`}>
                   {s.name?.charAt(0) || '会'}
                 </div>
                 <div className="flex-1 min-w-0">

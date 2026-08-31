@@ -116,7 +116,7 @@ export const EASINGS = {
 // 不随主题变，统一在 :root 输出；组件只能用这里定义的 --pi-space-* / --pi-z-*
 export const SPACING = [['xs', 4], ['sm', 8], ['md', 12], ['lg', 16], ['xl', 20], ['xxl', 24], ['xxxl', 32]]
 export const Z_INDEX = [
-  ['rightpanel', 80], ['dialog', 100], ['dialog-top', 101], ['toast', 100], ['palette', 110],
+  ['topbar', 60], ['rightpanel', 80], ['dialog', 100], ['dialog-top', 101], ['toast', 100], ['palette', 110],
   ['palette-content', 111], ['viewer', 120], ['modal', 200], ['modal-inner', 201],
 ]
 export function globalVars() {

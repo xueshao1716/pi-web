@@ -665,7 +665,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
           style={{ boxShadow: '0 12px 40px color-mix(in oklab, var(--pi-accent) 28%, transparent)' }}>语</div>
 
         {/* 标题 */}
-        <h1 className="text-[28px] font-extrabold text-pi-text mb-2 tracking-tight anim-enter anim-enter-delay-1"
+        <h1 className="text-[22px] font-extrabold text-pi-text mb-2 tracking-tight anim-enter anim-enter-delay-1"
           style={{ fontFamily: 'var(--pi-font-display)' }}>你好，我是小语</h1>
         <p className="text-pi-dim text-[15px] mb-10 anim-enter anim-enter-delay-2 leading-relaxed">
           你的 AI 工作伙伴。写代码、做设计、整理文档——从一句话开始。
@@ -683,7 +683,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
               className={`welcome-card group rounded-xl border px-5 py-4 cursor-pointer text-left bg-gradient-to-br ${f.c} backdrop-blur-sm`}
               style={{ animationDelay: `${0.25 + i * 0.07}s`, '--_card-accent': f.accent } as React.CSSProperties}>
               <f.Icon className={`w-5 h-5 mb-2.5 ${f.ic} transition-transform group-hover:scale-110`} strokeWidth={1.7} />
-              <div className="text-[14px] font-semibold text-pi-text mb-0.5">{f.label}</div>
+              <div className="text-[15px] font-semibold text-pi-text mb-0.5">{f.label}</div>
               <div className="text-[12px] text-pi-dim2 leading-relaxed">{f.desc}</div>
             </button>
           ))}

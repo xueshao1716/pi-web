@@ -248,7 +248,7 @@ export default function SendBox({ streaming, onStop, onSend, onCommand, onVoice,
         </div>
       )}
 
-      <div className="sendbox-shell field-container rounded-2xl backdrop-blur-xl transition-all duration-300 shadow-lg shadow-black/10">
+      <div className="sendbox-shell field-container rounded-2xl backdrop-blur-xl transition-[background-color,border-color,box-shadow] duration-300 shadow-lg shadow-black/10">
         <textarea ref={taRef} rows={2} value={value} disabled={streaming}
           placeholder='给小语发消息…　"/" 命令 · "@ 引用文件'
           role="combobox"

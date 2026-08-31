@@ -107,7 +107,7 @@ export default function SetupWizard({ onDone }: { onDone: () => void }) {
             <div className="flex items-center gap-2 mb-4">
               <span className="w-8 h-8 rounded-lg bg-pi-accent/15 flex items-center justify-center"><KeyRound className="w-4 h-4 text-pi-accent" /></span>
               <div>
-                <div className="text-[14px] font-semibold text-pi-text">{picked.name}</div>
+                <div className="text-[15px] font-semibold text-pi-text">{picked.name}</div>
                 <div className="text-[11px] text-pi-dim2">密钥只写入本机 auth.json，不会上传</div>
               </div>
             </div>

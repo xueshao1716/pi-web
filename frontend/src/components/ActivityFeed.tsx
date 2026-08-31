@@ -1,3 +1,4 @@
+import { Satellite as EmptyActivityIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Activity } from 'lucide-react'
 import { AgentEventsApi, type AgentEvent } from '../api'
@@ -79,7 +80,7 @@ export default function ActivityFeed() {
         {err ? (
           <div className="text-[11px] text-pi-dim2 p-3">活动接口暂不可用</div>
         ) : !events.length ? (
-          <EmptyState emoji="🛰️" title="暂无活动记录" hint="小语干活时会实时显示在这里" />
+          <EmptyState icon={EmptyActivityIcon} title="暂无活动记录" hint="小语干活时会实时显示在这里" />
         ) : (
           events.slice().reverse().slice(0, 40).map((ev, i) => (
             <div key={`${ev.ts}-${i}`} className="flex gap-2 items-start px-2 py-1.5 rounded-pi-sm hover:bg-pi-bg2/50 text-xs leading-relaxed">

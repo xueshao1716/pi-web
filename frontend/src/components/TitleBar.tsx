@@ -28,7 +28,7 @@ export default function TitleBar() {
       className="w-6 h-6 flex items-center justify-center group">
       <span className="w-3 h-3 rounded-full flex items-center justify-center transition-transform group-hover:scale-110"
         style={{ background: color, boxShadow: 'inset 0 0 0 0.5px rgba(0,0,0,.12)' }}>
-        <span className="opacity-0 group-hover:opacity-100 text-[8px] leading-none font-bold text-black/55 select-none">{sym}</span>
+        <span className="opacity-0 group-hover:opacity-100 text-[10px] leading-none font-bold text-black/55 select-none">{sym}</span>
       </span>
     </button>
   )

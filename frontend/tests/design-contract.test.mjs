@@ -4,7 +4,7 @@
 // ══════════════════════════════════════════════════════════
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { SEEDS, generateTheme, emitCss, contrast, wcagLum } from '../src/theme/generate.mjs'
@@ -20,6 +20,31 @@ const walkTs = (dir, out = []) => {
   }
   return out
 }
+
+// ── 0. 公共页面视觉地基 ──
+test('公共页面组件存在且不再提供 page-eyebrow', () => {
+  const required = ['PageHeader', 'SectionHeader', 'StatusTile']
+  const failures = []
+  for (const name of required) {
+    const file = join(ROOT, `src/components/${name}.tsx`)
+    if (!existsSync(file)) {
+      failures.push(`缺少 src/components/${name}.tsx`)
+      continue
+    }
+    const src = readFileSync(file, 'utf8')
+    if (!src.includes(`export default function ${name}`)) failures.push(`${name} 缺少默认导出`)
+    if (src.includes('page-eyebrow')) failures.push(`${name} 仍使用 page-eyebrow`)
+  }
+  assert.ok(!css.includes('.page-eyebrow'), 'styles.css 仍定义 page-eyebrow')
+  assert.deepEqual(failures, [], failures.join('\n'))
+})
+
+test('EmptyState 只接受 Lucide icon，不再接受 emoji prop', () => {
+  const src = readFileSync(join(ROOT, 'src/components/EmptyState.tsx'), 'utf8')
+  assert.doesNotMatch(src, /emoji\??\s*:/, 'EmptyStateProps 仍暴露 emoji')
+  assert.doesNotMatch(src, /\bemoji\b/, 'EmptyState 实现仍包含 emoji 分支')
+  assert.match(src, /icon\??\s*:\s*LucideIcon/, 'EmptyState icon 必须使用 LucideIcon 类型')
+})
 
 // ── 1. 缓动词汇表 ──
 const ALLOWED_EASING = [

@@ -63,7 +63,7 @@ function ThemeCard({ id, active, onApply }: { id: string; active: boolean; onApp
   return (
     <button
       onClick={onApply}
-      className={`relative text-left rounded-pi-lg border transition-all overflow-hidden ${active ? 'border-pi-accent ring-2 ring-pi-accent/30' : 'border-pi-border hover:border-pi-border-hi'}`}
+      className={`relative text-left rounded-pi-lg border transition-[border-color,box-shadow,transform] overflow-hidden ${active ? 'border-pi-accent ring-2 ring-pi-accent/30' : 'border-pi-border hover:border-pi-border-hi'}`}
       style={vars as any}
     >
       <div className="h-24 p-3 flex flex-col gap-1.5" style={{ background: 'var(--pi-bg)' }}>
@@ -201,7 +201,7 @@ export default function Themes() {
             <div>
               <div className="text-[11px] text-pi-dim2 font-semibold mb-2">主色</div>
               <div className="flex flex-wrap items-center gap-2">
-                <button className={`w-8 h-8 rounded-full border-2 text-[9px] flex items-center justify-center ${!accent ? 'border-pi-accent' : 'border-pi-border'}`}
+                <button className={`w-8 h-8 rounded-full border-2 text-[10px] flex items-center justify-center ${!accent ? 'border-pi-accent' : 'border-pi-border'}`}
                   style={{ background: (SEEDS as any)[theme]?.accent, color: 'var(--pi-bg)' }}
                   onClick={() => setAccent('')} title="主题默认主色">默认</button>
                 {ACCENT_SWATCHES.map(c => (
@@ -285,16 +285,16 @@ export default function Themes() {
               {['--pi-bg', '--pi-bg1', '--pi-bg2', '--pi-bg3', '--pi-bg4'].map(k => (
                 <div key={k} className="flex flex-col items-center gap-1">
                   <span className="w-10 h-10 rounded-pi-sm border border-pi-border" style={{ background: tokens[k] }} />
-                  <span className="text-[9px] text-pi-dim2 font-mono">{k.replace('--pi-', '')}</span>
+                  <span className="text-[10px] text-pi-dim2 font-mono">{k.replace('--pi-', '')}</span>
                 </div>
               ))}
               <div className="flex flex-col items-center gap-1">
                 <span className="w-10 h-10 rounded-pi-sm border border-pi-border" style={{ background: tokens['--pi-accent'] }} />
-                <span className="text-[9px] text-pi-dim2 font-mono">accent</span>
+                <span className="text-[10px] text-pi-dim2 font-mono">accent</span>
               </div>
               <div className="flex flex-col items-center gap-1">
                 <span className="w-10 h-10 rounded-pi-sm border border-pi-border" style={{ background: tokens['--pi-green'] }} />
-                <span className="text-[9px] text-pi-dim2 font-mono">green</span>
+                <span className="text-[10px] text-pi-dim2 font-mono">green</span>
               </div>
             </div>
             <div className="flex gap-3">

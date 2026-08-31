@@ -1,3 +1,4 @@
+import { Sparkles as EmptyLingXiIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Sparkles, User, Bot, Trash2, Archive, CheckCircle2 } from 'lucide-react'
 import useSWR from 'swr'
@@ -73,7 +74,7 @@ function SourceColumn({ source, icon: Icon, title, hint, entries, filter, onChan
       </div>
       <div className="space-y-2 overflow-y-auto pr-1">
         {shown.length === 0
-          ? <EmptyState emoji="✨" title="这里还空着" hint="灵感来了随手记一条" />
+          ? <EmptyState icon={EmptyLingXiIcon} title="这里还空着" hint="灵感来了随手记一条" />
           : shown.map(e => <EntryCard key={e.id} e={e} onChanged={onChanged} />)}
       </div>
     </section>
