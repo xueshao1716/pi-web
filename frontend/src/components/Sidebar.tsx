@@ -32,7 +32,7 @@ export default function Sidebar({ onNavigated, onCollapse }: { onNavigated?: () 
   useRestoreFocus(!!renaming)
 
   const handleNew = async () => {
-    try { const d = await SessionsApi.create(); await refreshSessions(); selectSession(d.id) }
+    try { const d = await SessionsApi.create(); await refreshSessions(); selectSession(d.id); onNavigated?.() }
     catch {}
   }
   const handleRename = async () => {

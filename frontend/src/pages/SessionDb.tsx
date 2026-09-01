@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Database, RefreshCw, Search, Trash2, Pin, CheckSquare, Square } from 'lucide-react'
+import { Database, RefreshCw, Search, Trash2, Pin, CheckSquare, Square, Pencil, ExternalLink, MessagesSquare } from 'lucide-react'
 import EmptyState from '../components/EmptyState'
 import PageHeader from '../components/PageHeader'
 import { toast } from '../components/Toast'
+import { useApp } from '../store'
+import { SessionsApi } from '../api'
 
 // ── 会话数据库（08-29 真落地）：编号/健康度/大小/批量清理 ──
 // 后端 /api/sessions/db/*；健康 ok<1MB / large 1-5MB / oversized>5MB
@@ -29,12 +31,15 @@ function fmtTime(t: string | null) {
 }
 
 export default function SessionDb() {
+  const { selectSession, currentSessionId } = useApp()
   const [rows, setRows] = useState<Row[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState('')
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null)
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
 
   const load = async () => {
     const d = await api('/list').catch(() => null)
@@ -67,6 +72,31 @@ export default function SessionDb() {
   const togglePin = async (r: Row) => {
     const d = await api('/meta', { method: 'PATCH', body: JSON.stringify({ id: r.id, pinned: !r.pinned }) }).catch(() => null)
     if (d?.ok) setRows(rows.map(x => x.id === r.id ? { ...x, pinned: d.pinned, seq: d.seq } : x))
+  }
+
+  // 打开会话：选中 + 跳回对话页（移动端同样生效，TabBar 对话入口自动点亮）
+  const openSession = (r: Row) => {
+    selectSession(r.id)
+    if (location.hash !== '#/chat') location.hash = '#/chat'
+  }
+
+  const submitRename = async () => {
+    if (!renaming?.name.trim()) { setRenaming(null); return }
+    const d = await SessionsApi.rename(renaming.id, renaming.name.trim()).catch(() => null)
+    if (d?.ok) {
+      setRows(rows.map(x => x.id === renaming.id ? { ...x, name: renaming.name.trim() } : x))
+      toast('已重命名', 'ok')
+    } else toast('重命名失败', 'error')
+    setRenaming(null)
+  }
+
+  // 两段式删除：第一次点变红要求确认，再点才执行，避免误删；不引入新弹窗组件
+  const handleDelete = async (r: Row) => {
+    if (confirmingId !== r.id) { setConfirmingId(r.id); setTimeout(() => setConfirmingId(cur => cur === r.id ? null : cur), 3000); return }
+    setConfirmingId(null)
+    const d = await SessionsApi.remove(r.id).catch(() => null)
+    if (d?.ok) { toast(`已删除「${r.name}」`, 'ok'); setSel(prev => { const n = new Set(prev); n.delete(r.id); return n }); await load() }
+    else toast('删除失败', 'error')
   }
 
   const visible = useMemo(() => rows
@@ -132,7 +162,7 @@ export default function SessionDb() {
                     <th className="p-2.5 w-20 text-right">大小</th>
                     <th className="p-2.5 w-16 text-right">消息</th>
                     <th className="p-2.5 w-24">更新</th>
-                    <th className="p-2.5 w-10"></th>
+                    <th className="p-2.5 w-32"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -144,17 +174,35 @@ export default function SessionDb() {
                         </button>
                       </td>
                       <td className="p-2.5 font-mono text-pi-dim">#{r.seq ?? '—'}</td>
-                      <td className="p-2.5 text-pi-text truncate max-w-[260px]" title={r.name}>
-                        <span className="inline-flex items-center gap-1.5">{r.pinned && <Pin className="w-3.5 h-3.5 text-pi-warning fill-pi-warning" aria-label="已置顶" />}{r.name}</span>
+                      <td className="p-2.5 text-pi-text truncate max-w-[240px]" title={r.name}>
+                        {renaming?.id === r.id ? (
+                          <input autoFocus value={renaming.name} onChange={e => setRenaming({ id: r.id, name: e.target.value })}
+                            onKeyDown={e => { if (e.key === 'Enter') submitRename(); if (e.key === 'Escape') setRenaming(null) }}
+                            onBlur={submitRename} aria-label="重命名会话"
+                            className="input-pi !py-1 text-[13px] w-full" />
+                        ) : (
+                          <button onClick={() => openSession(r)} className="inline-flex items-center gap-1.5 hover:text-pi-accent transition-colors text-left min-w-0" title="打开会话">
+                            {r.pinned && <Pin className="w-3.5 h-3.5 text-pi-warning fill-pi-warning" aria-label="已置顶" />}
+                            <span className="truncate">{r.name}</span>
+                            {r.id === currentSessionId && <span className="flex-shrink-0 px-1.5 py-0.5 rounded-pi-pill bg-pi-accent/15 text-pi-accent text-[10px]">当前</span>}
+                          </button>
+                        )}
                       </td>
                       <td className="p-2.5"><span className={`px-1.5 py-0.5 rounded-pi-sm text-[10px] font-medium ${hcls(r.health)}`}>{HEALTH[r.health]?.label}</span></td>
                       <td className="p-2.5 text-right font-mono text-pi-dim text-[11px]">{fmtSize(r.sizeBytes)}</td>
                       <td className="p-2.5 text-right font-mono text-pi-dim text-[11px]">{r.messageCount ?? '—'}</td>
                       <td className="p-2.5 text-pi-dim2 font-mono text-[11px]">{fmtTime(r.mtime)}</td>
                       <td className="p-2.5">
-                        <button onClick={() => togglePin(r)} className={`p-1 rounded-pi-sm hover:bg-pi-bg3 ${r.pinned ? 'text-pi-warning' : 'text-pi-dim2'}`} title={r.pinned ? '取消置顶' : '置顶'} aria-label={`${r.pinned ? '取消置顶' : '置顶'} ${r.name}`}>
-                          <Pin className={`w-3.5 h-3.5 ${r.pinned ? 'fill-pi-warning' : ''}`} />
-                        </button>
+                        <div className="flex items-center gap-0.5">
+                          <button onClick={() => openSession(r)} className="p-1 rounded-pi-sm hover:bg-pi-bg3 text-pi-dim2 hover:text-pi-text" title="打开会话" aria-label={`打开会话 ${r.name}`}><ExternalLink className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => setRenaming({ id: r.id, name: r.name })} className="p-1 rounded-pi-sm hover:bg-pi-bg3 text-pi-dim2 hover:text-pi-text" title="重命名" aria-label={`重命名会话 ${r.name}`}><Pencil className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => togglePin(r)} className={`p-1 rounded-pi-sm hover:bg-pi-bg3 ${r.pinned ? 'text-pi-warning' : 'text-pi-dim2'}`} title={r.pinned ? '取消置顶' : '置顶'} aria-label={`${r.pinned ? '取消置顶' : '置顶'} ${r.name}`}>
+                            <Pin className={`w-3.5 h-3.5 ${r.pinned ? 'fill-pi-warning' : ''}`} />
+                          </button>
+                          <button onClick={() => handleDelete(r)} className={`p-1 rounded-pi-sm hover:bg-pi-bg3 ${confirmingId === r.id ? 'text-pi-red' : 'text-pi-dim2 hover:text-pi-red'}`} title={confirmingId === r.id ? '再点一次确认删除' : '删除'} aria-label={`删除会话 ${r.name}`}>
+                            <Trash2 className={`w-3.5 h-3.5 ${confirmingId === r.id ? 'animate-pulse' : ''}`} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -176,12 +224,33 @@ export default function SessionDb() {
                           <div className="flex items-center gap-1.5 text-[11px] text-pi-dim2 font-mono">
                             {r.pinned && <Pin className="w-3 h-3 text-pi-warning fill-pi-warning" aria-label="已置顶" />}
                             <span>编号 #{r.seq ?? '—'}</span>
+                            {r.id === currentSessionId && <span className="px-1.5 py-0.5 rounded-pi-pill bg-pi-accent/15 text-pi-accent text-[10px] font-sans">当前</span>}
                           </div>
-                          <h2 className="mt-1 text-[13px] font-medium text-pi-text break-words">{r.name}</h2>
+                          {renaming?.id === r.id ? (
+                            <input autoFocus value={renaming.name} onChange={e => setRenaming({ id: r.id, name: e.target.value })}
+                              onKeyDown={e => { if (e.key === 'Enter') submitRename(); if (e.key === 'Escape') setRenaming(null) }}
+                              onBlur={submitRename} aria-label="重命名会话"
+                              className="input-pi !py-1 text-[13px] w-full mt-1" />
+                          ) : (
+                            <button onClick={() => openSession(r)} className="mt-1 text-left min-w-0 w-full" title="打开会话">
+                              <h2 className="text-[13px] font-medium text-pi-text break-words hover:text-pi-accent transition-colors">{r.name}</h2>
+                            </button>
+                          )}
                         </div>
-                        <button onClick={() => togglePin(r)} className={`min-h-11 min-w-11 -mr-2 -mt-2 inline-flex items-center justify-center rounded-pi-md hover:bg-pi-bg3 ${r.pinned ? 'text-pi-warning' : 'text-pi-dim2'}`} aria-label={`${r.pinned ? '取消置顶' : '置顶'} ${r.name}`} title={r.pinned ? '取消置顶' : '置顶'}>
-                          <Pin className={`w-4 h-4 ${r.pinned ? 'fill-pi-warning' : ''}`} />
-                        </button>
+                        <div className="flex flex-col gap-0.5 flex-shrink-0">
+                          <div className="flex items-center">
+                            <button onClick={() => openSession(r)} className="min-h-9 min-w-9 inline-flex items-center justify-center rounded-pi-md hover:bg-pi-bg3 text-pi-dim2 hover:text-pi-text" aria-label={`打开会话 ${r.name}`} title="打开会话"><ExternalLink className="w-4 h-4" /></button>
+                            <button onClick={() => setRenaming({ id: r.id, name: r.name })} className="min-h-9 min-w-9 inline-flex items-center justify-center rounded-pi-md hover:bg-pi-bg3 text-pi-dim2 hover:text-pi-text" aria-label={`重命名会话 ${r.name}`} title="重命名"><Pencil className="w-4 h-4" /></button>
+                          </div>
+                          <div className="flex items-center">
+                            <button onClick={() => togglePin(r)} className={`min-h-9 min-w-9 inline-flex items-center justify-center rounded-pi-md hover:bg-pi-bg3 ${r.pinned ? 'text-pi-warning' : 'text-pi-dim2'}`} aria-label={`${r.pinned ? '取消置顶' : '置顶'} ${r.name}`} title={r.pinned ? '取消置顶' : '置顶'}>
+                              <Pin className={`w-4 h-4 ${r.pinned ? 'fill-pi-warning' : ''}`} />
+                            </button>
+                            <button onClick={() => handleDelete(r)} className={`min-h-9 min-w-9 inline-flex items-center justify-center rounded-pi-md hover:bg-pi-bg3 ${confirmingId === r.id ? 'text-pi-red' : 'text-pi-dim2 hover:text-pi-red'}`} aria-label={`删除会话 ${r.name}`} title={confirmingId === r.id ? '再点一次确认删除' : '删除'}>
+                              <Trash2 className={`w-4 h-4 ${confirmingId === r.id ? 'animate-pulse' : ''}`} />
+                            </button>
+                          </div>
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3 text-[11px]">
                         <div><span className="text-pi-dim2">健康</span><div className="mt-0.5"><span className={`px-1.5 py-0.5 rounded-pi-sm text-[10px] font-medium ${hcls(r.health)}`}>{HEALTH[r.health]?.label}</span></div></div>
@@ -196,7 +265,7 @@ export default function SessionDb() {
             </div>
           </>
         )}
-        <p className="session-db-footnote text-[12px] text-pi-dim2 mt-5">清理会截断超大推理签名和工具结果，防止上游 400 / 502；不会删除对话正文。需要删除会话，请回到对话页操作。</p>
+        <p className="session-db-footnote text-[12px] text-pi-dim2 mt-5">点击名称打开会话；清理会截断超大推理签名和工具结果，防止上游 400 / 502；不会删除对话正文。删除会话请用行内删除按钮（两段确认）。</p>
       </div>
     </div>
   )
