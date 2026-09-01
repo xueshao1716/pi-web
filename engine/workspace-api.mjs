@@ -157,6 +157,9 @@ export async function handleWsFile(res, req, url) {
   }
   if (!target || !fs.existsSync(target)) return json(res, 404, { error: "文件不存在" });
   const safe = target;
+  let stat;
+  try { stat = fs.statSync(safe); } catch { return json(res, 404, { error: "文件不存在" }); }
+  if (!stat.isFile()) return json(res, 404, { error: "文件不存在" });
   const ext = path.extname(safe).toLowerCase();
   const mime = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".wav": "audio/wav", ".mp3": "audio/mpeg", ".mp4": "video/mp4", ".webm": "video/webm", ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8", ".json": "application/json" }[ext] || "application/octet-stream";
   const headers = { "Content-Type": mime, "Cache-Control": "no-cache" };
@@ -164,8 +167,15 @@ export async function handleWsFile(res, req, url) {
     headers["Content-Disposition"] = `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(safe))}`;
   }
   // 断点续传支持（HTTP Range，借鉴 file-transfer-go）：大文件中断后可从断点续传
-  const stat = fs.statSync(safe);
   const total = stat.size;
+  const pipeFile = (options) => {
+    const stream = fs.createReadStream(safe, options);
+    stream.on("error", () => {
+      // 文件可能在 stat 后被删除/替换；不能让流错误升级为 uncaughtException。
+      if (typeof res.destroy === "function" && !res.destroyed) res.destroy();
+    });
+    stream.pipe(res);
+  };
   const range = req.headers?.range || "";
   const m = range.match(/bytes=(\d+)-(\d*)/);
   if (m) {
@@ -181,13 +191,13 @@ export async function handleWsFile(res, req, url) {
     headers["Accept-Ranges"] = "bytes";
     headers["Content-Length"] = end - start + 1;
     res.writeHead(206, headers);
-    fs.createReadStream(safe, { start, end }).pipe(res);
+    pipeFile({ start, end });
     return;
   }
   headers["Accept-Ranges"] = "bytes";
   headers["Content-Length"] = total;
   res.writeHead(200, headers);
-  fs.createReadStream(safe).pipe(res);
+  pipeFile();
 }
 
 // GET /api/ws/read —— 读文本文件内容

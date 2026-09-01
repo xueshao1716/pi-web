@@ -102,8 +102,12 @@ export default function Assets() {
             <h2 className="text-sm font-semibold text-pi-text mb-2 inline-flex items-center gap-1.5"><Package className="w-4 h-4" /> 成品交付</h2>
             <div className="panel !p-0 overflow-hidden mb-8">
               {deliveries.map(d => (
-                <div key={d.wsPath} className="flex items-center gap-3 px-4 py-2.5 border-b border-pi-border-soft/50 last:border-0 hover:bg-pi-bg3/40 transition-colors cursor-pointer"
-                  onClick={() => window.open(withFileToken(d.url), '_blank')}>
+                <div key={d.wsPath}
+                  className={`flex items-center gap-3 px-4 py-2.5 border-b border-pi-border-soft/50 last:border-0 transition-colors ${d.type === 'file' ? 'hover:bg-pi-bg3/40 cursor-pointer' : 'text-pi-dim2'}`}
+                  title={d.type === 'dir' ? '目录请在工作空间中打开' : undefined}
+                  onClick={() => {
+                    if (d.type === 'file') window.open(withFileToken(d.url), '_blank')
+                  }}>
                   <span>{d.type === 'dir' ? <FolderOpen className="w-4 h-4" /> : <FileText className="w-4 h-4" />}</span>
                   <span className="text-[13px] text-pi-text truncate flex-1">{d.name}</span>
                   <span className="text-[10px] text-pi-dim2">{fmtSize(d.size)}</span>

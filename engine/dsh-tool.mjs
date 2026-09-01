@@ -12,6 +12,15 @@ import { execFile, execFileSync } from "node:child_process";
 // 显式注入保证 dsh 派单时密钥链路确定可用，不依赖 dsh 内部解析。
 export function resolveDshEnv() {
   const env = { ...process.env };
+  // Windows 的 process.env 大小写不敏感，但展开成普通对象后会变成大小写敏感。
+  // 统一回 PATH，避免调用方读取 env.PATH 时丢失原环境。
+  if (process.platform === "win32") {
+    const pathKey = Object.keys(env).find((key) => key.toLowerCase() === "path");
+    if (pathKey && pathKey !== "PATH") {
+      env.PATH = env[pathKey];
+      delete env[pathKey];
+    }
+  }
   if (env.DEEPSEEK_API_KEY) return env;
   try {
     const out = execFileSync("reg", ["query", "HKCU\\Environment", "/v", "DEEPSEEK_API_KEY"],
