@@ -44,6 +44,7 @@ export interface ChatMessage {
   notes?: string[]    // 系统提示条（SSE note 事件）
   tools?: ToolCall[]
   think?: string
+  conclusion?: string // 流式阶段分区：工具开始后的结论文字（text 仍为完整逻辑文本；仅流式中传，历史消息不存）
   ts?: string
   model?: { provider: string; id: string } // provenance：实际使用的模型（Auto 路由时前端可见）
   streaming?: boolean // 是否正在流式生成中

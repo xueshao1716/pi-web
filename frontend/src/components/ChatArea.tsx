@@ -16,7 +16,7 @@ import type { ChatMessage, RunningTool } from '../types'
 import WebglBackdrop from './WebglBackdrop'
 import { saveMessage, getMessages, deleteMessage, mergeMessages, type LocalMessage } from '../lib/local-db'
 import { notifyTaskDone } from '../lib/notify'
-import { upsertRunningTool } from '../lib/chat-stream'
+import { StreamAssembler, type AssemblerSnapshot } from '../lib/stream-assembler'
 import { advanceRunCursor, isTerminalRunStatus, type RunCursor, type RunEvent } from '../lib/run-events'
 
 // 流式状态：覆盖服务端全部 SSE 事件（delta/think/think_end/tool/tool_output/
@@ -25,6 +25,7 @@ interface StreamState {
   text: string
   think: string
   thinkDone: boolean
+  conclusion: string
   tools: RunningTool[]
   notes: string[]
   files: { path: string; name?: string }[]
@@ -33,7 +34,7 @@ interface StreamState {
   error?: string
 }
 
-const emptyStream = (): StreamState => ({ text: '', think: '', thinkDone: false, tools: [], notes: [], files: [], images: [], audios: [] })
+const emptyStream = (): StreamState => ({ text: '', think: '', thinkDone: false, conclusion: '', tools: [], notes: [], files: [], images: [], audios: [] })
 
 // 10 分钟无新事件才判定为死流；长任务可能在模型思考或工具执行阶段暂时没有增量。
 const IDLE_WARN_MS = 600_000
@@ -89,6 +90,8 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   const watchdogStoppingRef = useRef(false)
   // ref 是唯一事实源：SSE 事件可能在一个渲染批次内全部到达，useEffect 同步会滞后导致 done 时读到旧值
   const streamRef = useRef<StreamState | null>(null)
+  // 流式组装器：阶段分流 + 16ms 合帧 + toolCallId 幂等（旧版 vanilla 机制恢复，见 lib/stream-assembler.ts）
+  const asmRef = useRef<StreamAssembler | null>(null)
   const lastEventAtRef = useRef(0)
   const assistantMsgIdRef = useRef<string | null>(null) // 本轮 assistant 消息的固定 id，流式期间快照与最终写入用同一 id（避免重复）
   const wasBackgroundRef = useRef(false) // 本轮流式期间是否曾去过后台（哪怕又切回来了），放宽通知触发条件用
@@ -214,6 +217,8 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     let hiddenAt = 0
     const onVis = () => {
       if (document.hidden) { hiddenAt = Date.now(); if (streamRef.current) wasBackgroundRef.current = true; return }
+      // 息屏恢复：先把组装器缓冲强制落盘，再刷新会话目录（旧版 flushNow 行为）
+      asmRef.current?.flushNow()
       if (hiddenAt && Date.now() - hiddenAt > 10_000) refreshSessions()
       hiddenAt = 0
     }
@@ -267,6 +272,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     activeRunRef.current = null
     assistantMsgIdRef.current = null
     streamRef.current = null
+    teardownAssembler()
     setStream(null)
   }, [currentSessionId])
   useEffect(() => {
@@ -305,6 +311,20 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
       activeRunRef.current = { ...activeRunRef.current, stream: next }
     }
     setStream(next ? { ...next } : null)
+  }
+
+  // ── 流式组装器管理 ──
+  // delta/think/tool 不再逐事件 setState，而是进 assembler 缓冲，16ms 合帧后一次性套用快照
+  const teardownAssembler = () => {
+    asmRef.current?.dispose()
+    asmRef.current = null
+  }
+  const makeAssembler = () => {
+    teardownAssembler()
+    asmRef.current = new StreamAssembler((snap: AssemblerSnapshot) => {
+      updStream(p => ({ ...p, text: snap.text, conclusion: snap.conclusion, think: snap.think, thinkDone: snap.thinkDone, tools: snap.tools }))
+    })
+    return asmRef.current
   }
 
   // 看门狗：流式期间每秒检查空闲时长（只跟"是否在流式"绑定，不随每个增量重置）
@@ -360,6 +380,9 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   const finalize = (model?: { provider: string; id: string }) => {
     // 只有持久化 Run 进入终态才收尾；普通 SSE 断线/错误事件不会结束后台任务。
     try { localStorage.removeItem('pi_pending_msg') } catch {}
+    // 收尾前强制落盘组装器缓冲，确保最后一截增量不丢
+    asmRef.current?.flushNow()
+    teardownAssembler()
     const active = activeRunRef.current
     const s = streamRef.current
     const finalId = assistantMsgIdRef.current
@@ -431,27 +454,28 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
       case 'delta':
       case 'message': {
         const text = d.text || d.delta?.text || ''
-        if (text) updStream(p => ({ ...p, text: p.text + text }))
+        // 组装器负责阶段分流（工具前/结论区）与 16ms 合帧；text 快照仍为完整逻辑文本
+        if (text) asmRef.current?.addDelta(text)
         break
       }
       case 'think': {
         const text = d.think || d.text || ''
-        if (text) updStream(p => ({ ...p, think: p.think + text, thinkDone: false }))
+        if (text) asmRef.current?.addThink(text)
         break
       }
       case 'think_end':
-        updStream(p => ({ ...p, thinkDone: true }))
+        asmRef.current?.endThink()
         break
       case 'tool': {
         const id = d.id || `t${event.seq}`
-        updStream(p => ({ ...p, tools: upsertRunningTool(p.tools, { ...d, id }) }))
+        asmRef.current?.toolStart({ ...d, id })
         break
       }
       case 'tool_output':
-        updStream(p => ({ ...p, tools: p.tools.map(t => t.id === d.id ? { ...t, output: t.output + (d.text || '') } : t) }))
+        asmRef.current?.toolOutput(d.id, d.text || '')
         break
       case 'tool_end':
-        updStream(p => ({ ...p, tools: p.tools.map(t => t.id === d.id ? { ...t, running: false, isError: !!d.isError, status: d.isError ? 'error' : 'completed', output: d.output || t.output } : t) }))
+        asmRef.current?.toolEnd(d.id, !!d.isError, d.output)
         break
       case 'file':
         if (d.path) updStream(p => ({ ...p, files: [...p.files, { path: d.path, name: d.name }] }))
@@ -478,17 +502,21 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         break
       case 'error':
         updStream(p => ({ ...p, error: d.message || d.error || '未知错误' }))
+        asmRef.current?.flushNow()
         break
       case 'failed':
         updStream(p => ({ ...p, error: p.error || d.message || '任务执行失败' }))
+        asmRef.current?.flushNow()
         finalize(pendingModelRef.current)
         break
       case 'stopped':
         updStream(p => ({ ...p, error: p.error || '已手动停止', tools: p.tools.map(t => t.status === 'running' ? { ...t, running: false, status: 'canceled' } : t) }))
+        asmRef.current?.flushNow()
         finalize(pendingModelRef.current)
         break
       case 'interrupted':
         updStream(p => ({ ...p, error: p.error || '服务重启，任务已中断', tools: p.tools.map(t => t.status === 'running' ? { ...t, running: false, status: 'canceled' } : t) }))
+        asmRef.current?.flushNow()
         finalize(pendingModelRef.current)
         break
       case 'session_updated':
@@ -509,6 +537,8 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     assistantMsgIdRef.current = record.assistantMessageId
     streamRef.current = record.stream
     setStream({ ...record.stream })
+    // 断线恢复：把快照灌回组装器，游标之后的新事件在快照基础上继续累加（不重复、不丢段）
+    makeAssembler()?.hydrate(record.stream)
     saveActiveRun(record)
     streamCloseRef.current = RunsApi.stream(
       record.runId,
@@ -588,6 +618,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     wasBackgroundRef.current = false // 新一轮开始，重置后台跟踪状态
     streamRef.current = emptyStream()
     setStream({ ...streamRef.current })
+    makeAssembler()
     // 模型参数（ParamsPanel 存 localStorage，随请求带给 server）
     let params: { temperature?: number; top_p?: number } | undefined
     try { params = JSON.parse(localStorage.getItem('pi_params') || 'null') || undefined } catch {}
@@ -826,15 +857,21 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
             <div className="chat-reading-column w-full py-4 sm:py-6">
               <TurnList
                 messages={normalMessages}
-                streamingNode={stream ? (
-                  <Message msg={{
+                streamingNode={stream ? (() => {
+                  // 阶段分区渲染：工具前文字在上、结论在工具卡后（conclusion 存在即启用分区）；
+                  // 错误信息拼在最后一块，避免重复展示
+                  const errTail = stream.error ? `\n\n⚠️ ${stream.error}` : ''
+                  const hasConclusion = !!stream.conclusion
+                  const preToolText = hasConclusion ? stream.text.slice(0, Math.max(0, stream.text.length - stream.conclusion.length)) : stream.text
+                  return <Message msg={{
                     id: '__streaming__', role: 'assistant',
-                    text: stream.text + (stream.error ? `\n\n⚠️ ${stream.error}` : ''),
+                    text: hasConclusion ? preToolText : stream.text + errTail,
+                    conclusion: hasConclusion ? stream.conclusion + errTail : undefined,
                     think: stream.think, tools: stream.tools, notes: stream.notes,
                     files: stream.files, images: stream.images, audios: stream.audios,
                     streaming: true,
                   }} />
-                ) : draftMsg ? (
+                })() : draftMsg ? (
                   <div className="relative">
                     <div className="absolute -left-2 top-0 bottom-0 w-1 bg-amber-500/30 rounded-full" />
                     <div className="mb-2 flex items-center gap-2">

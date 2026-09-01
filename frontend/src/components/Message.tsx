@@ -203,9 +203,24 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
         {msg.tools?.length ? (
           <div className="mb-2">{msg.tools.map((t, i) => <ToolCard key={t.id || i} tool={t} />)}</div>
         ) : null}
-        <div className={"markdown-body-wrapper" + (streaming ? " streaming-caret" : "")}>
-          <Markdown text={msg.text} />
-        </div>
+        {/* 阶段分区（stream-assembler）：conclusion 存在时，工具前文字在上、结论在工具卡之后；
+            历史消息无 conclusion 字段，保持原渲染不变 */}
+        {msg.conclusion != null && msg.text ? (
+          <div className={"markdown-body-wrapper" + (streaming ? " streaming-caret" : "")}>
+            <Markdown text={msg.text} />
+          </div>
+        ) : null}
+        {msg.conclusion != null
+          ? (msg.conclusion ? (
+            <div className={"markdown-body-wrapper" + (streaming ? " streaming-caret" : "")}>
+              <Markdown text={msg.conclusion} />
+            </div>
+          ) : null)
+          : (
+            <div className={"markdown-body-wrapper" + (streaming ? " streaming-caret" : "")}>
+              <Markdown text={msg.text} />
+            </div>
+          )}
         {msg.ts && !streaming && (
           <div className="hov-reveal text-[11px] text-pi-dim2 mt-1 transition-opacity flex items-center gap-2">
             <span>{new Date(msg.ts).toLocaleTimeString('zh-CN', { hour12: false })}</span>
