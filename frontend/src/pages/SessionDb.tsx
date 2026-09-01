@@ -239,14 +239,14 @@ export default function SessionDb() {
                         </div>
                         <div className="flex flex-col gap-0.5 flex-shrink-0">
                           <div className="flex items-center">
-                            <button onClick={() => openSession(r)} className="min-h-9 min-w-9 inline-flex items-center justify-center rounded-pi-md hover:bg-pi-bg3 text-pi-dim2 hover:text-pi-text" aria-label={`打开会话 ${r.name}`} title="打开会话"><ExternalLink className="w-4 h-4" /></button>
-                            <button onClick={() => setRenaming({ id: r.id, name: r.name })} className="min-h-9 min-w-9 inline-flex items-center justify-center rounded-pi-md hover:bg-pi-bg3 text-pi-dim2 hover:text-pi-text" aria-label={`重命名会话 ${r.name}`} title="重命名"><Pencil className="w-4 h-4" /></button>
+                            <button onClick={() => openSession(r)} className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-pi-md hover:bg-pi-bg3 text-pi-dim2 hover:text-pi-text" aria-label={`打开会话 ${r.name}`} title="打开会话"><ExternalLink className="w-4 h-4" /></button>
+                            <button onClick={() => setRenaming({ id: r.id, name: r.name })} className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-pi-md hover:bg-pi-bg3 text-pi-dim2 hover:text-pi-text" aria-label={`重命名会话 ${r.name}`} title="重命名"><Pencil className="w-4 h-4" /></button>
                           </div>
                           <div className="flex items-center">
-                            <button onClick={() => togglePin(r)} className={`min-h-9 min-w-9 inline-flex items-center justify-center rounded-pi-md hover:bg-pi-bg3 ${r.pinned ? 'text-pi-warning' : 'text-pi-dim2'}`} aria-label={`${r.pinned ? '取消置顶' : '置顶'} ${r.name}`} title={r.pinned ? '取消置顶' : '置顶'}>
+                            <button onClick={() => togglePin(r)} className={`min-h-11 min-w-11 inline-flex items-center justify-center rounded-pi-md hover:bg-pi-bg3 ${r.pinned ? 'text-pi-warning' : 'text-pi-dim2'}`} aria-label={`${r.pinned ? '取消置顶' : '置顶'} ${r.name}`} title={r.pinned ? '取消置顶' : '置顶'}>
                               <Pin className={`w-4 h-4 ${r.pinned ? 'fill-pi-warning' : ''}`} />
                             </button>
-                            <button onClick={() => handleDelete(r)} className={`min-h-9 min-w-9 inline-flex items-center justify-center rounded-pi-md hover:bg-pi-bg3 ${confirmingId === r.id ? 'text-pi-red' : 'text-pi-dim2 hover:text-pi-red'}`} aria-label={`删除会话 ${r.name}`} title={confirmingId === r.id ? '再点一次确认删除' : '删除'}>
+                            <button onClick={() => handleDelete(r)} className={`min-h-11 min-w-11 inline-flex items-center justify-center rounded-pi-md hover:bg-pi-bg3 ${confirmingId === r.id ? 'text-pi-red' : 'text-pi-dim2 hover:text-pi-red'}`} aria-label={`删除会话 ${r.name}`} title={confirmingId === r.id ? '再点一次确认删除' : '删除'}>
                               <Trash2 className={`w-4 h-4 ${confirmingId === r.id ? 'animate-pulse' : ''}`} />
                             </button>
                           </div>
