@@ -19,15 +19,30 @@ async function waitFor(check, attempts = 50) {
   throw new Error('condition_not_met')
 }
 
-function fixture(executeChat) {
+function fixture(executeChat, options = {}) {
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'piweb-run-manager-'))
   let id = 0
   const store = createRunStore({ rootDir, idFactory: () => `run-${++id}` })
   const eventLog = createRunEventLog({ rootDir })
-  const manager = createRunManager({ store, eventLog, executeChat, instanceId: 'instance-a' })
+  const manager = createRunManager({ store, eventLog, executeChat, instanceId: 'instance-a', ...options })
   return { rootDir, store, eventLog, manager, cleanup: () => { eventLog.close(); fs.rmSync(rootDir, { recursive: true, force: true }) } }
 }
 
+test('聊天记录提交后才发布 session_updated，且事件账本保留顺序', async () => {
+  const fx = fixture(async (_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    res.end()
+  })
+  try {
+    const run = fx.manager.create({ sessionId: 'session-1', clientRequestId: 'request-1', message: 'hello' })
+    await waitFor(() => fx.manager.get(run.id)?.status === 'completed')
+    const events = fx.manager.readAfter(run.id, 0)
+    const sessionUpdated = events.findIndex(event => event.type === 'session_updated')
+    const completed = events.findIndex(event => event.type === 'completed')
+    assert.ok(sessionUpdated >= 0)
+    assert.ok(sessionUpdated < completed)
+  } finally { fx.cleanup() }
+})
 test('create 立即返回，后台执行完成且全部事件可重放', async () => {
   let release
   const gate = new Promise(resolve => { release = resolve })
@@ -51,6 +66,7 @@ test('create 立即返回，后台执行完成且全部事件可重放', async (
     assert.equal(events.at(-1).type, 'completed')
   } finally { fx.cleanup() }
 })
+
 
 test('取消浏览器订阅不会关闭后台请求或停止 run', async () => {
   let closeCount = 0

@@ -35,8 +35,8 @@ interface StreamState {
 
 const emptyStream = (): StreamState => ({ text: '', think: '', thinkDone: false, tools: [], notes: [], files: [], images: [], audios: [] })
 
-// 90s 无新事件 → 看门狗提示（对齐线上版 chat.js）
-const IDLE_WARN_MS = 90_000
+// 10 分钟无新事件才判定为死流；长任务可能在模型思考或工具执行阶段暂时没有增量。
+const IDLE_WARN_MS = 600_000
 
 interface ActiveRunRecord extends RunCursor {
   sessionId: string
@@ -245,8 +245,9 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   const reload = () => { if (currentSessionId) mutateMsgs() }
 
   // 未完成的本地草稿（刷新/重启后从 IndexedDB 恢复）：只在当前没有活跃流式时展示
-  const draftMsg = !stream ? messages.find(m => m.isDraft) : undefined
-  const normalMessages = draftMsg ? messages.filter(m => m.id !== draftMsg.id) : messages
+  const renderMessages = stream ? messages.filter(m => !m.isDraft) : messages
+  const draftMsg = !stream ? renderMessages.find(m => m.isDraft) : undefined
+  const normalMessages = draftMsg ? renderMessages.filter(m => m.id !== draftMsg.id) : renderMessages
 
   // 智能滚动（nomifun useAutoScroll 模式）：用户上翻停滚、贴底恢复、仅"真新消息"才强拉底
   const lastMsg = messages[messages.length - 1]
@@ -314,9 +315,9 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     const t = setInterval(() => {
       const idle = Math.floor((Date.now() - lastEventAtRef.current) / 1000)
       setIdleSeconds(idle)
-      // 看门狗自动停止：超过 90s 无新事件 → 判定为死流，自动中止
-      if (idle >= 90 && streamRef.current && activeRunRef.current && !watchdogStoppingRef.current) {
-        console.warn('[watchdog] 流式无响应超过90s，请求服务端停止 Run')
+      // 看门狗自动停止：超过 10 分钟无新事件 → 判定为死流，自动中止
+      if (idle >= 600 && streamRef.current && activeRunRef.current && !watchdogStoppingRef.current) {
+        console.warn('[watchdog] 流式无响应超过10分钟，请求服务端停止 Run')
         watchdogStoppingRef.current = true
         updStream(p => ({ ...p, error: (p.error || '') + (p.error ? ' · ' : '') + '⏱️ 长时间无响应，正在停止', tools: p.tools.map(t => t.status === 'running' ? { ...t, status: 'canceled' } : t) }))
         RunsApi.stop(activeRunRef.current.runId)
@@ -489,6 +490,11 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
       case 'interrupted':
         updStream(p => ({ ...p, error: p.error || '服务重启，任务已中断', tools: p.tools.map(t => t.status === 'running' ? { ...t, running: false, status: 'canceled' } : t) }))
         finalize(pendingModelRef.current)
+        break
+      case 'session_updated':
+        // 后端已提交 JSONL；先更新侧栏的预览/时间/消息数。
+        // 正文仍由 completed 收尾后刷新，避免实时 assistant 与服务端历史短暂双渲染。
+        refreshSessions()
         break
       case 'completed':
         finalize(pendingModelRef.current)
@@ -881,7 +887,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
           回到底部
         </button>
       )}
-      <div className="border-t border-pi-border bg-pi-bg1 px-3 sm:px-4 py-2.5 flex-shrink-0">
+      <div className="mobile-composer border-t border-pi-border bg-pi-bg1 px-3 sm:px-4 py-2.5 flex-shrink-0">
         <div className="chat-reading-column mx-auto">
           <SendBox key={currentSessionId ?? 'none'} streaming={!!stream} onStop={stop} onSend={send} onCommand={runCommand}
             voiceBusy={voiceBusy} onVoice={handleVoice} onVoiceTextReady={fn => { voiceTextRef.current = fn }} />

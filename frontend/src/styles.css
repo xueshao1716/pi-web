@@ -967,9 +967,45 @@ body {
 }
 
 
-/* ══ Phase4 视觉层次升级 ══ */
+/* ── 思考过程：独立、不透明的阅读面板 ──
+   不能继承助手消息的装饰层：主题色只属于触发标签，绝不进入正文底层。 */
+.thinking-panel {
+  position: relative;
+  isolation: isolate;
+  z-index: 0;
+  margin: 6px 0 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--pi-border-soft);
+  border-radius: var(--pi-r-md);
+  background: var(--pi-bg1);
+  color: var(--pi-text);
+  box-shadow: inset 0 1px 0 color-mix(in oklab, white 55%, transparent);
+}
+.thinking-panel::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--pi-bg1);
+}
+.thinking-panel .markdown-body {
+  color: inherit;
+  font-size: 13px;
+  line-height: 1.75;
+}
+.thinking-panel .markdown-body > :first-child { margin-top: 0; }
+.thinking-panel .markdown-body > :last-child { margin-bottom: 0; }
+.thinking-panel .markdown-body blockquote { color: var(--pi-dim); }
+.thinking-panel .markdown-body code {
+  background: var(--pi-bg2);
+  color: var(--pi-text);
+}
+.thinking-panel .markdown-body th { background: var(--pi-bg2); }
 
-/* ── 助手消息：左侧渐变竖条 + hover 提亮 ── */
+/* ── Phase4 视觉层次升级 ══ */
+
+/* ── 助手消息：低存在感半透明标记，不参与正文阅读 ── */
 .msg-assistant {
   position: relative;
   padding-left: 2px;
@@ -979,15 +1015,18 @@ body {
   content: "";
   position: absolute;
   left: -6px; top: 8px; bottom: 8px;
-  width: 2.5px;
+  width: 2px;
   border-radius: 2px;
-  background: linear-gradient(180deg, var(--pi-accent) 0%, color-mix(in oklab, var(--pi-accent2) 60%, transparent) 70%, transparent 100%);
-  opacity: 0.5;
-  transition: opacity var(--pi-motion-base);
+  background: color-mix(in oklab, var(--pi-accent) 18%, transparent);
+  opacity: 1;
+  transition: background-color var(--pi-motion-base);
 }
-.msg-assistant:hover::before { opacity: 0.85; }
+.msg-assistant:hover::before {
+  background: color-mix(in oklab, var(--pi-accent) 24%, transparent);
+  opacity: 1;
+}
 .msg-assistant:hover {
-  background: color-mix(in oklab, var(--pi-accent) 3%, transparent);
+  background: color-mix(in oklab, var(--pi-accent) 1%, transparent);
   border-radius: var(--pi-r-md);
 }
 
@@ -1170,6 +1209,17 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 [data-theme="kraft"] .msg-bubble {
   box-shadow: 0 2px 6px var(--pi-shadow-sm);
+}
+
+@media (max-width: 768px) {
+  .mobile-composer {
+    /* adjustResize 与 visualViewport 两种模式都由 mobile-app-root 负责缩短；这里只处理刘海/手势条。 */
+    padding-bottom: max(0.625rem, env(safe-area-inset-bottom, 0px));
+  }
+  html.keyboard-open .mobile-composer textarea {
+    /* 让浏览器滚动焦点时输入框不会贴在软键盘边缘 */
+    scroll-margin-bottom: 12px;
+  }
 }
 
 /* ── Task 2：移动主导航与桌面辅助面板 ── */

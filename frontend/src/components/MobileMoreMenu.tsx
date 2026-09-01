@@ -106,7 +106,7 @@ export default function MobileMoreMenu({ open, onClose, route, nav, onOpenPanel,
             {MORE_ROUTES.map(item => (
               <button
                 key={item.route}
-                className={`mobile-more-action flex-col gap-1 rounded-pi-md px-1 text-xs ${route === item.route ? 'bg-pi-accent/15 text-pi-accent' : 'text-pi-dim hover:bg-pi-bg3 hover:text-pi-text'}`}
+                className={`mobile-more-action flex-col gap-1 rounded-pi-md px-1 text-xs ${route === item.route ? 'bg-pi-accent/10 text-pi-text' : 'text-pi-dim hover:bg-pi-bg3 hover:text-pi-text'}`}
                 aria-current={route === item.route ? 'page' : undefined}
                 onClick={() => openRoute(item.route)}
               >

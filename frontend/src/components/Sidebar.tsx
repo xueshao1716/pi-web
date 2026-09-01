@@ -59,11 +59,13 @@ export default function Sidebar({ onNavigated, onCollapse }: { onNavigated?: () 
     <aside className="w-full md:w-64 flex-shrink-0 flex flex-col col-sidebar md:border-r border-pi-border/50 min-h-0 h-full relative z-10">
       {/* 品牌头 */}
       <div className="flex items-center gap-2.5 px-4 h-14 border-b border-pi-border-soft/50 flex-shrink-0">
-        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-pi-accent to-pi-accent2 flex items-center justify-center text-white font-bold text-sm"
-          style={{ boxShadow: '0 3px 10px color-mix(in oklab, var(--pi-accent) 20%, transparent)' }}>语</div>
-        <div>
+        <img
+          className="h-8 w-8 shrink-0 rounded-pi-md"
+          src="/static/branding/yuanshu-app-icon.png"
+          alt="元枢"
+        />
+        <div className="min-w-0">
           <div className="font-semibold text-[15px] leading-tight">小语</div>
-          <div className="text-pi-dim2 text-[11px] leading-tight">元枢工作台</div>
         </div>
         {onCollapse && (
           <button className="ml-auto touch-hit p-1.5 text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 rounded-pi-sm transition-colors"

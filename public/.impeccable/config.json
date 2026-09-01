@@ -1,8 +1,0 @@
-{
-  "detector": {
-    "ignoreRules": ["gradient-text", "codex-grid-background", "layout-transition", "side-tab"],
-    "ignoreFiles": [],
-    "ignoreValues": []
-  },
-  "_comment": "css/*.css 主题库（synthwave/gold/quantum 等）：渐变字与网格背景为主题设计本体，brand register；side-tab 为 blockquote 惯例；layout-transition 为侧栏功能动画。legacy 前端冻结，豁免记录用。"
-}

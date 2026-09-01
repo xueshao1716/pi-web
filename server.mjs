@@ -1407,6 +1407,8 @@ const runManager = createRunManager({
   eventLog: runEventLog,
   executeChat: handleChat,
   instanceId: RUN_INSTANCE_ID,
+  // handleChat 返回时 JSONL 已提交；通知会话订阅者刷新侧栏与多端状态。
+  onSessionUpdated: ({ run }) => busPush(run.sessionId, "session_updated", { sessionId: run.sessionId }),
 });
 const recoveredRuns = runManager.recover();
 if (recoveredRuns.length) console.log(`[runs] 已将 ${recoveredRuns.length} 个旧实例任务标记为 interrupted`);

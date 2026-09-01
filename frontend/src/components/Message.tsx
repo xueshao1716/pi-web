@@ -63,9 +63,9 @@ function Thinking({ text, live }: { text: string; live?: boolean }) {
   if (!text) return null
   return (
     <div className="my-2">
-      <div className="inline-flex items-center gap-1.5 text-pi-accent text-[11px] font-medium cursor-pointer transition-colors rounded-full px-2.5 py-1 -ml-1 bg-pi-accent/12 border border-pi-accent/25 hover:bg-pi-accent/20"
+      <div className="inline-flex items-center gap-1.5 text-pi-text text-[11px] font-medium cursor-pointer transition-colors rounded-full px-2.5 py-1 -ml-1 bg-pi-accent/6 border border-pi-accent/12 hover:bg-pi-accent/10"
         onClick={() => setOpen(!open)}>
-        <Brain className="w-3 h-3 text-pi-accent" />
+        <Brain className="w-3 h-3 text-pi-text" />
         {live && (
           <span className="relative flex h-1.5 w-1.5">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pi-accent opacity-60" />
@@ -75,7 +75,11 @@ function Thinking({ text, live }: { text: string; live?: boolean }) {
         <span>{live && !open ? '思考中…' : '思考过程'}</span>
         <ChevronRight className={`w-2.5 h-2.5 transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />
       </div>
-      {open && <div className="pl-4 border-l border-pi-accent/25 my-1 text-pi-dim text-[13px] opacity-80"><Markdown text={text} /></div>}
+      {open && (
+        <section className="thinking-panel" aria-label="思考过程正文">
+          <Markdown text={text} />
+        </section>
+      )}
     </div>
   )
 }

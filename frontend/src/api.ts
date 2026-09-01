@@ -145,7 +145,9 @@ export function streamSession(sid: string, after = 0, onEvent: (ev: any) => void
     if (closed) return
     es = new EventSource(`${_apiBase}/api/sessions/${encodeURIComponent(sid)}/stream?after=${after}&token=${encodeURIComponent(_token)}`)
     es.onmessage = (e: MessageEvent) => { try { onEvent(JSON.parse(e.data)) } catch {} }
-    es.addEventListener('subscribed', (e: any) => { try { onEvent(JSON.parse(e.data)) } catch {} })
+    const onNamedEvent = (e: Event) => { try { onEvent(JSON.parse((e as MessageEvent).data)) } catch {} }
+    es.addEventListener('subscribed', onNamedEvent)
+    es.addEventListener('session_updated', onNamedEvent)
     // 断线恢复：EventSource 原生会重连，但连接失败/服务重启时可能终化——监听 error 兜底重连
     es.onerror = () => {
       onError?.()

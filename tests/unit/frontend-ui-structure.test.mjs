@@ -19,6 +19,10 @@ test('聊天与首页数据层不因焦点切换自动整页重载，外部事�
   assert.doesNotMatch(chat, /setTimeout\(\(\) => \{ if \(alive && !streamRef\.current\) mutateMsgs\(\) \}, 6000\)/, '连接短暂出错不得用延迟整段重载制造闪屏')
 })
 
+test('会话 SSE 监听命名 session_updated 事件，确保跨端记录及时同步', () => {
+  const api = read('api.ts')
+  assert.match(api, /es\.addEventListener\('session_updated',/, 'streamSession 必须监听后端命名的 session_updated 事件')
+})
 test('对话欢迎页提供高频工作入口，长会话阅读区有稳定的阅读列', () => {
   const chat = read('components', 'ChatArea.tsx')
   const turns = read('components', 'TurnList.tsx')
@@ -27,6 +31,16 @@ test('对话欢迎页提供高频工作入口，长会话阅读区有稳定的�
   }
   assert.ok(chat.includes('chat-reading-column'), '长会话消息区必须有语义阅读列')
   assert.ok(turns.includes('chat-history-head'), '长会话折叠历史必须有明确阅读分隔')
+})
+
+test('侧栏品牌头使用与安装包一致的元枢 App 图标，并只保留小语身份名', () => {
+  const sidebar = read('components', 'Sidebar.tsx')
+  assert.ok(existsSync(join(ROOT, 'frontend', 'public', 'branding', 'yuanshu-app-icon.png')), '前端静态目录必须提供元枢 App 图标')
+  assert.match(sidebar, /src="\/static\/branding\/yuanshu-app-icon\.png"/, '侧栏品牌头必须引用元枢 App 图标的服务端静态路径')
+  assert.match(sidebar, /alt="元枢"/, '品牌图标必须提供元枢替代文本')
+  assert.ok(sidebar.includes('>小语</div>'), '侧栏必须保留小语作为伙伴身份名')
+  assert.doesNotMatch(sidebar, />元枢工作台</, '侧栏不得继续展示与元枢图标重复的文字副标题')
+  assert.doesNotMatch(sidebar, /from-pi-accent to-pi-accent2/, '品牌头不得继续使用旧的渐变“语”字标')
 })
 
 test('移动底栏固定为对话、会话、资产、任务、更多，且删除可拖动 MobileFab', () => {
@@ -324,6 +338,39 @@ test('任务与会话库保留既有 API 行为', () => {
   for (const behavior of ["api('/list')", "api('/stats')", "api('/rebuild'", "api('/sanitize'", "api('/meta'"]) {
     assert.ok(sessionDb.includes(behavior), `会话库必须保留：${behavior}`)
   }
+})
+
+test('思考过程正文使用隔离的实底阅读面板，避免主题色层覆盖文字', () => {
+  const message = read('components', 'Message.tsx')
+  const styles = read('styles.css')
+  assert.match(message, /className="thinking-panel"/, '展开的思考过程必须使用独立阅读面板')
+  assert.match(styles, /\.thinking-panel\s*\{[^}]*isolation:\s*isolate[^}]*background:\s*var\(--pi-bg1\)[^}]*color:\s*var\(--pi-text\)/s, '思考面板必须建立独立层叠上下文并使用不透明的主题阅读底色和主文字色')
+  assert.match(styles, /\.thinking-panel\s+\.markdown-body\s*\{[^}]*color:\s*inherit/s, '思考正文不得重新降级为低对比度辅助文字')
+})
+
+test('思考过程触发标签在主题底色上使用主文字色，避免同色吞字', () => {
+  const message = read('components', 'Message.tsx')
+  const thinkingTrigger = message.split('function Thinking')[1]?.split('function Attachments')[0] ?? ''
+  assert.match(thinkingTrigger, /text-pi-text/, '思考过程文字必须从主题色切换为主文字色')
+  assert.match(thinkingTrigger, /bg-pi-accent\/6/, '思考标签背景必须是轻量半透明色')
+  assert.match(thinkingTrigger, /border-pi-accent\/12/, '思考标签边框必须退为低对比度提示')
+  assert.match(thinkingTrigger, /hover:bg-pi-accent\/10/, '悬浮时仅作轻微反馈，不能形成主题色块')
+})
+
+test('移动更多菜单当前项在主题底色上使用主文字色，避免同色吞字', () => {
+  const moreMenu = read('components', 'MobileMoreMenu.tsx')
+  assert.match(moreMenu, /route === item\.route \? 'bg-pi-accent\/10 text-pi-text'/, '当前菜单项必须使用中性高对比文字色')
+})
+
+test('助手消息装饰层保持低存在感半透明，不能压过长正文', () => {
+  const styles = read('styles.css')
+  const assistantDecoration = styles.match(/\.msg-assistant::before\s*\{([\s\S]*?)\n\}/)?.[1] ?? ''
+  const assistantHoverDecoration = styles.match(/\.msg-assistant:hover::before\s*\{([\s\S]*?)\n\}/)?.[1] ?? ''
+  const assistantHover = styles.match(/\.msg-assistant:hover\s*\{([\s\S]*?)\n\}/)?.[1] ?? ''
+  assert.match(assistantDecoration, /background:\s*color-mix\(in oklab, var\(--pi-accent\) 18%, transparent\)/, '助手装饰条应为低浓度半透明单色，不能使用渐变')
+  assert.match(assistantDecoration, /opacity:\s*1/, '装饰透明度必须由色值统一管理')
+  assert.match(assistantHoverDecoration, /opacity:\s*1/, '悬浮时不得重新加重装饰条')
+  assert.match(assistantHover, /background:\s*color-mix\(in oklab, var\(--pi-accent\) 1%, transparent\)/, '长正文悬浮背景只能是近乎不可见的半透明提示')
 })
 
 test('消息视觉只使用 pi 语义色，并保留角色、Markdown、Thinking 与 ToolCard 分支', () => {

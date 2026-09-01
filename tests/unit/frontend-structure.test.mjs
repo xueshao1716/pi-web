@@ -6,7 +6,8 @@ import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const FE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'frontend', 'src')
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
+const FE = join(ROOT, 'frontend', 'src')
 const read = (...p) => readFileSync(join(FE, ...p), 'utf8')
 
 test('结构：Markdown 自定义块必须包 SafeBlock 错误隔离（mermaid/dsh-ui/高亮代码）', () => {
@@ -67,4 +68,27 @@ test('结构：心情胶囊是服务端情绪镜像，禁止本地点击换脸',
   const pill = chat.match(/<div[^>]*emo-pill[\s\S]*?>/)
   assert.ok(pill, 'emo-pill 元素必须存在')
   assert.ok(!pill[0].includes('onClick'), 'emo-pill 元素不得绑定 onClick 换脸')
+})
+
+test('长任务无事件看门狗允许持续 10 分钟后才停止', () => {
+  const chat = read('components', 'ChatArea.tsx')
+  assert.match(chat, /const IDLE_WARN_MS = 600_000/, '聊天无事件超时必须是 10 分钟')
+  assert.doesNotMatch(chat, /IDLE_WARN_MS = 90_000/, '不得保留 90 秒自动停止')
+})
+
+test('流式期间过滤本地 assistant 草稿，避免与实时流重复渲染 bash 工具卡', () => {
+  const chat = read('components', 'ChatArea.tsx')
+  assert.match(chat, /const renderMessages = stream \? messages\.filter\(m => !m\.isDraft\) : messages/, '流式期间不能把 IndexedDB 草稿和实时 assistant 同时渲染')
+})
+
+test('前端收到会话已更新事件后立即刷新会话列表', () => {
+  const chat = read('components', 'ChatArea.tsx')
+  assert.match(chat, /case 'session_updated':[\s\S]*?refreshSessions\(\)/, 'session_updated 必须立即刷新会话列表')
+  assert.doesNotMatch(chat.match(/case 'session_updated':[\s\S]*?case 'completed':/)?.[0] || '', /mutateMsgs\(\)/, '流式收尾前不能刷新消息正文，避免和实时 assistant 重复')
+})
+
+
+test('后端提交聊天记录后同时广播会话更新事件，支持其他前端实例同步', () => {
+  const server = readFileSync(join(ROOT, 'server.mjs'), 'utf8')
+  assert.match(server, /onSessionUpdated:\s*\(\{\s*run\s*\}\)\s*=>\s*busPush\(run\.sessionId,\s*"session_updated"/, '聊天记录提交后必须广播 session_updated 给会话订阅者')
 })

@@ -76,7 +76,7 @@ function createExecutionIo({ headers = {}, socket = {}, onEvent }) {
   return { req, res, close }
 }
 
-export function createRunManager({ store, eventLog, executeChat, instanceId }) {
+export function createRunManager({ store, eventLog, executeChat, instanceId, onSessionUpdated = null }) {
   const executions = new Map()
 
   const append = (run, type, data = {}) => eventLog.append({
@@ -133,6 +133,11 @@ export function createRunManager({ store, eventLog, executeChat, instanceId }) {
         const message = sawError?.message || sawError?.error || `HTTP ${io.res.statusCode}`
         finish(running.id, 'failed', { message })
       } else {
+        // executeChat 返回时，聊天 JSONL 已经完成本轮写入；先通知前端刷新历史，再发布 Run 终态。
+        // 这样会话记录不会等到下一次手动刷新或列表缓存自然过期才出现。
+        const committed = store.get(running.id)
+        try { onSessionUpdated?.({ run: committed || running }) } catch {}
+        append(committed || running, 'session_updated', { sessionId: running.sessionId })
         finish(running.id, 'completed', {})
       }
     } catch (error) {
