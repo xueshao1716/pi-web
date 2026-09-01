@@ -2,18 +2,11 @@ function visibleViewportHeight(): number {
   return window.visualViewport?.height ?? window.innerHeight
 }
 
-function keyboardState(): { inset: number; open: boolean; overlay: boolean } {
-  const viewport = window.visualViewport
-  if (!viewport) return { inset: 0, open: false, overlay: false }
-  // Android WebView 的软键盘有两种模式：adjustResize 会缩小布局视口，
-  // overlay 模式只缩小 visualViewport。只在后一种模式额外抬高输入栏，避免重复上移。
-  const layoutHeight = Math.max(window.innerHeight, document.documentElement.clientHeight)
-  const visibleBottom = viewport.height + viewport.offsetTop
-  const inset = Math.max(0, layoutHeight - visibleBottom)
-  const open = inset > 80
-  const overlay = open && layoutHeight - viewport.height > 80
-  return { inset: overlay ? inset : 0, open, overlay }
+function layoutViewportHeight(): number {
+  return Math.max(window.innerHeight, document.documentElement.clientHeight)
 }
+
+let nativeKeyboardInset = 0
 
 function isTextEditorFocused(): boolean {
   const element = document.activeElement
@@ -23,23 +16,79 @@ function isTextEditorFocused(): boolean {
     || element?.getAttribute('contenteditable') === 'true'
 }
 
-/** Keep the mobile app and composer aligned with the actually visible viewport. */
-export function installVisualViewportHeight(): () => void {
-  const update = () => {
-    const height = visibleViewportHeight()
+/**
+ * Keep a pre-IME height so an Android WebView that only reports WindowInsets
+ * can be shortened without requiring the layout viewport itself to resize.
+ */
+function installViewportController() {
+  let baseLayoutHeight = layoutViewportHeight()
+  let update = () => {}
+
+  const visualInset = () => {
+    const viewport = window.visualViewport
+    if (!viewport) return 0
+    return Math.max(0, layoutViewportHeight() - (viewport.height + viewport.offsetTop))
+  }
+
+  const updateBaseHeight = () => {
+    const layoutHeight = layoutViewportHeight()
+    const visualKeyboardInset = visualInset()
+    // 只在键盘关闭时更新基准，避免 adjustResize 的临时小高度污染基准。
+    if (nativeKeyboardInset <= 80 && visualKeyboardInset <= 80) baseLayoutHeight = layoutHeight
+    else if (layoutHeight > baseLayoutHeight) baseLayoutHeight = layoutHeight
+  }
+
+  const effectiveHeight = () => {
+    const layoutHeight = layoutViewportHeight()
+    const visualHeight = visibleViewportHeight()
+    const visualKeyboardInset = visualInset()
+
+    if (nativeKeyboardInset > 80) {
+      // visualViewport 已经避让时，直接使用它，不能再扣一次原生 inset。
+      if (visualKeyboardInset > 80) return visualHeight
+      // adjustResize 已经缩短布局时，使用缩短后的布局高度。
+      if (layoutHeight < baseLayoutHeight - 80) return layoutHeight
+      // overlay IME：布局没变，只能用原生 inset 计算可见高度。
+      return Math.max(0, baseLayoutHeight - nativeKeyboardInset)
+    }
+    return visualHeight
+  }
+
+  const keyboardState = () => {
+    const visualKeyboardInset = visualInset()
+    const inset = Math.max(nativeKeyboardInset, visualKeyboardInset)
+    const open = inset > 80
+    const overlay = nativeKeyboardInset > 80 && visualKeyboardInset <= 80
+      && layoutViewportHeight() >= baseLayoutHeight - 80
+    return { inset, open, overlay }
+  }
+
+  update = () => {
+    updateBaseHeight()
+    const height = effectiveHeight()
     const state = keyboardState()
     document.documentElement.style.setProperty('--pi-viewport-height', `${height}px`)
     document.documentElement.style.setProperty('--pi-keyboard-inset', `${state.inset}px`)
+    document.documentElement.style.setProperty('--pi-native-keyboard-inset', `${nativeKeyboardInset}px`)
     const keyboardOpen = state.open && isTextEditorFocused()
     document.documentElement.classList.toggle('keyboard-open', keyboardOpen)
     document.documentElement.classList.toggle('keyboard-overlay', keyboardOpen && state.overlay)
+    document.documentElement.classList.toggle('keyboard-native', keyboardOpen && nativeKeyboardInset > 80)
   }
-  const viewport = window.visualViewport
 
+  const onNativeIme = (event: Event) => {
+    const detail = (event as CustomEvent<{ height?: number }>).detail
+    nativeKeyboardInset = Math.max(0, Number(detail?.height) || 0)
+    update()
+  }
+
+  const viewport = window.visualViewport
   update()
   viewport?.addEventListener('resize', update)
   viewport?.addEventListener('scroll', update)
   window.addEventListener('resize', update)
+  window.addEventListener('orientationchange', update)
+  window.addEventListener('yuanshu-ime', onNativeIme)
   document.addEventListener('focusin', update)
   document.addEventListener('focusout', update)
 
@@ -47,9 +96,18 @@ export function installVisualViewportHeight(): () => void {
     viewport?.removeEventListener('resize', update)
     viewport?.removeEventListener('scroll', update)
     window.removeEventListener('resize', update)
+    window.removeEventListener('orientationchange', update)
+    window.removeEventListener('yuanshu-ime', onNativeIme)
     document.removeEventListener('focusin', update)
     document.removeEventListener('focusout', update)
-    document.documentElement.classList.remove('keyboard-open', 'keyboard-overlay')
+    document.documentElement.classList.remove('keyboard-open', 'keyboard-overlay', 'keyboard-native')
+    document.documentElement.style.removeProperty('--pi-viewport-height')
     document.documentElement.style.removeProperty('--pi-keyboard-inset')
+    document.documentElement.style.removeProperty('--pi-native-keyboard-inset')
   }
+}
+
+/** Keep the mobile app and composer aligned with the actually visible viewport. */
+export function installVisualViewportHeight(): () => void {
+  return installViewportController()
 }

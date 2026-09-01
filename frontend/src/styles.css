@@ -11,6 +11,7 @@ html { color-scheme: dark; }
 html[data-theme="mist"] { color-scheme: light; }
 html, body, #root { height: 100%; }
 .mobile-app-root {
+  --pi-native-keyboard-inset: 0px;
   height: 100vh;
   height: 100dvh;
   height: var(--pi-viewport-height);

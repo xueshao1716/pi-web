@@ -5,10 +5,13 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -31,5 +34,22 @@ class MainActivity : TauriActivity() {
     super.onWebViewCreate(webView)
     // 原生桥接：不管 WebView 里加载的是本地连接页还是用户自己填的远程 pi-web 地址，都能拿到这几个原生能力
     webView.addJavascriptInterface(YuanshuBridge(this, webView), "YuanshuBridge")
+
+    // 某些 Android/WebView 组合（尤其是 edge-to-edge 下的厂商 WebView）不会把 IME
+    // 反映到布局高度，导致前端的 visualViewport 也看不到键盘。把系统报告的真实
+    // IME bottom inset 转成稳定 DOM 事件，前端只在布局没有自行缩短时使用它兜底。
+    ViewCompat.setOnApplyWindowInsetsListener(webView) { view: View, insets: WindowInsetsCompat ->
+      val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+      val script = """
+        (function() {
+          window.dispatchEvent(new CustomEvent('yuanshu-ime', {
+            detail: { height: $imeBottom, visible: ${imeBottom > 0} }
+          }));
+        })();
+      """.trimIndent()
+      view.post { (view as? WebView)?.evaluateJavascript(script, null) }
+      insets
+    }
+    ViewCompat.requestApplyInsets(webView)
   }
 }
