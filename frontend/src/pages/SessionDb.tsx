@@ -4,7 +4,7 @@ import EmptyState from '../components/EmptyState'
 import PageHeader from '../components/PageHeader'
 import { toast } from '../components/Toast'
 import { useApp } from '../store'
-import { SessionsApi } from '../api'
+import { api, SessionsApi } from '../api'
 
 // ── 会话数据库（08-29 真落地）：编号/健康度/大小/批量清理 ──
 // 后端 /api/sessions/db/*；健康 ok<1MB / large 1-5MB / oversized>5MB
@@ -15,8 +15,6 @@ type Row = {
   mtime: string | null; seq: number | null; pinned: boolean; tags: string[]
 }
 type Stats = { total: number; totalMB: number; health: Record<string, number>; lastRebuild: string | null }
-
-const api = (p: string, opts?: any) => fetch(`/api/sessions/db${p}`, { headers: { Authorization: `Bearer ${localStorage.getItem('pi_web_token') || ''}`, 'Content-Type': 'application/json' }, ...opts }).then(r => r.json())
 
 const HEALTH: Record<string, { label: string; cls: string }> = {
   ok: { label: '正常', cls: 'bg-pi-success/15 text-pi-success' },
@@ -42,15 +40,15 @@ export default function SessionDb() {
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
 
   const load = async () => {
-    const d = await api('/list').catch(() => null)
+    const d = await api('/api/sessions/db/list').catch(() => null)
     if (d?.sessions) setRows(d.sessions)
-    setStats(await api('/stats').catch(() => null))
+    setStats(await api('/api/sessions/db/stats').catch(() => null))
   }
   useEffect(() => { load() }, [])
 
   const rebuild = async () => {
     setBusy(true)
-    const d = await api('/rebuild', { method: 'POST' }).catch(() => null)
+    const d = await api('/api/sessions/db/rebuild', { method: 'POST' }).catch(() => null)
     setBusy(false)
     if (d?.ok) { toast(`索引完成：${d.total} 条，新增编号 ${d.added}`, 'ok'); await load() }
     else toast('重建失败', 'error')
@@ -59,7 +57,7 @@ export default function SessionDb() {
   const batchSanitize = async () => {
     if (!sel.size) return
     setBusy(true)
-    const d = await api('/sanitize', { method: 'POST', body: JSON.stringify({ ids: [...sel] }) }).catch(() => null)
+    const d = await api('/api/sessions/db/sanitize', { method: 'POST', body: JSON.stringify({ ids: [...sel] }) }).catch(() => null)
     setBusy(false)
     if (d?.ok) {
       const saved = d.results.reduce((a: number, r: any) => a + (r.bytesSaved || 0), 0)
@@ -70,7 +68,7 @@ export default function SessionDb() {
   }
 
   const togglePin = async (r: Row) => {
-    const d = await api('/meta', { method: 'PATCH', body: JSON.stringify({ id: r.id, pinned: !r.pinned }) }).catch(() => null)
+    const d = await api('/api/sessions/db/meta', { method: 'PATCH', body: JSON.stringify({ id: r.id, pinned: !r.pinned }) }).catch(() => null)
     if (d?.ok) setRows(rows.map(x => x.id === r.id ? { ...x, pinned: d.pinned, seq: d.seq } : x))
   }
 

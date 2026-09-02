@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
-import { useApp } from '../store'
+import { webSocketUrl } from '../api'
 
 // ── 后端 TUI 终端（08-26）：xterm.js 直连 /ws/tui PTY 桥，操作后端 pi TUI ──
 
@@ -36,10 +36,9 @@ export default function TuiTerminal() {
     let ws: WebSocket | null = null
     let closedByUs = false
     let retryTimer: ReturnType<typeof setTimeout> | null = null
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     const connect = () => {
       if (closedByUs) return
-      try { ws = new WebSocket(`${proto}://${location.host}/ws/tui?token=${encodeURIComponent(token)}`) } catch { retryTimer = setTimeout(connect, 3000); return }
+      try { ws = new WebSocket(webSocketUrl(`/ws/tui?token=${encodeURIComponent(token)}`)) } catch { retryTimer = setTimeout(connect, 3000); return }
       ws.onopen = () => {
         term.writeln('\x1b[2m── 已连接后端 TUI（输入即操作小语终端）──\x1b[0m')
         sendResize()

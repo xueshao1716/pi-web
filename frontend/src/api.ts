@@ -11,13 +11,33 @@ let _apiBase = (() => {
 
 export function setToken(t: string) { _token = t; try { localStorage.setItem('pi_web_token', t) } catch {} }
 export function getToken() { return _token }
-export function setApiBase(b: string) { _apiBase = b; try { localStorage.setItem('pi_api_base', b) } catch {} }
+export function setApiBase(b: string) { _apiBase = b.replace(/\/+$/, ''); try { localStorage.setItem('pi_api_base', _apiBase) } catch {} }
+export function getApiBase() { return _apiBase.replace(/\/+$/, '') }
+
+export function apiUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) return path
+  const base = getApiBase()
+  if (!base) return path
+  return `${base}/${path.replace(/^\/+/, '')}`
+}
+
+export function webSocketUrl(path: string): string {
+  const base = getApiBase()
+  if (/^wss?:\/\//i.test(path)) return path
+  if (base) {
+    const httpBase = base.replace(/^http:/i, 'ws:').replace(/^https:/i, 'wss:')
+    return `${httpBase}/${path.replace(/^\/+/, '')}`
+  }
+  const protocol = typeof location !== 'undefined' && location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const host = typeof location !== 'undefined' ? location.host : ''
+  return `${protocol}//${host}/${path.replace(/^\/+/, '')}`
+}
 
 // 文件 URL 补 token（<img>/<audio>/<video> 标签带不了 Authorization 头，服务端 checkAuth 接受 ?token=）
 export function withFileToken(url: string): string {
   if (!url || !url.includes('/api/ws/file') || url.includes('sig=') || url.includes('token=')) return url
   const sep = url.includes('?') ? '&' : '?'
-  return `${_apiBase}${url}${sep}token=${encodeURIComponent(_token)}`
+  return `${apiUrl(url)}${sep}token=${encodeURIComponent(_token)}`
 }
 
 const TIMEOUT = 30000
@@ -31,7 +51,7 @@ export async function api<T = any>(path: string, opts: any = {}): Promise<T> {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(new Error('请求超时')), opts.timeoutMs || TIMEOUT)
   try {
-    const r = await fetch(_apiBase + path, { ...opts, headers, signal: opts.signal || ctrl.signal })
+    const r = await fetch(apiUrl(path), { ...opts, headers, signal: opts.signal || ctrl.signal })
     const ct = r.headers.get('content-type') || ''
     const data = ct.includes('json') ? await r.json() : null
     if (!r.ok) {
@@ -97,7 +117,7 @@ export const RunsApi = {
       if (closed) return
       ctrl = new AbortController()
       try {
-        const response = await fetch(`${_apiBase}/api/runs/${encodeURIComponent(runId)}/events?after=${cursor}`, {
+        const response = await fetch(apiUrl(`/api/runs/${encodeURIComponent(runId)}/events?after=${cursor}`), {
           headers: { Authorization: `Bearer ${_token}`, 'Last-Event-ID': String(cursor) },
           signal: ctrl.signal,
         })
@@ -143,7 +163,7 @@ export function streamSession(sid: string, after = 0, onEvent: (ev: any) => void
   let retryTimer: ReturnType<typeof setTimeout> | null = null
   const connect = () => {
     if (closed) return
-    es = new EventSource(`${_apiBase}/api/sessions/${encodeURIComponent(sid)}/stream?after=${after}&token=${encodeURIComponent(_token)}`)
+    es = new EventSource(apiUrl(`/api/sessions/${encodeURIComponent(sid)}/stream?after=${after}&token=${encodeURIComponent(_token)}`))
     es.onmessage = (e: MessageEvent) => { try { onEvent(JSON.parse(e.data)) } catch {} }
     const onNamedEvent = (e: Event) => { try { onEvent(JSON.parse((e as MessageEvent).data)) } catch {} }
     es.addEventListener('subscribed', onNamedEvent)
