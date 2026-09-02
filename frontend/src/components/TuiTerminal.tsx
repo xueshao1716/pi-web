@@ -32,29 +32,47 @@ export default function TuiTerminal() {
     term.open(hostRef.current)
     try { fit.fit() } catch {}
 
-    // WS 连接（带 token；断线自动重连）
+    // WS 连接（先建立连接，再用首条消息鉴权；断线自动重连）
     let ws: WebSocket | null = null
+    let authenticated = false
     let closedByUs = false
     let retryTimer: ReturnType<typeof setTimeout> | null = null
     const connect = () => {
       if (closedByUs) return
-      try { ws = new WebSocket(webSocketUrl(`/ws/tui?token=${encodeURIComponent(token)}`)) } catch { retryTimer = setTimeout(connect, 3000); return }
+      try { ws = new WebSocket(webSocketUrl('/ws/tui')) } catch { retryTimer = setTimeout(connect, 3000); return }
       ws.onopen = () => {
-        term.writeln('\x1b[2m── 已连接后端 TUI（输入即操作小语终端）──\x1b[0m')
-        sendResize()
+        authenticated = false
+        ws?.send(JSON.stringify({ type: 'auth', token }))
+        term.writeln('\x1b[2m── 已连接后端 TUI（验证中）──\x1b[0m')
       }
-      ws.onmessage = ev => term.write(ev.data)
+      ws.onmessage = ev => {
+        try {
+          const message = JSON.parse(ev.data)
+          if (message?.type === 'auth_ok') {
+            authenticated = true
+            term.writeln('\x1b[2m── 已连接后端 TUI（输入即操作小语终端）──\x1b[0m')
+            sendResize()
+            return
+          }
+        } catch {}
+        term.write(ev.data)
+      }
       ws.onclose = () => {
+        authenticated = false
         if (!closedByUs) { term.writeln('\x1b[2m[连接断开，3s 后重连]\x1b[0m'); retryTimer = setTimeout(connect, 3000) }
       }
       ws.onerror = () => {}
     }
     const sendResize = () => {
-      try { ws?.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows })) } catch {}
+      if (!authenticated || ws?.readyState !== WebSocket.OPEN) return
+      try { ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows })) } catch {}
     }
     connect()
 
-    term.onData(d => { try { ws?.send(JSON.stringify({ type: 'input', data: d })) } catch {} })
+    term.onData(d => {
+      if (!authenticated || ws?.readyState !== WebSocket.OPEN) return
+      try { ws.send(JSON.stringify({ type: 'input', data: d })) } catch {}
+    })
 
     // 容器尺寸变化 → fit + 通知后端
     const ro = new ResizeObserver(() => {
@@ -64,6 +82,7 @@ export default function TuiTerminal() {
 
     return () => {
       closedByUs = true
+      authenticated = false
       if (retryTimer) clearTimeout(retryTimer)
       ro.disconnect()
       try { ws?.close() } catch {}

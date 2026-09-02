@@ -89,6 +89,26 @@ test('CORS policy allows known shells and rejects unknown origins', async () => 
   assert.deepEqual(policy.headers('https://evil.example'), { Vary: 'Origin' })
 })
 
+test('session SSE uses Authorization fetch instead of query-token EventSource', async () => {
+  const api = await read('frontend', 'src', 'api.ts')
+  assert.match(api, /fetch\(apiUrl\(`\/api\/sessions\//, 'session stream must use fetch so it can send Authorization')
+  assert.match(api, /Authorization:\s*`Bearer \$\{_token\}`/, 'session stream must authenticate with Authorization')
+  assert.doesNotMatch(api, /new EventSource\(/, 'session stream must not expose token through EventSource URL')
+  assert.doesNotMatch(api, /sessions\/.*stream[^`]*token=/, 'session stream URL must not contain token query parameter')
+})
+
+test('TUI WebSocket authenticates after connect instead of using a query token', async () => {
+  const tui = await read('frontend', 'src', 'components', 'TuiTerminal.tsx')
+  const bridge = await read('engine', 'tui-bridge.mjs')
+  assert.match(tui, /new WebSocket\(webSocketUrl\(['"]\/ws\/tui['"]\)\)/, 'TUI must connect without credentials in the URL')
+  assert.match(tui, /type:\s*['"]auth['"].*token/, 'TUI must send an auth handshake after connect')
+  assert.match(tui, /type === ['"]auth_ok['"]/, 'TUI must wait for auth_ok before sending terminal commands')
+  assert.doesNotMatch(tui, /\/ws\/tui\?token=/, 'TUI must not put the token in the WebSocket URL')
+  assert.match(bridge, /d\.type !== ['"]auth['"]/, 'TUI bridge must require an auth handshake')
+  assert.match(bridge, /type:\s*['"]auth_ok['"]/, 'TUI bridge must acknowledge successful authentication')
+  assert.doesNotMatch(bridge, /searchParams\.get\(['"]token['"]\)/, 'TUI bridge must not authenticate from a query token')
+})
+
 test('Mermaid rendering uses strict security and rejects oversized diagrams', async () => {
   const src = await read('frontend', 'src', 'components', 'Markdown.tsx')
   assert.match(src, /securityLevel:\s*['"]strict['"]/, 'Mermaid must use strict security')

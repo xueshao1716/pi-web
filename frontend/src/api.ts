@@ -156,29 +156,60 @@ export const RunsApi = {
   },
 }
 
-// 会话实时订阅（SSE，多端同步）
+// 会话实时订阅（SSE，多端同步）。使用 fetch 是因为 EventSource 不能设置 Authorization 头。
 export function streamSession(sid: string, after = 0, onEvent: (ev: any) => void, onError?: () => void): () => void {
-  let es: EventSource | null = null
   let closed = false
+  let cursor = after
+  let ctrl: AbortController | null = null
   let retryTimer: ReturnType<typeof setTimeout> | null = null
-  const connect = () => {
+
+  const connect = async () => {
     if (closed) return
-    es = new EventSource(apiUrl(`/api/sessions/${encodeURIComponent(sid)}/stream?after=${after}&token=${encodeURIComponent(_token)}`))
-    es.onmessage = (e: MessageEvent) => { try { onEvent(JSON.parse(e.data)) } catch {} }
-    const onNamedEvent = (e: Event) => { try { onEvent(JSON.parse((e as MessageEvent).data)) } catch {} }
-    es.addEventListener('subscribed', onNamedEvent)
-    es.addEventListener('session_updated', onNamedEvent)
-    // 断线恢复：EventSource 原生会重连，但连接失败/服务重启时可能终化——监听 error 兜底重连
-    es.onerror = () => {
-      onError?.()
-      es?.close()
-      if (!closed && !retryTimer) {
-        retryTimer = setTimeout(() => { retryTimer = null; connect() }, 5000)
+    ctrl = new AbortController()
+    try {
+      const response = await fetch(apiUrl(`/api/sessions/${encodeURIComponent(sid)}/stream?after=${cursor}`), {
+        headers: { Authorization: `Bearer ${_token}`, 'Last-Event-ID': String(cursor) },
+        signal: ctrl.signal,
+      })
+      if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`)
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      while (!closed) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const blocks = buffer.replace(/\r\n/g, '\n').split('\n\n')
+        buffer = blocks.pop() || ''
+        for (const block of blocks) {
+          if (!block || block.startsWith(':')) continue
+          let eventType = 'message'
+          const dataLines: string[] = []
+          for (const line of block.split('\n')) {
+            if (line.startsWith('event:')) eventType = line.slice(6).trim()
+            else if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart())
+          }
+          if (!dataLines.length || !['message', 'subscribed', 'session_updated'].includes(eventType)) continue
+          try {
+            const event = JSON.parse(dataLines.join('\n'))
+            if (event && typeof event === 'object') {
+              if (Number.isInteger(event.seq)) cursor = Math.max(cursor, event.seq)
+              if (eventType === 'subscribed' && Number.isInteger(event.lastSeq)) cursor = Math.max(cursor, event.lastSeq)
+              onEvent(event)
+            }
+          } catch {}
+        }
       }
+    } catch (error: any) {
+      if (closed || error?.name === 'AbortError') return
+      onError?.()
+    }
+    if (!closed && !retryTimer) {
+      retryTimer = setTimeout(() => { retryTimer = null; connect() }, 5000)
     }
   }
   connect()
-  return () => { closed = true; if (retryTimer) clearTimeout(retryTimer); es?.close() }
+  return () => { closed = true; if (retryTimer) clearTimeout(retryTimer); ctrl?.abort() }
 }
 
 // ── 语音转文字（录音 → 文本，后端走 mimo-v2.5-asr 免费通道）──

@@ -19,9 +19,11 @@ test('聊天与首页数据层不因焦点切换自动整页重载，外部事�
   assert.doesNotMatch(chat, /setTimeout\(\(\) => \{ if \(alive && !streamRef\.current\) mutateMsgs\(\) \}, 6000\)/, '连接短暂出错不得用延迟整段重载制造闪屏')
 })
 
-test('会话 SSE 监听命名 session_updated 事件，确保跨端记录及时同步', () => {
+test('会话 SSE 解析命名 session_updated 事件，确保跨端记录及时同步', () => {
   const api = read('api.ts')
-  assert.match(api, /es\.addEventListener\('session_updated',/, 'streamSession 必须监听后端命名的 session_updated 事件')
+  assert.match(api, /eventType = 'message'/, 'streamSession 必须解析 SSE 默认事件类型')
+  assert.match(api, /\['message', 'subscribed', 'session_updated'\]/, 'streamSession 必须识别后端命名的 session_updated 事件')
+  assert.match(api, /Authorization:\s*`Bearer \$\{_token\}`/, 'streamSession 必须发送 Authorization')
 })
 test('对话欢迎页提供高频工作入口，长会话阅读区有稳定的阅读列', () => {
   const chat = read('components', 'ChatArea.tsx')
