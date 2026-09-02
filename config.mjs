@@ -56,7 +56,9 @@ function defaultCwd() {
 
 export const CONFIG = {
   port: parseInt(process.env.PI_WEB_PORT || "8787", 10),
-  host: process.env.PI_WEB_HOST || "0.0.0.0", // 2026-08-31 改默认监听全网卡，修手机局域网直连连不上的问题（此前 127.0.0.1 只回环可达，外网靠隧道走通掩盖了这个缺陷）
+  // 默认仅监听本机；需要手机直接通过局域网 IP 连接时显式设置 PI_WEB_LAN=1。
+  host: process.env.PI_WEB_HOST || (process.env.PI_WEB_LAN === "1" ? "0.0.0.0" : "127.0.0.1"),
+  corsOrigins: process.env.PI_WEB_CORS_ORIGINS || "",
   token: loadToken(),
   tokenFile: TOKEN_FILE,
   // 工作目录：优先环境变量；默认主目录/pi-workspace（跨平台，不硬编码）

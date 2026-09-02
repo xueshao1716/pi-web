@@ -14,12 +14,19 @@ function PlainFallback({ content, className }: { content: string; className?: st
   )
 }
 
+const MAX_MERMAID_CHARS = 64 * 1024
+
+export function shouldRenderMermaid(code: string): boolean {
+  return code.length <= MAX_MERMAID_CHARS
+}
+
 // Mermaid 图表渲染（CDN 加载，失败回退纯文本）
 function MermaidBlock({ code }: { code: string }) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     let cancelled = false
     const render = async () => {
+      if (!shouldRenderMermaid(code)) return
       try {
         // 动态加载（08-25 性能审计：静态 import 把 mermaid 整包打进主包）
         if (!(window as any).mermaid) {
@@ -34,7 +41,7 @@ function MermaidBlock({ code }: { code: string }) {
           }
         }
         if ((window as any).mermaid && ref.current) {
-          ;(window as any).mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' })
+          ;(window as any).mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict' })
           const { svg } = await (window as any).mermaid.render('mmd-' + Math.random().toString(36).slice(2), code)
           if (!cancelled && ref.current) ref.current.innerHTML = svg
         }

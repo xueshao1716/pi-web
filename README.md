@@ -10,7 +10,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Node-%3E%3D20-339933" alt="Node">
-  <img src="https://img.shields.io/badge/纯原生JS-无框架-4EC9B0" alt="no-framework">
+  <img src="https://img.shields.io/badge/React%2019%2BNode.js-多端工作台-4EC9B0" alt="react-node">
   <img src="https://img.shields.io/badge/多模型-10%2B%20通道-7C5CFF" alt="multi-model">
   <img src="https://img.shields.io/badge/图生图-支持-FF9E43" alt="i2i">
   <img src="https://img.shields.io/badge/开源-MIT-FF6B6B" alt="license">
@@ -81,7 +81,7 @@ pi-web
 
 3. **重启服务**：`taskkill /F /IM node.exe` 后重新 `pi-web`（或 `cd ~/pi-web && node server.mjs`），刷新 http://127.0.0.1:8787 即可对话
 
-> 默认模型 deepseek-v4-flash 官方直连兑底，只填 deepseek 一个 key 就能用；
+> 当前默认模型为 `zhipu-paid/glm-5.3-flash`（可用 `PI_WEB_MODEL` 覆盖）；具体可用模型取决于本机 `models-store.json` 和 provider 配置。
 > 更多模型商（小米/阿里/火山等）逐个加进 auth.json 即可，模型清单见 `~/.pi/agent/models-store.json`。
 >
 > **dsh 引擎的 key**：不写 auth.json，首次启动 `dsh web` 会弹窗引导填写（存为 `DEEPSEEK_API_KEY`），与 pi 共用同一把 DeepSeek key 即可。
@@ -163,7 +163,8 @@ node setup.mjs --install
 
 | Provider | 模型 | 说明 |
 |---|---|---|
-| deepseek | `deepseek-v4-flash` / `deepseek-v4-pro` | 默认，推理强 |
+| 智谱 | `glm-5.3-flash` | 当前默认（provider 为 `zhipu-paid`） |
+| deepseek | `deepseek-v4-flash` / `deepseek-v4-pro` | 可选，推理强 |
 | 小米 mimo | `mimo-v2.5` / `mimo-v2.5-pro` / `mimo-v2-pro` | 中文好，v2.5 支持图片 |
 | Agnes | `agnes-2.5-pro` / `agnes-2.5-flash` 等 | 多用途 |
 | 阿里云百炼 | `wan2.7-image` 等 | 图像生成 |
@@ -222,11 +223,13 @@ node server.mjs
 | 变量 | 默认值 | 说明 |
 |---|---|---|
 | `PI_WEB_PORT` | `8787` | 服务端口 |
-| `PI_WEB_HOST` | `127.0.0.1` | 监听地址 |
+| `PI_WEB_HOST` | `127.0.0.1` | 监听地址；显式设置后优先于 LAN 模式 |
+| `PI_WEB_LAN` | 空 | 设置为 `1` 后，在未设置 `PI_WEB_HOST` 时监听 `0.0.0.0`，供手机直接通过局域网 IP 连接 |
+| `PI_WEB_CORS_ORIGINS` | 内置本地壳 origin | 逗号分隔的额外允许来源；不要填写不受信任的站点 |
 | `PI_WEB_TOKEN` | 自动生成 | 访问令牌（存 `.token`） |
 | `PI_WEB_CWD` | `~/pi-workspace` | 工作空间根目录 |
 | `PI_WEB_TOOLS` | `read,write,edit,bash` | 允许的工具集 |
-| `PI_WEB_MODEL` | 第一个可用 | 默认模型 |
+| `PI_WEB_MODEL` | `zhipu-paid/glm-5.3-flash` | 默认模型；可覆盖 |
 | `PI_PACKAGE` | 自动解析 | pi 引擎入口路径 |
 | `PI_WEB_SHARE_HOST` | 空 | 外网分享域名（可选，配置后启用分享） |
 
@@ -290,11 +293,26 @@ cp models.example.json ~/.pi/agent/models-store.json
 2. 配置 `PI_WEB_SHARE_HOST` 指向你的域名，并按需配置隧道（如 cloudflared）
 3. 分享链接：`https://<你的域名>/<项目名>/`
 
+## 前端与多端构建
+
+`frontend/` 是唯一的 React 前端源码，`frontend/dist/` 是唯一构建产物源。同步脚本把同一份产物复制到服务端静态目录 `public/` 和 Tauri 目录 `app/dist/`；Capacitor 直接使用 `frontend/dist/`，避免不同 Android 壳打包出不同界面。
+
+```bash
+npm run build:mobile:web
+# 等价于：npm run build:frontend && npm run sync:frontend
+```
+
+Tauri Android 构建使用 `app/src-tauri` 的 Gradle/Tauri 工程，Capacitor Android 构建使用 Capacitor 工程；构建前先执行上面的前端命令。APK 交付文件名必须标明 ABI：单架构使用 `arm64`、`armeabi-v7a`、`x86` 或 `x86_64`，四 ABI 合包才使用 `universal`，不能把单架构包称为通用包。
+
+默认服务只监听 `127.0.0.1`，因此现有反向代理/域名指向本机端口的方式不变。需要手机直接访问电脑局域网 IP 时，显式设置 `PI_WEB_LAN=1`，并配合 Windows 防火墙和访问令牌。
+
 ## 开发
 
-- 前端：`public/`（原生 HTML/CSS/JS，无构建步骤）
+- 前端源码：`frontend/src/`（React + Vite + UnoCSS）
+- 前端构建：`frontend/dist/`，用 `npm run build:frontend` 生成
+- 服务端静态部署：`public/`（由 `npm run sync:frontend` 同步，不作为另一套前端源码）
 - 后端：`server.mjs`（Node 原生 http）
-- 版本管理：见 `CHANGELOG.md`，每次迭代递增版本号并同步 `SYS_VERSION`（`public/js/workspace.js`）
+- 版本管理：见 `CHANGELOG.md`，每次迭代递增版本号并同步版本信息
 
 ## 开源约定
 

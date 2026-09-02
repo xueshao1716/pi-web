@@ -11,6 +11,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 export async function syncFrontend({
   sourceDir = path.join(REPO_ROOT, 'frontend', 'dist'),
   targets = [path.join(REPO_ROOT, 'public'), path.join(REPO_ROOT, 'app', 'dist')],
+  preserveTargets = [path.join(REPO_ROOT, 'public')],
 } = {}) {
   const source = path.resolve(sourceDir)
   const sourceStat = await fs.stat(source).catch(() => null)
@@ -18,9 +19,20 @@ export async function syncFrontend({
 
   for (const targetDir of targets) {
     const target = path.resolve(targetDir)
-    await fs.rm(target, { recursive: true, force: true })
+    const preserve = preserveTargets.some(dir => path.resolve(dir) === target)
+    if (!preserve) {
+      await fs.rm(target, { recursive: true, force: true })
+      await fs.mkdir(target, { recursive: true })
+      await fs.cp(source, target, { recursive: true })
+      continue
+    }
     await fs.mkdir(target, { recursive: true })
-    await fs.cp(source, target, { recursive: true })
+    for (const entry of await fs.readdir(source, { withFileTypes: true })) {
+      const sourceEntry = path.join(source, entry.name)
+      const targetEntry = path.join(target, entry.name)
+      await fs.rm(targetEntry, { recursive: true, force: true })
+      await fs.cp(sourceEntry, targetEntry, { recursive: true })
+    }
   }
 }
 

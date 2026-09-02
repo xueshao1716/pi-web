@@ -72,6 +72,7 @@ import { CodeRuntime } from "./code-mode/code-runtime.mjs";
 import { createCodeMode } from "./code-mode/code-mode.mjs";
 import { createTimeEngine } from "./engine/time-engine.mjs";
 import { sanitizeSessionFile } from "./engine/session-sanitize.mjs";
+import { createCorsPolicy } from "./engine/cors-policy.mjs";
 import { initSessionDb, handleDbList, handleDbRebuild, handleDbSanitize, handleDbMeta, handleDbStats } from "./engine/session-db.mjs";
 const memoryApi = await import("./engine/memory.mjs");
 const { initMemorySync } = await import("./engine/memory-sync.mjs");
@@ -1821,15 +1822,14 @@ const API_ROUTES = [
   }],
 ];
 
+const corsPolicy = createCorsPolicy(CONFIG.corsOrigins);
+
 const server = http.createServer(async (req, res) => {
   // 请求级 request-id：排查并发问题时能关联同一次请求的日志（小米 4.13）
   const reqId = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
   res.setHeader("X-Request-Id", reqId);
-  // CORS：安卓/桌面客户端以自定义 origin（tauri://localhost 等）跨域 fetch 本服务，浏览器层同源策略需服务端显式放行（鉴权靠 token 不靠 origin，安全性不依赖 CORS）（2026-08-31 修：之前缺失导致安卓客户端 fetch 报 TypeError: Failed to fetch）
-  res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Last-Event-ID");
-  res.setHeader("Access-Control-Allow-Credentials", "true");
+  // CORS：只允许已知本地壳 origin 和显式配置的远程前端，不能反射任意 Origin。
+  for (const [name, value] of Object.entries(corsPolicy.headers(req.headers.origin))) res.setHeader(name, value);
   if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
   const t0 = Date.now();
   try {

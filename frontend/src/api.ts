@@ -251,7 +251,7 @@ export const WorkshopApi = {
     const ctrl = new AbortController()
     ;(async () => {
       try {
-        const r = await fetch(_apiBase + `/api/workshop/${kind}`, {
+        const r = await fetch(apiUrl(`/api/workshop/${kind}`), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${_token}` },
           body: JSON.stringify(body),
@@ -302,7 +302,7 @@ export const NovelApi = {
     const ctrl = new AbortController()
     ;(async () => {
       try {
-        const r = await fetch(_apiBase + '/api/novel/write', {
+        const r = await fetch(apiUrl('/api/novel/write'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${_token}` },
           body: JSON.stringify(body),

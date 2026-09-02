@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react'
 import useSWR, { mutate as globalMutate } from 'swr'
-import { ModelsApi, SessionsApi, setToken, getToken } from './api'
+import { ModelsApi, SessionsApi, setToken, getToken, setApiBase } from './api'
 import type { Model, Session } from './types'
 
 interface AppState {
@@ -91,7 +91,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (e?.name === 'AbortError') { const x: any = new Error('连接超时'); x.status = 0; throw x }
       throw e
     } finally { clearTimeout(tmo) }
-    setToken(tk); if (apiBase) { try { localStorage.setItem('pi_api_base', apiBase) } catch {} }
+    setToken(tk); setApiBase(base)
     setT(tk); setAuthed(true)
   }, [])
 

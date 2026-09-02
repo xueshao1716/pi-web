@@ -57,7 +57,7 @@ export default function SessionDb() {
   const batchSanitize = async () => {
     if (!sel.size) return
     setBusy(true)
-    const d = await api('/api/sessions/db/sanitize', { method: 'POST', body: JSON.stringify({ ids: [...sel] }) }).catch(() => null)
+    const d = await api('/api/sessions/db/sanitize', { method: 'POST', body: { ids: [...sel] } }).catch(() => null)
     setBusy(false)
     if (d?.ok) {
       const saved = d.results.reduce((a: number, r: any) => a + (r.bytesSaved || 0), 0)
@@ -68,7 +68,7 @@ export default function SessionDb() {
   }
 
   const togglePin = async (r: Row) => {
-    const d = await api('/api/sessions/db/meta', { method: 'PATCH', body: JSON.stringify({ id: r.id, pinned: !r.pinned }) }).catch(() => null)
+    const d = await api('/api/sessions/db/meta', { method: 'PATCH', body: { id: r.id, pinned: !r.pinned } }).catch(() => null)
     if (d?.ok) setRows(rows.map(x => x.id === r.id ? { ...x, pinned: d.pinned, seq: d.seq } : x))
   }
 
