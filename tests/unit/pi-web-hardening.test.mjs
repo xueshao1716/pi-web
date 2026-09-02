@@ -131,6 +131,23 @@ test('chat keeps Markdown and auxiliary panels out of the initial bundle', async
   assert.match(layout, /modelOpen && <LazyModelManager/, 'model manager must load only when opened')
 })
 
+test('HTTP responses expose the browser security baseline and redact nested errors', async () => {
+  const http = await read('engine', 'http-utils.mjs')
+  const server = await read('server.mjs')
+  assert.match(server, /Content-Security-Policy/, 'server must send a CSP')
+  assert.match(server, /X-Content-Type-Options.*nosniff/, 'server must disable MIME sniffing')
+  assert.match(server, /X-Frame-Options.*DENY/, 'server must deny framing')
+  assert.match(server, /Referrer-Policy.*no-referrer/, 'server must avoid referrer leakage')
+  assert.match(server, /Permissions-Policy/, 'server must restrict browser capabilities')
+  assert.match(http, /function sanitizeError\(/, 'JSON errors must pass through a sanitizer')
+  const { json } = await import('../../engine/http-utils.mjs')
+  let body = ''
+  const res = { writeHead() {}, end(value) { body = String(value) } }
+  json(res, 502, { error: { message: 'upstream Authorization: Bearer secret-token-123456789', detail: 'apiKey=sk-secret-value-123456789' } })
+  assert.doesNotMatch(body, /secret-token|sk-secret-value/, 'nested error details must not expose credentials')
+  assert.match(body, /REDACTED/, 'nested error details must retain a safe placeholder')
+})
+
 test('README documents the reproducible multi-platform frontend workflow', async () => {
   const readme = await read('README.md')
   for (const term of [

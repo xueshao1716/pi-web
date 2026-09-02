@@ -8,9 +8,20 @@ function sanitizeError(msg) {
   return msg.replace(SENSITIVE_RE, "[REDACTED]").slice(0, 500);
 }
 
+function sanitizeErrorValue(value) {
+  if (typeof value === "string") return sanitizeError(value);
+  if (Array.isArray(value)) return value.map(sanitizeErrorValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, sanitizeErrorValue(child)]));
+  }
+  return value;
+}
+
 export function json(res, code, obj) {
-  // 自动脱敏 error 字段
-  if (obj && typeof obj.error === "string") obj = { ...obj, error: sanitizeError(obj.error) };
+  // error 可能是字符串或嵌套对象；统一脱敏其所有文本字段，避免上游详情夹带凭据。
+  if (obj && Object.prototype.hasOwnProperty.call(obj, "error")) {
+    obj = { ...obj, error: sanitizeErrorValue(obj.error) };
+  }
   res.writeHead(code, { "Content-Type": "application/json" });
   res.end(JSON.stringify(obj));
 }
