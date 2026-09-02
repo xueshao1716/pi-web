@@ -335,8 +335,8 @@ test('任务与会话库保留既有 API 行为', () => {
     assert.ok(tasks.includes(api), `任务中心必须保留：${api}`)
   }
   const sessionDb = read('pages', 'SessionDb.tsx')
-  for (const behavior of ["api('/list')", "api('/stats')", "api('/rebuild'", "api('/sanitize'", "api('/meta'"]) {
-    assert.ok(sessionDb.includes(behavior), `会话库必须保留：${behavior}`)
+  for (const behavior of ["api('/api/sessions/db/list')", "api('/api/sessions/db/stats')", "api('/api/sessions/db/rebuild'", "api('/api/sessions/db/sanitize'", "api('/api/sessions/db/meta'"]) {
+    assert.ok(sessionDb.includes(behavior), `会话库必须保留统一远程地址调用：${behavior}`)
   }
 })
 
