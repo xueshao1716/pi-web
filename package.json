@@ -5,9 +5,9 @@
   "description": "pi coding agent web interface (SSE chat over pi SDK)",
   "type": "module",
   "dependencies": {
-    "@capacitor/android": "^8.5.0",
-    "@capacitor/core": "^8.5.0",
-    "@capacitor/ios": "^8.5.0",
+    "@capacitor/android": "8.5.1",
+    "@capacitor/core": "8.5.1",
+    "@capacitor/ios": "8.5.1",
     "@lydell/node-pty": "^1.2.0-beta.15",
     "undici": "^7.16.0",
     "ws": "^8.21.3"
@@ -23,7 +23,7 @@
     "pi-web": "bin/pi-web.mjs"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.5.0",
+    "@capacitor/cli": "8.5.1",
     "typescript": "^7.0.2"
   }
 }
