@@ -1,7 +1,12 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { TOOL_COLORS, COLOR_ERROR, COLOR_TOOL_FALLBACK } from '../theme/palettes'
 import { Brain, FileText, Check, X, Pencil, ChevronRight, Square, Info } from 'lucide-react'
-import Markdown from './Markdown'
+const Markdown = lazy(() => import('./Markdown'))
+
+function LazyMarkdown({ text }: { text: string }) {
+  return <Suspense fallback={<div className="text-pi-dim2 text-xs py-2">渲染中…</div>}><Markdown text={text} /></Suspense>
+}
+
 import { withFileToken } from '../api'
 import type { ChatMessage, RunningTool, ToolStatus } from '../types'
 import { AgentWorkflow } from './AgentWorkflow'
@@ -77,7 +82,7 @@ function Thinking({ text, live }: { text: string; live?: boolean }) {
       </div>
       {open && (
         <section className="thinking-panel" aria-label="思考过程正文">
-          <Markdown text={text} />
+          <LazyMarkdown text={text} />
         </section>
       )}
     </div>
@@ -207,18 +212,18 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
             历史消息无 conclusion 字段，保持原渲染不变 */}
         {msg.conclusion != null && msg.text ? (
           <div className={"markdown-body-wrapper" + (streaming ? " streaming-caret" : "")}>
-            <Markdown text={msg.text} />
+            <LazyMarkdown text={msg.text} />
           </div>
         ) : null}
         {msg.conclusion != null
           ? (msg.conclusion ? (
             <div className={"markdown-body-wrapper" + (streaming ? " streaming-caret" : "")}>
-              <Markdown text={msg.conclusion} />
+              <LazyMarkdown text={msg.conclusion} />
             </div>
           ) : null)
           : (
             <div className={"markdown-body-wrapper" + (streaming ? " streaming-caret" : "")}>
-              <Markdown text={msg.text} />
+              <LazyMarkdown text={msg.text} />
             </div>
           )}
         {msg.ts && !streaming && (

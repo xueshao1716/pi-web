@@ -1,8 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Paperclip } from 'lucide-react'
 import { useApp } from '../store'
 import { WsApi } from '../api'
-import Markdown from './Markdown'
+const Markdown = lazy(() => import('./Markdown'))
+
+function LazyMarkdown({ text }: { text: string }) {
+  return <Suspense fallback={<div className="text-pi-dim2 text-xs py-2">渲染中…</div>}><Markdown text={text} /></Suspense>
+}
 
 interface TreeNode { name: string; type: string; path: string }
 
@@ -87,7 +91,7 @@ export default function Workspace() {
               <span className="text-xs text-pi-dim2 truncate flex-1">{selectedFile.path}</span>
               <button className="btn-tool text-xs" onClick={deliver} title="复制到 交付/ 目录（版本化）"><Paperclip className="w-3.5 h-3.5" /> 交付</button>
             </div>
-            {/\.(md|txt)$/i.test(selectedFile.name) ? <Markdown text={selectedFile.content} /> : <pre className="whitespace-pre-wrap text-[13px] text-pi-text font-mono">{selectedFile.content}</pre>}
+            {/\.(md|txt)$/i.test(selectedFile.name) ? <LazyMarkdown text={selectedFile.content} /> : <pre className="whitespace-pre-wrap text-[13px] text-pi-text font-mono">{selectedFile.content}</pre>}
           </>
         ) : <div className="h-full flex items-center justify-center text-pi-dim2 text-sm">← 选择左侧文件预览</div>}
       </div>

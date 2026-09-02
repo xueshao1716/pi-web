@@ -119,6 +119,18 @@ test('Mermaid rendering uses strict security and rejects oversized diagrams', as
   assert.match(src, /code\.length\s*<=\s*MAX_MERMAID_CHARS/)
 })
 
+test('chat keeps Markdown and auxiliary panels out of the initial bundle', async () => {
+  const layout = await read('frontend', 'src', 'AppLayout.tsx')
+  const message = await read('frontend', 'src', 'components', 'Message.tsx')
+  const workspace = await read('frontend', 'src', 'components', 'Workspace.tsx')
+  assert.doesNotMatch(message, /import Markdown from ['"]\.\/Markdown['"]/, 'Message must lazy-load Markdown')
+  assert.match(message, /lazy\(\(\) => import\(['"]\.\/Markdown['"]\)\)/, 'Message must dynamically load Markdown')
+  assert.doesNotMatch(workspace, /import Markdown from ['"]\.\/Markdown['"]/, 'Workspace must lazy-load Markdown')
+  assert.match(layout, /lazy\(\(\) => import\(['"]\.\/components\/(TuiTerminal|Workspace|TerminalPanel)['"]\)\)/, 'auxiliary panels must be dynamically loaded')
+  assert.doesNotMatch(layout, /import (TuiTerminal|WorkSpace|TerminalPanel) from ['"]\.\/components\//, 'auxiliary panels must not be statically imported')
+  assert.match(layout, /modelOpen && <LazyModelManager/, 'model manager must load only when opened')
+})
+
 test('README documents the reproducible multi-platform frontend workflow', async () => {
   const readme = await read('README.md')
   for (const term of [

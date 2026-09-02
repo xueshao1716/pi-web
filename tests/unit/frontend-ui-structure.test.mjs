@@ -384,7 +384,7 @@ test('消息视觉只使用 pi 语义色，并保留角色、Markdown、Thinking
   assert.doesNotMatch(message, /bg-red-/, '用户头像不得硬编码红色')
   assert.ok(message.includes("${isError ? 'border-pi-danger/40'"), '工具错误外框必须使用归一化 isError 状态')
   assert.doesNotMatch(message, /w-5 h-5[^"\n]*text-\[10px\][^"\n]*font-mono/, '工具字母/符号图标不是 badge，不得使用 10px')
-  for (const branch of ['function ToolCard', 'function Thinking', 'if (isSystem)', 'if (isUser)', '<Markdown text={msg.text}', '<ToolCard']) {
+  for (const branch of ['function ToolCard', 'function Thinking', 'if (isSystem)', 'if (isUser)', '<LazyMarkdown text={msg.text}', '<ToolCard']) {
     assert.ok(message.includes(branch), `消息逻辑分支必须保留：${branch}`)
   }
 })

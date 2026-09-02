@@ -1,6 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState, type ComponentType, type LazyExoticComponent, type ReactNode } from 'react'
 import { MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog, Cpu, Palette, Database, LogOut, Ellipsis } from 'lucide-react'
-import TuiTerminal from './components/TuiTerminal'
 import { useApp } from './store'
 import { useIsMobile } from './hooks/useIsMobile'
 import { useHashRoute, PageErrorBoundary, type Route } from './hooks/useHashRoute'
@@ -10,11 +9,6 @@ import SetupWizard from './components/SetupWizard'
 import { KeysApi } from './api'
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
-import ActivityFeed from './components/ActivityFeed'
-import WorkSpace from './components/Workspace'
-import Deliveries from './components/Deliveries'
-import TerminalPanel from './components/TerminalPanel'
-import ModelManager from './components/ModelManager'
 import ThemeSwitcher from './components/ThemeSwitcher'
 import CommandPalette from './components/CommandPalette'
 import MobileMoreMenu, { type UtilityPanelKey } from './components/MobileMoreMenu'
@@ -33,6 +27,12 @@ const SystemPage = lazy(() => import('./pages/System'))
 const ThemesPage = lazy(() => import('./pages/Themes'))
 const SessionDbPage = lazy(() => import('./pages/SessionDb'))
 const WorkshopPage = lazy(() => import('./pages/Workshop'))
+const TuiTerminal = lazy(() => import('./components/TuiTerminal'))
+const WorkSpace = lazy(() => import('./components/Workspace'))
+const Deliveries = lazy(() => import('./components/Deliveries'))
+const TerminalPanel = lazy(() => import('./components/TerminalPanel'))
+const LazyModelManager = lazy(() => import('./components/ModelManager'))
+const ActivityFeed = lazy(() => import('./components/ActivityFeed'))
 
 type PageRoute = {
   route: Exclude<Route, 'chat'>
@@ -171,11 +171,15 @@ export default function AppLayout() {
     <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} nav={nav}
       onRightPanel={p => setRightPanel(p)} onModelManager={() => setModelOpen(true)} />
   )
-  const panelContents = rightPanel === 'workspace' ? <WorkSpace />
-    : rightPanel === 'deliveries' ? <Deliveries />
-      : rightPanel === 'activity' ? <ActivityFeed />
-        : rightPanel === 'tui' ? <div className="flex-1 min-h-0 flex flex-col"><TuiTerminal /></div>
-          : <TerminalPanel />
+  const panelContents = (
+    <Suspense fallback={<PageLoader />}>
+      {rightPanel === 'workspace' ? <WorkSpace />
+        : rightPanel === 'deliveries' ? <Deliveries />
+          : rightPanel === 'activity' ? <ActivityFeed />
+            : rightPanel === 'tui' ? <div className="flex-1 min-h-0 flex flex-col"><TuiTerminal /></div>
+              : <TerminalPanel />}
+    </Suspense>
+  )
 
   if (!authed) return <ShellFrame><Login /></ShellFrame>
   if (needsSetup) return <ShellFrame><SetupWizard onDone={() => setNeedsSetup(false)} /></ShellFrame>
@@ -255,7 +259,7 @@ export default function AppLayout() {
           onOpenTheme={() => { setMobileDrawer('none'); nav('themes') }}
         />
 
-        <ModelManager visible={modelOpen} onClose={() => setModelOpen(false)} />
+        {modelOpen && <LazyModelManager visible onClose={() => setModelOpen(false)} />}
         {palette}
       </div>
     )
@@ -323,7 +327,7 @@ export default function AppLayout() {
 
       {/* 右栏开关已入 ChatArea 顶栏（与状态胶囊并排，不再悬浮遮挡） */}
 
-      <ModelManager visible={modelOpen} onClose={() => setModelOpen(false)} />
+      {modelOpen && <LazyModelManager visible onClose={() => setModelOpen(false)} />}
       {palette}
     </div>
     </ShellFrame>
