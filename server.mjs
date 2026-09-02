@@ -304,7 +304,7 @@ function recentHistory(entry, limit = 10, maxChars = 1600) {
 // ══ 复读检测与降级重试（2026-08-19 加固）══
 // 判定逻辑已迁移到 engine/output-guard.mjs（输出质量守卫，纯判定模块）：
 //   复读/空回复/纯思考 统一 classifyAnomaly；这里只保留"重试执行"（换 fallback 模型直调 + 播报）。
-async function retryRepeatWithFallback(message, sessionKey, writer, busEmit, currentModel, inspectorSuggestion = "", history = []) {
+async function retryRepeatWithFallback(message, sessionKey, writer, busEmit, currentModel, inspectorSuggestion = "", history = [], entry = null) {
   // 2026-08-21 用户理念：复读是行为跑偏 → 植入修正话语引导方向（同模型重生成），不终止不换模型；
   // 只有真正的模型链接/资源问题（429/400/403）才主动告知用户原因并切换可用模型。
   const note = "⚠️ 检测到回复与上一条完全相同，正在引导模型修正表达…";
@@ -321,6 +321,8 @@ async function retryRepeatWithFallback(message, sessionKey, writer, busEmit, cur
 ${corrected.text}`;
     try { writer.push("delta", { text: add }); if (busEmit) busEmit("delta", { text: add }); } catch {}
     recordReply(sessionKey, corrected.text);
+    // #229 修复：修正文本此前不落盘，会话历史里仍是旧异常回复，下轮模型看着旧回复继续复读
+    try { entry?.sm?.appendMessage({ role: "assistant", content: [{ type: "text", text: corrected.text }] }); } catch {}
     console.log(`[pi-web] 复读引导修正成功（同模型 ${currentModel?.provider}/${currentModel?.id}）`);
     return corrected.text;
   }
@@ -330,7 +332,14 @@ ${corrected.text}`;
     const note2 = `⚠️ 同模型修正仍失败，已切换 ${fbModel.provider}/${fbModel.id} 重新生成…`;
     try { writer.push("note", { text: note2 }); if (busEmit) busEmit("note", { text: note2 }); } catch {}
     const fb = await directChat(fbModel, message, history);
-    if (fb?.text) { recordReply(sessionKey, fb.text); return fb.text; }
+    if (fb?.text) {
+      // #229 修复：换模型分支此前只 recordReply 不推前端，用户看到的仍是旧异常回复；同样落盘修正文本
+      const add = `\n\n（已切换 ${fbModel.provider}/${fbModel.id} 重新生成的回复）\n${fb.text}`;
+      try { writer.push("delta", { text: add }); if (busEmit) busEmit("delta", { text: add }); } catch {}
+      recordReply(sessionKey, fb.text);
+      try { entry?.sm?.appendMessage({ role: "assistant", content: [{ type: "text", text: fb.text }] }); } catch {}
+      return fb.text;
+    }
   }
   try { writer.push("note", { text: "⚠️ 复读修正失败且备用模型无回复（请重试或手动切换模型）" }); } catch {}
   return null;
@@ -1086,7 +1095,7 @@ async function handleChat(req, res, body) {
           console.log(`[pi-web] 检测员判定 ok（规则误报），接受原输出`);
         } else {
           // 确认异常：用检测员的修正建议（或默认）引导同模型修正
-          await retryRepeatWithFallback(message, rk, writer, busEmit, effModel, insp?.suggestion, recentHistory(entry));
+          await retryRepeatWithFallback(message, rk, writer, busEmit, effModel, insp?.suggestion, recentHistory(entry), entry);
         }
       } else if (anom.type === "none") {
         recordReply(rk, collected);
