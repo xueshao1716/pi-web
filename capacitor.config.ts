@@ -3,8 +3,8 @@ import type { CapacitorConfig } from '@capacitor/cli';
 /**
  * pi-web 移动端 Capacitor 配置（2026-08-20）
  *
- * 包 pi-web 原生 JS 前端（public/ 即产物，无需构建）。
- * webDir 指向 public/——Capacitor 直接把 public 当 web 资源打包。
+ * 包 pi-web React 前端构建产物（frontend/dist/）。
+ * frontend/ 是唯一前端源码和构建入口，避免 Capacitor 与 Tauri 使用不同版本。
  *
  * CapacitorHttp 开启：WKWebView/Android WebView 的 origin 是
  * capacitor://localhost（iOS）/http://localhost（Android），跨域请求会被
@@ -16,7 +16,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
   appId: 'com.pixinyu.app',
   appName: '小语工作台',
-  webDir: 'public',
+  webDir: 'frontend/dist',
   ios: {
     contentInset: 'never',
     backgroundColor: '#0d1117',
