@@ -1,97 +1,24 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>元枢 · 连接服务</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    min-height: 100vh; display: flex; align-items: center; justify-content: center;
-    background: radial-gradient(1100px 550px at 50% -10%, #1a1d33 0%, #0d0f1a 60%);
-    font-family: "Microsoft YaHei", system-ui, sans-serif; color: #e8eaf6; padding: 24px;
-  }
-  .panel { width: 100%; max-width: 360px; text-align: center; }
-  .brand { font-size: 34px; font-weight: 900; color: #5468ff; letter-spacing: -0.5px; }
-  .sub { color: #8b90b0; font-size: 13px; margin: 8px 0 32px; }
-  input {
-    width: 100%; padding: 12px 14px; margin-bottom: 12px; border-radius: 12px;
-    border: 1px solid #2a2d45; background: #14162a; color: #e8eaf6; font-size: 14px; outline: none;
-  }
-  input:focus { border-color: #5468ff; }
-  button {
-    width: 100%; padding: 12px; border: none; border-radius: 12px; cursor: pointer;
-    background: linear-gradient(135deg, #5468ff, #a855f7); color: #fff; font-size: 15px; font-weight: 600;
-  }
-  button:disabled { opacity: .5; }
-  .hint { color: #565a78; font-size: 11px; margin-top: 16px; line-height: 1.6; }
-  .status { font-size: 12px; margin-top: 10px; min-height: 16px; white-space: pre-wrap; word-break: break-all; }
-  .ok { color: #4ade80; } .bad { color: #f87171; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>元枢 · 个人智能系统</title>
+  <meta name="theme-color" content="#0d0f1a">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/png" href="./icons/icon-192.png">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <script type="module" crossorigin src="./assets/index-DX9OY8gu.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/rolldown-runtime-hePW80VL.js">
+  <link rel="modulepreload" crossorigin href="./assets/jsx-runtime-DE3RlOCf.js">
+  <link rel="stylesheet" crossorigin href="./assets/index-CI_xCJ0g.css">
 </head>
 <body>
-  <div class="panel">
-    <div class="brand">◈ 元枢</div>
-    <div class="sub">连接你的个人智能系统 · 小语为你值守</div>
-    <input id="url" placeholder="服务地址，如 http://192.168.1.10:8787" autocomplete="off">
-    <button id="go">连接</button>
-    <div class="status" id="st"></div>
-    <div class="hint">电脑与手机需在同一局域网；或填云隧道地址。<br>服务地址 = 运行元枢的那台电脑的 IP : 8787</div>
-  </div>
-<script>
-  const $ = id => document.getElementById(id);
-  const saved = localStorage.getItem('yuanshu_server');
-  if (saved) $('url').value = saved;
-
-  async function connect() {
-    let u = $('url').value.trim().replace(/\/+$/, '');
-    if (!u) { $('st').textContent = '请输入服务地址'; $('st').className = 'status bad'; return; }
-    if (!/^https?:\/\//.test(u)) {
-      // 局域网 IP / localhost → 明文 http；公网域名 → https（release 包禁明文 HTTP，域名必须 https 才发得出请求）
-      const host = u.split(':')[0].split('/')[0];
-      const isLan = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) || /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
-      u = (isLan ? 'http://' : 'https://') + u;
-    }
-    const target = u + '/api/health';
-    $('go').disabled = true; $('st').textContent = '探测中… ' + target; $('st').className = 'status';
-    // 手动 AbortController 代替 AbortSignal.timeout（兼容较旧 WebView，避免该 API 不存在或行为异常导致深层异常无法定位）
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
-    try {
-      const r = await fetch(target, { signal: ctrl.signal });
-      clearTimeout(timer);
-      if (r.ok) {
-        localStorage.setItem('yuanshu_server', u);
-        $('st').textContent = '已连接，进入…'; $('st').className = 'status ok';
-        setTimeout(() => location.replace(u + '/'), 400);
-        return;
-      }
-      $('st').textContent = '服务可达但响应异常（HTTP ' + r.status + '，' + target + '）'; $('st').className = 'status bad';
-    } catch (e) {
-      clearTimeout(timer);
-      // 把真实异常名/消息直接显示出来，不再绞盖真实原因（方便远程诊断）
-      const msg = (e && (e.name || 'Error')) + ': ' + (e && e.message ? e.message : String(e));
-      $('st').textContent = '连接失败（' + target + '）\n' + msg; $('st').className = 'status bad';
-    }
-    $('go').disabled = false;
-  }
-  $('go').onclick = connect;
-  $('url').addEventListener('keydown', e => e.key === 'Enter' && connect());
-  // 生物识别门锁：只拦自动重连这一步（商系手动重新输入/点连接不拦，防止验证失败时锁死进不去）。
-  // 没有 YuanshuBridge（桌面/普通浏览器）时直接跳过，不影响原有行为。
-  window.onYuanshuAuthResult = function (ok) {
-    if (ok) { connect(); }
-    else { $('st').textContent = '身份验证未通过，可手动输入地址连接'; $('st').className = 'status bad'; }
-  };
-  if (saved) {
-    const bridge = window.YuanshuBridge;
-    if (bridge && bridge.canAuthenticate && bridge.canAuthenticate()) {
-      $('st').textContent = '验证身份中…'; $('st').className = 'status';
-      bridge.authenticate();
-    } else {
-      connect();
-    }
-  }
-</script>
+  <div id="root"></div>
 </body>
 </html>

@@ -408,9 +408,8 @@ const MIME = {
 };
 
 const staticServer = createStaticServer({ publicDir: PUBLIC_DIR, mime: MIME });
-// ══ UI 入口对调（2026-08-23 用户定）：vanilla 回归默认，React 改为体验入口 ══
-// 默认 UI = public/（旧版 vanilla，功能全量）；新版 React 预览：/?react=1。
-// dist 缺失（未构建的全新 clone）→ reactStatic 为 null，?react=1 也回落 vanilla，安装链路零破坏。
+// ══ UI 入口：React 版为默认，vanilla 通过 ?vanilla=1 保留为兼容入口 ══
+// React 构建源为 frontend/dist；dist 缺失时自动回落 public，保证新 clone 尚未构建时仍可启动。
 const REACT_DIST = path.join(__dirname, "frontend", "dist");
 const reactStatic = (() => {
   try { return fs.existsSync(path.join(REACT_DIST, "index.html")) ? createStaticServer({ publicDir: REACT_DIST, mime: MIME }) : null; }
