@@ -11,6 +11,7 @@ import TurnList from './TurnList'
 import { useAutoScroll } from '../hooks/useAutoScroll'
 import { toast } from './Toast'
 import { emoMeta, emoTooltip, type EmoMeta } from '../lib/emotion'
+import { MoodOrb } from './MoodOrb'
 import type { FileAttachment } from './SendBox'
 import type { ChatMessage, RunningTool } from '../types'
 import WebglBackdrop from './WebglBackdrop'
@@ -823,10 +824,10 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
             右栏
           </button>
         )}
-        {/* 心情：服务端真实情绪镜像，只展示不可点改 */}
-        <div className={`emo-pill w-[30px] h-[30px] rounded-full bg-pi-bg2/60 border border-pi-border-soft flex items-center justify-center text-[15px] cursor-default transition-colors ${emo.meta.cls !== 'focus' ? 'border-pi-accent/30' : ''}`}
+        {/* 心情：服务端真实情绪镜像，只展示不可点改。灵珠连续反映 VAD（2026-09-03，替代 emoji 八桶） */}
+        <div className={`emo-pill w-[30px] h-[30px] rounded-full bg-pi-bg2/60 border border-pi-border-soft flex items-center justify-center cursor-default transition-colors ${emo.meta.cls !== 'focus' ? 'border-pi-accent/30' : ''}`}
           title={emoTooltip(emo.state, emo.meta)}>
-          {emo.meta.emoji}
+          <MoodOrb state={emo.state} label={`小语情绪：${emo.meta.label}`} />
         </div>
       </div>
 
