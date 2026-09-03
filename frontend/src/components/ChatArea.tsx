@@ -825,9 +825,9 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
           </button>
         )}
         {/* 心情：服务端真实情绪镜像，只展示不可点改。灵珠连续反映 VAD（2026-09-03，替代 emoji 八桶） */}
-        <div className={`emo-pill w-10 h-10 rounded-full flex items-center justify-center cursor-default transition-colors hover:bg-pi-bg2/40`}
+        <div className={`emo-pill w-[30px] h-[30px] rounded-full flex items-center justify-center cursor-default transition-colors hover:bg-pi-bg2/40`}
           title={emoTooltip(emo.state, emo.meta)}>
-          <MoodOrb state={emo.state} size={32} label={`小语情绪：${emo.meta.label}`} />
+          <MoodOrb state={emo.state} size={24} label={`小语情绪：${emo.meta.label}`} />
         </div>
       </div>
 
