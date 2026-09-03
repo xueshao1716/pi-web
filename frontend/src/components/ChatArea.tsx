@@ -10,6 +10,7 @@ import SendBox from './SendBox'
 import TurnList from './TurnList'
 import { useAutoScroll } from '../hooks/useAutoScroll'
 import { toast } from './Toast'
+import GradientField from './GradientField'
 import { emoMeta, emoTooltip, type EmoMeta } from '../lib/emotion'
 import { MoodOrb } from './MoodOrb'
 import type { FileAttachment } from './SendBox'
@@ -702,7 +703,10 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     { Icon: SquareTerminal, label: '终端', desc: '查看命令执行与工程状态', act: () => openPanel('terminal') },
   ]
   const welcome = (
-    <div className="chat-welcome h-full overflow-y-auto px-4 py-8 sm:px-8 sm:py-12">
+    <div className="relative h-full">
+      {/* 空态门户氛围：动态 3D 渐变场（懒加载，深色主题才渲染，不拦交互不进主包） */}
+      <GradientField />
+      <div className="chat-welcome chat-welcome--field relative h-full overflow-y-auto px-4 py-8 sm:px-8 sm:py-12">
       <div className="chat-reading-column welcome-content">
         <div className="welcome-intro">
           <div className="welcome-mark" aria-hidden="true">语</div>
@@ -735,6 +739,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
           <Command className="w-4 h-4" strokeWidth={1.8} />
           <span><kbd>Ctrl / ⌘ K</kbd> 打开全局命令面板；在输入框输入 <kbd>/</kbd> 使用快捷命令。</span>
         </div>
+      </div>
       </div>
     </div>
   )

@@ -1287,3 +1287,6 @@ button:focus:not(:focus-visible) { outline: none; }
 @media (prefers-reduced-motion: reduce) {
   .mobile-more-sheet { animation: none; }
 }
+
+/* 欢迎页空态渐变场（2026-09-03）：GradientField 铺底层时欢迎页自身退透明，让 3D 渐变透出来 */
+.chat-welcome--field { background: transparent; }
