@@ -1469,7 +1469,7 @@ const API_ROUTES = [
   }],
   ["PATCH", /^\/api\/lingxi\/([\w-]+)$/, async (res, req, url, m) => {
     const b = await readBody(req);
-    const e = setLingXi(WS_ROOT, m[1], { status: b?.status, note: b?.note });
+    const e = setLingXi(WS_ROOT, m[1], { status: b?.status, note: b?.note, target: b?.target, artifact: b?.artifact });
     if (!e) return json(res, 404, { error: "灵感不存在或状态非法" });
     json(res, 200, { ok: true, entry: e });
   }],

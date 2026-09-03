@@ -65,3 +65,21 @@ test("过滤：按 source/status 组合过滤", () => {
   assert.equal(listLingXi(WS, { source: "xiaoyu", status: "adopted" }, f).length, 1);
   assert.equal(listLingXi(WS, { source: "xiaoyu", status: "new" }, f).length, 1);
 });
+
+test("采纳转化（2026-09-03 语义升级）：采纳选去向，落地后转 converted 带产物", () => {
+  const f = memFs();
+  const r = addLingXi(WS, { text: "把经验沉淀做成技能", source: "user" }, f);
+  // 非法去向拒绝
+  assert.equal(setLingXi(WS, r.entry.id, { status: "adopted", target: "plugin" }, f), null);
+  // 采纳必须带去向
+  const e = setLingXi(WS, r.entry.id, { status: "adopted", target: "skill" }, f);
+  assert.equal(e?.status, "adopted");
+  assert.equal(e?.target, "skill");
+  // 落地：converted + 产物链接
+  const done = setLingXi(WS, r.entry.id, { status: "converted", artifact: "~/.agents/skills/xxx/SKILL.md" }, f);
+  assert.equal(done?.status, "converted");
+  assert.equal(done?.artifact, "~/.agents/skills/xxx/SKILL.md");
+  assert.equal(listLingXi(WS, { status: "converted" }, f).length, 1);
+  // 非法状态仍然拒绝
+  assert.equal(setLingXi(WS, r.entry.id, { status: "doneeee" }, f), null);
+});

@@ -12,7 +12,10 @@ import { randomUUID } from "node:crypto";
 import { atomicWriteJson } from "./atomic-io.mjs";
 
 export const LINGXI_SOURCES = new Set(["user", "xiaoyu"]);
-export const LINGXI_STATUSES = new Set(["new", "adopted", "archived"]);
+export const LINGXI_STATUSES = new Set(["new", "adopted", "converted", "archived"]);
+// 采纳去向（2026-09-03 语义升级）：采纳=立项转化指令，不是归档标记。
+// 灵犀=想法漏斗；沉淀台=经验提炼+成品目录；记忆=长期约定——三层分工，不重复。
+export const LINGXI_TARGETS = new Set(["skill", "capability", "project", "memory"]);
 
 export function lingXiPath(wsRoot) {
   return join(wsRoot, "灵犀.json");
@@ -59,7 +62,7 @@ export function addLingXi(wsRoot, { text, source, note }, fsMod = fs) {
   return { ok: true, entry };
 }
 
-/** 更新状态/备注（一起过完后的处置）*/
+/** 更新状态/备注/去向/产物（采纳转化流转）*/
 export function setLingXi(wsRoot, id, patch, fsMod = fs) {
   const entries = loadEntries(wsRoot, fsMod);
   const e = entries.find(x => x.id === id);
@@ -68,6 +71,12 @@ export function setLingXi(wsRoot, id, patch, fsMod = fs) {
     if (!LINGXI_STATUSES.has(patch.status)) return null;
     e.status = patch.status;
   }
+  if (patch?.target !== undefined) {
+    // 采纳必须选去向；已采纳的也能改主意
+    if (!LINGXI_TARGETS.has(patch.target)) return null;
+    e.target = patch.target;
+  }
+  if (patch?.artifact !== undefined) e.artifact = String(patch.artifact).slice(0, 500);
   if (patch?.note !== undefined) e.note = String(patch.note).slice(0, 500);
   saveEntries(wsRoot, entries, fsMod);
   return e;

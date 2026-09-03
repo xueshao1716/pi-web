@@ -243,7 +243,9 @@ export interface LingXiEntry {
   id: string
   source: LingXiSource
   text: string
-  status: 'new' | 'adopted' | 'archived'
+  status: 'new' | 'adopted' | 'converted' | 'archived'
+  target?: 'skill' | 'capability' | 'project' | 'memory'
+  artifact?: string
   note: string
   ts: string
 }
@@ -258,8 +260,8 @@ export const LingXiApi = {
   },
   add: (body: { text: string; source: LingXiSource }) =>
     api<{ ok: boolean; entry: LingXiEntry }>('/api/lingxi', { method: 'POST', body }),
-  setStatus: (id: string, status: 'new' | 'adopted' | 'archived', note?: string) =>
-    api<{ ok: boolean; entry: LingXiEntry }>(`/api/lingxi/${encodeURIComponent(id)}`, { method: 'PATCH', body: { status, note } }),
+  setStatus: (id: string, status: 'new' | 'adopted' | 'converted' | 'archived', patch?: { note?: string; target?: 'skill' | 'capability' | 'project' | 'memory'; artifact?: string }) =>
+    api<{ ok: boolean; entry: LingXiEntry }>(`/api/lingxi/${encodeURIComponent(id)}`, { method: 'PATCH', body: { status, ...patch } }),
   remove: (id: string) => api<{ ok: boolean }>(`/api/lingxi/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }
 
