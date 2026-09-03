@@ -1745,6 +1745,9 @@ const API_ROUTES = [
   ["POST", "/api/parse-file", async (res, req) => handleParseFile(res, await readBody(req, 12))],
   // ── 专项工作台 ──
   ["POST", "/api/workshop/ppt", async (res, req) => workshop.handleWorkshopPpt(wsCtx(), res, await readBody(req))],
+  // PPT 设计干预：大纲编辑后本地重建 .pptx（2026-09-03）
+  ["POST", "/api/workshop/pptx/rebuild", async (res, req) => workshop.rebuildPptx(wsCtx(), res, await readBody(req))],
+  ["GET", "/api/workshop/ppt/history", (res) => workshop.listPptHistory(wsCtx(), res)],
   // ── 小说工坊（书架式：作品沉淀/真相文件/第N章递进，收编自 novel-studio）──
   ["GET", "/api/novel/books", (res) => json(res, 200, { books: novelStudio.listBooks() })],
   ["POST", "/api/novel/books", async (res, req) => {

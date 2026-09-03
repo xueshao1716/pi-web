@@ -280,6 +280,10 @@ export const MediaApi = {
 
 // ── 专项工作台（SSE 长任务：PPT/小说生成，事件 note/delta/file/done/error）──
 export const WorkshopApi = {
+  // PPT 大纲编辑后本地重建 .pptx（2026-09-03 设计干预）
+  rebuildPptx: (body: { jsonPath: string; slides: { layout: string; title: string; content: string[] }[] }, opts?: any) =>
+    api<{ ok: boolean; file: { name: string; path: string; size: number }; slides: unknown[] }>('/api/workshop/pptx/rebuild', { method: 'POST', body, ...opts }),
+  pptHistory: () => api<{ entries: { id: string; ts: string; theme: string; pages: number; style: string; file?: { name: string; path: string; size: number }; json?: string }[] }>('/api/workshop/ppt/history'),
   run: (kind: 'ppt' | 'novel', body: any, onEvent: (ev: { type: string; data: any }) => void) => {
     const ctrl = new AbortController()
     ;(async () => {

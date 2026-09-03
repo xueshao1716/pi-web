@@ -3,6 +3,8 @@
 // 新增专项（文章/视频）：照 handleWorkshopPpt 复制，改 skill 名 + 表单字段 + 产物后缀即可
 import path from "node:path";
 import fs from "node:fs";
+import { spawn } from "node:child_process";
+import { validateSlides, findSlidesJson, appendHistory, readHistory } from "./workshop-ppt-core.mjs";
 
 // 工作台独立页映射（可直达 URL）
 export const WORKSHOP_PAGES = {
@@ -136,6 +138,18 @@ export async function handleWorkshopPpt(ctx, res, body) {
       if (file) {
         write("file", file);
         write("note", { text: `✅ PPT 已生成：${file.name}（${(file.size / 1024).toFixed(0)} KB）` });
+        // 2026-09-03：探测 slides JSON → 推前端做结构化预览/设计干预；写生成历史
+        try {
+          const jsonAbs = findSlidesJson(workDir);
+          if (jsonAbs) {
+            const rel = path.relative(WS_ROOT, jsonAbs).replace(/\\/g, "/");
+            const doc = JSON.parse(fs.readFileSync(jsonAbs, "utf8"));
+            if (Array.isArray(doc?.slides) && doc.slides.length) {
+              write("json", { path: rel, name: path.basename(jsonAbs), slides: doc.slides, metadata: doc.metadata || {} });
+              appendHistory(path.join(WS_ROOT, "workshop-out", "ppt-history.json"), { id, theme, pages, style, file, json: rel });
+            }
+          }
+        } catch { /* 预览/历史是增益，失败不影响主流程 */ }
       } else {
         write("note", { text: "⚠️ 生成流程结束，但未在工作空间检测到 .pptx 产物，请查看上方过程输出" });
       }
@@ -153,4 +167,61 @@ export async function handleWorkshopPpt(ctx, res, body) {
     try { agent?.dispose?.(); } catch {}
     try { res.end(); } catch {}
   }
+}
+
+// ══ PPT 设计干预：大纲预览编辑 → 本地秒级重建 .pptx（2026-09-03）══
+// 前端在结构化预览卡上改标题/要点/页序后调此端点：服务端校验 → 原子写回 JSON → 重跑 generate_pptx.py（不调 agent，秒级）
+export async function rebuildPptx(ctx, res, body) {
+  const { json, WS_ROOT, getAgentDir } = ctx;
+  const rel = String(body?.jsonPath || "");
+  const slides = body?.slides;
+  // 路径安全：必须在 WS_ROOT/workshop-out 内
+  const outRoot = path.join(WS_ROOT, "workshop-out");
+  const abs = path.resolve(WS_ROOT, rel);
+  if (!abs.startsWith(outRoot + path.sep)) return json(res, 400, { error: "jsonPath 必须在 workshop-out 内" });
+  if (!fs.existsSync(abs)) return json(res, 404, { error: "大纲 JSON 不存在" });
+  const v = validateSlides(slides);
+  if (!v.ok) return json(res, 400, { error: v.error });
+  // 保留 metadata，替换 slides
+  let doc = {};
+  try { doc = JSON.parse(fs.readFileSync(abs, "utf8")) || {}; } catch {}
+  if (!doc.metadata || typeof doc.metadata !== "object") doc.metadata = { title: "presentation" };
+  doc.slides = slides;
+  const tmp = abs + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(doc, null, 2));
+  fs.renameSync(tmp, abs);
+  // 定位技能脚本（技能可能搬家，走 findSkillPath）
+  const skillPath = await findSkillPath(ctx, "ppt-generator");
+  if (!skillPath) return json(res, 500, { error: "未找到 ppt-generator 技能脚本" });
+  const script = path.join(path.dirname(skillPath), "scripts", "generate_pptx.py");
+  if (!fs.existsSync(script)) return json(res, 500, { error: "generate_pptx.py 不存在" });
+  const workDir = path.dirname(abs);
+  const outPptx = path.join(workDir, "presentation.pptx");
+  const r = await new Promise((resolve) => {
+    let out = "";
+    let settled = false;
+    const done = (code, err) => { if (!settled) { settled = true; resolve({ code, err, out }); } };
+    try {
+      const p = spawn("python", [script, "--input", abs, "--output", outPptx], { cwd: workDir, windowsHide: true, timeout: 60_000 });
+      p.stdout.on("data", d => { out += d; });
+      p.stderr.on("data", d => { out += d; });
+      p.on("error", e => done(-1, String(e?.message || e)));
+      p.on("close", code => done(code, code !== 0 ? out.slice(-400) : ""));
+    } catch (e) { done(-1, String(e?.message || e)); }
+    setTimeout(() => done(-1, "重建超时（60s）"), 65_000);
+  });
+  if (r.code !== 0 || !fs.existsSync(outPptx)) {
+    return json(res, 500, { error: "重建失败：" + (r.err || r.out || `exit ${r.code}`).slice(-300) });
+  }
+  const st = fs.statSync(outPptx);
+  const file = { name: path.basename(outPptx), path: path.relative(WS_ROOT, outPptx).split(path.sep).join("/"), size: st.size, mime: "", mtimeMs: st.mtimeMs };
+  json(res, 200, { ok: true, file, slides });
+}
+
+/** PPT 生成历史（最近 50 次，供页面载入往期大纲再编辑/重建）*/
+export async function listPptHistory(ctx, res) {
+  const { json, WS_ROOT } = ctx;
+  const entries = readHistory(path.join(WS_ROOT, "workshop-out", "ppt-history.json"));
+  // 摘要化：不回传大 slides（点开单条再按需读）
+  json(res, 200, { entries: entries.map(e => ({ id: e.id, ts: e.ts, theme: e.theme, pages: e.pages, style: e.style, file: e.file, json: e.json })) });
 }
