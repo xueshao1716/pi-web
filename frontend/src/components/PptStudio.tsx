@@ -1,0 +1,202 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Printer, Pencil, Check, Loader2, X, Play, ChevronLeft, ChevronRight } from 'lucide-react'
+import { WorkshopApi } from '../api'
+
+// ── PPT 设计稿工作室（2026-09-03，对标扣子/Gamma 网页 PPT）──
+// 每页是 agent 产出的 1280×720 自包含 HTML：缩略图 iframe 真渲染（所见即所得），
+// 文案通过 data-field 定位替换（保设计改文案），导出走浏览器打印（@page 16:9）。
+
+export interface DeckPage { file: string; title: string; layout: string; html: string }
+
+const SCALE_THUMB = 0.22 // 282×158 缩略图
+
+function renderScaled(html: string, scale: number) {
+  return html.replace('<body', `<body style="transform:scale(${scale});transform-origin:top left"`)
+}
+
+function setField(html: string, field: string, value: string) {
+  // 在该 data-field 节点的开标签后替换首个文本段（到下一个 < 为止）
+  const re = new RegExp(`(data-field="${field}"[^>]*>)([^<]*)(<)`)
+  if (re.test(html)) return html.replace(re, `$1${value.replace(/[<>&]/g, '')}$3`)
+  return html
+}
+
+export default function PptStudio({ pages, dir, onSaved }: {
+  pages: DeckPage[]
+  dir: string
+  onSaved?: () => void
+}) {
+  const [active, setActive] = useState(0)
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [draft, setDraft] = useState<DeckPage | null>(null)
+  const boxRef = useRef<HTMLDivElement>(null)
+  // 放映模式（全屏翻页播放）
+  const [playing, setPlaying] = useState(false)
+  const stageRef = useRef<HTMLDivElement>(null)
+  const [fscale, setFscale] = useState(1)
+
+  useEffect(() => {
+    if (!playing) return
+    const el = stageRef.current
+    if (!el) return
+    const fit = () => setFscale(Math.min(el.clientWidth / 1280, el.clientHeight / 720))
+    fit()
+    const ro = new ResizeObserver(fit)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [playing])
+
+  useEffect(() => {
+    if (!playing) return
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); setActive(i => Math.min(i + 1, pages.length - 1)) }
+      else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); setActive(i => Math.max(i - 1, 0)) }
+      else if (e.key === 'Escape') setPlaying(false)
+      else if (e.key === 'Home') setActive(0)
+      else if (e.key === 'End') setActive(pages.length - 1)
+    }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [playing, pages.length])
+
+  const fields = useMemo(() => {
+    const src = editing && draft ? draft.html : pages[active]?.html || ''
+    const out: { field: string; value: string }[] = []
+    const re = /data-field="([^"]+)"[^>]*>([^<]*)</g
+    let m
+    while ((m = re.exec(src))) out.push({ field: m[1], value: m[2] })
+    return out
+  }, [pages, active, editing, draft])
+
+  useEffect(() => { setDraft(null); setEditing(false) }, [active, pages])
+
+  const startEdit = () => { setDraft({ ...pages[active] }); setEditing(true) }
+  const save = async () => {
+    if (!draft || saving) return
+    setSaving(true)
+    try {
+      await WorkshopApi.saveHtmlPage({ file: draft.file, html: draft.html, title: draft.title })
+      setEditing(false); setDraft(null); onSaved?.()
+    } catch {} finally { setSaving(false) }
+  }
+
+  const printDeck = () => {
+    const w = window.open('', '_blank')
+    if (!w) return
+    const style = `<style>@page{size:1280px 720px;margin:0}body{margin:0}.pg{width:1280px;height:720px;overflow:hidden;page-break-after:always}iframe{border:0;width:1280px;height:720px;display:block}</style>`
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8">${style}</head><body>${
+      pages.map(p => `<div class="pg"><iframe srcdoc="${p.html.replace(/"/g, '&quot;')}"></iframe></div>`).join('')
+    }<script>window.onload=()=>setTimeout(()=>window.print(),600)</script></body></html>`)
+    w.document.close()
+  }
+
+  if (!pages.length) return null
+  const cur = editing && draft ? draft : pages[active]
+  return (
+    <div className="space-y-3">
+      {/* 放映层（全屏遮罩 + 自适应缩放 + 键盘/点击翻页）*/}
+      {playing && (
+        <div className="fixed inset-0 z-50 bg-black/95 select-none">
+          <div ref={stageRef} className="absolute inset-0 flex items-center justify-center p-6">
+            <div className="relative shadow-2xl shadow-black/60 rounded-sm overflow-hidden"
+              style={{ width: 1280 * fscale, height: 720 * fscale }}>
+              <iframe key={pages[active].file} srcDoc={pages[active].html}
+                style={{ width: 1280, height: 720, border: 0, transform: `scale(${fscale})`, transformOrigin: 'top left' }}
+                sandbox="" title={pages[active].title} />
+            </div>
+          </div>
+          {/* 翻页热区：左 1/3 上一页，右 2/3 下一页（移动端可点）*/}
+          <button className="absolute left-0 top-0 h-full w-1/3 cursor-w-resize" aria-label="上一页" onClick={() => setActive(i => Math.max(i - 1, 0))} />
+          <button className="absolute right-0 top-0 h-full w-2/3 cursor-e-resize" aria-label="下一页" onClick={() => setActive(i => Math.min(i + 1, pages.length - 1))} />
+          {/* 顶部信息 + 关闭 */}
+          <div className="absolute top-0 inset-x-0 flex items-center gap-2 px-4 py-3 bg-gradient-to-b from-black/60 to-transparent pointer-events-none">
+            <span className="text-[13px] text-white/80 font-medium truncate">{pages[active].title || pages[active].file}</span>
+            <span className="font-mono text-[11px] text-white/45">{active + 1} / {pages.length}</span>
+            <button className="ml-auto pointer-events-auto touch-hit p-1.5 text-white/60 hover:text-white" onClick={() => setPlaying(false)}><X className="w-5 h-5" /></button>
+          </div>
+          {/* 底部控制 */}
+          <div className="absolute bottom-0 inset-x-0 flex items-center justify-center gap-3 pb-4">
+            <button className="touch-hit p-2 rounded-full bg-white/10 text-white/80 hover:bg-white/20 disabled:opacity-30" disabled={active === 0} onClick={() => setActive(i => Math.max(i - 1, 0))}><ChevronLeft className="w-5 h-5" /></button>
+            <span className="font-mono text-[12px] text-white/50">← → 翻页 · Esc 退出</span>
+            <button className="touch-hit p-2 rounded-full bg-white/10 text-white/80 hover:bg-white/20 disabled:opacity-30" disabled={active === pages.length - 1} onClick={() => setActive(i => Math.min(i + 1, pages.length - 1))}><ChevronRight className="w-5 h-5" /></button>
+          </div>
+        </div>
+      )}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-semibold text-pi-text">设计稿预览</span>
+        <span className="text-[10px] text-pi-dim2">{pages.length} 页 · 1280×720</span>
+        <span className="ml-auto flex items-center gap-1.5">
+          {editing
+            ? <>
+              <button className="btn-primary text-[11px] px-3 py-1.5 inline-flex items-center gap-1.5" disabled={saving} onClick={save}>
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}保存修改
+              </button>
+              <button className="text-[11px] text-pi-dim2 hover:text-pi-text" onClick={() => { setEditing(false); setDraft(null) }}>取消</button>
+            </>
+            : <>
+              <button className="text-[11px] px-2.5 py-1.5 rounded-pi-md border border-pi-border-soft text-pi-dim hover:text-pi-text inline-flex items-center gap-1" onClick={startEdit}>
+                <Pencil className="w-3.5 h-3.5" />改文案
+              </button>
+              <button className="text-[11px] px-2.5 py-1.5 rounded-pi-md border border-pi-border-soft text-pi-dim hover:text-pi-text inline-flex items-center gap-1" onClick={() => setPlaying(true)}>
+                <Play className="w-3.5 h-3.5" />放映
+              </button>
+              <button className="text-[11px] px-2.5 py-1.5 rounded-pi-md border border-pi-border-soft text-pi-dim hover:text-pi-text inline-flex items-center gap-1" onClick={printDeck} title="浏览器打印为 PDF（16:9 矢量）">
+                <Printer className="w-3.5 h-3.5" />导出 PDF
+              </button>
+            </>}
+        </span>
+      </div>
+
+      {/* 缩略图行 */}
+      <div ref={boxRef} className="flex gap-2 overflow-x-auto pb-1">
+        {pages.map((p, i) => (
+          <button key={p.file} onClick={() => setActive(i)}
+            className={`flex-shrink-0 rounded-pi-md overflow-hidden border-2 transition-colors ${i === active ? 'border-pi-accent' : 'border-transparent hover:border-pi-border'}`}
+            style={{ width: 1280 * SCALE_THUMB, height: 720 * SCALE_THUMB }}
+            title={p.title}>
+            <iframe srcDoc={renderScaled(p.html, SCALE_THUMB)} style={{ width: 1280, height: 720, border: 0, pointerEvents: 'none' }}
+              sandbox="" title={p.title} />
+          </button>
+        ))}
+      </div>
+
+      {/* 大预览 + 编辑面板 */}
+      <div className="grid lg:grid-cols-[1fr_260px] gap-3 items-start">
+        <div className="rounded-pi-md overflow-hidden border border-pi-border-soft bg-black/20 relative">
+          <iframe key={cur.file + (editing ? '-edit' : '')} srcDoc={editing && draft ? draft.html : pages[active].html}
+            style={{ width: '100%', aspectRatio: '1280/720', border: 0, display: 'block' }} sandbox="" title={cur.title} />
+          {!editing && (
+            <button className="absolute inset-0 w-full flex items-center justify-center bg-black/0 hover:bg-black/25 group/play transition-colors"
+              onClick={() => setPlaying(true)} title="点击放映">
+              <span className="w-14 h-14 rounded-full bg-black/45 text-white flex items-center justify-center opacity-0 group-hover/play:opacity-100 transition-opacity">
+                <Play className="w-7 h-7" />
+              </span>
+            </button>
+          )}
+        </div>
+        <div className="panel !p-3 space-y-2">
+          {editing && draft ? (
+            <>
+              <div className="text-[11px] font-semibold text-pi-dim">文案编辑（保持设计不动）</div>
+              {fields.map((f, i) => (
+                <label key={f.field + i} className="block">
+                  <span className="text-[10px] font-mono text-pi-dim2">{f.field}</span>
+                  <input className="input-pi !py-1 text-[12px]" value={f.value}
+                    onChange={e => setDraft(prev => prev ? { ...prev, html: setField(prev.html, f.field, e.target.value) } : prev)} />
+                </label>
+              ))}
+              {!fields.length && <div className="text-[11px] text-pi-dim2">此页无可编辑字段</div>}
+            </>
+          ) : (
+            <>
+              <div className="text-[12px] font-semibold text-pi-text">{cur.title || cur.file}</div>
+              <div className="text-[10px] font-mono text-pi-dim2">{cur.layout || '—'} · {cur.file}</div>
+              <div className="text-[11px] text-pi-dim2 leading-relaxed pt-1">改文案会保留这套设计，只替换文字。要换配色/版式，用表单换主题模板重新生成。</div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
