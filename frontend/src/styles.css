@@ -1287,11 +1287,3 @@ button:focus:not(:focus-visible) { outline: none; }
 @media (prefers-reduced-motion: reduce) {
   .mobile-more-sheet { animation: none; }
 }
-
-/* 情绪灵珠背景层（2026-09-03）：低存在感氛围球，文字阅读不受干扰；欢迎页更亮 */
-.mood-backdrop canvas { opacity: .32; }
-.mood-backdrop-idle canvas { opacity: .55; }
-@media (max-width: 640px) {
-  .mood-backdrop canvas { opacity: .26; }
-  .mood-backdrop-idle canvas { opacity: .45; }
-}

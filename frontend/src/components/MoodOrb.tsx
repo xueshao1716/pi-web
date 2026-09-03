@@ -14,7 +14,7 @@ import { vadVisual, type MoodVisual } from '../lib/emotion'
 const EASE_K = 3.2
 const DT_MAX = 0.1 // 页签切回时的大 dt 必须截断，防止缓动瞬跳
 
-export function MoodOrb({ state, size = 20, label, fps = 0 }: { state?: any; size?: number; label?: string; fps?: number }) {
+export function MoodOrb({ state, size = 20, label }: { state?: any; size?: number; label?: string }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   // target 只在情绪快照变化时更新；渲染循环从 ref 读，避免每帧重建 effect
   const targetRef = useRef<MoodVisual>(vadVisual(state))
@@ -36,7 +36,6 @@ export function MoodOrb({ state, size = 20, label, fps = 0 }: { state?: any; siz
     let phase = Math.random() * Math.PI * 2 // 起始相位随机，多颗球不同步
     let raf = 0
     let last = performance.now()
-    let lastDraw = 0
     let alive = true
 
     const draw = (now: number) => {
@@ -123,10 +122,6 @@ export function MoodOrb({ state, size = 20, label, fps = 0 }: { state?: any; siz
     const frame = (now: number) => {
       if (!alive) return
       if (document.hidden) { raf = 0; return } // 隐藏页签暂停，恢复由 visibilitychange 接管
-      // fps 节流：背景大球用 30fps 足够（缓动 dt 按真实间隔算，节奏不失真）
-      const step = fps > 0 ? 1000 / fps : 0
-      if (step && now - lastDraw < step - 1) { raf = requestAnimationFrame(frame); return }
-      lastDraw = now
       draw(now)
       raf = requestAnimationFrame(frame)
     }
@@ -148,14 +143,12 @@ export function MoodOrb({ state, size = 20, label, fps = 0 }: { state?: any; siz
     }
   }, [size])
 
-  const ariaProps = label
-    ? { role: 'img' as const, 'aria-label': label }
-    : { 'aria-hidden': true as const } // 装饰用途（背景氛围层）不带语义角色
   return (
     <canvas
       ref={canvasRef}
       style={{ width: size, height: size, display: 'block', borderRadius: '50%' }}
-      {...ariaProps}
+      role="img"
+      aria-label={label || '小语当前情绪'}
     />
   )
 }

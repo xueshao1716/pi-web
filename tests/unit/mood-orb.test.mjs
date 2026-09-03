@@ -61,25 +61,6 @@ test('MoodOrb 组件契约：积分相位、缓动、reduced-motion 静态、隐
   assert.match(src, /cancelAnimationFrame/, '卸载必须取消 rAF')
 })
 
-test('MoodOrb 支持 fps 节流与无标签渲染（背景球省电 + 装饰层不带 role）', () => {
-  const src = read('components', 'MoodOrb.tsx')
-  assert.match(src, /fps\?:/, '应支持 fps 可选 prop')
-  assert.match(src, /1000 \/ fps/, 'fps 节流必须按帧间隔跳过绘制（毫秒域）')
-  assert.match(src, /label\s*\?/,  'label 为空时不得输出 role=img/aria-label（装饰用途）')
-})
-
-test('ChatArea：情绪灵珠铺聊天区底层，欢迎页更亮，不拦截交互', () => {
-  const chat = read('components', 'ChatArea.tsx')
-  assert.match(chat, /mood-backdrop/, '应有灵珠背景层')
-  const line = chat.split('\n').find((l) => l.includes('mood-backdrop') && l.includes('<MoodOrb') === false && l.includes('className'))
-  assert.ok(line, '应能定位背景层容器行')
-  assert.match(line, /pointer-events-none/, '背景层不得拦截消息区点击')
-  assert.match(line, /aria-hidden="true"/, '背景层必须 aria-hidden（装饰）')
-  const orbLine = chat.split('\n').find((l) => l.includes('<MoodOrb') && l.includes('fps='))
-  assert.ok(orbLine && orbLine.includes('size='), '背景层内应渲染大尺寸 MoodOrb 并限 30fps')
-  assert.match(chat, /mood-backdrop-idle/, '空会话欢迎页应用更亮的 idle 变体')
-})
-
 test('ChatArea：心情 pill 渲染 MoodOrb，emoji 不再出现在 pill 内', () => {
   const chat = read('components', 'ChatArea.tsx')
   assert.match(chat, /<MoodOrb\b/, 'pill 应渲染 MoodOrb 灵珠')

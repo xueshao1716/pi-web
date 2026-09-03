@@ -743,9 +743,6 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
 
   // 情绪指示器：服务端 VAD 情绪引擎的镜像（SSE emotion 事件实时推 + 切会话拉快照），不是本地可点的玩具
   const [emo, setEmo] = useState<{ state: any; meta: EmoMeta }>({ state: null, meta: { emoji: '🧘', label: '专注', cls: 'focus' } })
-  // 背景灵珠尺寸：移动端收小；空会话欢迎页走更亮的居中变体（mood-backdrop-idle）
-  const backdropSize = typeof window !== 'undefined' && window.innerWidth < 640 ? 190 : 320
-  const chatEmpty = messages.length === 0 && !stream && !draftMsg
   const [agentStatus, setAgentStatus] = useState<'idle'|'busy'|'error'>('idle')
   // 后台执行探测：轮询服务端 busy 会话表——本页没在流式但后台/他端在跑也要亮灯（用户靠它判断小语是否在工作）
   const [remoteBusy, setRemoteBusy] = useState<'self' | 'other' | null>(null)
@@ -841,12 +838,8 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         </div>
       )}
 
-      {/* 消息区 + 灵珠底层：氛围球常驻不随滚动，情绪变化一眼可见；不拦截交互 */}
-      <div className="relative flex-1 min-h-0 flex flex-col">
-        <div aria-hidden="true" className={`mood-backdrop pointer-events-none absolute inset-0 overflow-hidden flex ${chatEmpty ? 'mood-backdrop-idle items-start justify-center pt-[5%]' : 'items-end justify-end pb-[9%] pr-[5%]'}`}>
-          <MoodOrb state={emo.state} size={backdropSize} fps={30} />
-        </div>
-        <div ref={(el) => { scrollRef.current = el; pull.containerRef.current = el }} className="chat-scroll-region relative flex-1 min-h-0 overflow-y-auto">
+      {/* 消息区 */}
+      <div ref={(el) => { scrollRef.current = el; pull.containerRef.current = el }} className="chat-scroll-region flex-1 min-h-0 overflow-y-auto">
         {loading ? (
           <div className="chat-reading-column w-full py-8 space-y-5" aria-label="加载中">
             {[520, 380, 460].map((w, i) => (
@@ -895,7 +888,6 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
               />
             </div>
           )}
-      </div>
       </div>
 
       {/* 输入栏 */}
