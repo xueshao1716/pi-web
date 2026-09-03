@@ -225,3 +225,143 @@ export async function listPptHistory(ctx, res) {
   // 摘要化：不回传大 slides（点开单条再按需读）
   json(res, 200, { entries: entries.map(e => ({ id: e.id, ts: e.ts, theme: e.theme, pages: e.pages, style: e.style, file: e.file, json: e.json })) });
 }
+
+// ══ PPT 设计稿工作室（HTML 路线，对标扣子/Gamma）：每页一张 1280×720 设计过的 HTML 画布 ══
+// 管线：agent 读 ppt-html 技能 → 产 deck.json + pages/*.html → SSE 逐页推 HTML → 前端 iframe 真渲染
+// 干预：前端 data-field 文案替换（本地保存回写）+ 单页重设计（agent 重做该页）；导出：浏览器打印 PDF
+export async function handleWorkshopPptHtml(ctx, res, body) {
+  const { CONFIG, SESSIONS_DIR, defaultModel, createSessionAgent, SessionManager, sseWrite, json, getAgentDir, DefaultResourceLoader, WS_ROOT } = ctx;
+  const theme = String(body?.theme || "").trim();
+  if (!theme) return json(res, 400, { error: "缺少主题" });
+  const pages = Math.min(Math.max(parseInt(body?.pages, 10) || 8, 3), 20);
+  const themeKey = ["navy", "magazine", "dark", "riso"].includes(body?.themeKey) ? body.themeKey : "navy";
+  const audience = String(body?.audience || "").slice(0, 40);
+  const skillPath = await findSkillPath(ctx, "ppt-html");
+  if (!skillPath) return json(res, 500, { error: "未找到 ppt-html 技能" });
+  const skillDir = path.dirname(skillPath);
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream", "Cache-Control": "no-cache",
+    Connection: "keep-alive", "X-Accel-Buffering": "no",
+  });
+  const write = (event, data) => { try { sseWrite(res, event, data); } catch {} };
+  write("note", { text: `🎨 设计稿模式：${pages} 页 · 主题模板 ${themeKey} · 开始排版设计…` });
+  // SSE 心跳：每 15s 发注释行防外网空闲超时（Cloudflare ~100s 掐无输出连接）；agent 写一页可达数分钟无事件
+  const hb = setInterval(() => { try { res.write(": hb\n\n"); } catch {} }, 15_000);
+  const sm = SessionManager.create(CONFIG.cwd, SESSIONS_DIR);
+  let agent = null;
+  let timer = null;
+  try {
+    agent = await createSessionAgent(sm, defaultModel);
+    const unsub = agent.subscribe((ev) => {
+      try {
+        if (ev.type === "tool_execution_start") {
+          write("tool", { name: ev.toolName, args: ev.args, id: ev.toolCallId });
+        } else if (ev.type === "tool_execution_end") {
+          const text = Array.isArray(ev.result?.content) ? ev.result.content.map(c => c.text || "").join("") : "";
+          write("tool_end", { name: ev.toolName, id: ev.toolCallId, isError: !!ev.isError, output: text.slice(0, 400) });
+        }
+      } catch {}
+    });
+    const id = Date.now().toString(36);
+    const workDir = path.join(WS_ROOT, "workshop-out", `ppthtml-${id}`);
+    fs.mkdirSync(workDir, { recursive: true });
+    const prompt = `你是 ppt-html 技能的执行者。用户通过「PPT 工作室·设计稿模式」提交了表单，**直接完整执行，跳过确认**：
+
+用户需求：
+- 主题：${theme}
+- 目标受众：${audience || "（未指定，按通用场景）"}
+- 页数：${pages} 页左右
+- 主题模板：theme-${themeKey}（务必把 ${path.join(skillDir, "templates", `theme-${themeKey}.css`).split(path.sep).join("/")} 的 CSS 全文放进每页 <style> 开头）
+
+执行要求：
+1. 先 read 技能规范：${skillPath.split(path.sep).join("/")}，严格按「每页 HTML 硬规矩 + 排版纪律 + 版式骨架」执行
+2. 产物全部写入 ${workDir.split(path.sep).join("/")}：deck.json + pages/page-01.html 起（两位数序号）
+3. 每页都要是"设计过的版面"：一个视觉焦点、字号阶梯、留白充足、accent 克制；图形用 CSS 渐变/几何形，禁止外部图片和 CDN
+4. 写完自检（bash：页数、theme- class、data-page、data-field、文件大小），然后回复一句话总结：页数 + 每页一句话摘要`;
+    let finished = false;
+    const finish = async () => {
+      if (finished) return;
+      finished = true;
+      clearInterval(hb);
+      try { unsub(); } catch {}
+      try { agent?.dispose?.(); } catch {}
+      // 扫产物：deck.json + pages/*.html，逐页推给前端
+      try {
+        const deckPath = path.join(workDir, "deck.json");
+        let deck = null;
+        if (fs.existsSync(deckPath)) {
+          deck = JSON.parse(fs.readFileSync(deckPath, "utf8"));
+        } else {
+          // 兜底：扫 pages 目录
+          const pdir = path.join(workDir, "pages");
+          if (fs.existsSync(pdir)) {
+            deck = fs.readdirSync(pdir).filter(n => n.endsWith(".html")).sort()
+              .map(n => ({ file: "pages/" + n, title: n.replace(".html", ""), layout: "" }));
+          }
+        }
+        if (deck && Array.isArray(deck.slides || deck) && (deck.slides || deck).length) {
+          const list = deck.slides || deck;
+          const relDir = path.relative(WS_ROOT, workDir).split(path.sep).join("/");
+          write("deck_meta", { dir: relDir, count: list.length, themeKey });
+          for (const item of list) {
+            const f = path.join(workDir, item.file);
+            if (!fs.existsSync(f)) continue;
+            const html = fs.readFileSync(f, "utf8");
+            write("deck_page", { file: item.file, title: item.title || "", layout: item.layout || "", html });
+          }
+          appendHistory(path.join(WS_ROOT, "workshop-out", "ppt-history.json"), {
+            id, theme, pages, style: `html:${themeKey}`, file: { name: "deck.json", path: relDir + "/deck.json", size: fs.statSync(deckPath).size }, json: relDir + "/deck.json", kind: "html",
+          });
+          write("done", { ok: true, dir: relDir, count: list.length });
+        } else {
+          write("note", { text: "⚠️ 未检测到 deck.json / pages 产物，请查看过程输出" });
+          write("done", { ok: false });
+        }
+      } catch (e) {
+        write("error", { message: String(e?.message || e).slice(0, 200) });
+        write("done", { ok: false });
+      }
+      try { res.end(); } catch {}
+    };
+    // 兕底按时长缩放：设计稿每页约 3-8 分钟，10 页可达 80 分钟，固定 12 分钟会中途杀 agent
+    timer = setTimeout(finish, Math.max(20, pages * 8) * 60 * 1000);
+    await agent.prompt(prompt);
+    clearTimeout(timer);
+    await finish();
+  } catch (e) {
+    clearTimeout(timer);
+    write("error", { message: String(e?.message || e).slice(0, 200) });
+    try { agent?.dispose?.(); } catch {}
+    try { res.end(); } catch {}
+  }
+}
+
+/** 文案干预保存：回写单页 HTML（路径限 workshop-out，内容校验），并同步 deck.json 标题 */
+export async function savePptHtmlPage(ctx, res, body) {
+  const { json, WS_ROOT } = ctx;
+  const rel = String(body?.file || "");
+  const html = String(body?.html || "");
+  const title = String(body?.title || "").slice(0, 80);
+  const outRoot = path.join(WS_ROOT, "workshop-out");
+  const abs = path.resolve(WS_ROOT, rel);
+  if (!abs.startsWith(outRoot + path.sep)) return json(res, 400, { error: "路径必须在 workshop-out 内" });
+  if (!abs.endsWith(".html")) return json(res, 400, { error: "只能保存 HTML" });
+  if (!fs.existsSync(abs)) return json(res, 404, { error: "页面文件不存在" });
+  if (html.length < 200 || html.length > 200_000) return json(res, 400, { error: "HTML 大小异常" });
+  if (!html.includes("<style") || !html.includes("data-page")) return json(res, 400, { error: "HTML 缺少 <style>/data-page，疑似非设计稿页面" });
+  const tmp = abs + ".tmp";
+  fs.writeFileSync(tmp, html);
+  fs.renameSync(tmp, abs);
+  // 同步 deck.json 标题
+  try {
+    const deckPath = path.join(path.dirname(path.dirname(abs)), "deck.json");
+    if (fs.existsSync(deckPath) && title) {
+      const deck = JSON.parse(fs.readFileSync(deckPath, "utf8"));
+      const list = deck.slides || deck;
+      const item = list.find(x => x.file === path.relative(path.dirname(path.dirname(abs)), abs).split(path.sep).join("/"));
+      if (item) item.title = title;
+      fs.writeFileSync(deckPath, JSON.stringify(deck, null, 2));
+    }
+  } catch {}
+  json(res, 200, { ok: true });
+}

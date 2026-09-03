@@ -3,6 +3,7 @@ import { Package, History } from 'lucide-react'
 import useSWR from 'swr'
 import { WorkshopApi, withFileToken, apiUrl } from '../api'
 import PptOutlineEditor, { type OutlineSlide } from './PptOutlineEditor'
+import PptStudio, { type DeckPage } from './PptStudio'
 
 // ── 专项长文生成器（SSE 长任务，收编自 vanilla）：08-27 起仅承载 PPT（小说已迁 NovelStudioView 书架式）──
 
@@ -24,6 +25,11 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
   const abortRef = useRef<(() => void) | null>(null)
   // 大纲预览/设计干预（2026-09-03）：SSE 'json' 事件带来 slides；历史可载入往期大纲
   const [outline, setOutline] = useState<{ jsonPath: string; slides: OutlineSlide[] } | null>(null)
+  // 设计稿模式（HTML 路线）：引擎切换 + 逐页 HTML
+  const [engine, setEngine] = useState<'html' | 'classic'>('html')
+  const [themeKey, setThemeKey] = useState('navy')
+  const [deck, setDeck] = useState<{ dir: string; pages: DeckPage[] } | null>(null)
+  const abortHtmlRef = useRef<(() => void) | null>(null)
   const history = useSWR('ppt-history', () => WorkshopApi.pptHistory(), { revalidateOnFocus: false })
   const loadHistory = async (json: string) => {
     try {
@@ -76,7 +82,31 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
     })
   }
 
-  const stop = () => { abortRef.current?.(); setRunning(false); append('[已手动停止]') }
+  const stop = () => { abortRef.current?.(); abortHtmlRef.current?.(); setRunning(false); append('[已手动停止]') }
+
+  const runHtml = () => {
+    if (running || !theme.trim()) return
+    setRunning(true); setLog([]); setArtifacts([]); setSteps([]); setDeck(null); setOutline(null)
+    const body = { theme: theme.trim(), pages, themeKey, audience }
+    abortHtmlRef.current = WorkshopApi.runHtml(body, ev => {
+      const d = ev.data || {}
+      switch (ev.type) {
+        case 'note': append('· ' + (d.text || '')); break
+        case 'tool': setSteps(prev => [...prev, { id: d.id || 't' + Date.now(), name: d.name || 'tool', args: String(d.args?.command || d.args?.path || d.args?.prompt || '').slice(0, 100) || JSON.stringify(d.args || {}).slice(0, 100), status: 'running' }]); break
+        case 'tool_end': setSteps(prev => prev.map(s => s.id === d.id ? { ...s, status: d.isError ? 'error' : 'done', output: (d.output || '').slice(0, 120) } : s)); break
+        case 'deck_meta': setDeck({ dir: d.dir, pages: [] }); append(`[清单] ${d.count} 页 · 模板 ${d.themeKey}`); break
+        case 'deck_page':
+          setDeck(prev => prev ? { ...prev, pages: [...prev.pages, { file: d.file, title: d.title, layout: d.layout, html: d.html }] } : prev)
+          break
+        case 'error':
+          append('[错误] ' + (d.message || '未知错误'))
+          if (/fetch|network|failed/i.test(d.message || '')) append('· 连接中断，但后台仍在生成——稍后刷新页面从「往期」载入结果即可')
+          setRunning(false)
+          break
+        case 'done': append(d.ok ? '[完成]' : '[警告] 流程结束，未检测到产物'); setRunning(false); break
+      }
+    })
+  }
 
   return (
     <div className="space-y-4">
@@ -111,14 +141,35 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
               <input className="input-pi !py-1.5 text-xs w-32" placeholder="可选" value={audience} onChange={e => setAudience(e.target.value)} />
             </label>
           </div>
+          {/* 引擎切换 */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="inline-flex rounded-pi-md border border-pi-border-soft overflow-hidden">
+              {([['html', '🎨 设计稿'], ['classic', '📄 经典 .pptx']] as const).map(([k, label]) => (
+                <button key={k} onClick={() => setEngine(k)}
+                  className={`px-3 py-1.5 text-[11px] transition-colors ${engine === k ? 'bg-pi-accent text-white font-medium' : 'text-pi-dim hover:text-pi-text hover:bg-pi-bg-hover'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {engine === 'html' && (
+              <label className="text-xs text-pi-dim flex items-center gap-1.5">模板
+                <select className="input-pi !py-1.5 text-xs w-32" value={themeKey} onChange={e => setThemeKey(e.target.value)}>
+                  <option value="navy">商务深蓝</option>
+                  <option value="magazine">杂志暖调</option>
+                  <option value="dark">暗色科技</option>
+                  <option value="riso">单色 Riso</option>
+                </select>
+              </label>
+            )}
+          </div>
       </div>
 
       {/* 运行条 */}
       <div className="flex items-center gap-2">
         {running
           ? <button className="h-8 px-4 rounded-pi-md bg-red-500/90 text-white text-xs font-medium animate-pulse" onClick={stop}>⏹ 停止</button>
-          : <button className="btn-primary text-xs px-4 py-2" onClick={run}>开始生成 PPT</button>}
-        <span className="text-[11px] text-pi-dim2">走 ppt-generator 技能全流程，通常需要几分钟；小说请去「小说工坊」Tab</span>
+          : <button className="btn-primary text-xs px-4 py-2" onClick={engine === 'html' ? runHtml : run}>{engine === 'html' ? '开始生成设计稿' : '开始生成 PPT'}</button>}
+        <span className="text-[11px] text-pi-dim2">{engine === 'html' ? '每页一张设计过的 HTML 画布，浏览器真渲染，可改文案/导出 PDF' : '走 ppt-generator 技能全流程，产出可二次编辑的 .pptx'}</span>
       </div>
 
       {/* 执行进度（A：agent 步骤卡片，实时看到执行到哪步）*/}
@@ -151,7 +202,12 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
         </div>
       )}
 
-      {/* 大纲预览 / 设计干预：生成完（或从历史载入）后可编辑重建 */}
+      {/* 设计稿预览（HTML 路线核心：真渲染 + 文案干预 + PDF 导出）*/}
+      {engine === 'html' && deck && deck.pages.length > 0 && (
+        <PptStudio pages={deck.pages} dir={deck.dir} />
+      )}
+
+      {/* 大纲预览 / 设计干预（经典路线）：生成完（或从历史载入）后可编辑重建 */}
       {outline && (
         <PptOutlineEditor
           jsonPath={outline.jsonPath}
