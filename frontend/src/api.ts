@@ -295,6 +295,8 @@ export const WorkshopApi = {
   // PPT 设计稿模式（HTML 路线，2026-09-03）：SSE 逐页推 HTML，前端 iframe 真渲染
   runHtml: (body: { theme: string; pages: number; themeKey: string; audience?: string }, onEvent: (ev: { type: string; data: any }) => void) =>
     WorkshopApi.runLike('/api/workshop/ppt/html', body, onEvent),
+  refinePage: (body: { dir: string; file: string; instruction: string }, onEvent: (ev: { type: string; data: any }) => void) =>
+    WorkshopApi.runLike('/api/workshop/ppt-html/refine', body, onEvent),
   saveHtmlPage: (body: { file: string; html: string; title?: string }) =>
     api<{ ok: boolean }>('/api/workshop/ppt-html/save', { method: 'POST', body, timeoutMs: 30000 }),
   runLike: (path: string, body: any, onEvent: (ev: { type: string; data: any }) => void) => {

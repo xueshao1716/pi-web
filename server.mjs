@@ -1440,7 +1440,7 @@ const API_ROUTES = [
   ["GET", "/api/recall", (res, req, url) => handleRecall(res, url)],
   ["POST", "/api/recall/ask", async (res, req) => { const b = await readBody(req); return handleRecallAsk(res, b); }],
   ["GET", "/api/recall/summaries", (res) => handleSummaries(res)],
-  ["POST", "/api/recall/summarize", async (res) => json(res, 200, await buildSummaries({ count: 5 }))],
+  ["POST", "/api/recall/summarize", (res) => { buildSummaries({ count: 5 }).catch(() => {}); return json(res, 200, { ok: true, started: true }); }],
   ["GET", "/api/recall/stats", (res) => json(res, 200, recallStats())],
   ["POST", "/api/sessions/db/sanitize", async (res, req) => handleDbSanitize(res, await readBody(req))],
   ["PATCH", "/api/sessions/db/meta", async (res, req) => handleDbMeta(res, await readBody(req))],
@@ -1792,6 +1792,7 @@ const API_ROUTES = [
   // 主题蒸馏（网址/本地HTML → theme CSS 入库 ppt-html templates）
   ["GET", "/api/workshop/ppt/themes", (res) => distill.handlePptThemes(wsCtx(), res)],
   ["POST", "/api/workshop/ppt/distill", async (res, req) => distill.handlePptDistill(wsCtx(), res, await readBody(req))],
+  ["POST", "/api/workshop/ppt-html/refine", async (res, req) => workshop.handlePptRefine(wsCtx(), res, await readBody(req))],
   // PPT 设计稿模式（HTML 路线，2026-09-03）
   ["POST", "/api/workshop/ppt/html", async (res, req) => workshop.handleWorkshopPptHtml(wsCtx(), res, await readBody(req))],
   ["POST", "/api/workshop/ppt-html/save", async (res, req) => workshop.savePptHtmlPage(wsCtx(), res, await readBody(req))],

@@ -35,6 +35,14 @@ export default function PptStudio({ pages, dir, onSaved }: {
   const [playing, setPlaying] = useState(false)
   const stageRef = useRef<HTMLDivElement>(null)
   const fullRef = useRef<HTMLDivElement>(null)
+  // AI 改页：本地覆盖层热更新 + 提交到 refine SSE
+  const [refineInstr, setRefineInstr] = useState('')
+  const [refining, setRefining] = useState(false)
+  const [refineMsg, setRefineMsg] = useState('')
+  const [overrides, setOverrides] = useState<Record<string, string>>({})
+  const refineAbortRef = useRef<(() => void) | null>(null)
+  useEffect(() => () => refineAbortRef.current?.(), [])
+  const mergedPages = useMemo(() => pages.map(p => ({ ...p, html: overrides[p.file] ?? p.html })), [pages, overrides])
   const [fscale, setFscale] = useState(1)
 
   useEffect(() => {
@@ -51,18 +59,18 @@ export default function PptStudio({ pages, dir, onSaved }: {
   useEffect(() => {
     if (!playing) return
     const h = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); setActive(i => Math.min(i + 1, pages.length - 1)) }
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); setActive(i => Math.min(i + 1, mergedPages.length - 1)) }
       else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); setActive(i => Math.max(i - 1, 0)) }
       else if (e.key === 'Escape') setPlaying(false)
       else if (e.key === 'Home') setActive(0)
-      else if (e.key === 'End') setActive(pages.length - 1)
+      else if (e.key === 'End') setActive(mergedPages.length - 1)
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
-  }, [playing, pages.length])
+  }, [playing, mergedPages.length])
 
   const fields = useMemo(() => {
-    const src = editing && draft ? draft.html : pages[active]?.html || ''
+    const src = editing && draft ? draft.html : mergedPages[active]?.html || ''
     const out: { field: string; value: string }[] = []
     const re = /data-field="([^"]+)"[^>]*>([^<]*)</g
     let m
@@ -72,7 +80,7 @@ export default function PptStudio({ pages, dir, onSaved }: {
 
   useEffect(() => { setDraft(null); setEditing(false) }, [active, pages])
 
-  const startEdit = () => { setDraft({ ...pages[active] }); setEditing(true) }
+  const startEdit = () => { setDraft({ ...mergedPages[active] }); setEditing(true) }
   const save = async () => {
     if (!draft || saving) return
     setSaving(true)
@@ -87,13 +95,34 @@ export default function PptStudio({ pages, dir, onSaved }: {
     if (!w) return
     const style = `<style>@page{size:1280px 720px;margin:0}body{margin:0}.pg{width:1280px;height:720px;overflow:hidden;page-break-after:always}iframe{border:0;width:1280px;height:720px;display:block}</style>`
     w.document.write(`<!doctype html><html><head><meta charset="utf-8">${style}</head><body>${
-      pages.map(p => `<div class="pg"><iframe srcdoc="${p.html.replace(/"/g, '&quot;')}"></iframe></div>`).join('')
+      mergedPages.map(p => `<div class="pg"><iframe srcdoc="${p.html.replace(/"/g, '&quot;')}"></iframe></div>`).join('')
     }<script>window.onload=()=>setTimeout(()=>window.print(),600)</script></body></html>`)
     w.document.close()
   }
 
-  if (!pages.length) return null
-  const cur = editing && draft ? draft : pages[active]
+
+  const doRefine = () => {
+    if (refining || !refineInstr.trim() || !dir) return
+    const target = mergedPages[active]
+    setRefining(true); setRefineMsg('…')
+    refineAbortRef.current = WorkshopApi.refinePage({ dir, file: target.file, instruction: refineInstr.trim() }, ev => {
+      const d = ev.data || {}
+      switch (ev.type) {
+        case 'note': setRefineMsg('· ' + (d.text || '').slice(0, 80)); break
+        case 'tool': setRefineMsg('· AI 调用 ' + (d.name || '') + '…'); break
+        case 'page_html': setOverrides(prev => ({ ...prev, [d.file]: d.html })); break
+        case 'done':
+          setRefining(false)
+          if (d.changed) { setRefineMsg(`✓ 已更新${d.lintCount ? `（质检 ${d.lintCount} 条提示）` : '（质检通过）'}`); setRefineInstr(''); onSaved?.() }
+          else { setRefineMsg('⚠ ' + (d.message || '页面未变化')) }
+          break
+        case 'error': setRefining(false); setRefineMsg('✗ ' + (d.message || '未知错误')); break
+      }
+    })
+  }
+
+  if (!mergedPages.length) return null
+  const cur = editing && draft ? draft : mergedPages[active]
   return (
     <div className="space-y-3">
       {/* 放映层（全屏遮罩 + 自适应缩放 + 键盘/点击翻页）*/}
@@ -102,17 +131,17 @@ export default function PptStudio({ pages, dir, onSaved }: {
           <div ref={stageRef} className="absolute inset-0 flex items-center justify-center p-6">
             <div className="relative shadow-2xl shadow-black/60 rounded-sm overflow-hidden"
               style={{ width: 1280 * fscale, height: 720 * fscale }}>
-              <iframe key={pages[active].file} srcDoc={pages[active].html}
+              <iframe key={pages[active].file} srcDoc={mergedPages[active].html}
                 style={{ width: 1280, height: 720, border: 0, transform: `scale(${fscale})`, transformOrigin: 'top left' }}
-                sandbox="" title={pages[active].title} />
+                sandbox="" title={mergedPages[active].title} />
             </div>
           </div>
           {/* 翻页热区：左 1/3 上一页，右 2/3 下一页（移动端可点）*/}
           <button className="absolute left-0 top-0 h-full w-1/3 cursor-w-resize" aria-label="上一页" onClick={() => setActive(i => Math.max(i - 1, 0))} />
-          <button className="absolute right-0 top-0 h-full w-2/3 cursor-e-resize" aria-label="下一页" onClick={() => setActive(i => Math.min(i + 1, pages.length - 1))} />
+          <button className="absolute right-0 top-0 h-full w-2/3 cursor-e-resize" aria-label="下一页" onClick={() => setActive(i => Math.min(i + 1, mergedPages.length - 1))} />
           {/* 顶部信息 + 关闭 */}
           <div className="absolute top-0 inset-x-0 flex items-center gap-2 px-4 py-3 bg-gradient-to-b from-black/60 to-transparent pointer-events-none">
-            <span className="text-[13px] text-white/80 font-medium truncate">{pages[active].title || pages[active].file}</span>
+            <span className="text-[13px] text-white/80 font-medium truncate">{mergedPages[active].title || mergedPages[active].file}</span>
             <span className="font-mono text-[11px] text-white/45">{active + 1} / {pages.length}</span>
             <button className="ml-auto pointer-events-auto touch-hit p-1.5 text-white/60 hover:text-white" onClick={() => setPlaying(false)}><X className="w-5 h-5" /></button>
           </div>
@@ -120,7 +149,7 @@ export default function PptStudio({ pages, dir, onSaved }: {
           <div className="absolute bottom-0 inset-x-0 flex items-center justify-center gap-3 pb-4">
             <button className="touch-hit p-2 rounded-full bg-white/10 text-white/80 hover:bg-white/20 disabled:opacity-30" disabled={active === 0} onClick={() => setActive(i => Math.max(i - 1, 0))}><ChevronLeft className="w-5 h-5" /></button>
             <span className="font-mono text-[12px] text-white/50">← → 翻页 · Esc 退出</span>
-            <button className="touch-hit p-2 rounded-full bg-white/10 text-white/80 hover:bg-white/20 disabled:opacity-30" disabled={active === pages.length - 1} onClick={() => setActive(i => Math.min(i + 1, pages.length - 1))}><ChevronRight className="w-5 h-5" /></button>
+            <button className="touch-hit p-2 rounded-full bg-white/10 text-white/80 hover:bg-white/20 disabled:opacity-30" disabled={active === pages.length - 1} onClick={() => setActive(i => Math.min(i + 1, mergedPages.length - 1))}><ChevronRight className="w-5 h-5" /></button>
           </div>
         </div>
       )}
@@ -165,7 +194,7 @@ export default function PptStudio({ pages, dir, onSaved }: {
       {/* 大预览 + 编辑面板 */}
       <div className="grid lg:grid-cols-[1fr_260px] gap-3 items-start">
         <div ref={fullRef} className="ppt-stage rounded-pi-md overflow-hidden border border-pi-border-soft bg-black/20 relative">
-          <iframe key={cur.file + (editing ? '-edit' : '')} srcDoc={editing && draft ? draft.html : pages[active].html}
+          <iframe key={cur.file + (editing ? '-edit' : '')} srcDoc={editing && draft ? draft.html : mergedPages[active].html}
             style={{ width: '100%', aspectRatio: '1280/720', border: 0, display: 'block' }} sandbox="" title={cur.title} />
           {!editing && (
             <button className="absolute inset-0 w-full flex items-center justify-center bg-black/0 hover:bg-black/25 group/play transition-colors"
@@ -204,9 +233,20 @@ export default function PptStudio({ pages, dir, onSaved }: {
             <>
               <div className="text-[12px] font-semibold text-pi-text">{cur.title || cur.file}</div>
               <div className="text-[10px] font-mono text-pi-dim2">{cur.layout || '—'} · {cur.file}</div>
-              <div className="text-[11px] text-pi-dim2 leading-relaxed pt-1">改文案会保留这套设计，只替换文字。要换配色/版式，用表单换主题模板重新生成。</div>
+              <div className="text-[11px] text-pi-dim2 leading-relaxed pt-1">改文案会保留这套设计，只替换文字；更大的改动用下方 AI 修改。</div>
             </>
           )}
+          {/* AI 辅助改页：对话式单页重设计 */}
+          <div className="pt-2 border-t border-pi-border-soft/60 space-y-1.5">
+            <div className="text-[11px] font-semibold text-pi-dim">🤖 AI 修改本页</div>
+            <textarea className="input-pi !py-1.5 text-[12px] w-full resize-none" rows={2}
+              placeholder="如：这页改成左右对比版式；标题换成…；加一张数据卡；语气更犀利些…"
+              value={refineInstr} onChange={e => setRefineInstr(e.target.value)} />
+            <button className="btn-primary text-xs w-full !py-1.5 disabled:opacity-50" disabled={refining || !refineInstr.trim() || !dir} onClick={doRefine}>
+              {refining ? '改写中…（1-3 分钟）' : '提交修改'}
+            </button>
+            {refineMsg && <div className={`text-[10px] leading-relaxed ${refineMsg.startsWith('✓') ? 'text-emerald-500' : refineMsg.startsWith('✗') ? 'text-red-400' : 'text-pi-dim2'}`}>{refineMsg}</div>}
+          </div>
         </div>
       </div>
     </div>

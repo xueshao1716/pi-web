@@ -6,6 +6,7 @@ import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { validateSlides, findSlidesJson, appendHistory, readHistory } from "./workshop-ppt-core.mjs";
 import { lintDeck, lintPage } from "./slides-lint-core.mjs";
+export { handlePptRefine } from "./ppt-refine.mjs";
 
 // 工作台独立页映射（可直达 URL）
 export const WORKSHOP_PAGES = {
