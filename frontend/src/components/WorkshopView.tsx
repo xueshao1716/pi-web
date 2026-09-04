@@ -32,6 +32,25 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
   const [deck, setDeck] = useState<{ dir: string; pages: DeckPage[] } | null>(null)
   const abortHtmlRef = useRef<(() => void) | null>(null)
   const history = useSWR('ppt-history', () => WorkshopApi.pptHistory(), { revalidateOnFocus: false })
+  const themes = useSWR('ppt-themes', () => WorkshopApi.pptThemes(), { revalidateOnFocus: false })
+  const [distillOpen, setDistillOpen] = useState(false)
+  const [distillUrl, setDistillUrl] = useState('')
+  const [distillName, setDistillName] = useState('')
+  const [distilling, setDistilling] = useState(false)
+  const themeList = themes.data?.themes || [{ key: 'navy', label: '商务深蓝' }, { key: 'magazine', label: '杂志暖调' }, { key: 'dark', label: '暗色科技' }, { key: 'riso', label: '单色 Riso' }]
+  const doDistill = async () => {
+    if (distilling || !distillUrl.trim()) return
+    setDistilling(true)
+    try {
+      const r = await WorkshopApi.distillTheme({ url: distillUrl.trim(), name: distillName.trim() })
+      append(`· 🎨 已提炼主题「${r.label}」（bg ${r.tokens?.bg} / accent ${r.tokens?.accent}），已入库可选用`)
+      await themes.mutate?.()
+      setThemeKey(r.key)
+      setDistillOpen(false); setDistillUrl(''); setDistillName('')
+    } catch (e: any) {
+      append('[提炼失败] ' + (e?.message || String(e)))
+    } finally { setDistilling(false) }
+  }
   const loadHistory = async (json: string) => {
     try {
       const r = await fetch(withFileToken(`/api/ws/file?path=${encodeURIComponent(json)}`))
@@ -145,6 +164,16 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
               <input className="input-pi !py-1.5 text-xs w-32" placeholder="可选" value={audience} onChange={e => setAudience(e.target.value)} />
             </label>
           </div>
+          {distillOpen && (
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              <span className="text-pi-dim2">提炼：</span>
+              <input className="input-pi !py-1.5 text-xs flex-1 min-w-56" placeholder="粘贴喜欢的网页 URL…" value={distillUrl} onChange={e => setDistillUrl(e.target.value)} />
+              <input className="input-pi !py-1.5 text-xs w-28" placeholder="主题名（可选）" value={distillName} onChange={e => setDistillName(e.target.value)} />
+              <button className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50" disabled={distilling || !distillUrl.trim()} onClick={doDistill}>
+                {distilling ? '提炼中…' : '生成模板'}
+              </button>
+            </div>
+          )}
           {/* 引擎切换 */}
           <div className="flex items-center gap-2 flex-wrap">
             <div className="inline-flex rounded-pi-md border border-pi-border-soft overflow-hidden">
@@ -156,14 +185,15 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
               ))}
             </div>
             {engine === 'html' && (
-              <label className="text-xs text-pi-dim flex items-center gap-1.5">模板
-                <select className="input-pi !py-1.5 text-xs w-32" value={themeKey} onChange={e => setThemeKey(e.target.value)}>
-                  <option value="navy">商务深蓝</option>
-                  <option value="magazine">杂志暖调</option>
-                  <option value="dark">暗色科技</option>
-                  <option value="riso">单色 Riso</option>
-                </select>
-              </label>
+              <>
+                <label className="text-xs text-pi-dim flex items-center gap-1.5">模板
+                  <select className="input-pi !py-1.5 text-xs w-32" value={themeKey} onChange={e => setThemeKey(e.target.value)}>
+                    {themeList.map(t => <option key={t.key} value={t.key}>{t.label}{t.builtin === false ? '' : ''}</option>)}
+                  </select>
+                </label>
+                <button className="text-[11px] px-2 py-1.5 rounded-pi-md border border-dashed border-pi-border-soft text-pi-dim hover:text-pi-accent hover:border-pi-accent/50 transition-colors"
+                  onClick={() => setDistillOpen(v => !v)} title="从喜欢的网页提取配色与字体，生成新模板">✨ 从网址提炼模板</button>
+              </>
             )}
           </div>
       </div>

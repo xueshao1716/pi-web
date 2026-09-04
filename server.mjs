@@ -75,6 +75,7 @@ import { createTimeEngine } from "./engine/time-engine.mjs";
 import { sanitizeSessionFile } from "./engine/session-sanitize.mjs";
 import { createCorsPolicy } from "./engine/cors-policy.mjs";
 import { initSessionDb, handleDbList, handleDbRebuild, handleDbSanitize, handleDbMeta, handleDbStats } from "./engine/session-db.mjs";
+import { initRecallApi, rebuildIndex, handleRecall, handleRecallAsk, handleSummaries, buildSummaries, recallStats } from "./engine/recall-api.mjs";
 const memoryApi = await import("./engine/memory.mjs");
 const { initMemorySync } = await import("./engine/memory-sync.mjs");
 initMemorySync({ wsRoot: CONFIG.cwd }); // M1 路径外部化：记忆同步的工作空间根随配置注入
@@ -85,6 +86,7 @@ emotion.setMemoryNudgeHook((info) => { try { proposeMemoryNudge(info); } catch {
 const subagent = await import("./engine/subagent.mjs");
 const workshop = await import("./engine/workshop.mjs");
 const gallery = await import("./engine/gallery.mjs");
+const distill = await import("./engine/distill-theme.mjs");
 const { WORKSHOP_PAGES } = workshop;
 const novelStudio = await import("./engine/workshop-novel.mjs");
 
@@ -221,6 +223,7 @@ initAsrApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, httpJsonFetch }
 initDshKeys({ dshWebPort: 3080, readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, ModelRuntime, refreshModelList, setModelList: (l) => { modelList = l; }, getDefaultModel: () => defaultModel, setDefaultModel: (m) => { defaultModel = m; }, setModelRuntime: (r) => { modelRuntime = r; }, getModelRuntime: () => modelRuntime, keepModels: KEEP_MODELS, resetModelHealth }); // dsh/keys/模型管理注入
 initStatsApi({ getAgentDir, cwd: CONFIG.cwd, DefaultResourceLoader, openSession, ensureAgent, getDefaultModel: () => defaultModel }); // 统计/技能/导出注入（08-29 补注入 openSession/ensureAgent——三个 handler 裸引用坏了 9 天）
 initSessionDb({ agentDir: getAgentDir(), cwd: CONFIG.cwd }); // 会话数据库（编号/健康度/标签）
+initRecallApi({ agentDir: getAgentDir(), chat: unifiedChat, getDefaultModel: () => defaultModel }); // 跨会话回忆（09-04，Hermes FTS5 思想）
 initModelClient({ readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, resolveAuth, getModelList: () => modelList, getDefaultModel: () => defaultModel, unifiedChat, detectMediaIntents, generateMediaAsync, extractMediaPrompt, readEntriesFromFile, createSseWriter }); // 直调模型客户端注入
 initSelfHeal({ directChat, runGit: (...args) => runGit(...args), cwd: CONFIG.cwd, getModelList: () => modelList, getDefaultModel: () => defaultModel, piPackage: CONFIG.piPackage }); // 自愈/更新/设计器注入（REPAIR_BACKUP_FILES 已随块迁入模块）
 initImproveApi({ root: CONFIG.cwd, statsProvider: null, healProvider: null }); // 自我改进提案（2026-08-21）
@@ -1432,6 +1435,13 @@ const API_ROUTES = [
   ["GET", "/api/sessions/db/list", (res) => handleDbList(res)],
   ["GET", "/api/sessions/db/stats", (res) => handleDbStats(res)],
   ["POST", "/api/sessions/db/rebuild", (res) => handleDbRebuild(res)],
+  // ── 跨会话回忆（Hermes 闭环第三件）──
+  ["POST", "/api/recall/rebuild", (res) => json(res, 200, rebuildIndex())],
+  ["GET", "/api/recall", (res, req, url) => handleRecall(res, url)],
+  ["POST", "/api/recall/ask", async (res, req) => { const b = await readBody(req); return handleRecallAsk(res, b); }],
+  ["GET", "/api/recall/summaries", (res) => handleSummaries(res)],
+  ["POST", "/api/recall/summarize", async (res) => json(res, 200, await buildSummaries({ count: 5 }))],
+  ["GET", "/api/recall/stats", (res) => json(res, 200, recallStats())],
   ["POST", "/api/sessions/db/sanitize", async (res, req) => handleDbSanitize(res, await readBody(req))],
   ["PATCH", "/api/sessions/db/meta", async (res, req) => handleDbMeta(res, await readBody(req))],
   // ── 会话 ──
@@ -1779,6 +1789,9 @@ const API_ROUTES = [
   ["GET", "/api/gallery", (res) => gallery.handleGalleryList(wsCtx(), res)],
   ["GET", "/api/gallery/deck", (res, req) => gallery.handleGalleryDeck(wsCtx(), res, req)],
   ["GET", "/api/gallery/page", (res, req) => gallery.handleGalleryPage(wsCtx(), res, req)],
+  // 主题蒸馏（网址/本地HTML → theme CSS 入库 ppt-html templates）
+  ["GET", "/api/workshop/ppt/themes", (res) => distill.handlePptThemes(wsCtx(), res)],
+  ["POST", "/api/workshop/ppt/distill", async (res, req) => distill.handlePptDistill(wsCtx(), res, await readBody(req))],
   // PPT 设计稿模式（HTML 路线，2026-09-03）
   ["POST", "/api/workshop/ppt/html", async (res, req) => workshop.handleWorkshopPptHtml(wsCtx(), res, await readBody(req))],
   ["POST", "/api/workshop/ppt-html/save", async (res, req) => workshop.savePptHtmlPage(wsCtx(), res, await readBody(req))],

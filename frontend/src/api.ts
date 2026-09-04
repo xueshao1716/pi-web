@@ -285,6 +285,9 @@ export const WorkshopApi = {
   galleryList: () => api<{ items: { id: string; kind: 'deck' | 'pptx'; dir: string; title: string; pages: number; themeKey: string; ts: number; cover: string }[] }>('/api/gallery'),
   galleryDeckUrl: (dir: string, file: string) => `/api/gallery/page?dir=${encodeURIComponent(dir)}&file=${encodeURIComponent(file)}`,
   galleryDeck: (dir: string) => api<{ dir: string; pages: { file: string; title: string; layout: string; html: string }[] }>(`/api/gallery/deck?dir=${encodeURIComponent(dir)}`),
+  pptThemes: () => api<{ themes: { key: string; label: string; builtin: boolean }[] }>('/api/workshop/ppt/themes'),
+  distillTheme: (body: { url?: string; htmlPath?: string; name?: string }) =>
+    api<{ ok: boolean; key: string; label: string; tokens: { bg: string; fg: string; muted: string; accent: string; accent2: string; bgIsDark: boolean } }>('/api/workshop/ppt/distill', { method: 'POST', body, timeoutMs: 30000 }),
   // PPT 大纲编辑后本地重建 .pptx（2026-09-03 设计干预）
   rebuildPptx: (body: { jsonPath: string; slides: { layout: string; title: string; content: string[] }[] }, opts?: any) =>
     api<{ ok: boolean; file: { name: string; path: string; size: number }; slides: unknown[] }>('/api/workshop/pptx/rebuild', { method: 'POST', body, ...opts }),
@@ -436,7 +439,15 @@ export const MemoryNudgeApi = {
   dismiss: (id: string) => api<{ ok?: boolean }>('/api/memorynudge/dismiss', { method: 'POST', body: { id } }),
 }
 
-// 记忆进化压缩（EvoX MemoryOptimizer）：早期条目摘要化 + 原文归档
+// 跨会话回忆（Hermes FTS5 思想零依赖落地）：bigram 倒排检索 + LLM 综合回答
+export const RecallApi = {
+  ask: (q: string) => api<{ answer?: string; hits: any[]; error?: string }>('/api/recall/ask', { method: 'POST', body: { q }, timeoutMs: 120000 }),
+  search: (q: string) => api<{ q: string; total: number; hits: any[] }>(`/api/recall?q=${encodeURIComponent(q)}`),
+  rebuild: () => api<{ ok?: boolean; total: number; rebuilt: number; snippets: number; grams: number }>('/api/recall/rebuild', { method: 'POST', body: {}, timeoutMs: 120000 }),
+  stats: () => api<{ sessions: number; snippets: number; grams: number; summaries: number; lastRebuild: string | null }>('/api/recall/stats'),
+  summaries: () => api<{ summaries: Record<string, string>; generatedAt: string | null }>('/api/recall/summaries'),
+  summarize: () => api<{ ok?: boolean; generated: number; totalKnown: number; error?: string }>('/api/recall/summarize', { method: 'POST', body: {}, timeoutMs: 300000 }),
+}
 export const MemCompressApi = {
   analyze: () => api<{ total?: number; fresh?: number; old?: number; oldest?: string; worthIt?: boolean; error?: string }>('/api/memcompress/analyze'),
   propose: () => api<{ ok?: boolean; id?: string; beforeCount?: number; archiveCount?: number; error?: string }>('/api/memcompress/propose', { method: 'POST', body: {}, timeoutMs: 180000 }),
