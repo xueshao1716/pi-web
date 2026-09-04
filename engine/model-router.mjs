@@ -83,7 +83,9 @@ function findLive(provider, re) {
 export function pickFallbackDefault() {
   const defaultModel = _getDefaultModel();
   if (defaultModel && !isModelBlocked(defaultModel)) return defaultModel;
-  return findLive("sensenova", /flash-lite/i)
+  // 用户定（2026-09-04）：默认模型已指向 Agnes 旗舰；冷却时先落 agnes-flash，再走免费通道
+  return findLive("agnes", /2\.5-flash/i)
+    || findLive("sensenova", /flash-lite/i)
     || findLive("nvidia", /llama-3\.1-8b/i)
     || findLive("volces-ark", /ark-code/i)
     || defaultModel; // 全部冷却时仍返回 defaultModel（宁可重试已知模型，不可无模型可用）
@@ -96,6 +98,7 @@ export function pickFallbackExcluding(excludeModel) {
   // 2026-08-27 调序：ox-alpha 已下架；小米不再优先——商汤 → 智谱glm-flash → 小米
   // （之前只有 flash-lite 兜底，mimo 复读时切去更弱的模型，体验差）
   const cands = [
+    findLive("agnes", /2\.5-flash/i),
     findLive("sensenova", /flash-lite/i),
     findLive("zai-coding-cn", /glm-5\.3-flash/i),
     findLive("xiaomi-token-plan-cn", /mimo-v2\.5$/i),
@@ -141,7 +144,8 @@ export function classifyTaskComplexity(text) {
 // flash 主力候选（2026-08-27 用户定：小米太垃圾不再优先）——
 // 商汤 flash-lite（免费实测稳）→ 智谱 glm-5.3-flash（coding 套餐免费）→ 小米 mimo → ocGo flash → nvidia → ark
 function flashCandidate() {
-  return findLive("sensenova", /flash-lite/i)
+  return findLive("agnes", /2\.5-flash/i)
+    || findLive("sensenova", /flash-lite/i)
     || findLive("zai-coding-cn", /glm-5\.3-flash/i)
     || findLive("xiaomi-token-plan-cn", /mimo-v2\.5$/i)
     || ocGoCandidate(/deepseek-v4-flash/i)
@@ -153,7 +157,9 @@ function flashCandidate() {
 // ⚠️ 2026-08-19 修正：千问不再作为 pro（它已是 flash 主力）——否则"升级"是假升级。
 //   真 pro = ocGo deepseek-v4-pro（8/23 套餐恢复后）→ ark（thinking 空回复，末位）。（mimo-pro 已摘除）
 export function routeProCandidate() {
-  return ocGoCandidate(/deepseek-v4-pro/i)
+  // 用户定（2026-09-04）：Agnes 旗舰 agnes-2.5-pro 首选 pro（付费已购），ocGo 套餐随后
+  return findLive("agnes", /2\.5-pro$/i)
+    || ocGoCandidate(/deepseek-v4-pro/i)
     || findLive("volces-ark", /ark-code/i);
 }
 

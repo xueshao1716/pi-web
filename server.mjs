@@ -258,8 +258,10 @@ if (CONFIG.model) {
   defaultModel = modelList.find(m => `${m.provider}/${m.id}` === CONFIG.model) || undefined;
 }
 if (!defaultModel) {
-  // 用户定：不再锁定小米(mimo太垃圾)为第一。优先商汤 flash-lite(免费主力)，再火山方舟，最后第一个。
-  defaultModel = modelList.find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id))
+  // 用户定（2026-09-04）：Agnes 旗舰 agnes-2.5-pro 作为默认模型（付费套餐要用起来），
+  // 降级链保留商汤/火山/智谱免费通道。
+  defaultModel = modelList.find(m => m.provider === "agnes" && /2\.5-pro$/i.test(m.id))
+    || modelList.find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id))
     || modelList.find(m => m.provider === "volces-ark" && /ark-code/i.test(m.id))
     || modelList.find(m => m.provider === "zai-coding-cn" && /glm-5\.3-flash/i.test(m.id))
     || modelList.find(m => m.provider === "deepseek" && /v4-flash/i.test(m.id))
@@ -1888,7 +1890,7 @@ const server = http.createServer(async (req, res) => {
     // P2 CSP 加固：React 版无内联脚本 → 去掉 script-src unsafe-inline；vanilla 版保留（有内联 <script>）
     const isVanillaReq = req.url?.includes("vanilla=");
     const scriptSrc = isVanillaReq ? "script-src 'self' 'unsafe-inline'" : "script-src 'self'";
-    res.setHeader("Content-Security-Policy", `default-src 'self'; ${scriptSrc}; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' ws: wss: http://127.0.0.1:10002 http://127.0.0.1:9000 ws://127.0.0.1:10001 ws://127.0.0.1:9000 https://fastly.jsdelivr.net https://cubism.live2d.com https://v1.hitokoto.cn; worker-src 'self' blob:; font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com; frame-ancestors 'none'`);
+    res.setHeader("Content-Security-Policy", `default-src 'self'; ${scriptSrc}; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.loli.net; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' ws: wss: http://127.0.0.1:10002 http://127.0.0.1:9000 ws://127.0.0.1:10001 ws://127.0.0.1:9000 https://fastly.jsdelivr.net https://cubism.live2d.com https://v1.hitokoto.cn; worker-src 'self' blob:; font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com https://fonts.loli.net https://gstatic.loli.net; frame-ancestors 'none'`);
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Referrer-Policy", "no-referrer");
