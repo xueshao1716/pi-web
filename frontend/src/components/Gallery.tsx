@@ -45,7 +45,7 @@ export default function Gallery() {
       </div>
       {openDir && (
         <div className="fixed inset-0 z-[var(--pi-z-viewer)] bg-black/80 flex items-start justify-center p-4 sm:p-8 overflow-y-auto" onClick={() => setOpenDir(null)}>
-          <div className="w-full max-w-5xl panel !bg-pi-bg !p-4 space-y-3 rounded-pi-lg" onClick={e => e.stopPropagation()}>
+          <div className="w-[min(96vw,1600px)] max-h-[94vh] overflow-y-auto panel !bg-pi-bg !p-4 space-y-3 rounded-pi-lg" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2">
               <span className="text-[13px] font-medium text-pi-text truncate flex-1">{openItem?.title || openDir}</span>
               <button className="btn-tool !py-1" onClick={() => setOpenDir(null)}><ChevronDown className="w-4 h-4" />收起</button>

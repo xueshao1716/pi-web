@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Printer, Pencil, Check, Loader2, X, Play, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Printer, Pencil, Check, Loader2, X, Play, ChevronLeft, ChevronRight, Maximize } from 'lucide-react'
 import { WorkshopApi } from '../api'
 
 // ── PPT 设计稿工作室（2026-09-03，对标扣子/Gamma 网页 PPT）──
@@ -34,6 +34,7 @@ export default function PptStudio({ pages, dir, onSaved }: {
   // 放映模式（全屏翻页播放）
   const [playing, setPlaying] = useState(false)
   const stageRef = useRef<HTMLDivElement>(null)
+  const fullRef = useRef<HTMLDivElement>(null)
   const [fscale, setFscale] = useState(1)
 
   useEffect(() => {
@@ -163,7 +164,7 @@ export default function PptStudio({ pages, dir, onSaved }: {
 
       {/* 大预览 + 编辑面板 */}
       <div className="grid lg:grid-cols-[1fr_260px] gap-3 items-start">
-        <div className="rounded-pi-md overflow-hidden border border-pi-border-soft bg-black/20 relative">
+        <div ref={fullRef} className="ppt-stage rounded-pi-md overflow-hidden border border-pi-border-soft bg-black/20 relative">
           <iframe key={cur.file + (editing ? '-edit' : '')} srcDoc={editing && draft ? draft.html : pages[active].html}
             style={{ width: '100%', aspectRatio: '1280/720', border: 0, display: 'block' }} sandbox="" title={cur.title} />
           {!editing && (
@@ -172,6 +173,17 @@ export default function PptStudio({ pages, dir, onSaved }: {
               <span className="w-14 h-14 rounded-full bg-black/45 text-white flex items-center justify-center opacity-0 group-hover/play:opacity-100 transition-opacity">
                 <Play className="w-7 h-7" />
               </span>
+            </button>
+          )}
+          {!editing && (
+            <button className="absolute top-2 right-2 p-2 rounded-pi-md bg-black/50 text-white/85 hover:text-white hover:bg-black/70 opacity-0 group-hover/play:opacity-100 transition-opacity"
+              title="全屏预览（Esc 退出）" onClick={(e) => {
+                e.stopPropagation()
+                const el = fullRef.current as any
+                if (el?.requestFullscreen) el.requestFullscreen().catch(() => setPlaying(true))
+                else setPlaying(true)
+              }}>
+              <Maximize className="w-5 h-5" />
             </button>
           )}
         </div>

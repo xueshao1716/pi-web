@@ -1290,3 +1290,39 @@ button:focus:not(:focus-visible) { outline: none; }
 
 /* 欢迎页空态渐变场（2026-09-03）：GradientField 铺底层时欢迎页自身退透明，让 3D 渐变透出来 */
 .chat-welcome--field { background: transparent; }
+
+/* ══ 水墨主题特化（2026-09-03，手写区勿入生成区块）：宣纸纹理 + 光斑收敛 ══ */
+html[data-theme="shuimo"] { color-scheme: light; }
+[data-theme="shuimo"] body {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .04 0'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+/* 水墨忌艳：WebGL 光斑在宣纸上收敛成淡墨 */
+[data-theme="shuimo"] canvas[aria-hidden="true"] { opacity: .45; }
+/* 玻璃面板去冷调：宣纸白替代玻璃白 */
+[data-theme="shuimo"] .glass,
+[data-theme="shuimo"] .glass-strong { background: rgba(252, 250, 244, 0.78); }
+[data-theme="shuimo"] .glass-hi { background: rgba(252, 250, 244, 0.92); }
+[data-theme="shuimo"] body::before { opacity: .25; }
+
+/* 水墨·卷轴签列头：工作台泳道列头化作横卷轴，两端露墨木轴杆 */
+[data-theme="shuimo"] .lane-head {
+  position: relative;
+  background: linear-gradient(90deg, rgba(58,50,42,.05), rgba(252,250,244,.55) 18%, rgba(252,250,244,.55) 82%, rgba(58,50,42,.05));
+  border-radius: 3px;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+[data-theme="shuimo"] .lane-head::before,
+[data-theme="shuimo"] .lane-head::after {
+  content: ""; position: absolute; top: 50%; transform: translateY(-50%);
+  width: 5px; height: 18px; border-radius: 3px;
+  background: linear-gradient(180deg, #4A4138, #2E2822 55%, #4A4138);
+  box-shadow: 0 1px 2px rgba(58,50,40,.4);
+}
+[data-theme="shuimo"] .lane-head::before { left: 0; }
+[data-theme="shuimo"] .lane-head::after { right: 0; }
+[data-theme="shuimo"] .lane-head span[class*="rounded-pi-pill"] { color: var(--pi-accent); }
+
+/* PPT 大预览原生全屏：16:9 适配居中，黑底 */
+.ppt-stage:fullscreen { display: flex; align-items: center; justify-content: center; background: #000; border: 0; border-radius: 0; }
+.ppt-stage:fullscreen iframe { width: min(100vw, calc(100vh * 16 / 9)) !important; height: auto !important; aspect-ratio: 1280 / 720; }
