@@ -54,7 +54,7 @@ test('endpoint resolution uses the configured remote API base', async () => {
   assert.doesNotMatch(api, /fetch\(_apiBase\s*\+/, 'all API requests must use apiUrl()')
   assert.doesNotMatch(sessionDb, /fetch\(['"]\/api\/sessions\/db/)
   assert.doesNotMatch(sessionDb, /body:\s*JSON\.stringify\(/, 'database mutations must pass objects to api()')
-  assert.match(sessionDb, /import \{ api, SessionsApi \} from ['"]\.\.\/api['"]/) 
+  assert.match(sessionDb, /import \{ api, SessionsApi(?:, RecallApi)? \} from ['"]\.\.\/api['"]/) 
   assert.match(tui, /webSocketUrl\(/)
   assert.doesNotMatch(tui, /location\.host\/ws\/tui/)
   const store = await read('frontend', 'src', 'store.tsx')
