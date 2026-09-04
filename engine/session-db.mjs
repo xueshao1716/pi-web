@@ -8,13 +8,13 @@ import { sanitizeSessionFile } from "./session-sanitize.mjs";
 import { getSessionList } from "./session-files.mjs";
 
 let _agentDir = "", _cwd = "";
-let _db = null; // { seqMap:{id:seq}, tags:{id:[]}, pinned:{id:true}, lastRebuild }
+let _db = null; // { seqMap:{id:seq}, tags:{id:[]}, pinned:{id:true}, messageCount:{id:n}, lastRebuild }
 
 function dbFile() { return path.join(_agentDir, "session-db.json"); }
 function loadDb() {
   if (_db) return _db;
   try { _db = JSON.parse(fs.readFileSync(dbFile(), "utf8")); } catch { _db = {}; }
-  _db.seqMap ||= {}; _db.tags ||= {}; _db.pinned ||= {};
+  _db.seqMap ||= {}; _db.tags ||= {}; _db.pinned ||= {}; _db.messageCount ||= {};
   return _db;
 }
 function saveDb() { try { fs.writeFileSync(dbFile(), JSON.stringify(_db, null, 1)); } catch {} }
@@ -39,13 +39,13 @@ export function handleDbList(res) {
   const db = loadDb();
   const rows = [];
   for (const s of getSessionList()) {
-    let size = 0;
-    try { size = fs.statSync(s.file).size; } catch {}
+    let size = 0, mtimeIso = null;
+    try { const st = fs.statSync(s.file); size = st.size; mtimeIso = new Date(st.mtimeMs).toISOString(); } catch {}
     rows.push({
       id: s.id, name: s.name || "(未命名)", cwd: s.cwd || "",
       sizeBytes: size, health: healthOf(size),
-      messageCount: null, // 行数只在 rebuild 时算（快）
-      mtime: s.mtime || null,
+      messageCount: db.messageCount[s.id] ?? null, // rebuild 时算并持久化，这里读缓存（2026-09-04 修“永远—”）
+      mtime: mtimeIso, // statSync 同次顺手取（此前遗漏永远 —）
       seq: db.seqMap[s.id] || null,
       pinned: !!db.pinned[s.id], tags: db.tags[s.id] || [],
     });
@@ -63,8 +63,9 @@ export function handleDbRebuild(res) {
     live.add(s.id);
     if (!db.seqMap[s.id]) { db.seqMap[s.id] = nextSeq(); added++; }
     let size = 0;
-    try { size = fs.statSync(s.file).size; } catch {}
+    try { const st = fs.statSync(s.file); size = st.size; } catch {}
     s.sizeBytes = size; s.health = healthOf(size); s.messageCount = countLines(s.file);
+    db.messageCount[s.id] = s.messageCount; // 持久化（此前算完即丢，下次 list 全变 —，2026-09-04 修）
   }
   for (const id of Object.keys(db.seqMap)) if (!live.has(id)) delete db.seqMap[id];
   db.lastRebuild = new Date().toISOString();
