@@ -4,6 +4,7 @@ import useSWR from 'swr'
 import { WorkshopApi, withFileToken, apiUrl } from '../api'
 import PptOutlineEditor, { type OutlineSlide } from './PptOutlineEditor'
 import PptStudio, { type DeckPage } from './PptStudio'
+import Gallery from './Gallery'
 
 // ── 专项长文生成器（SSE 长任务，收编自 vanilla）：08-27 起仅承载 PPT（小说已迁 NovelStudioView 书架式）──
 
@@ -110,6 +111,9 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
 
   return (
     <div className="space-y-4">
+      {/* 作品集（设计稿 deck，扫描 workshop-out 自动收录）——创作与作品同屏 */}
+      <Gallery />
+
       {/* 往期生成（可载入大纲再编辑/重建）*/}
       {(history.data?.entries?.length ?? 0) > 0 && (
         <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
