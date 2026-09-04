@@ -16,6 +16,8 @@ const DEFAULT_STATE = { valence: 0.2, arousal: 0.3, dominance: 0.55, intensity: 
 const states = new Map(); // sessionId -> state
 
 let wsRoot = null;
+let _memoryNudgeHook = null; // 情绪→记忆联动钩子（09-03）：residue 跨阈值时由 server 注入
+export function setMemoryNudgeHook(fn) { _memoryNudgeHook = fn; }
 
 // 初始化：server 启动时调用，传入工作空间根
 export function init(root) {
@@ -71,7 +73,19 @@ export function updateEmotion(key, message) {
   // 长期情绪残留（xi-system EmotionResidue）：温暖/伤害/好奇跨会话累积，慢速淡忘
   const r = st.residue || (st.residue = { warmth: 0, hurt: 0, curiosity: 0 });
   const RESIDUE_UP = { user_happy: "warmth", task_accomplish: "warmth", user_anxious: "hurt", user_frustrated: "hurt", alert_risk: "hurt", task_deep: "curiosity" };
+  const MEMORY_THRESHOLDS = { hurt: 0.4, warmth: 0.5, curiosity: 0.5 }; // 与 emotionDirective 的行为阈值一致
   for (const t of tags) { const k = RESIDUE_UP[t]; if (k && r[k] !== undefined) r[k] = Math.min(1, r[k] + 0.05); }
+  // 情绪→记忆联动：residue 跨过行为阈值时（跨过瞬间只发一次），自动提案记忆写入
+  if (_memoryNudgeHook) {
+    st.memNudged = st.memNudged || {};
+    for (const k of ["hurt", "warmth", "curiosity"]) {
+      const th = MEMORY_THRESHOLDS[k];
+      if (r[k] >= th && !st.memNudged[k]) {
+        st.memNudged[k] = true; // 本轮累积周期只发一次；衰减后重新爬升可再发
+        try { _memoryNudgeHook({ subtype: k === "hurt" ? "correction" : k, residue: r[k], message: text, sessionId: key }); } catch {}
+      }
+    }
+  }
   const nowR = Date.now();
   const lastRe = st.lastResidueAt || st.lastTalk || nowR;
   const ageDays = (nowR - lastRe) / 86400000;
@@ -83,6 +97,20 @@ export function updateEmotion(key, message) {
   st.lastResidueAt = st.lastResidueAt || nowR;
   // 基因联动：互动标签驱动基因 expression 微调（性格长期塑造）
   updateGenes(tags);
+  // 情绪潮汐记录（09-03）：有情绪事件才记，同会话 60s 节流；失败静默不影主流程
+  if (tags.length) {
+    const nowT = Date.now();
+    if (!st.lastTideAt || nowT - st.lastTideAt > 60_000) {
+      st.lastTideAt = nowT;
+      try {
+        if (wsRoot) {
+          const tideFile = path.join(wsRoot, "记忆", "情绪潮汐.jsonl");
+          fs.mkdirSync(path.dirname(tideFile), { recursive: true });
+          fs.appendFileSync(tideFile, JSON.stringify({ ts: nowT, key: String(key).slice(0, 24), v: +st.valence.toFixed(3), a: +st.arousal.toFixed(3), d: +st.dominance.toFixed(3), w: +r.warmth.toFixed(3), h: +r.hurt.toFixed(3), c: +r.curiosity.toFixed(3), tags }) + "\n", "utf8");
+        }
+      } catch {}
+    }
+  }
   return { state: st, tags };
 }
 
@@ -133,6 +161,21 @@ export function getSnapshot(key) {
 
 // 会话关闭清理
 export function clearEmotion(key) { states.delete(key); }
+
+// 情绪潮汐历史（09-03）：最近 N 个情绪事件点，供工作台曲线展示
+export function getTide(limit = 300) {
+  try {
+    if (!wsRoot) return [];
+    const tideFile = path.join(wsRoot, "记忆", "情绪潮汐.jsonl");
+    if (!fs.existsSync(tideFile)) return [];
+    const lines = fs.readFileSync(tideFile, "utf8").trim().split("\n");
+    const pts = [];
+    for (let i = Math.max(0, lines.length - limit); i < lines.length; i++) {
+      try { pts.push(JSON.parse(lines[i])); } catch {}
+    }
+    return pts;
+  } catch { return []; }
+}
 
 // ══ 组合 facade：re-export 基因 / 技能基因（server.mjs 兼容，无需改 import 侧）══
 export { geneBias, updateGenes, geneDirective, getGenome, proposeBaselineChange, approveProposal, rejectProposal, rollbackSnapshot, autoProposeFromDrift } from "./gene.mjs";

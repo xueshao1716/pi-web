@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Database, RefreshCw, Search, Trash2, Pin, CheckSquare, Square, Pencil, ExternalLink, MessagesSquare } from 'lucide-react'
+import { Database, RefreshCw, Search, Trash2, Pin, CheckSquare, Square, Pencil, ExternalLink, MessagesSquare, Brain } from 'lucide-react'
 import EmptyState from '../components/EmptyState'
 import PageHeader from '../components/PageHeader'
 import { toast } from '../components/Toast'
 import { useApp } from '../store'
-import { api, SessionsApi } from '../api'
+import { api, SessionsApi, RecallApi } from '../api'
 
 // ── 会话数据库（08-29 真落地）：编号/健康度/大小/批量清理 ──
 // 后端 /api/sessions/db/*；健康 ok<1MB / large 1-5MB / oversized>5MB
@@ -38,11 +38,15 @@ export default function SessionDb() {
   const [busy, setBusy] = useState(false)
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const [sums, setSums] = useState<Record<string, string>>({})
+  const [sumBusy, setSumBusy] = useState(false)
 
   const load = async () => {
     const d = await api('/api/sessions/db/list').catch(() => null)
     if (d?.sessions) setRows(d.sessions)
     setStats(await api('/api/sessions/db/stats').catch(() => null))
+    const s = await RecallApi.summaries().catch(() => null)
+    if (s?.summaries) setSums(s.summaries)
   }
   useEffect(() => { load() }, [])
 
@@ -140,6 +144,24 @@ export default function SessionDb() {
           )}
         </div>
 
+        {/* 跨会话回忆（闭环第三件）：问过去，带出处 */}
+        <RecallPanel onOpenSession={openSession} sums={sums} sumBusy={sumBusy}
+          onGenSums={async () => {
+            setSumBusy(true)
+            try {
+              const before = Object.keys(sums).length
+              await RecallApi.summarize() // fire-and-forget：后台逐个生成，轮询看进度
+              toast('摘要生成已在后台开始（每次 5 个，约 3-5 分钟），完成后会话名下自动出现', 'ok')
+              const timer = setInterval(async () => {
+                const s = await RecallApi.summaries().catch(() => null)
+                if (s?.summaries && Object.keys(s.summaries).length > before) {
+                  clearInterval(timer); setSums(s.summaries); setSumBusy(false); toast('摘要批次完成', 'ok')
+                }
+              }, 15000)
+              setTimeout(() => { clearInterval(timer); setSumBusy(false) }, 10 * 60_000) // 10 分钟兜底
+            } catch (e: any) { toast('启动失败：' + (e?.message || e), 'error'); setSumBusy(false) }
+          }} />
+
         {!visible.length ? (
           <EmptyState icon={Database} title="没有匹配的会话" hint="调整搜索或健康筛选，也可以重建索引后再试。" />
         ) : (
@@ -185,6 +207,7 @@ export default function SessionDb() {
                             {r.id === currentSessionId && <span className="flex-shrink-0 px-1.5 py-0.5 rounded-pi-pill bg-pi-accent/15 text-pi-accent text-[10px]">当前</span>}
                           </button>
                         )}
+                        {sums[r.id] && !renaming?.id && sums[r.id] !== '(过短会话)' && <div className="text-[10px] text-pi-dim2 truncate max-w-[280px] mt-0.5" title={`摘要：${sums[r.id]}`}>{sums[r.id]}</div>}
                       </td>
                       <td className="p-2.5"><span className={`px-1.5 py-0.5 rounded-pi-sm text-[10px] font-medium ${hcls(r.health)}`}>{HEALTH[r.health]?.label}</span></td>
                       <td className="p-2.5 text-right font-mono text-pi-dim text-[11px]">{fmtSize(r.sizeBytes)}</td>
@@ -232,6 +255,7 @@ export default function SessionDb() {
                           ) : (
                             <button onClick={() => openSession(r)} className="mt-1 text-left min-w-0 w-full" title="打开会话">
                               <h2 className="text-[13px] font-medium text-pi-text break-words hover:text-pi-accent transition-colors">{r.name}</h2>
+                              {sums[r.id] && sums[r.id] !== '(过短会话)' && <div className="text-[10px] text-pi-dim2 mt-0.5" title={`摘要：${sums[r.id]}`}>{sums[r.id]}</div>}
                             </button>
                           )}
                         </div>
@@ -265,6 +289,84 @@ export default function SessionDb() {
         )}
         <p className="session-db-footnote text-[12px] text-pi-dim2 mt-5">点击名称打开会话；清理会截断超大推理签名和工具结果，防止上游 400 / 502；不会删除对话正文。删除会话请用行内删除按钮（两段确认）。</p>
       </div>
+    </div>
+  )
+}
+
+// ══ 跨会话回忆（09-04，Hermes 闭环第三件）：「上次那事怎么解决的？」══
+// bigram 倒排检索全量会话片段 → LLM 综合回答（注明来源会话）。只读，绝不写会话文件。
+function RecallPanel({ onOpenSession, sums, sumBusy, onGenSums }: { onOpenSession?: (r: Row) => void; sums?: Record<string, string>; sumBusy?: boolean; onGenSums?: () => void }) {
+  const [q, setQ] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [answer, setAnswer] = useState('')
+  const [hits, setHits] = useState<any[]>([])
+  const [stats, setStats] = useState<{ sessions: number; snippets: number } | null>(null)
+  const [building, setBuilding] = useState(false)
+
+  useEffect(() => { RecallApi.stats().then(setStats).catch(() => {}) }, [])
+  const buildIndex = async () => {
+    setBuilding(true)
+    try {
+      const r = await RecallApi.rebuild()
+      toast(`索引完成：${r.total} 会话 → ${r.snippets} 片段`, 'ok')
+      setStats({ sessions: r.total, snippets: r.snippets })
+    } catch { toast('索引构建失败', 'error') } finally { setBuilding(false) }
+  }
+  const ask = async () => {
+    if (!q.trim() || busy) return
+    setBusy(true); setAnswer(''); setHits([])
+    try {
+      const r = await RecallApi.ask(q.trim())
+      if (r.error) toast(r.error, 'error')
+      setAnswer(r.answer || ''); setHits(r.hits || [])
+    } catch (e: any) { toast('回忆失败：' + (e?.message || e), 'error') } finally { setBusy(false) }
+  }
+  const ready = stats && stats.snippets > 0
+  return (
+    <div className="panel !p-3.5 mb-4" data-slot="recall-panel">
+      <div className="flex items-center gap-2">
+        <Brain className="w-4 h-4 text-pi-accent" />
+        <span className="text-[13px] font-semibold text-pi-text">跨会话回忆</span>
+        <span className="text-[11px] text-pi-dim2">搜遍所有会话，带出处回答</span>
+        {stats && <span className="ml-auto text-[10px] text-pi-dim2">{stats.snippets > 0 ? `${stats.sessions} 会话 · ${stats.snippets} 片段已索引` : '尚未建索引'}</span>}
+      </div>
+      <div className="flex gap-2 mt-2.5">
+        <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && ask()}
+          placeholder={ready ? '问过去：上次主题全景图怎么改的？…' : '先构建索引，再问过去'}
+          aria-label="回忆搜索" className="flex-1 input-pi !py-1.5 text-[13px]" />
+        {!ready
+          ? <button className="btn-primary text-xs px-3 py-1.5 disabled:opacity-60" onClick={buildIndex} disabled={building}>{building ? '索引中…' : '构建索引'}</button>
+          : <button className="btn-primary text-xs px-3 py-1.5 disabled:opacity-60" onClick={ask} disabled={busy || !q.trim()}>{busy ? '回忆中…' : '回忆'}</button>}
+        {ready && onGenSums && (
+          <button className="btn-ghost text-xs px-3 py-1.5 disabled:opacity-60" onClick={onGenSums} disabled={sumBusy} title="LLM 给尚未摘要的会话生成一句话摘要，每次 5 个">{sumBusy ? '摘要中…' : '生成摘要'}</button>
+        )}
+      </div>
+      {ready && sums && (
+        <div className="text-[10px] text-pi-dim2 mt-1 px-1">已摘要 <b className="text-pi-dim">{Object.values(sums).filter(s => s !== '(过短会话)').length}</b> 个会话，显示在下方会话名下</div>
+      )}
+      {answer && (
+        <div className="mt-3 rounded-pi-md border border-pi-border-soft bg-pi-bg2/50 p-3">
+          <div className="text-[12px] text-pi-dim whitespace-pre-wrap leading-relaxed">{answer}</div>
+        </div>
+      )}
+      {hits.length > 0 && (
+        <div className="mt-2 space-y-1.5">
+          <div className="text-[10px] text-pi-dim2 px-1">命中片段（{hits.length}）</div>
+          {hits.map((h: any, i: number) => (
+            <div key={i} className="rounded-pi-md border border-pi-border-soft px-2.5 py-1.5 flex items-start gap-2">
+              <span className={`text-[9px] px-1 py-0.5 rounded-pi-pill flex-shrink-0 mt-0.5 ${h.role === 'user' ? 'bg-pi-accent-soft text-pi-accent' : 'bg-pi-bg3 text-pi-dim2'}`}>{h.role === 'user' ? '问' : '答'}</span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] text-pi-dim truncate">{h.text}</div>
+                <div className="text-[10px] text-pi-dim2 mt-0.5 flex items-center gap-1.5">
+                  <span className="truncate max-w-[240px]">{h.name || h.sid}</span>
+                  {h.ts && <span>· {String(h.ts).slice(5, 10)}</span>}
+                  {onOpenSession && <button className="text-pi-accent hover:underline flex-shrink-0" onClick={() => onOpenSession({ id: h.sid, name: h.name, cwd: '', sizeBytes: 0, health: 'ok', messageCount: null, mtime: null, seq: null, pinned: false, tags: [] })}>打开会话 →</button>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

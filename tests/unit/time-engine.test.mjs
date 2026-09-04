@@ -94,6 +94,36 @@ test("once 任务执行后自动转 done；旧格式文件自动迁移补 state"
   cleanup();
 });
 
+test("任务成功且结果够长时触发 onTaskDone", async () => {
+  let hit = null;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "piweb-tasks-"));
+  const te = createTimeEngine(async () => "x".repeat(130), {
+    file: path.join(dir, "time-tasks.json"),
+    onTaskDone: (info) => { hit = info; },
+  });
+  const r = te.register({ type: "daily", at: "23:59", prompt: "沉淀测试任务" });
+  await te.runNow(r.id);
+  await new Promise((res) => setTimeout(res, 20));
+  assert.ok(hit, "成功长结果应触发沉淀钩子");
+  assert.equal(hit.trigger, "time-task");
+  assert.ok(hit.result.length >= 120);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("结果过短不触发 onTaskDone", async () => {
+  let hit = null;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "piweb-tasks-"));
+  const te = createTimeEngine(async () => "短", {
+    file: path.join(dir, "time-tasks.json"),
+    onTaskDone: (info) => { hit = info; },
+  });
+  const r = te.register({ type: "daily", at: "23:59", prompt: "短结果" });
+  await te.runNow(r.id);
+  await new Promise((res) => setTimeout(res, 20));
+  assert.equal(hit, null);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test("isDue 对非 active 状态直接返回 false", () => {
   const { te, cleanup } = tmpEngine(null);
   const r = te.register({ type: "daily", at: "09:00", prompt: "x" });

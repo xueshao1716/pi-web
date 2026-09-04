@@ -1,16 +1,16 @@
 import { useState } from 'react'
-import { FlaskConical, Puzzle, StickyNote, TrendingUp, Sprout, Check, ChevronDown, ChevronRight } from 'lucide-react'
+import { FlaskConical, Puzzle, StickyNote, TrendingUp, Sprout, Dna, Check, ChevronDown, ChevronRight, Loader2, HeartPulse, Archive as ArchiveIcon } from 'lucide-react'
 import EmptyState from '../components/EmptyState'
 import PageHeader from '../components/PageHeader'
 import SectionHeader from '../components/SectionHeader'
 import type { LucideIcon } from 'lucide-react'
 import useSWR from 'swr'
-import { RefineApi, SkillsApi, PromptsApi, ImprovementsApi } from '../api'
+import { RefineApi, SkillsApi, PromptsApi, ImprovementsApi, EvolutionApi, SkillNudgeApi, MemoryNudgeApi, MemCompressApi } from '../api'
 import GardenerView from '../components/GardenerView'
 
 // ── 应用中心（Phase 3）：经验沉淀台 / 技能库 / 提示词库 / 改进提案 ──
 
-type Tab = 'refine' | 'skills' | 'prompts' | 'improve' | 'gardener'
+type Tab = 'refine' | 'skills' | 'prompts' | 'improve' | 'gardener' | 'evolution'
 type Tool = { key: Tab; icon: LucideIcon; label: string; description: string }
 
 const TOOL_GROUPS: { label: string; tools: Tool[] }[] = [
@@ -26,6 +26,7 @@ const TOOL_GROUPS: { label: string; tools: Tool[] }[] = [
     label: '系统改进',
     tools: [
       { key: 'improve', icon: TrendingUp, label: '改进提案', description: '分析运行数据，整理仍需处理的系统改进点。' },
+      { key: 'evolution', icon: Dna, label: '进化引擎', description: '从真实执行轨迹中反思失败原因，进化提示词模板（人工审批后写回）。' },
       { key: 'gardener', icon: Sprout, label: '记忆园丁', description: '查看记忆健康状态，处理重复、冲突与待整理内容。' },
     ],
   },
@@ -227,10 +228,294 @@ export default function Apps() {
               {tab === 'skills' && <SkillsView />}
               {tab === 'prompts' && <PromptsView />}
               {tab === 'improve' && <ImproveView />}
+              {tab === 'evolution' && <EvolutionView />}
               {tab === 'gardener' && <GardenerView />}
             </div>
           </main>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ── 进化引擎视图（09-03）：反思式提示词进化，人工审批红线 ──
+function EvolutionView() {
+  const { data: plist } = useSWR('prompts', () => PromptsApi.list())
+  const { data: propsals, mutate } = useSWR('evolution', () => EvolutionApi.list())
+  const [target, setTarget] = useState('')
+  const [busy, setBusy] = useState('')
+  const [msg, setMsg] = useState('')
+  const [openVar, setOpenVar] = useState('')
+  const templates = plist?.prompts || []
+  const items = propsals?.proposals || []
+
+  const propose = async () => {
+    if (!target) { setMsg('先选一个要进化的模板'); return }
+    setBusy(target); setMsg('反思中：抽轨迹 → 分析失败原因 → 生成候选（约 30-90 秒）…')
+    try {
+      const r = await EvolutionApi.propose(target)
+      setMsg(r.ok ? `已生成 ${r.variants} 个候选（基于 ${r.traces} 条纠正轨迹）：${r.analysis || ''}` : `进化失败：${r.error || '未知'}`)
+      await mutate()
+    } catch (e: any) { setMsg('进化失败：' + (e?.message || e)) } finally { setBusy('') }
+  }
+  const act = async (kind: 'apply' | 'dismiss', id: string, vi = 0) => {
+    setBusy(id + vi)
+    try {
+      if (kind === 'apply') {
+        const r = await EvolutionApi.apply(id, vi)
+        setMsg(r.ok ? `已写回（原版备份：${r.backup}）` : `应用失败：${r.error}`)
+      } else { await EvolutionApi.dismiss(id); setMsg('已驳回') }
+      await mutate()
+    } catch (e: any) { setMsg('操作失败：' + (e?.message || e)) } finally { setBusy('') }
+  }
+  const evaluate = async (id: string) => {
+    setBusy('eval-' + id)
+    try {
+      const r = await EvolutionApi.evaluate(id)
+      if (r.ok) {
+        setMsg('评测已在后台开始（出题 → 各变体作答 → 评分，约 5-10 分钟）。完成后提案卡会自动显示分数，页面会轮询刷新。')
+        // 轮询：评测写回提案池后自动刷出分数
+        const timer = setInterval(async () => {
+          const d = await EvolutionApi.list()
+          const p = (d.proposals || []).find((x: any) => x.id === id)
+          if (p?.evaluation) { clearInterval(timer); await mutate(); setMsg(`评测完成，最优：${p.evaluation.best}`); setBusy('') }
+        }, 20000)
+        setTimeout(() => clearInterval(timer), 15 * 60_000) // 15 分钟兜底
+      } else setMsg(`评测启动失败：${r.error || '未知'}`)
+    } catch (e: any) { setMsg('评测失败：' + (e?.message || e)); setBusy('') }
+  }
+  const scoreBadge = (label: string, avg?: number, best?: string) => (
+    <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-pi-pill border ${best === label ? 'bg-pi-success/15 text-pi-success border-pi-success/30' : 'bg-pi-bg3 text-pi-dim2 border-pi-border-soft'}`}>{label}: <b className="tabular-nums">{avg ?? '-'}</b></span>
+  )
+
+  return (
+    <div className="space-y-3">
+      <div className="panel !p-3.5">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Dna className="w-4 h-4 text-pi-accent" />
+          <span className="text-[13px] font-semibold text-pi-text">反思式进化</span>
+          <span className="text-[11px] text-pi-dim2">从会话轨迹里的纠正样本学习为什么失败，人工审批后才写回</span>
+        </div>
+        <div className="flex items-center gap-2 mt-2.5">
+          <select value={target} onChange={e => setTarget(e.target.value)} className="text-[13px] px-2 py-1.5 rounded-pi-md border border-pi-border bg-pi-bg1 text-pi-text min-w-[180px]">
+            <option value="">选择提示词模板…</option>
+            {templates.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+          </select>
+          <button className="btn-primary text-[13px] px-3 py-1.5 disabled:opacity-60 inline-flex items-center gap-1.5" onClick={propose} disabled={!!busy || !target}>
+            {busy === target ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />进化中…</> : <><Dna className="w-3.5 h-3.5" />开始进化</>}
+          </button>
+        </div>
+        {msg && <div className="text-[11px] text-pi-dim mt-2 leading-relaxed">{msg}</div>}
+      </div>
+
+      {items.map((it: any) => (
+        <div key={it.id} className="panel !p-3.5">
+          <div className="flex items-center gap-2">
+            <span className="text-[13px] font-semibold text-pi-text">{it.target?.name}</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-pi-pill border ${it.state === 'open' ? 'bg-pi-accent-soft text-pi-accent border-pi-accent/30' : it.state === 'applied' ? 'bg-pi-success/15 text-pi-success border-pi-success/30' : 'bg-pi-bg3 text-pi-dim2 border-pi-border-soft'}`}>{it.state === 'open' ? '待审' : it.state === 'applied' ? '已应用' : '已驳回'}</span>
+            <span className="ml-auto text-[10px] text-pi-dim2">{String(it.created).slice(5, 16).replace('T', ' ')} · {it.traces} 条轨迹</span>
+          </div>
+          {it.analysis && <div className="text-[12px] text-pi-dim mt-1.5 leading-relaxed">失败分析：{it.analysis}</div>}
+          {it.evaluation ? (
+            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+              <span className="text-[10px] text-pi-dim2">评测:</span>
+              {scoreBadge('原版', it.evaluation.original?.avg, it.evaluation.best)}
+              {(it.evaluation.variants || []).map((v: any) => scoreBadge(v.label, v.avg, it.evaluation.best))}
+              {it.evaluation.best && <span className="text-[10px] text-pi-success">★ 最优: {it.evaluation.best}</span>}
+            </div>
+          ) : null}
+          {it.state === 'open' && (
+            <button className="btn-tool text-[12px] mt-2 inline-flex items-center gap-1" onClick={() => evaluate(it.id)} disabled={busy === 'eval-' + it.id}>
+              {busy === 'eval-' + it.id ? <><Loader2 className="w-3 h-3 animate-spin" />评测中…</> : '跑评测（出题对比各变体）'}
+            </button>
+          )}
+          <div className="mt-2 space-y-2">
+            {(it.variants || []).map((v: any, vi: number) => (
+              <div key={vi} className="rounded-pi-md border border-pi-border-soft p-2.5">
+                <div className="flex items-center gap-2 cursor-pointer" onClick={() => setOpenVar(openVar === it.id + vi ? '' : it.id + vi)}>
+                  <Dna className="w-3.5 h-3.5 text-pi-dim" />
+                  <span className="text-[12px] font-medium text-pi-text">{v.label}</span>
+                  <span className="text-[11px] text-pi-dim2 truncate">{v.rationale}</span>
+                  <ChevronRight className={`w-3.5 h-3.5 ml-auto text-pi-dim2 transition-transform ${openVar === it.id + vi ? 'rotate-90' : ''}`} />
+                </div>
+                {openVar === it.id + vi && (
+                  <pre className="mt-2 pt-2 border-t border-pi-border-soft text-[11px] text-pi-dim whitespace-pre-wrap max-h-56 overflow-auto font-mono">{v.content}</pre>
+                )}
+                {it.state === 'open' && (
+                  <div className="flex gap-2 mt-2">
+                    <button className="btn-primary text-[12px] px-2.5 py-1 disabled:opacity-60" onClick={() => act('apply', it.id, vi)} disabled={busy === it.id + vi}>{busy === it.id + vi ? '写回中…' : '应用此变体'}</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          {it.state === 'open' && <button className="btn-tool text-[12px] mt-2" onClick={() => act('dismiss', it.id)}>整单驳回</button>}
+          {it.backup && <div className="text-[10px] text-pi-dim2 mt-1.5">原版备份：{it.backup}</div>}
+        </div>
+      ))}
+      {!items.length && <EmptyState icon={Dna} title="还没有进化提案" hint="选择模板点「开始进化」，小语会从近期会话里的纠正样本中学习" />}
+
+      {/* 技能自主沉淀（Hermes 闭环）：定时任务完成后自动评估 */}
+      <SkillNudgeSection />
+
+      {/* 记忆 nudge（情绪→记忆联动）：residue 跨阈值自动提案 */}
+      <MemoryNudgeSection />
+
+      {/* 记忆进化压缩（EvoX MemoryOptimizer）*/}
+      <MemCompressSection />
+    </div>
+  )
+}
+
+function MemCompressSection() {
+  const { data: ana, mutate: mutAna } = useSWR('memcompress-analyze', () => MemCompressApi.analyze())
+  const { data: lst, mutate: mutLst } = useSWR('memcompress-list', () => MemCompressApi.list())
+  const [busy, setBusy] = useState('')
+  const [msg, setMsg] = useState('')
+  const [openItem, setOpenItem] = useState('')
+  const proposals = (lst?.proposals || []).filter((p: any) => p.state === 'open')
+  const propose = async () => {
+    setBusy('propose'); setMsg('正在生成压缩提案：LLM 把早期条目压成要点摘要…')
+    try {
+      const r = await MemCompressApi.propose()
+      setMsg(r.ok ? `提案已生成：${r.archiveCount} 条早期条目 → 要点摘要` : `未能生成：${r.error}`)
+      await mutLst()
+    } catch (e: any) { setMsg('失败：' + (e?.message || e)) } finally { setBusy('') }
+  }
+  const act = async (kind: 'apply' | 'dismiss', id: string) => {
+    setBusy(id)
+    try {
+      if (kind === 'apply') {
+        const r = await MemCompressApi.apply(id)
+        setMsg(r.ok ? `已压缩：日志备份 ${r.backup}，原文归档 ${r.archiveFile}` : `失败：${r.error}`)
+        await mutAna()
+      } else { await MemCompressApi.dismiss(id); setMsg('已驳回') }
+      await mutLst()
+    } catch (e: any) { setMsg('操作失败：' + (e?.message || e)) } finally { setBusy('') }
+  }
+  return (
+    <div className="panel !p-3.5">
+      <div className="flex items-center gap-2">
+        <ArchiveIcon className="w-4 h-4 text-pi-accent" />
+        <span className="text-[13px] font-semibold text-pi-text">记忆进化压缩</span>
+        <span className="text-[11px] text-pi-dim2">14 天前的条目摘要化，原文归档，永不触碰近期记忆</span>
+      </div>
+      {msg && <div className="text-[11px] text-pi-dim mt-1.5">{msg}</div>}
+      {ana && !ana.error && (
+        <div className="flex items-center gap-3 mt-2 text-[11px] text-pi-dim2">
+          <span>共 <b className="text-pi-text">{ana.total}</b> 条</span>
+          <span>近期 {ana.fresh} 条（不动）</span>
+          <span>早期 {ana.old} 条{ana.worthIt ? '（可压缩）' : `（不足 20 条，暂不压缩）`}</span>
+          {ana.worthIt && <button className="btn-tool text-[11px]" onClick={propose} disabled={busy === 'propose'}>{busy === 'propose' ? '生成中…' : '生成压缩提案'}</button>}
+        </div>
+      )}
+      <div className="mt-2 space-y-2">
+        {proposals.map((p: any) => (
+          <div key={p.id} className="rounded-pi-md border border-pi-border-soft p-2.5">
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => setOpenItem(openItem === p.id ? '' : p.id)}>
+              <span className="text-[12px] font-medium text-pi-text">{p.beforeCount} → {p.keptCount} 条</span>
+              <span className="text-[11px] text-pi-dim2">{p.archiveCount} 条早期条目压缩为要点（{String(p.created).slice(5, 16).replace('T', ' ')}）</span>
+              <ChevronRight className={`w-3.5 h-3.5 ml-auto text-pi-dim2 transition-transform ${openItem === p.id ? 'rotate-90' : ''}`} />
+            </div>
+            {openItem === p.id && <pre className="mt-2 pt-2 border-t border-pi-border-soft text-[11px] text-pi-dim whitespace-pre-wrap max-h-56 overflow-auto">{p.summaryText}</pre>}
+            <div className="flex gap-2 mt-2">
+              <button className="btn-primary text-[12px] px-2.5 py-1 disabled:opacity-60" onClick={() => act('apply', p.id)} disabled={busy === p.id}>{busy === p.id ? '压缩中…' : '确认压缩（自动备份+归档）'}</button>
+              <button className="btn-tool text-[12px]" onClick={() => act('dismiss', p.id)}>驳回</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const MEM_LABELS: Record<string, string> = { correction: '纠正记忆', warmth: '温暖瞬间', curiosity: '探索方向' }
+function MemoryNudgeSection() {
+  const { data, mutate } = useSWR('memorynudge', () => MemoryNudgeApi.list())
+  const [busy, setBusy] = useState('')
+  const [msg, setMsg] = useState('')
+  const nudges = (data?.nudges || []).filter((n: any) => n.state === 'open')
+  const act = async (kind: 'apply' | 'dismiss', id: string) => {
+    setBusy(id)
+    try {
+      if (kind === 'apply') {
+        const r = await MemoryNudgeApi.apply(id)
+        setMsg(r.ok ? `已写入：${r.file}` : `写入失败：${r.error}`)
+      } else { await MemoryNudgeApi.dismiss(id); setMsg('已驳回') }
+      await mutate()
+    } catch (e: any) { setMsg('操作失败：' + (e?.message || e)) } finally { setBusy('') }
+  }
+  if (!nudges.length && !msg) return null
+  return (
+    <div className="panel !p-3.5">
+      <div className="flex items-center gap-2">
+        <HeartPulse className="w-4 h-4 text-pi-accent" />
+        <span className="text-[13px] font-semibold text-pi-text">情绪记忆提案</span>
+        <span className="text-[11px] text-pi-dim2">情绪残留跨过阈值时自动生成，人工确认写入记忆文件</span>
+        {nudges.length > 0 && <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-pi-pill bg-pi-accent-soft text-pi-accent">{nudges.length} 条待审</span>}
+      </div>
+      {msg && <div className="text-[11px] text-pi-dim mt-1.5">{msg}</div>}
+      <div className="mt-2 space-y-2">
+        {nudges.map((n: any) => (
+          <div key={n.id} className="rounded-pi-md border border-pi-border-soft p-2.5">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3 text-pi-dim border border-pi-border-soft">{MEM_LABELS[n.subtype] || n.subtype}</span>
+              <span className="text-[11px] text-pi-dim2">残留 {n.residue}</span>
+              <span className="ml-auto text-[10px] text-pi-dim2">{String(n.created).slice(5, 16).replace('T', ' ')}</span>
+            </div>
+            <div className="text-[12px] text-pi-dim mt-1.5 leading-relaxed">{n.draft}</div>
+            <div className="flex gap-2 mt-2">
+              <button className="btn-primary text-[12px] px-2.5 py-1 disabled:opacity-60" onClick={() => act('apply', n.id)} disabled={busy === n.id}>{busy === n.id ? '写入中…' : '写入记忆'}</button>
+              <button className="btn-tool text-[12px]" onClick={() => act('dismiss', n.id)}>驳回</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SkillNudgeSection() {
+  const { data, mutate } = useSWR('skillnudge', () => SkillNudgeApi.list())
+  const [busy, setBusy] = useState('')
+  const [openItem, setOpenItem] = useState('')
+  const [msg, setMsg] = useState('')
+  const nudges = (data?.nudges || []).filter((n: any) => n.state === 'open')
+  const act = async (kind: 'apply' | 'dismiss', id: string) => {
+    setBusy(id)
+    try {
+      if (kind === 'apply') {
+        const r = await SkillNudgeApi.apply(id)
+        setMsg(r.ok ? `技能已入库：${r.path}` : `入库失败：${r.error}`)
+      } else { await SkillNudgeApi.dismiss(id); setMsg('已驳回') }
+      await mutate()
+    } catch (e: any) { setMsg('操作失败：' + (e?.message || e)) } finally { setBusy('') }
+  }
+  if (!nudges.length && !msg) return null
+  return (
+    <div className="panel !p-3.5">
+      <div className="flex items-center gap-2">
+        <Sprout className="w-4 h-4 text-pi-accent" />
+        <span className="text-[13px] font-semibold text-pi-text">技能自主沉淀</span>
+        <span className="text-[11px] text-pi-dim2">定时任务完成后自动评估，人工确认入库</span>
+        {nudges.length > 0 && <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-pi-pill bg-pi-accent-soft text-pi-accent">{nudges.length} 条待审</span>}
+      </div>
+      {msg && <div className="text-[11px] text-pi-dim mt-1.5">{msg}</div>}
+      <div className="mt-2 space-y-2">
+        {nudges.map((n: any) => (
+          <div key={n.id} className="rounded-pi-md border border-pi-border-soft p-2.5">
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => setOpenItem(openItem === n.id ? '' : n.id)}>
+              <span className="text-[12px] font-medium text-pi-text">{n.name}</span>
+              <span className="text-[11px] text-pi-dim2 truncate">{n.description || n.label}</span>
+              <ChevronRight className={`w-3.5 h-3.5 ml-auto text-pi-dim2 transition-transform ${openItem === n.id ? 'rotate-90' : ''}`} />
+            </div>
+            {openItem === n.id && <pre className="mt-2 pt-2 border-t border-pi-border-soft text-[11px] text-pi-dim whitespace-pre-wrap max-h-56 overflow-auto font-mono">{n.skill}</pre>}
+            <div className="flex gap-2 mt-2">
+              <button className="btn-primary text-[12px] px-2.5 py-1 disabled:opacity-60" onClick={() => act('apply', n.id)} disabled={busy === n.id}>{busy === n.id ? '入库中…' : '确认入库'}</button>
+              <button className="btn-tool text-[12px]" onClick={() => act('dismiss', n.id)}>驳回</button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )

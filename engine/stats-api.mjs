@@ -85,6 +85,82 @@ export async function handleProviderStats(res) {
   json(res, 200, { providers, totalCost, updatedAt: new Date().toISOString() });
 }
 
+// ── 7 天用量分桶（09-03，工作台图表）：按 entry.timestamp 逐日聚合 usage，60s 内存缓存 ──
+let _dailyCache = { at: 0, data: null };
+export async function handleDailyStats(res) {
+  const now = Date.now();
+  if (_dailyCache.data && now - _dailyCache.at < 60_000) return json(res, 200, _dailyCache.data);
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now - i * 86400_000);
+    days.push({
+      key: d.toISOString().slice(0, 10),
+      label: `${d.getMonth() + 1}/${d.getDate()}`,
+      input: 0, output: 0, cost: 0, messages: 0, sessions: new Set(),
+    });
+  }
+  const byKey = new Map(days.map(d => [d.key, d]));
+  for (const file of scanSessionFiles()) {
+    try {
+      for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+        if (!line) continue;
+        let e; try { e = JSON.parse(line); } catch { continue; }
+        if (!e || e.type !== "message" || e.message?.role !== "assistant" || !e.message?.usage) continue;
+        const key = String(e.timestamp || "").slice(0, 10);
+        const d = byKey.get(key);
+        if (!d) continue;
+        const u = e.message.usage;
+        let c = u.cost;
+        if (c && typeof c === "object") c = c.total || c.input || 0;
+        d.input += u.input || 0; d.output += u.output || 0;
+        d.cost += typeof c === "number" ? c : 0; d.messages++;
+        if (e.id && typeof e.id === "string") d.sessions.add(e.id);
+      }
+    } catch {}
+  }
+  const out = {
+    days: days.map(d => ({ day: d.key, label: d.label, input: d.input, output: d.output, cost: Math.round(d.cost * 10000) / 10000, messages: d.messages, sessions: d.sessions.size })),
+    updatedAt: new Date().toISOString(),
+  };
+  _dailyCache = { at: now, data: out };
+  json(res, 200, out);
+}
+
+// ── subagent 异步运行（09-03，工作台泳道）：多候选根 best-effort 扫描 status.json ──
+// pi-subagents 的 asyncDirRoot 当前版本未固定落盘位置，这里扫描已知候选；无命中返回空数组，
+// 将来异步运行真正落盘后自动上板，无需再改前端。
+export async function handleSubagentRuns(res) {
+  const os = await import("node:os");
+  const home = os.homedir();
+  const roots = [
+    path.join(home, ".pi-subagents", "runs"),
+    path.join(home, ".pi", "agent", "async-runs"),
+    path.join(home, ".pi", "agent", "subagent-runs"),
+  ];
+  const runs = [];
+  const VALID = new Set(["running", "active", "waiting", "needs_attention", "paused", "completed", "failed", "done"]);
+  for (const root of roots) {
+    try {
+      for (const id of fs.readdirSync(root)) {
+        const sp = path.join(root, id, "status.json");
+        try {
+          const s = JSON.parse(fs.readFileSync(sp, "utf8"));
+          const state = String(s.state || s.status || "unknown");
+          runs.push({
+            id: s.runId || id,
+            agent: s.agent || s.agentName || "unknown",
+            state: VALID.has(state) ? state : "unknown",
+            task: String(s.task || s.taskPreview || s.label || "").slice(0, 120),
+            startedAt: s.startedAt || s.createdAt || null,
+            updatedAt: s.updatedAt || s.endedAt || fs.statSync(sp).mtime.toISOString(),
+          });
+        } catch {}
+      }
+    } catch {}
+  }
+  json(res, 200, { runs: runs.slice(0, 50) });
+}
+
 // 安全版会话统计：引擎 getSessionStats 遇到"无 usage 的 assistant 消息"会抛
 // "Cannot read properties of undefined (reading 'input')"（官方 bug），导致 stats 接口 500。
 // 这里自行聚合，跳过缺失 usage 的消息，保证任何会话都能拿到统计。

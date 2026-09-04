@@ -17,6 +17,7 @@ const HISTORY_CAP = 20;
 
 export function createTimeEngine(runner, opts = {}) {
   if (opts.file) TASKS_FILE = opts.file; // 可注入存储路径（测试用）
+  const onTaskDone = opts.onTaskDone || null; // 技能沉淀钩子（09-03）：任务成功完成后 fire-and-forget，不阻塞
   let tasks = [];
   let timer = null;
   const running = new Map(); // taskId → queueId（执行身份）
@@ -104,6 +105,10 @@ export function createTimeEngine(runner, opts = {}) {
       recordRun(t, queueId, startedAt, status, result);
       if (t.type === "once" && t.state === "active") t.state = "done"; // 一次性完成自动入档
       save();
+      // 技能自主沉淀钩子：任务成功且有实质结果 → 异步评估是否值得沉淀为技能（Hermes 闭环）
+      if (onTaskDone && status === "ok" && result && result.length >= 120) {
+        try { Promise.resolve(onTaskDone({ label: t.label || t.prompt?.slice(0, 60), result: String(result).slice(0, 4000), trigger: "time-task", taskId: t.id })).catch(() => {}); } catch {}
+      }
     }
     return { queueId, status };
   }

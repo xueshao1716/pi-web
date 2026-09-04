@@ -296,9 +296,10 @@ test('应用中心使用公共页头、桌面分组侧栏与移动单一选择�
   assert.match(apps, /<select[^>]*aria-label="选择应用工具"[^>]*className="[^"]*md:hidden/, '移动端必须使用单一紧凑工具选择器')
   assert.match(apps, /<select[^>]*aria-label="选择应用工具"[^>]*className="[^"]*min-h-11/, '移动端工具选择器触控高度不得小于 44px')
   for (const group of ['知识资产', '系统改进']) assert.ok(apps.includes(group), `应用导航缺少分组：${group}`)
-  for (const view of ['<RefineView', '<SkillsView', '<PromptsView', '<ImproveView', '<GardenerView']) {
+  for (const view of ['<RefineView', '<SkillsView', '<PromptsView', '<ImproveView', '<EvolutionView', '<GardenerView']) {
     assert.ok(apps.includes(view), `应用中心必须保留内部 View：${view}`)
   }
+  assert.ok(apps.includes('进化引擎'), '应用中心必须提供进化引擎入口')
   assert.ok(apps.includes('<SectionHeader'), '当前工具必须显示自己的标题与说明')
 })
 
@@ -325,6 +326,7 @@ test('会话库使用公共页头，并为桌面表格和移动卡片提供等�
     assert.ok(sessionDb.includes(marker), `移动卡片缺少字段或动作：${marker}`)
   }
   assert.ok(sessionDb.includes('<EmptyState'), '空搜索结果必须使用 EmptyState')
+  assert.ok(sessionDb.includes('data-slot="recall-panel"'), '会话库必须提供跨会话回忆面板')
   assert.match(sessionDb, /className="[^"]*min-h-11 min-w-11[^"]*" aria-label={`选择会话/, '移动选择按钮触控目标不得小于 44px')
   assert.match(sessionDb, /className={`[^`]*min-h-11 min-w-11[^`]*`}[^>]*aria-label={`\$\{r\.pinned/, '移动置顶按钮触控目标不得小于 44px')
   assert.doesNotMatch(sessionDb, /(?:emerald|amber|red)-/, '会话健康与置顶必须使用语义 token')

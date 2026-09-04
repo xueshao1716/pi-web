@@ -2,7 +2,7 @@
 // 运行：node --test tests/unit/emotion.test.mjs
 import { test, describe } from "node:test";
 import assert from "node:assert";
-import { updateEmotion, emotionPrompt, getSnapshot, clearEmotion } from "../../engine/emotion.mjs";
+import { updateEmotion, emotionPrompt, getSnapshot, clearEmotion, setMemoryNudgeHook } from "../../engine/emotion.mjs";
 
 describe("emotion.mjs 情绪引擎", () => {
   test("用户烦躁 → 触发安抚模式指令", () => {
@@ -54,5 +54,18 @@ describe("emotion.mjs 情绪引擎", () => {
     updateEmotion("t-happy", "太棒了，完美搞定！");
     const prompt = emotionPrompt("t-happy");
     assert.ok(prompt.includes("轻松") || prompt.includes("人情味") || prompt.includes("信心"), "开心时应有温度");
+  });
+
+  test("residue 跨过 hurt 阈值只触发一次 memory nudge", () => {
+    const hits = [];
+    setMemoryNudgeHook((info) => hits.push(info));
+    clearEmotion("t-nudge-hurt");
+    for (let i = 0; i < 10; i++) updateEmotion("t-nudge-hurt", "这破东西又出bug了，烦死了");
+    assert.ok(hits.length >= 1, "跨阈值应提案");
+    assert.equal(hits[0].subtype, "correction");
+    const n = hits.length;
+    updateEmotion("t-nudge-hurt", "这破东西又出bug了，烦死了");
+    assert.equal(hits.length, n, "同一累积周期不得重复提案");
+    setMemoryNudgeHook(null);
   });
 });
