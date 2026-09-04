@@ -8,6 +8,7 @@ function LazyMarkdown({ text }: { text: string }) {
 }
 
 import { withFileToken } from '../api'
+import { fmtMsgTime } from '../lib/fmt-time'
 import type { ChatMessage, RunningTool, ToolStatus } from '../types'
 import { AgentWorkflow } from './AgentWorkflow'
 
@@ -155,7 +156,7 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
                   <button className="hov-reveal inline-flex items-center gap-1 text-[11px] text-pi-dim2 hover:text-pi-text transition-colors" title="编辑并重新发送" aria-label="编辑并重新发送"
                     onClick={() => { setDraft(msg.text); setEditing(true) }}><Pencil className="w-3 h-3" /> 编辑</button>
                 )}
-                {msg.ts && <span className="hov-reveal text-[11px] text-pi-dim2 transition-opacity">{new Date(msg.ts).toLocaleTimeString('zh-CN', { hour12: false })}</span>}
+                {msg.ts && <span className="hov-reveal text-[11px] text-pi-dim2 transition-opacity" title={new Date(msg.ts).toLocaleString('zh-CN', { hour12: false })}>{fmtMsgTime(msg.ts)}</span>}
               </div>
             </>
           )}
@@ -228,7 +229,7 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
           )}
         {msg.ts && !streaming && (
           <div className="hov-reveal text-[11px] text-pi-dim2 mt-1 transition-opacity flex items-center gap-2">
-            <span>{new Date(msg.ts).toLocaleTimeString('zh-CN', { hour12: false })}</span>
+            <span title={new Date(msg.ts).toLocaleString('zh-CN', { hour12: false })}>{fmtMsgTime(msg.ts)}</span>
             {msg.model && <span className="px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3 text-pi-dim2 text-[10px]" title={`${msg.model.provider}/${msg.model.id}`}>{msg.model.id}</span>}
           </div>
         )}

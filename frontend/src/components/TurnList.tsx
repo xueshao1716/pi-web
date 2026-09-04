@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Wrench, Package, ChevronRight, ListFilter } from 'lucide-react'
 import Message from './Message'
+import { dayLabel, sameDayStr } from '../lib/fmt-time'
 import type { ChatMessage } from '../types'
 
 // ── 轮次折叠（turnDisclosure，对齐 NomiFun 交互）──
@@ -106,15 +107,30 @@ export default function TurnList({ messages, streamingNode, keepExpanded = 1 }: 
           <button onClick={() => { setShowAll(false); setExpanded(new Set()) }}>收起较早轮次</button>
         </div>
       )}
-      {turns.map((t, i) => (
-        <TurnRow key={t.key} turn={t} index={i} open={isOpen(t, i)}
-          onToggle={() => setExpanded(prev => {
-            const next = new Set(prev)
-            if (lastKeys.has(t.key)) return next // 最后一轮默认展开，不折叠
-            next.has(t.key) ? next.delete(t.key) : next.add(t.key)
-            return next
-          })} />
-      ))}
+      {turns.map((t, i) => {
+        // 跨自然日插入日期分隔条（2026-09-04，修"只显几点没几日"坑）：取本轮首条消息时间与前轮比对
+        const tTs = t.user?.ts ?? t.rest[0]?.ts
+        const prevTs = i > 0 ? (turns[i - 1].user?.ts ?? turns[i - 1].rest[0]?.ts) : undefined
+        const showDay = tTs != null && !sameDayStr(prevTs, tTs)
+        return (
+          <div key={t.key}>
+            {showDay && (
+              <div className="chat-day-divider" role="separator" aria-label={dayLabel(tTs)}>
+                <span className="chat-day-divider-line" />
+                <span className="chat-day-divider-text">{dayLabel(tTs)}</span>
+                <span className="chat-day-divider-line" />
+              </div>
+            )}
+            <TurnRow turn={t} index={i} open={isOpen(t, i)}
+              onToggle={() => setExpanded(prev => {
+                const next = new Set(prev)
+                if (lastKeys.has(t.key)) return next // 最后一轮默认展开，不折叠
+                next.has(t.key) ? next.delete(t.key) : next.add(t.key)
+                return next
+              })} />
+          </div>
+        )
+      })}
       {streamingNode}
     </div>
   )
