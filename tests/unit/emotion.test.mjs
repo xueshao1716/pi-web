@@ -53,7 +53,7 @@ describe("emotion.mjs 情绪引擎", () => {
     clearEmotion("t-happy");
     updateEmotion("t-happy", "太棒了，完美搞定！");
     const prompt = emotionPrompt("t-happy");
-    assert.ok(prompt.includes("轻松") || prompt.includes("人情味") || prompt.includes("信心"), "开心时应有温度");
+    assert.ok(prompt.includes("轻松") || prompt.includes("人情味") || prompt.includes("信心") || prompt.includes("底色"), "开心时应有温度（09-04 曦系移植后由主情绪底色指令接管）");
   });
 
   test("residue 跨过 hurt 阈值只触发一次 memory nudge", () => {

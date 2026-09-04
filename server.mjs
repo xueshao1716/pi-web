@@ -89,6 +89,7 @@ const gallery = await import("./engine/gallery.mjs");
 const distill = await import("./engine/distill-theme.mjs");
 const { WORKSHOP_PAGES } = workshop;
 const novelStudio = await import("./engine/workshop-novel.mjs");
+const novelRun = await import("./engine/workshop-novel-run.mjs");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -903,6 +904,7 @@ async function handleChat(req, res, body) {
         // 情绪实时推送：每轮结束把最新情绪快照推给前端（emo 指示器实时跳动，不再是只发/收时更新）
         try {
           const esKey = sessionId || findKeyByEntry(entry) || "new";
+          emotion.updateFromOutput(esKey, collected); // 曦系⑥：输出侧感知，回复长短也影响唤醒（09-04）
           const es = emotion.getSnapshot(esKey);
           if (es) { writer.push("emotion", { state: es }); busEmit("emotion", { state: es }); }
         } catch {}
@@ -1398,7 +1400,7 @@ process.on("uncaughtException", (err) => {
 // 工作台独立页映射（workshop.mjs 导出）
 // 专项工作台依赖注入：把 server.mjs 内部依赖打包给 workshop.mjs（无反向 import）
 function wsCtx() {
-  return { CONFIG, SESSIONS_DIR, defaultModel, createSessionAgent, SessionManager, scanRecentArtifacts, sseWrite, json, getAgentDir, DefaultResourceLoader, WS_ROOT };
+  return { CONFIG, SESSIONS_DIR, defaultModel, createSessionAgent, SessionManager, scanRecentArtifacts, sseWrite, json, getAgentDir, DefaultResourceLoader, WS_ROOT, getModelList: () => modelList };
 }
 
 // 情绪指示器：返回当前会话情绪快照（前端展示用）
@@ -1805,9 +1807,33 @@ const API_ROUTES = [
     const r = novelStudio.createBook(b);
     json(res, r.error ? 400 : 200, r);
   }],
+  ["PATCH", "/api/novel/books", async (res, req) => {
+    const b = await readBody(req);
+    const r = novelStudio.updateBook(b?.id || "", b);
+    json(res, r.error ? 400 : 200, r);
+  }],
+  ["DELETE", "/api/novel/books", async (res, req, url) => {
+    const r = novelStudio.deleteBook(url.searchParams.get("id") || "");
+    json(res, r.error ? 400 : 200, r);
+  }],
   ["GET", "/api/novel/detail", (res, req, url) => json(res, 200, novelStudio.bookDetail(url.searchParams.get("id") || ""))],
   ["GET", "/api/novel/chapter", (res, req, url) => json(res, 200, novelStudio.readChapter(url.searchParams.get("id") || "", url.searchParams.get("file") || ""))],
-  ["POST", "/api/novel/write", async (res, req) => novelStudio.handleBookWrite(wsCtx(), res, await readBody(req))],
+  ["GET", "/api/novel/node", (res, req, url) => json(res, 200, novelStudio.readNode(url.searchParams.get("id") || "", url.searchParams.get("node") || ""))],
+  ["POST", "/api/novel/node", async (res, req) => {
+    const b = await readBody(req);
+    const r = novelStudio.writeNode(b?.id || "", b?.node || "", b?.content);
+    json(res, r.error ? 400 : 200, r);
+  }],
+  ["GET", "/api/novel/export", (res, req, url) => json(res, 200, novelStudio.exportBook(url.searchParams.get("id") || ""))],
+  ["POST", "/api/novel/write", async (res, req) => novelRun.handleBookWrite({ ...wsCtx(), req }, res, await readBody(req))],
+  ["POST", "/api/novel/advance", async (res, req) => novelRun.handleBookAdvance({ ...wsCtx(), req }, res, await readBody(req))],
+  ["POST", "/api/novel/revise", async (res, req) => novelRun.handleBookRevise({ ...wsCtx(), req }, res, await readBody(req))],
+  ["POST", "/api/novel/studio", async (res, req) => novelRun.handleBookStudio({ ...wsCtx(), req }, res, await readBody(req))],
+  ["POST", "/api/novel/notes", async (res, req) => {
+    const b = await readBody(req);
+    const r = novelStudio.writeNotes(b?.id || "", b?.notes ?? b?.note ?? "");
+    json(res, r.error ? 400 : 200, r);
+  }],
   // ── 经验沉淀台（refine 提案制，Prime Agent 移植）──
   ["GET", "/api/refine/status", (res) => handleRefineStatus(res)],
   ["GET", "/api/refine/list", (res) => handleRefineList(res)],

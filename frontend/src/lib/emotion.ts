@@ -42,6 +42,13 @@ export function vadVisual(s: any): MoodVisual {
 export function emoMeta(s: any): EmoMeta {
   const v = s.valence || 0, a = s.arousal || 0
   const tags: string[] = s.tags || []
+  // 曦系移植（09-04）：服务端已标主情绪（欧氏最近点），优先用它；cls 沿用 VAD 粗分类
+  const P_ZH: Record<string, string> = { loving: '慈爱', happy: '开心', curious: '好奇', playful: '玩兴', calm: '平静', anxious: '不安', sad: '低落', angry: '生气', tired: '疲惫' }
+  const prim = P_ZH[s?.primary] || ''
+  if (prim && s.intensity > 0.15) {
+    const cls = v < 0 ? 'low' : a >= 0.6 ? 'high' : v >= 0.4 ? 'calm' : 'focus'
+    return { emoji: emoGlyph(s.primary), label: prim, cls }
+  }
   if (tags.includes("alert_risk")) return { emoji: "🛡", label: "安全警觉", cls: "risk" }
   if (tags.includes("user_frustrated")) return { emoji: "🤝", label: "安抚模式", cls: "calm" }
   if (tags.includes("user_urgent")) return { emoji: "⚡", label: "快速响应", cls: "high" }
@@ -53,6 +60,12 @@ export function emoMeta(s: any): EmoMeta {
   if (v <= 0.1) return { emoji: "🌧", label: "低落", cls: "low" }
   if (a >= 0.45 && v < 0.3) return { emoji: "🤨", label: "有压力", cls: "low" }
   return { emoji: "🧘", label: "专注", cls: "focus" }
+}
+
+// 主情绪 → 图标（曦系词典的十情绪）
+function emoGlyph(p: string): string {
+  const m: Record<string, string> = { loving: '💗', happy: '😊', curious: '🤔', playful: '😸', calm: '😌', anxious: '😰', sad: '🌧', angry: '😠', tired: '😴' }
+  return m[p] || '🧘'
 }
 
 // 性格基因名（tooltip 用）
