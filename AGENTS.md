@@ -56,3 +56,10 @@ TOKEN=$(python -c "print(open('D:/pi-web/.token').read().strip())")   # .token �
 - 安全：路径穿越（凡接收 path 参数必须限定白名单目录，参照 workshop rebuild 的 outRoot 前缀校验）
 - 资源：SSE 长任务必须有超时兜底 + 客户端断开不泄漏 agent
 - 前端：iframe srcDoc 一律 `sandbox=""`；触屏设备按钮 touch-hit
+
+## 作品集落地约定（2026-09-03 创作工坊产品化第一步）
+
+- **聊天里产出 PPT 设计稿时，产物一律写 `D:/pi-workspace/workshop-out/ppthtml-<id>/`**
+  （deck.json + pages/page-XX.html），资产页「作品」分区扫描自动收录，零登记仪式
+- deck.json 的 slides[].file 宽容解析（带/不带 pages/ 前缀都认），但新产出统一写 `pages/page-XX.html` 相对路径
+- 图像/小说类作品的画布化是后续阶段，未就绪前聊天产出仍进对应目录即可

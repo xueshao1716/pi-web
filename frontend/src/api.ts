@@ -220,6 +220,7 @@ export const AsrApi = {
 // 情绪快照（服务端 VAD 情绪引擎；返回裸快照，SSE emotion 事件则包在 {state} 里）
 export const EmotionApi = {
   get: (sid?: string) => api<any>(`/api/emotion${sid ? `?session=${encodeURIComponent(sid)}` : ''}`),
+  tide: () => api<{ tide: any[] }>('/api/emotion/tide'),
 }
 // 全局执行状态：哪些会话的 agent 正在跑（状态灯轮询，含后台/他端发起）
 export const AgentStatusApi = {
@@ -280,15 +281,24 @@ export const MediaApi = {
 
 // ── 专项工作台（SSE 长任务：PPT/小说生成，事件 note/delta/file/done/error）──
 export const WorkshopApi = {
+  // 作品集（扫描式：workshop-out 落盘即收录）
+  galleryList: () => api<{ items: { id: string; kind: 'deck' | 'pptx'; dir: string; title: string; pages: number; themeKey: string; ts: number; cover: string }[] }>('/api/gallery'),
+  galleryDeckUrl: (dir: string, file: string) => `/api/gallery/page?dir=${encodeURIComponent(dir)}&file=${encodeURIComponent(file)}`,
+  galleryDeck: (dir: string) => api<{ dir: string; pages: { file: string; title: string; layout: string; html: string }[] }>(`/api/gallery/deck?dir=${encodeURIComponent(dir)}`),
   // PPT 大纲编辑后本地重建 .pptx（2026-09-03 设计干预）
   rebuildPptx: (body: { jsonPath: string; slides: { layout: string; title: string; content: string[] }[] }, opts?: any) =>
     api<{ ok: boolean; file: { name: string; path: string; size: number }; slides: unknown[] }>('/api/workshop/pptx/rebuild', { method: 'POST', body, ...opts }),
   pptHistory: () => api<{ entries: { id: string; ts: string; theme: string; pages: number; style: string; file?: { name: string; path: string; size: number }; json?: string }[] }>('/api/workshop/ppt/history'),
-  run: (kind: 'ppt' | 'novel', body: any, onEvent: (ev: { type: string; data: any }) => void) => {
+  // PPT 设计稿模式（HTML 路线，2026-09-03）：SSE 逐页推 HTML，前端 iframe 真渲染
+  runHtml: (body: { theme: string; pages: number; themeKey: string; audience?: string }, onEvent: (ev: { type: string; data: any }) => void) =>
+    WorkshopApi.runLike('/api/workshop/ppt/html', body, onEvent),
+  saveHtmlPage: (body: { file: string; html: string; title?: string }) =>
+    api<{ ok: boolean }>('/api/workshop/ppt-html/save', { method: 'POST', body, timeoutMs: 30000 }),
+  runLike: (path: string, body: any, onEvent: (ev: { type: string; data: any }) => void) => {
     const ctrl = new AbortController()
     ;(async () => {
       try {
-        const r = await fetch(apiUrl(`/api/workshop/${kind}`), {
+        const r = await fetch(apiUrl(path), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${_token}` },
           body: JSON.stringify(body),
@@ -321,6 +331,9 @@ export const WorkshopApi = {
       }
     })()
     return () => ctrl.abort()
+  },
+  run: (kind: 'ppt' | 'novel', body: any, onEvent: (ev: { type: string; data: any }) => void) => {
+    return WorkshopApi.runLike(`/api/workshop/${kind}`, body, onEvent)
   },
 }
 
@@ -399,6 +412,38 @@ export const ImprovementsApi = {
   analyze: () => api<{ improvements: any[] }>('/api/improvements/analyze', { method: 'POST' }),
   setStatus: (id: string, status: string) => api<any>(`/api/improvements/${encodeURIComponent(id)}/status`, { method: 'POST', body: { status } }),
 }
+
+// 进化引擎（09-03，Hermes GEPA 思想）：反思式提示词进化 + 人工审批红线
+export const EvolutionApi = {
+  list: () => api<{ proposals: any[] }>('/api/evolution/proposals'),
+  propose: (name: string) => api<{ ok?: boolean; id?: string; variants?: number; traces?: number; analysis?: string; error?: string }>('/api/evolution/propose', { method: 'POST', body: { name }, timeoutMs: 180000 }),
+  apply: (id: string, variantIndex = 0) => api<{ ok?: boolean; backup?: string; error?: string }>('/api/evolution/apply', { method: 'POST', body: { id, variantIndex } }),
+  dismiss: (id: string) => api<{ ok?: boolean }>('/api/evolution/dismiss', { method: 'POST', body: { id } }),
+  evaluate: (id: string) => api<{ ok?: boolean; evaluation?: any; error?: string }>('/api/evolution/evaluate', { method: 'POST', body: { id }, timeoutMs: 300000 }),
+}
+
+// 技能自主沉淀（Hermes 闭环）：任务完成后自动评估是否值得沉淀为 SKILL.md
+export const SkillNudgeApi = {
+  list: () => api<{ nudges: any[] }>('/api/skillnudge/list'),
+  apply: (id: string) => api<{ ok?: boolean; path?: string; error?: string }>('/api/skillnudge/apply', { method: 'POST', body: { id } }),
+  dismiss: (id: string) => api<{ ok?: boolean }>('/api/skillnudge/dismiss', { method: 'POST', body: { id } }),
+}
+
+// 记忆 nudge（情绪→记忆联动）：residue 跨阈值自动提案记忆写入
+export const MemoryNudgeApi = {
+  list: () => api<{ nudges: any[] }>('/api/memorynudge/list'),
+  apply: (id: string) => api<{ ok?: boolean; file?: string; error?: string }>('/api/memorynudge/apply', { method: 'POST', body: { id } }),
+  dismiss: (id: string) => api<{ ok?: boolean }>('/api/memorynudge/dismiss', { method: 'POST', body: { id } }),
+}
+
+// 记忆进化压缩（EvoX MemoryOptimizer）：早期条目摘要化 + 原文归档
+export const MemCompressApi = {
+  analyze: () => api<{ total?: number; fresh?: number; old?: number; oldest?: string; worthIt?: boolean; error?: string }>('/api/memcompress/analyze'),
+  propose: () => api<{ ok?: boolean; id?: string; beforeCount?: number; archiveCount?: number; error?: string }>('/api/memcompress/propose', { method: 'POST', body: {}, timeoutMs: 180000 }),
+  list: () => api<{ proposals: any[] }>('/api/memcompress/list'),
+  apply: (id: string) => api<{ ok?: boolean; backup?: string; archiveFile?: string; error?: string }>('/api/memcompress/apply', { method: 'POST', body: { id } }),
+  dismiss: (id: string) => api<{ ok?: boolean }>('/api/memcompress/dismiss', { method: 'POST', body: { id } }),
+}
 // ── 记忆园丁：只报告记忆健康（重复/过时状态/膨胀），不自动写 ──
 export const MemoryApi = {
   gardener: () => api<any>('/api/memory-gardener'),
@@ -429,6 +474,14 @@ export interface ProviderStat { provider: string; input: number; output: number;
 export const StatsApi = {
   providers: () => api<{ providers: ProviderStat[] }>('/api/stats/providers'),
   global: () => api<any>('/api/stats/global'),
+  // 工作台 7 天用量分桶（09-03）
+  daily: () => api<{ days: { day: string; label: string; input: number; output: number; cost: number; messages: number; sessions: number }[] }>('/api/stats/daily'),
+}
+
+// 工作台：subagent 异步运行（best-effort 扫描，无落盘时返回空）
+export interface SubagentRun { id: string; agent: string; state: string; task: string; startedAt?: string | null; updatedAt?: string | null }
+export const SubagentApi = {
+  runs: () => api<{ runs: SubagentRun[] }>('/api/subagent/runs'),
 }
 
 // ── 定时任务（时间引擎）──

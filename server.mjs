@@ -55,10 +55,11 @@ import { systemInfo as buildSystemInfo, loadNetworkConfig, saveNetworkConfig, ch
 import { initTuiBridge } from "./engine/tui-bridge.mjs";
 import { listLingXi, addLingXi, setLingXi, removeLingXi } from "./engine/lingxi.mjs";
 import { initDshKeys, dshResolveBin, handleDshStatus, handleDshWebStart, handleKeysStatus, loadPolicies, toolMatch, policyDecide, handleKeysApply, handleKeysPresets, refreshModelList, handleModelsManage, handleModelsAdd, KNOWN_PROVIDERS, PROVIDER_PRESETS, resolveAuth } from "./engine/dsh-keys.mjs";
-import { initStatsApi, handleGlobalStats, handleProviderStats, safeSessionStats, handleStats, handleCompact, listBuiltinSkills, handleSkills, handleSkillRead, handleParseFile, escHtml, handleExport, resolveFsPath, handleFsList, handleFsRead, handleRename } from "./engine/stats-api.mjs";
+import { initStatsApi, handleGlobalStats, handleProviderStats, handleDailyStats, handleSubagentRuns, safeSessionStats, handleStats, handleCompact, listBuiltinSkills, handleSkills, handleSkillRead, handleParseFile, escHtml, handleExport, resolveFsPath, handleFsList, handleFsRead, handleRename } from "./engine/stats-api.mjs";
 import { initModelClient, directChat, handleThink, handleDirectChat, maybeCompactHistory } from "./engine/model-client.mjs";
 import { initSelfHeal, createRepairCheckpoint, handleUpdateCheck, handleUpdateApply, handleRepair, handleDesignerGenerate, handleDesignerSave, handleCompare } from "./engine/self-heal.mjs";
 import { initImproveApi, analyzeImprovements, openImprovements, setImprovementStatus } from "./engine/improve-api.mjs";
+import { initEvolutionApi, proposeEvolution, applyEvolution, listEvolution, dismissEvolution, nudgeSkill, applySkillNudge, dismissSkillNudge, listSkillNudges, evaluateProposal, proposeMemoryNudge, listMemoryNudges, applyMemoryNudge, dismissMemoryNudge, analyzeMemoryCompress, proposeMemoryCompress, listMemoryCompress, applyMemoryCompress, dismissMemoryCompress } from "./engine/evolution-api.mjs";
 import { initSessionManager, createSession, evictInactiveSessions, slimSessionImages, compactSession, openSession, initSearchTool, initShareTool, createSessionAgent, ensureAgent, isFirstTurn, deleteSession } from "./engine/session-manager.mjs";
 import { initUnifiedChat, unifiedChat, engineCurrentModel, initEngine, getCodeRuntime, getCodeMode, toolBindingDesc, toolBindingArgs, toolBindingArgsObj, handleNotices, handleUnifiedChat, touchTask, clearTask, handleAgentEventIn, handleAgentEventOut } from "./engine/unified-chat.mjs";
 import { createApprovalInterceptor } from "./engine/tools/approval.mjs";
@@ -79,9 +80,11 @@ const { initMemorySync } = await import("./engine/memory-sync.mjs");
 initMemorySync({ wsRoot: CONFIG.cwd }); // M1 路径外部化：记忆同步的工作空间根随配置注入
 const emotion = await import("./engine/emotion.mjs");
 emotion.init(CONFIG.cwd); // 基因系统：加载人格基因 + 提案池
+emotion.setMemoryNudgeHook((info) => { try { proposeMemoryNudge(info); } catch {} }); // 情绪→记忆联动（09-03）：residue 跨阈值自动提案记忆写入
 // 隔离子任务执行器（P2）：注入模型适配依赖（复用系统代理栈）
 const subagent = await import("./engine/subagent.mjs");
 const workshop = await import("./engine/workshop.mjs");
+const gallery = await import("./engine/gallery.mjs");
 const { WORKSHOP_PAGES } = workshop;
 const novelStudio = await import("./engine/workshop-novel.mjs");
 
@@ -221,6 +224,7 @@ initSessionDb({ agentDir: getAgentDir(), cwd: CONFIG.cwd }); // 会话数据库�
 initModelClient({ readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, resolveAuth, getModelList: () => modelList, getDefaultModel: () => defaultModel, unifiedChat, detectMediaIntents, generateMediaAsync, extractMediaPrompt, readEntriesFromFile, createSseWriter }); // 直调模型客户端注入
 initSelfHeal({ directChat, runGit: (...args) => runGit(...args), cwd: CONFIG.cwd, getModelList: () => modelList, getDefaultModel: () => defaultModel, piPackage: CONFIG.piPackage }); // 自愈/更新/设计器注入（REPAIR_BACKUP_FILES 已随块迁入模块）
 initImproveApi({ root: CONFIG.cwd, statsProvider: null, healProvider: null }); // 自我改进提案（2026-08-21）
+initEvolutionApi({ root: CONFIG.cwd, prompts: path.join(getAgentDir(), "prompts"), skills: path.join(__dirname, "skills"), chat: unifiedChat, getDefaultModel: () => defaultModel }); // 进化引擎（09-03，Hermes GEPA 思想：反思式进化+人工审批红线）
 // 启动时构建模型列表：原生 provider（pi 内置目录）+ store 自定义，只显示配置过 Key 的
 {
   const store = readJsonFile(MODELS_PATH);
@@ -1432,6 +1436,7 @@ const API_ROUTES = [
   ["PATCH", "/api/sessions/db/meta", async (res, req) => handleDbMeta(res, await readBody(req))],
   // ── 会话 ──
   ["GET", "/api/emotion", (res, req, url) => handleEmotion(res, url)],
+  ["GET", "/api/emotion/tide", (res) => json(res, 200, { tide: emotion.getTide(300) })],
   ["GET", "/api/agent-status", (res) => handleAgentStatus(res)],
   // ── 记忆园丁：只报告记忆健康（重复/过时/膨胀），不自动写记忆（防污染）──
   ["GET", "/api/memory-gardener", (res) => json(res, 200, { ...gardenMemory(WS_ROOT), report: { ...scanMemoryHealth(WS_ROOT), reviewed: reviewedKeys(WS_ROOT) } })],
@@ -1531,6 +1536,28 @@ const API_ROUTES = [
   ["POST", "/api/improvements/analyze", (res) => json(res, 200, { improvements: analyzeImprovements() })],
   ["POST", /^\/api\/improvements\/([^/]+)\/status$/, async (res, req, url, m) => json(res, 200, setImprovementStatus(decodeURIComponent(m[1]), (await readBody(req)).status || "dismissed"))],
   ["GET", "/api/stats/providers", (res) => handleProviderStats(res)],
+  ["GET", "/api/stats/daily", (res) => handleDailyStats(res)],
+  ["GET", "/api/subagent/runs", (res) => handleSubagentRuns(res)],
+  // ── 进化引擎（09-03）：反思式进化提案 + 人工审批写回 ──
+  ["GET", "/api/evolution/proposals", (res) => json(res, 200, { proposals: listEvolution() })],
+  ["POST", "/api/evolution/propose", async (res, req) => { const b = await readBody(req); return json(res, 200, await proposeEvolution({ name: b.name, model: defaultModel })); }],
+  ["POST", "/api/evolution/apply", async (res, req) => { const b = await readBody(req); return json(res, 200, applyEvolution(b.id, b.variantIndex || 0)); }],
+  ["POST", "/api/evolution/dismiss", async (res, req) => { const b = await readBody(req); return json(res, 200, dismissEvolution(b.id)); }],
+  ["POST", "/api/evolution/evaluate", async (res, req) => { const b = await readBody(req); evaluateProposal(b.id, defaultModel).catch(() => {}); return json(res, 200, { ok: true, started: true }); }],
+  // ── 技能自主沉淀（Hermes 闭环）──
+  ["GET", "/api/skillnudge/list", (res) => json(res, 200, { nudges: listSkillNudges() })],
+  ["POST", "/api/skillnudge/apply", async (res, req) => { const b = await readBody(req); return json(res, 200, applySkillNudge(b.id)); }],
+  ["POST", "/api/skillnudge/dismiss", async (res, req) => { const b = await readBody(req); return json(res, 200, dismissSkillNudge(b.id)); }],
+  // ── 记忆 nudge（情绪→记忆联动）──
+  ["GET", "/api/memorynudge/list", (res) => json(res, 200, { nudges: listMemoryNudges() })],
+  ["POST", "/api/memorynudge/apply", async (res, req) => { const b = await readBody(req); return json(res, 200, applyMemoryNudge(b.id)); }],
+  ["POST", "/api/memorynudge/dismiss", async (res, req) => { const b = await readBody(req); return json(res, 200, dismissMemoryNudge(b.id)); }],
+  // ── 记忆进化压缩（EvoX MemoryOptimizer 思想）──
+  ["GET", "/api/memcompress/analyze", (res) => json(res, 200, analyzeMemoryCompress())],
+  ["POST", "/api/memcompress/propose", (res) => json(res, 200, proposeMemoryCompress(defaultModel))],
+  ["GET", "/api/memcompress/list", (res) => json(res, 200, { proposals: listMemoryCompress() })],
+  ["POST", "/api/memcompress/apply", async (res, req) => { const b = await readBody(req); return json(res, 200, applyMemoryCompress(b.id)); }],
+  ["POST", "/api/memcompress/dismiss", async (res, req) => { const b = await readBody(req); return json(res, 200, dismissMemoryCompress(b.id)); }],
   ["GET", "/api/sessions", (res) => json(res, 200, { sessions: getSessionList() })],
   ["POST", "/api/sessions", async (res, req) => { const body = await readBody(req); const id = await createSession(body.name); return json(res, 200, { id, name: body.name || "新会话" }); }],
   // ── 工作空间 ──
@@ -1748,6 +1775,13 @@ const API_ROUTES = [
   // PPT 设计干预：大纲编辑后本地重建 .pptx（2026-09-03）
   ["POST", "/api/workshop/pptx/rebuild", async (res, req) => workshop.rebuildPptx(wsCtx(), res, await readBody(req))],
   ["GET", "/api/workshop/ppt/history", (res) => workshop.listPptHistory(wsCtx(), res)],
+  // 作品集（扫描式：聊天/工坊产出落进 workshop-out 即收录）
+  ["GET", "/api/gallery", (res) => gallery.handleGalleryList(wsCtx(), res)],
+  ["GET", "/api/gallery/deck", (res, req) => gallery.handleGalleryDeck(wsCtx(), res, req)],
+  ["GET", "/api/gallery/page", (res, req) => gallery.handleGalleryPage(wsCtx(), res, req)],
+  // PPT 设计稿模式（HTML 路线，2026-09-03）
+  ["POST", "/api/workshop/ppt/html", async (res, req) => workshop.handleWorkshopPptHtml(wsCtx(), res, await readBody(req))],
+  ["POST", "/api/workshop/ppt-html/save", async (res, req) => workshop.savePptHtmlPage(wsCtx(), res, await readBody(req))],
   // ── 小说工坊（书架式：作品沉淀/真相文件/第N章递进，收编自 novel-studio）──
   ["GET", "/api/novel/books", (res) => json(res, 200, { books: novelStudio.listBooks() })],
   ["POST", "/api/novel/books", async (res, req) => {
@@ -2009,7 +2043,7 @@ function startServer() {
           throw e; // 上抛给任务中心记 error 历史
         }
         return String(out);
-      });
+      }, { onTaskDone: (info) => nudgeSkill(info) }); // 技能自主沉淀钩子（09-03，Hermes 闭环）
       timeEngine.start();
     } catch (e) { console.log("[time-engine] 启动失败:", String(e?.message || e).slice(0, 100)); }
     console.log(`  会话目录: ${SESSIONS_DIR}`);

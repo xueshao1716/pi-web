@@ -4,6 +4,7 @@ import EmptyState from '../components/EmptyState'
 import useSWR from 'swr'
 import { WsApi, withFileToken } from '../api'
 import GeneratePanel from '../components/GeneratePanel'
+import Gallery from '../components/Gallery'
 import type { Artifact } from '../types'
 
 // ── 资产库：生成物 + 交付物统一浏览（Phase 3）──
@@ -70,6 +71,9 @@ export default function Assets() {
           <h1 className="page-title">资产库</h1>
           <p className="text-xs text-pi-dim2 mt-1.5">工作空间「生成物」{artData?.artifacts?.length || 0} 个 · 「交付」{deliveries.length} 个</p>
         </div>
+
+        {/* 作品集：成套产出（设计稿 deck 等），扫描 workshop-out 自动收录 */}
+        <Gallery />
         <div className="flex items-center gap-2 mb-4">
           <input className="input-pi !py-1.5 text-xs w-48 sm:w-56 rounded-full" placeholder="搜索资产名…" value={kw} onChange={e => setKw(e.target.value)} />
         </div>
