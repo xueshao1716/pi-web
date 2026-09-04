@@ -5,19 +5,19 @@
 import path from "node:path";
 import fs from "node:fs";
 import { extractTokens, classifyColors, buildThemeCss, slugify } from "./distill-theme-core.mjs";
+import { resolvePptHtmlTemplates, isInsideSafeHtmlDir } from "./ppt-html-paths.mjs";
 
-const SKILL_TEMPLATES = "C:/Users/xuexiaofeng/.agents/skills/ppt-html/templates";
-const SAFE_HTML_DIRS = ["workshop-out", "tmp"]; // 相对 WS_ROOT 的白名单（本地 HTML 只认这里）
 const BUILTIN = new Set(["navy", "magazine", "dark", "riso"]);
+function templatesDir(ctx) { return ctx.templatesDir || resolvePptHtmlTemplates(); }
 
 export function handlePptThemes(ctx, res) {
   const { json } = ctx;
   let themes = [];
   try {
-    for (const f of fs.readdirSync(SKILL_TEMPLATES)) {
+    for (const f of fs.readdirSync(templatesDir(ctx))) {
       const m = f.match(/^theme-(.+)\.css$/);
       if (!m) continue;
-      const head = fs.readFileSync(path.join(SKILL_TEMPLATES, f), "utf8").split("\n")[0] || "";
+      const head = fs.readFileSync(path.join(templatesDir(ctx), f), "utf8").split("\n")[0] || "";
       const label = head.replace(/^\/\*\s*theme-[^—]*——?\s*/, "").replace(/\s*\*\/\s*$/, "").trim() || m[1];
       themes.push({ key: m[1], label, builtin: BUILTIN.has(m[1]) });
     }
@@ -43,8 +43,7 @@ export async function handlePptDistill(ctx, res, body) {
       source = url;
     } else if (htmlPath) {
       const clean = path.resolve(WS_ROOT, htmlPath.replace(/\\/g, "/"));
-      const okRoot = SAFE_HTML_DIRS.some(d => clean.startsWith(path.resolve(WS_ROOT, d)));
-      if (!okRoot || !clean.endsWith(".html") || !fs.existsSync(clean)) return json(res, 400, { error: "htmlPath 必须是 workshop-out/tmp 下的 .html" });
+      if (!isInsideSafeHtmlDir(WS_ROOT, htmlPath) || !fs.existsSync(clean)) return json(res, 400, { error: "htmlPath 必须是 workshop-out/tmp 下的 .html" });
       html = fs.readFileSync(clean, "utf8");
       source = htmlPath;
     } else {
@@ -62,8 +61,9 @@ export async function handlePptDistill(ctx, res, body) {
   const label = name || hostLabel(source) || "蒸馏主题";
   const key = slugify(name || hostLabel(source) || "distilled");
 
-  fs.mkdirSync(SKILL_TEMPLATES, { recursive: true });
-  const cssPath = path.join(SKILL_TEMPLATES, `theme-${key}.css`);
+  const destDir = templatesDir(ctx);
+  fs.mkdirSync(destDir, { recursive: true });
+  const cssPath = path.join(destDir, `theme-${key}.css`);
   fs.writeFileSync(cssPath, buildThemeCss(key, label, cls, fontBody));
 
   return json(res, 200, {

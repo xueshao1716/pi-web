@@ -7,9 +7,22 @@ import path from "node:path";
 import fs from "node:fs";
 import { readDeck } from "./gallery-core.mjs";
 import { lintPage } from "./slides-lint-core.mjs";
+import { readThemeCss } from "./ppt-html-paths.mjs";
+
+/** 客户端断开时调用 stop；返回 release，正常结束时摘掉监听以免二次 stop。 */
+export function attachSseAbort(req, stop) {
+  if (!req || typeof req.once !== "function") return () => {};
+  let done = false;
+  const fire = () => { if (done) return; done = true; try { stop(); } catch {} };
+  req.once("close", fire);
+  return () => {
+    done = true;
+    try { req.off?.("close", fire); } catch {}
+  };
+}
 
 export async function handlePptRefine(ctx, res, body) {
-  const { json, WS_ROOT, SESSIONS_DIR, defaultModel, createSessionAgent, SessionManager, sseWrite } = ctx;
+  const { json, WS_ROOT, SESSIONS_DIR, defaultModel, createSessionAgent, SessionManager, sseWrite, req } = ctx;
   const dir = String(body?.dir || "");
   const file = String(body?.file || "");
   const instruction = String(body?.instruction || "").trim().slice(0, 600);
@@ -21,11 +34,7 @@ export async function handlePptRefine(ctx, res, body) {
   const idx = deck.pages.indexOf(page);
   const keyMatch = page.html.match(/theme-([\w-]+)/);
   const themeKey = keyMatch ? keyMatch[1] : "";
-  let themeCss = "";
-  try {
-    const tp = path.join("C:/Users/xuexiaofeng/.agents/skills/ppt-html/templates", `theme-${themeKey}.css`);
-    if (fs.existsSync(tp)) themeCss = fs.readFileSync(tp, "utf8");
-  } catch { /* 主题读不到就不附 */ }
+  const themeCss = readThemeCss(themeKey);
   const absFile = path.join(WS_ROOT, ...dir.split("/"), ...file.split("/"));
   const oldHtml = page.html;
 
@@ -35,9 +44,15 @@ export async function handlePptRefine(ctx, res, body) {
   write("note", { text: `🤖 开始修改「${page.title || file}」：${instruction}` });
 
   const sm = SessionManager.create(WS_ROOT, SESSIONS_DIR);
-  let agent = null, timer = null;
+  let agent = null, timer = null, ended = false;
+  const releaseAbort = attachSseAbort(req, () => finish(false, "客户端断开"));
   const finish = (ok, msg) => {
+    if (ended) return;
+    ended = true;
+    releaseAbort();
     clearInterval(hb);
+    clearTimeout(timer);
+    try { agent?.abort?.(); } catch {}
     try { agent?.dispose?.(); } catch {}
     let html = "";
     try { html = fs.existsSync(absFile) ? fs.readFileSync(absFile, "utf8") : ""; } catch { /* 读回失败按未变更 */ }

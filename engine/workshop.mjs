@@ -6,6 +6,7 @@ import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { validateSlides, findSlidesJson, appendHistory, readHistory } from "./workshop-ppt-core.mjs";
 import { lintDeck, lintPage } from "./slides-lint-core.mjs";
+import { readThemeCss } from "./ppt-html-paths.mjs";
 export { handlePptRefine } from "./ppt-refine.mjs";
 
 // 工作台独立页映射（可直达 URL）
@@ -381,8 +382,7 @@ export async function savePptHtmlPage(ctx, res, body) {
     const keyMatch = html.match(/body[.\s][^>]*theme-([\w-]+)/);
     let themeCss = "";
     if (keyMatch) {
-      const tp = path.join("C:/Users/xuexiaofeng/.agents/skills/ppt-html/templates", `theme-${keyMatch[1]}.css`);
-      if (fs.existsSync(tp)) themeCss = fs.readFileSync(tp, "utf8");
+      themeCss = readThemeCss(keyMatch[1]);
     }
     lint = lintPage(html, themeCss);
   } catch { /* lint 失败不影响保存 */ }

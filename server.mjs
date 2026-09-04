@@ -1792,7 +1792,7 @@ const API_ROUTES = [
   // 主题蒸馏（网址/本地HTML → theme CSS 入库 ppt-html templates）
   ["GET", "/api/workshop/ppt/themes", (res) => distill.handlePptThemes(wsCtx(), res)],
   ["POST", "/api/workshop/ppt/distill", async (res, req) => distill.handlePptDistill(wsCtx(), res, await readBody(req))],
-  ["POST", "/api/workshop/ppt-html/refine", async (res, req) => workshop.handlePptRefine(wsCtx(), res, await readBody(req))],
+  ["POST", "/api/workshop/ppt-html/refine", async (res, req) => workshop.handlePptRefine({ ...wsCtx(), req }, res, await readBody(req))],
   // PPT 设计稿模式（HTML 路线，2026-09-03）
   ["POST", "/api/workshop/ppt/html", async (res, req) => workshop.handleWorkshopPptHtml(wsCtx(), res, await readBody(req))],
   ["POST", "/api/workshop/ppt-html/save", async (res, req) => workshop.savePptHtmlPage(wsCtx(), res, await readBody(req))],
