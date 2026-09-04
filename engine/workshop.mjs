@@ -5,6 +5,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { validateSlides, findSlidesJson, appendHistory, readHistory } from "./workshop-ppt-core.mjs";
+import { lintDeck, lintPage } from "./slides-lint-core.mjs";
 
 // 工作台独立页映射（可直达 URL）
 export const WORKSHOP_PAGES = {
@@ -303,12 +304,22 @@ export async function handleWorkshopPptHtml(ctx, res, body) {
           const list = deck.slides || deck;
           const relDir = path.relative(WS_ROOT, workDir).split(path.sep).join("/");
           write("deck_meta", { dir: relDir, count: list.length, themeKey });
+          const deckPages = [];
           for (const item of list) {
             const f = path.join(workDir, item.file);
             if (!fs.existsSync(f)) continue;
             const html = fs.readFileSync(f, "utf8");
+            deckPages.push({ file: item.file, html });
             write("deck_page", { file: item.file, title: item.title || "", layout: item.layout || "", html });
           }
+          // 硬质检：机械规则检查全 deck，报告落盘 + SSE 推前端
+          try {
+            const themeCssPath = path.join(skillDir, "templates", `theme-${themeKey}.css`);
+            const themeCss = fs.existsSync(themeCssPath) ? fs.readFileSync(themeCssPath, "utf8") : "";
+            const report = lintDeck(deckPages, themeCss);
+            fs.writeFileSync(path.join(workDir, "lint-report.json"), JSON.stringify(report, null, 2));
+            write("deck_lint", { dir: relDir, total: report.total, errors: report.errors, ok: report.ok, perPage: report.perPage });
+          } catch { /* lint 失败不阳塞交付 */ }
           appendHistory(path.join(WS_ROOT, "workshop-out", "ppt-history.json"), {
             id, theme, pages, style: `html:${themeKey}`, file: { name: "deck.json", path: relDir + "/deck.json", size: fs.statSync(deckPath).size }, json: relDir + "/deck.json", kind: "html",
           });
@@ -363,5 +374,16 @@ export async function savePptHtmlPage(ctx, res, body) {
       fs.writeFileSync(deckPath, JSON.stringify(deck, null, 2));
     }
   } catch {}
-  json(res, 200, { ok: true });
+  // 保存后回带该页硬质检（theme CSS 从页面 theme-<key> class 推断）
+  let lint = [];
+  try {
+    const keyMatch = html.match(/body[.\s][^>]*theme-([\w-]+)/);
+    let themeCss = "";
+    if (keyMatch) {
+      const tp = path.join("C:/Users/xuexiaofeng/.agents/skills/ppt-html/templates", `theme-${keyMatch[1]}.css`);
+      if (fs.existsSync(tp)) themeCss = fs.readFileSync(tp, "utf8");
+    }
+    lint = lintPage(html, themeCss);
+  } catch { /* lint 失败不影响保存 */ }
+  json(res, 200, { ok: true, lint });
 }

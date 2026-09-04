@@ -115,6 +115,9 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
         case 'tool': setSteps(prev => [...prev, { id: d.id || 't' + Date.now(), name: d.name || 'tool', args: String(d.args?.command || d.args?.path || d.args?.prompt || '').slice(0, 100) || JSON.stringify(d.args || {}).slice(0, 100), status: 'running' }]); break
         case 'tool_end': setSteps(prev => prev.map(s => s.id === d.id ? { ...s, status: d.isError ? 'error' : 'done', output: (d.output || '').slice(0, 120) } : s)); break
         case 'deck_meta': setDeck({ dir: d.dir, pages: [] }); append(`[清单] ${d.count} 页 · 模板 ${d.themeKey}`); break
+        case 'deck_lint':
+          append(d.ok ? `[硬质检] ✓ 通过（${d.total} 个提示，0 error）` : `[硬质检] ${d.errors} 个 error / ${d.total} 个提示，详见 ${d.dir}/lint-report.json`)
+          break
         case 'deck_page':
           setDeck(prev => prev ? { ...prev, pages: [...prev.pages, { file: d.file, title: d.title, layout: d.layout, html: d.html }] } : prev)
           break
