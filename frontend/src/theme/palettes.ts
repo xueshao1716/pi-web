@@ -17,6 +17,8 @@ export const THEME_PRESETS = [
   { id: 'violet', name: '紫夜', swatch: 'linear-gradient(135deg,#0d0a1a,#251d52)' },
   { id: 'mist', name: '晨雾', swatch: 'linear-gradient(135deg,#f3f5fa,#ffffff)', light: true },
   { id: 'kraft', name: '牛皮纸', swatch: 'linear-gradient(135deg,#e5d4aa,#c9a66b)', light: true },
+  { id: 'shuimo', name: '水墨', swatch: 'linear-gradient(135deg,#f7f4ec,#b54334)', light: true },
+  { id: 'bamboo', name: '竹影', swatch: 'linear-gradient(135deg,#f1f5ec,#3f7a50)', light: true },
 ]
 export const ACCENT_PRESETS = [
   { name: '靛蓝', color: '#4a58fa' },

@@ -12,6 +12,8 @@ type Seed = { bg: string; text: string; accent: string; step: number; light?: bo
 const THEME_META: Record<string, { label: string; desc: string }> = {
   mist: { label: '晨雾', desc: '浅色 · 冷靛蓝主色' },
   kraft: { label: '牛皮纸', desc: '浅色 · 暖纸质感' },
+  shuimo: { label: '水墨', desc: '浅色 · 宣纸朱砂楷体' },
+  bamboo: { label: '竹影', desc: '浅色 · 竹青自然系' },
   ink: { label: '墨黑', desc: '深色 · 极简石墨' },
   violet: { label: '紫晶', desc: '深色 · 紫罗兰光晕' },
   sepia: { label: '褐纱', desc: '深色 · 暖褐护眼' },

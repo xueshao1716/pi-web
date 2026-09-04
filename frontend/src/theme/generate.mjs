@@ -112,6 +112,32 @@ export const SEEDS = {
                          '--pi-accent-glow': 'rgba(63,158,110,0.28)', '--pi-glow-purple': 'rgba(90,140,110,0.10)', '--pi-glow-cyan': 'rgba(80,150,120,0.06)' } },
   azure:  { bg: '#0a101c', text: '#e0eaff', accent: '#38bdf8', step: 0.041,
             overrides: { '--pi-accent2': '#7dd3fc', '--pi-accent-deep': '#0284c7', '--pi-accent-glow': 'rgba(56,189,248,0.30)', '--pi-glow-purple': 'rgba(80,120,200,0.12)', '--pi-glow-cyan': 'rgba(56,189,248,0.10)' } },
+  // 中式水墨（09-03）：宣纸底 + 墨分五色灰阶 + 朱砂唯一强调；楷体 + 宣纸纹理见 styles.css 手写特化区
+  shuimo: { bg: '#F7F4EC', text: '#2A2620', accent: '#B54334', light: true, step: 0.030,
+            overrides: {
+              '--pi-green': '#4A7A5A', '--pi-red': '#A8382B', '--pi-yellow': '#B08A3E',
+              '--pi-accent2': '#C65A48', '--pi-accent-deep': '#8E3428',
+              '--pi-accent-glow': 'rgba(181,67,52,0.10)',
+              '--pi-glow-purple': 'rgba(90,110,130,0.05)', '--pi-glow-cyan': 'rgba(62,92,107,0.05)',
+              '--pi-border-hi': 'rgba(58,52,40,0.06)',
+              '--pi-shadow-sm': '0 1px 2px rgba(58,52,40,.06), 0 1px 4px rgba(58,52,40,.05)',
+              '--pi-shadow-md': '0 2px 8px rgba(58,52,40,.08), 0 1px 3px rgba(58,52,40,.05)',
+              '--pi-shadow-lg': '0 4px 16px rgba(58,52,40,.10), 0 2px 6px rgba(58,52,40,.06)',
+              '--pi-font-sans': '"Ma Shan Zheng","LXGW WenKai Screen","LXGW WenKai","Kaiti SC","STKaiti","KaiTi",serif',
+              '--pi-font-display': '"Ma Shan Zheng","LXGW WenKai Screen","LXGW WenKai","Kaiti SC","STKaiti","KaiTi",serif',
+            } },
+  // 竹影（09-03）：浅色自然绿——晨竹米白底 + 竹青主色 + 全绿化光斑
+  bamboo: { bg: '#F1F5EC', text: '#233024', accent: '#3F7A50', light: true, step: 0.032,
+            overrides: {
+              '--pi-green': '#2F7A4E', '--pi-red': '#B5504A', '--pi-yellow': '#A98B3D',
+              '--pi-accent2': '#5C9970', '--pi-accent-deep': '#2F6340',
+              '--pi-accent-glow': 'rgba(63,122,80,0.12)',
+              '--pi-glow-purple': 'rgba(110,140,90,0.06)', '--pi-glow-cyan': 'rgba(90,150,120,0.06)',
+              '--pi-border-hi': 'rgba(40,60,40,0.06)',
+              '--pi-shadow-sm': '0 1px 2px rgba(35,60,42,.06), 0 1px 4px rgba(35,60,42,.05)',
+              '--pi-shadow-md': '0 2px 8px rgba(35,60,42,.08), 0 1px 3px rgba(35,60,42,.05)',
+              '--pi-shadow-lg': '0 4px 16px rgba(35,60,42,.10), 0 2px 6px rgba(35,60,42,.06)',
+            } },
 }
 
 const SEMANTIC = { green: '#3ecf8e', red: '#f47067', yellow: '#f5b759' }
@@ -212,9 +238,9 @@ export function generateTheme(seed) {
   v['--pi-shadow-lg'] = seed.overrides?.['--pi-shadow-lg'] || `${shadowTint}0.34)`
 
   // 字体 / 圆角（单变量派生）/ 字阶（行高绑定单 token）
-  v['--pi-font-mono'] = FONTS.mono
-  v['--pi-font-sans'] = FONTS.sans
-  v['--pi-font-display'] = FONTS.display
+  v['--pi-font-mono'] = seed.overrides?.['--pi-font-mono'] || FONTS.mono
+  v['--pi-font-sans'] = seed.overrides?.['--pi-font-sans'] || FONTS.sans
+  v['--pi-font-display'] = seed.overrides?.['--pi-font-display'] || FONTS.display
   // 08-26 去 AI 味：圆角全档收敛（工具感），与 styles.css 手改保持一致
   v['--pi-radius-base'] = '6px'
   v['--pi-r-sm'] = '4px'; v['--pi-r-md'] = '6px'; v['--pi-r-lg'] = '8px'; v['--pi-r-xl'] = '12px'
@@ -277,7 +303,7 @@ export function emitCss() {
   const block = (sel, vars) => `${sel} {\n${fmtVars(vars)}\n}`
   return {
     root: block(':root', deep),
-    themes: ['ink', 'violet', 'mist', 'kraft'].map(name =>
+    themes: ['ink', 'violet', 'mist', 'kraft', 'shuimo', 'bamboo'].map(name =>
       block(`[data-theme="${name}"]`, generateTheme(SEEDS[name]))).join('\n'),
   }
 }

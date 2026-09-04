@@ -712,7 +712,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
           <div className="welcome-mark" aria-hidden="true">语</div>
           <div>
             <h1 className="page-title">今天想完成什么？</h1>
-            <p className="text-[14px] text-pi-dim leading-relaxed mt-2 max-w-[52ch]">从一句话开始，也可以直接进入一个工具。小语会把过程、产物和后续任务都留在同一个工作空间。</p>
+            <p className="text-[15px] text-pi-dim leading-relaxed mt-2 max-w-[52ch]">从一句话开始，也可以直接进入一个工具。小语会把过程、产物和后续任务都留在同一个工作空间。</p>
           </div>
         </div>
 
@@ -726,7 +726,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
               <button key={label} onClick={act} className="quick-action-item">
                 <span className="quick-action-icon"><Icon className="w-[18px] h-[18px]" strokeWidth={1.8} /></span>
                 <span className="min-w-0 flex-1 text-left">
-                  <span className="block text-[14px] font-semibold text-pi-text">{label}</span>
+                  <span className="block text-[13px] font-semibold text-pi-text">{label}</span>
                   <span className="block text-[12px] text-pi-dim2 mt-0.5 leading-relaxed">{desc}</span>
                 </span>
                 <ChevronRight className="quick-action-chevron w-4 h-4 flex-shrink-0" strokeWidth={1.8} />

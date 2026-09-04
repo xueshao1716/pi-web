@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Palette } from 'lucide-react'
 import { THEME_PRESETS as THEMES, ACCENT_PRESETS as ACCENTS } from '../theme/palettes'
-import { SEEDS, generateTheme } from '../theme/generate.mjs'
+import { applyThemeVars } from '../theme/apply'
 import { ThemeApi } from '../api'
 // 主题预设：data-theme 属性驱动（styles.css [data-theme] 变量覆盖）；色板定义在 theme/palettes.ts
 // ⚠️ 08-26 单一真源：主色自定义 = generateTheme(seed) 派生整套色板写 CSS 变量（非只改 3 个），
@@ -50,21 +50,9 @@ export default function ThemeSwitcher() {
     ThemeApi.save(theme, accent).catch(() => {})
   }, [theme, accent])
 
-  // 应用主题：generateTheme(seed) 派生全套 → 写 CSS 变量（单一真源，主色自定义时全族协调）
+  // 应用主题：走 applyThemeVars，与主题页同源（含 shuimo/bamboo 的 data-theme）
   useEffect(() => {
-    const el = document.documentElement as any
-    if (theme === 'mist') el.dataset.theme = 'mist'
-    else if (theme === 'ink') el.dataset.theme = 'ink'
-    else if (theme === 'violet') el.dataset.theme = 'violet'
-    else if (theme === 'kraft') el.dataset.theme = 'kraft'
-    else delete el.dataset.theme
-
-    const seed = SEEDS[theme as keyof typeof SEEDS] || SEEDS.deep
-    const c = (accent || seed.accent)
-    const v = generateTheme({ ...seed, accent: c })
-    // 灰阶/文字/语义等全部由生成器派生；z-index/spacing 等全局 token 不在此（generateTheme 不输出）
-    for (const [k, val] of Object.entries(v)) el.style.setProperty(k, val as string)
-
+    applyThemeVars(theme, accent)
     try { localStorage.setItem('pi_theme', theme) } catch {}
     try { localStorage.setItem('pi_accent', accent) } catch {}
   }, [theme, accent])
