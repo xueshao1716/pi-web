@@ -318,10 +318,12 @@ export async function handleWsDeliveries(res) {
   try {
     for (const it of fs.readdirSync(deliverDir, { withFileTypes: true })) {
       const fp = path.join(deliverDir, it.name);
+      const st = fs.statSync(fp);
       out.push({
         name: it.name,
         type: it.isDirectory() ? "dir" : "file",
-        size: fs.statSync(fp).size,
+        size: st.size,
+        mtime: st.mtime.toISOString(),
         url: `/api/ws/file?path=${encodeURIComponent(fp)}`,
         wsPath: `交付/${it.name}`,
       });

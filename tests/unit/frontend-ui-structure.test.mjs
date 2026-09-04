@@ -333,6 +333,20 @@ test('会话库使用公共页头，并为桌面表格和移动卡片提供等�
   assert.doesNotMatch(sessionDb, /📌/, '置顶不得使用 emoji')
 })
 
+test('工作台看板挂在桌面导航，并读现有 API 做一屏总览', () => {
+  const layout = read('AppLayout.tsx')
+  const routes = read('hooks', 'useHashRoute.tsx')
+  const board = read('pages', 'Board.tsx')
+  assert.ok(routes.includes("'board'"), 'hash 路由必须包含 board')
+  assert.ok(layout.includes("route: 'board'"), '桌面导航必须注册工作台')
+  assert.ok(layout.includes("label: '工作台'"), '工作台导航文案必须是工作台')
+  assert.ok(board.includes('<PageHeader'), '工作台必须使用 PageHeader')
+  assert.ok(board.includes('title="工作台"'), '工作台页头标题必须是工作台')
+  for (const api of ['SessionsApi.list()', 'TasksApi.list()', 'StatsApi.providers()', 'StatsApi.daily()', 'WsApi.deliveries()', 'SubagentApi.runs()']) {
+    assert.ok(board.includes(api), `工作台必须读取：${api}`)
+  }
+})
+
 test('任务与会话库保留既有 API 行为', () => {
   const tasks = read('pages', 'Tasks.tsx')
   for (const api of ['TasksApi.list()', 'TasksApi.history(id)', 'TasksApi.create(body)', 'TasksApi.runNow(t.id)', "TasksApi.setState(t.id, 'pause')", "TasksApi.setState(t.id, 'resume')", "TasksApi.setState(t.id, 'archive')", 'TasksApi.stopRun(t.id)', 'TasksApi.remove(t.id)']) {
