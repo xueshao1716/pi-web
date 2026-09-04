@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { validateSlides, findSlidesJson, appendHistory, readHistory } from "./workshop-ppt-core.mjs";
 import { lintDeck, lintPage } from "./slides-lint-core.mjs";
 import { readThemeCss } from "./ppt-html-paths.mjs";
+import { attachSseAbort } from "./ppt-refine.mjs";
 export { handlePptRefine } from "./ppt-refine.mjs";
 
 // 工作台独立页映射（可直达 URL）
@@ -40,8 +41,8 @@ export async function findSkillPath(ctx, name) {
   const fallbackDirs = [
     path.join(here, "skills"),                            // pi-web 内置 engine/skills/
     path.join(os.homedir(), ".agents", "skills"),          // 用户级 .agents/skills/（ppt-generator 等在这）
-    process.env.PI_SKILL_EXTRA_DIR || "",                  // 外部扩展点
-    "D:\\novel-forge-v10\\novel-forge-v10",               // novel-forge v10 仓库（独立 clone）
+    process.env.PI_SKILL_EXTRA_DIR || "",
+    process.env.PI_NOVEL_FORGE_DIR || "",
   ].filter(Boolean);
   for (const dir of fallbackDirs) {
     try {
@@ -56,7 +57,7 @@ export async function findSkillPath(ctx, name) {
 
 // ══ PPT 工作室：创建独立 agent → 注入 ppt-generator 技能指令 → 七角色生成 JSON → 脚本产 .pptx → SSE 流式 ══
 export async function handleWorkshopPpt(ctx, res, body) {
-  const { CONFIG, SESSIONS_DIR, defaultModel, createSessionAgent, SessionManager, scanRecentArtifacts, sseWrite, json, getAgentDir, DefaultResourceLoader, WS_ROOT } = ctx;
+  const { CONFIG, SESSIONS_DIR, defaultModel, createSessionAgent, SessionManager, scanRecentArtifacts, sseWrite, json, getAgentDir, DefaultResourceLoader, WS_ROOT, req } = ctx;
   const theme = String(body?.theme || "").trim();
   if (!theme) return json(res, 400, { error: "缺少主题" });
   const pages = Math.min(Math.max(parseInt(body?.pages, 10) || 10, 3), 25);
@@ -75,6 +76,7 @@ export async function handleWorkshopPpt(ctx, res, body) {
   const sm = SessionManager.create(CONFIG.cwd, SESSIONS_DIR);
   let agent = null;
   let timer = null;
+  let finished = false;
   try {
     agent = await createSessionAgent(sm, defaultModel);
     write("note", { text: "🧠 已启动七角色协作流程（主题→模板→内容→配图→润色→构建）…" });
@@ -113,11 +115,13 @@ export async function handleWorkshopPpt(ctx, res, body) {
 
 注意：产物 .pptx 必须生成在 ${workDir.replace(/\\/g, "/")} 目录内。JSON 中间文件可留在同目录。`;
     // 超时兜底（生成可能较慢，给 10 分钟）
-    let finished = false;
+    let releaseAbort = () => {};
     const finish = async () => {
       if (finished) return;
       finished = true;
+      try { releaseAbort(); } catch {}
       try { unsub(); } catch {}
+      try { agent?.abort?.(); } catch {}
       // 扫描产物：工作空间最近 5 分钟的 .pptx
       let file = null;
       try {
@@ -160,13 +164,16 @@ export async function handleWorkshopPpt(ctx, res, body) {
       try { res.end(); } catch {}
       try { agent?.dispose?.(); } catch {}
     };
+    releaseAbort = attachSseAbort(req, () => finish());
     timer = setTimeout(finish, 10 * 60 * 1000);
     await agent.prompt(prompt);
     clearTimeout(timer);
     await finish();
   } catch (e) {
     clearTimeout(timer);
+    if (finished) return;
     write("error", { message: String(e?.message || e).slice(0, 200) });
+    try { agent?.abort?.(); } catch {}
     try { agent?.dispose?.(); } catch {}
     try { res.end(); } catch {}
   }
@@ -233,7 +240,7 @@ export async function listPptHistory(ctx, res) {
 // 管线：agent 读 ppt-html 技能 → 产 deck.json + pages/*.html → SSE 逐页推 HTML → 前端 iframe 真渲染
 // 干预：前端 data-field 文案替换（本地保存回写）+ 单页重设计（agent 重做该页）；导出：浏览器打印 PDF
 export async function handleWorkshopPptHtml(ctx, res, body) {
-  const { CONFIG, SESSIONS_DIR, defaultModel, createSessionAgent, SessionManager, sseWrite, json, getAgentDir, DefaultResourceLoader, WS_ROOT } = ctx;
+  const { CONFIG, SESSIONS_DIR, defaultModel, createSessionAgent, SessionManager, sseWrite, json, getAgentDir, DefaultResourceLoader, WS_ROOT, req } = ctx;
   const theme = String(body?.theme || "").trim();
   if (!theme) return json(res, 400, { error: "缺少主题" });
   const pages = Math.min(Math.max(parseInt(body?.pages, 10) || 8, 3), 20);
@@ -253,6 +260,7 @@ export async function handleWorkshopPptHtml(ctx, res, body) {
   const sm = SessionManager.create(CONFIG.cwd, SESSIONS_DIR);
   let agent = null;
   let timer = null;
+  let finished = false;
   try {
     agent = await createSessionAgent(sm, defaultModel);
     const unsub = agent.subscribe((ev) => {
@@ -281,12 +289,14 @@ export async function handleWorkshopPptHtml(ctx, res, body) {
 2. 产物全部写入 ${workDir.split(path.sep).join("/")}：deck.json + pages/page-01.html 起（两位数序号）
 3. 每页都要是"设计过的版面"：一个视觉焦点、字号阶梯、留白充足、accent 克制；图形用 CSS 渐变/几何形，禁止外部图片和 CDN
 4. 写完自检（bash：页数、theme- class、data-page、data-field、文件大小），然后回复一句话总结：页数 + 每页一句话摘要`;
-    let finished = false;
+    let releaseAbort = () => {};
     const finish = async () => {
       if (finished) return;
       finished = true;
+      try { releaseAbort(); } catch {}
       clearInterval(hb);
       try { unsub(); } catch {}
+      try { agent?.abort?.(); } catch {}
       try { agent?.dispose?.(); } catch {}
       // 扫产物：deck.json + pages/*.html，逐页推给前端
       try {
@@ -336,14 +346,17 @@ export async function handleWorkshopPptHtml(ctx, res, body) {
       }
       try { res.end(); } catch {}
     };
-    // 兕底按时长缩放：设计稿每页约 3-8 分钟，10 页可达 80 分钟，固定 12 分钟会中途杀 agent
+    releaseAbort = attachSseAbort(req, () => finish());
+    // 兜底按时长缩放：设计稿每页约 3-8 分钟，10 页可达 80 分钟，固定 12 分钟会中途杀 agent
     timer = setTimeout(finish, Math.max(20, pages * 8) * 60 * 1000);
     await agent.prompt(prompt);
     clearTimeout(timer);
     await finish();
   } catch (e) {
     clearTimeout(timer);
+    if (finished) return;
     write("error", { message: String(e?.message || e).slice(0, 200) });
+    try { agent?.abort?.(); } catch {}
     try { agent?.dispose?.(); } catch {}
     try { res.end(); } catch {}
   }

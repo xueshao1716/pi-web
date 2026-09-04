@@ -6,6 +6,9 @@ import { execFile } from "node:child_process";
 import { json } from "./http-utils.mjs";
 
 let _directChat = null, _runGit = null, _cwd = "", _getModelList = () => [], _getDefaultModel = () => null, _repairFiles = [], _piPackage = "";
+export function repoRoot() {
+  return path.resolve(import.meta.dirname, "..");
+}
 export function initSelfHeal({ directChat = null, runGit = null, cwd = "", getModelList = null, getDefaultModel = null, _repairFiles = [], piPackage = "" } = {}) {
   _directChat = directChat; _runGit = runGit; _cwd = cwd; if (getModelList) _getModelList = getModelList; if (getDefaultModel) _getDefaultModel = getDefaultModel; _repairFiles = _repairFiles; _piPackage = piPackage;
 }
@@ -143,8 +146,9 @@ export async function handleRepair(res, body) {
     const sm = SessionManager.create(_cwd, SESSIONS_DIR);
     const agent = await createSessionAgent(sm, _getDefaultModel());
     write("delta", { text: "🧠 正在分析代码并修复…\n" });
+    const root = repoRoot();
     const repairPrompt = [
-      "你是 pi-web（D:\\pi-web）的修复工程师。用户报告了问题：",
+      `你是 pi-web（${root}）的修复工程师。用户报告了问题：`,
       issue,
       "",
       "请：",
@@ -153,13 +157,13 @@ export async function handleRepair(res, body) {
       "3. 用 bash 运行 node --check server.mjs 验证语法",
       "4. 完成后回复「修复完成」并简述改了什么",
       "",
-      "注意：只修改 D:\\pi-web 下的文件，不要动 node_modules。",
-      `修复前检查点：${cp.dir ? `已保存到 ${cp.dir}（改坏的话把该目录文件复制回 D:\\pi-web 即可回滚，也可用 git 恢复）` : "创建失败（" + (cp.error || "未知") + "），改动用 git 跟踪，改坏可用 git checkout 恢复"}`,
+      `注意：只修改 ${root} 下的文件，不要动 node_modules。`,
+      `修复前检查点：${cp.dir ? `已保存到 ${cp.dir}（改坏的话把该目录文件复制回 ${root} 即可回滚，也可用 git 恢复）` : "创建失败（" + (cp.error || "未知") + "），改动用 git 跟踪，改坏可用 git checkout 恢复"}`,
       "修复前先读 工程/经验库/experience.md 是否有同类踩坑，避免重复犯错；修复完成后按经验库格式沉淀本次问题的根因与解法（1-3 条，每条 3 行内），并在回复末尾注明已沉淀的经验。",
     ].join("\n");
     const reply = await agent.prompt(repairPrompt);
     write("delta", { text: "\n" + String(reply || "").slice(0, 800) + "\n" });
-    write("delta", { text: `\n✅ 修复完成，重启服务中…（页面会自动恢复）\n🛡 回滚方式：${cp.error ? "检查点创建失败，请用 git 恢复" : `复制 ${cp.dir} 内文件回 D:\\pi-web`}` });
+    write("delta", { text: `\n✅ 修复完成，重启服务中…（页面会自动恢复）\n🛡 回滚方式：${cp.error ? "检查点创建失败，请用 git 恢复" : `复制 ${cp.dir} 内文件回 ${root}`}` });
     write("done", { repair: true });
     setTimeout(() => {
       console.log("[pi-web] 自愈重启…");

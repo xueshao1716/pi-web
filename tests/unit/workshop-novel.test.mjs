@@ -9,6 +9,22 @@ import path from "node:path";
 let tmp = "";
 process.env.PI_NOVELS_DIR = "";
 const mod = await import("../../engine/workshop-novel.mjs");
+const src = fs.readFileSync(new URL("../../engine/workshop-novel.mjs", import.meta.url), "utf8");
+
+test("novelsDir 不写死 D 盘路径，env 优先、否则工作空间/novels", () => {
+  assert.ok(!src.includes("D:\\\\pi-workspace\\\\novels"), "不得硬编码 D:\\\\pi-workspace\\\\novels");
+  assert.ok(!src.includes("D:/pi-workspace/novels"), "不得硬编码 D:/pi-workspace/novels");
+  const custom = path.join(os.tmpdir(), "pi-novels-custom");
+  const prev = process.env.PI_NOVELS_DIR;
+  process.env.PI_NOVELS_DIR = custom;
+  assert.equal(mod.novelsDir(), custom);
+  if (prev === undefined) delete process.env.PI_NOVELS_DIR;
+  else process.env.PI_NOVELS_DIR = prev;
+  const viaRoot = mod.resolveNovelsDir({ env: {}, wsRoot: "E:\\ws" });
+  assert.equal(viaRoot, path.join("E:\\ws", "novels"));
+  const viaHome = mod.resolveNovelsDir({ env: {}, wsRoot: "" });
+  assert.equal(viaHome, path.join(os.homedir(), "pi-workspace", "novels"));
+});
 
 describe("workshop-novel 数据层", () => {
   beforeEach(() => {

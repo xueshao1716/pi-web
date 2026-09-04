@@ -1781,7 +1781,7 @@ const API_ROUTES = [
   }],
   ["POST", "/api/parse-file", async (res, req) => handleParseFile(res, await readBody(req, 12))],
   // ── 专项工作台 ──
-  ["POST", "/api/workshop/ppt", async (res, req) => workshop.handleWorkshopPpt(wsCtx(), res, await readBody(req))],
+  ["POST", "/api/workshop/ppt", async (res, req) => workshop.handleWorkshopPpt({ ...wsCtx(), req }, res, await readBody(req))],
   // PPT 设计干预：大纲编辑后本地重建 .pptx（2026-09-03）
   ["POST", "/api/workshop/pptx/rebuild", async (res, req) => workshop.rebuildPptx(wsCtx(), res, await readBody(req))],
   ["GET", "/api/workshop/ppt/history", (res) => workshop.listPptHistory(wsCtx(), res)],
@@ -1794,7 +1794,7 @@ const API_ROUTES = [
   ["POST", "/api/workshop/ppt/distill", async (res, req) => distill.handlePptDistill(wsCtx(), res, await readBody(req))],
   ["POST", "/api/workshop/ppt-html/refine", async (res, req) => workshop.handlePptRefine({ ...wsCtx(), req }, res, await readBody(req))],
   // PPT 设计稿模式（HTML 路线，2026-09-03）
-  ["POST", "/api/workshop/ppt/html", async (res, req) => workshop.handleWorkshopPptHtml(wsCtx(), res, await readBody(req))],
+  ["POST", "/api/workshop/ppt/html", async (res, req) => workshop.handleWorkshopPptHtml({ ...wsCtx(), req }, res, await readBody(req))],
   ["POST", "/api/workshop/ppt-html/save", async (res, req) => workshop.savePptHtmlPage(wsCtx(), res, await readBody(req))],
   // ── 小说工坊（书架式：作品沉淀/真相文件/第N章递进，收编自 novel-studio）──
   ["GET", "/api/novel/books", (res) => json(res, 200, { books: novelStudio.listBooks() })],

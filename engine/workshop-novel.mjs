@@ -1,14 +1,22 @@
 // ══ 小说工坊·书架式创作系统（2026-08-27 收编 novel-studio 数据契约，React 统一）══
-// 数据：PI_NOVELS_DIR（默认 D:/pi-workspace/novels）每本书一个子目录：
+// 数据：PI_NOVELS_DIR（否则 WS_ROOT/novels，再退回 ~/pi-workspace/novels）每本书一个子目录：
 //   meta.json + chapters/第NNN章.md + truth/{canon.md,current_state.json,pending_hooks.json,chapter_summaries.json}
 // 写作：pi-web 统一 agent 管道（Auto 路由/模型管理复用）+ novel-forge-v10 技能 + 真相文件注入（长篇一致性）
 // 与 handleWorkshopNovel（一次性写第1章即弃）的区别：作品永久沉淀、第N章递进、页内阅读
 import path from "node:path";
 import fs from "node:fs";
+import os from "node:os";
 import { findSkillPath } from "./workshop.mjs";
+import { WS_ROOT } from "./workspace-api.mjs";
+
+export function resolveNovelsDir({ env = process.env, wsRoot = WS_ROOT } = {}) {
+  if (env.PI_NOVELS_DIR) return env.PI_NOVELS_DIR;
+  if (wsRoot) return path.join(wsRoot, "novels");
+  return path.join(os.homedir(), "pi-workspace", "novels");
+}
 
 export function novelsDir() {
-  return process.env.PI_NOVELS_DIR || "D:\\pi-workspace\\novels";
+  return resolveNovelsDir();
 }
 
 const TRUTH_FILES = ["canon.md", "current_state.json", "pending_hooks.json", "chapter_summaries.json"];
