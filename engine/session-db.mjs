@@ -5,9 +5,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { json } from "./http-utils.mjs";
 import { sanitizeSessionFile } from "./session-sanitize.mjs";
-import { getSessionList } from "./session-files.mjs";
+import { getSessionList, invalidateSessionCache } from "./session-files.mjs";
+import { runSessionSweep } from "./session-groups.mjs";
 
 let _agentDir = "", _cwd = "";
+let _deleteSession = async () => {};
 let _db = null; // { seqMap:{id:seq}, tags:{id:[]}, pinned:{id:true}, messageCount:{id:n}, lastRebuild }
 
 function dbFile() { return path.join(_agentDir, "session-db.json"); }
@@ -32,7 +34,11 @@ function countLines(file) {
   } catch { return 0; }
 }
 
-export function initSessionDb({ agentDir = "", cwd = "" } = {}) { _agentDir = agentDir; _cwd = cwd; }
+export function initSessionDb({ agentDir = "", cwd = "", deleteSession = null } = {}) {
+  _agentDir = agentDir;
+  _cwd = cwd;
+  if (typeof deleteSession === "function") _deleteSession = deleteSession;
+}
 
 // GET /api/sessions/db/list —— 全量（索引优先，实时状态合并）
 export function handleDbList(res) {
@@ -48,6 +54,7 @@ export function handleDbList(res) {
       mtime: mtimeIso, // statSync 同次顺手取（此前遗漏永远 —）
       seq: db.seqMap[s.id] || null,
       pinned: !!db.pinned[s.id], tags: db.tags[s.id] || [],
+      group: s.group || "workspace",
     });
   }
   rows.sort((a, b) => (b.seq || 0) - (a.seq || 0)); // 新的在前
@@ -108,6 +115,27 @@ export function handleDbMeta(res, body) {
   if (Array.isArray(body.tags)) db.tags[id] = body.tags.map(t => String(t).slice(0, 20)).slice(0, 8);
   saveDb();
   json(res, 200, { ok: true, id, seq: db.seqMap[id], pinned: !!db.pinned[id], tags: db.tags[id] || [] });
+}
+
+// POST /api/sessions/db/sweep {dryRun?, minAgeMs?} —— 清空壳/真测残渣/工坊一枪，置顶与外部联系保留
+export async function sweepSessionsNow({ dryRun = false, minAgeMs = 6 * 3600 * 1000 } = {}) {
+  const db = loadDb();
+  const pinnedIds = new Set(Object.keys(db.pinned || {}).filter(id => db.pinned[id]));
+  const result = await runSessionSweep({
+    sessions: getSessionList(),
+    pinnedIds,
+    now: Date.now(),
+    minAgeMs,
+    dryRun,
+    deleteSession: _deleteSession,
+  });
+  if (!result.dryRun) invalidateSessionCache();
+  return result;
+}
+
+export async function handleDbSweep(res, body = {}) {
+  const minAgeMs = Number.isFinite(Number(body?.minAgeMs)) ? Number(body.minAgeMs) : 6 * 3600 * 1000;
+  json(res, 200, await sweepSessionsNow({ dryRun: !!body?.dryRun, minAgeMs }));
 }
 
 // GET /api/sessions/db/stats —— 概览

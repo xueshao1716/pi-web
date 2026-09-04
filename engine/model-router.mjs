@@ -157,8 +157,10 @@ function flashCandidate() {
 // ⚠️ 2026-08-19 修正：千问不再作为 pro（它已是 flash 主力）——否则"升级"是假升级。
 //   真 pro = ocGo deepseek-v4-pro（8/23 套餐恢复后）→ ark（thinking 空回复，末位）。（mimo-pro 已摘除）
 export function routeProCandidate() {
-  // 用户定（2026-09-04）：Agnes 旗舰 agnes-2.5-pro 首选 pro（付费已购），ocGo 套餐随后
+  // 用户定（2026-09-04）：Agnes 旗舰首选 pro；09-04 晚换 cpk 新 key（TokenPlan 套餐）后无 pro，
+  // 降级到 agnes-2.5-flash 顶 pro 位（仍是 Agnes 优先），ocGo 套餐随后
   return findLive("agnes", /2\.5-pro$/i)
+    || findLive("agnes", /2\.5-flash$/i)
     || ocGoCandidate(/deepseek-v4-pro/i)
     || findLive("volces-ark", /ark-code/i);
 }

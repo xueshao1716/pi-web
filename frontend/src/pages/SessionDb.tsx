@@ -58,6 +58,14 @@ export default function SessionDb() {
     else toast('重建失败', 'error')
   }
 
+  const sweepEmpty = async () => {
+    setBusy(true)
+    const d = await api('/api/sessions/db/sweep', { method: 'POST', body: { minAgeMs: 0 } }).catch(() => null)
+    setBusy(false)
+    if (d?.ok) { toast(`已清理 ${d.swept} 条空会话（可从回收站找回）`, 'ok'); await load() }
+    else toast('清理失败', 'error')
+  }
+
   const batchSanitize = async () => {
     if (!sel.size) return
     setBusy(true)
@@ -136,6 +144,9 @@ export default function SessionDb() {
           </select>
           <button onClick={rebuild} disabled={busy} className="btn-ghost text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
             <RefreshCw className={`w-3.5 h-3.5 ${busy ? 'animate-spin' : ''}`} />重建索引
+          </button>
+          <button onClick={sweepEmpty} disabled={busy} className="btn-ghost text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
+            <Trash2 className="w-3.5 h-3.5" />清理空会话
           </button>
           {sel.size > 0 && (
             <button onClick={batchSanitize} disabled={busy} className="btn-primary text-xs px-3 py-1.5 inline-flex items-center gap-1.5">

@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { invalidateSessionCache, getSessionList } from "./session-files.mjs";
+import { appendSessionGroup } from "./session-groups.mjs";
 
 let _cwd = "", _sessionsDir = "", _tools = [], _getModelList = () => [], _getDefaultModel = () => null, _activeSessions = null, _createAgentSessionServices = null, _createAgentSessionFromServices = null, _getModelRuntime = () => null,
     _SessionManager = null, _SettingsManager = null, _DefaultResourceLoader = null, _getAgentDir = () => "", _readJsonFile = null, _writeJsonFile = null, _piPackage = "", _isModelBlocked = () => false,
@@ -17,10 +18,11 @@ export function initSessionManager({ cwd = "", sessionsDir = "", tools = [], piP
   if (modelCapabilities) _modelCapabilities = modelCapabilities; if (bindOutputGuardDeps) _bindOutputGuardDeps = bindOutputGuardDeps; if (extractMessages) _extractMessages = extractMessages; if (createSseWriter) _createSseWriter = createSseWriter; if (unifiedChat) _unifiedChat = unifiedChat;
 }
 
-export async function createSession(name) {
+export async function createSession(name, { group } = {}) {
   const sm = _SessionManager.create(_cwd, _sessionsDir);
   const id = sm.getSessionId();
   const file = sm.getSessionFile();
+  const g = group === "test" || group === "terminal" ? group : "workspace";
   // 2026-08-19 收敛：新会话一律用默认模型（千问）。不再继承 lastModelKey——
   //   否则用户切过的 nvidia/deepseek 残留会污染新会话默认（“后端不是千问”死循环根源）。
   //   用户切模型只锁当前会话（session-model-keys 持久化），新会话永远回到默认。
@@ -30,6 +32,7 @@ export async function createSession(name) {
   _activeSessions.set(id, { agent, sm, busy: false, lastUsed: Date.now(), modelKey: _getDefaultModel() && _getDefaultModel().provider ? { provider: _getDefaultModel().provider, id: _getDefaultModel().id } : null, agentModel: _getDefaultModel() && _getDefaultModel().provider ? { provider: _getDefaultModel().provider, id: _getDefaultModel().id } : null });
   invalidateSessionCache(); // 新增会话 → 列表缓存失效
   if (name) { try { sm.appendSessionInfo(name); } catch {} }
+  try { appendSessionGroup(file, g, name); } catch {}
   return id;
 }
 

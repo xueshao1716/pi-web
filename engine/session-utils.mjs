@@ -24,6 +24,25 @@ export function extractFiles(content) {
   return content.filter(b => b.type === "file").map(b => ({ name: b.name, path: b.path, size: b.size, mime: b.mime }));
 }
 
+export function resolveLeafId(entries, leafId) {
+  const ids = new Set((entries || []).filter(e => e?.type === "message" && e.id).map(e => e.id));
+  if (leafId && ids.has(leafId)) return leafId;
+  for (let i = (entries || []).length - 1; i >= 0; i--) {
+    const e = entries[i];
+    if (e?.type === "message" && e.id) return e.id;
+  }
+  return null;
+}
+
+export function windowMessages(messages, tail) {
+  const list = Array.isArray(messages) ? messages : [];
+  const n = Number(tail);
+  if (!Number.isFinite(n) || n <= 0 || list.length <= n) {
+    return { messages: list, truncated: false, total: list.length };
+  }
+  return { messages: list.slice(-n), truncated: true, total: list.length };
+}
+
 // 从会话 entries 中提取消息（供历史渲染；指定 leafId 时只返回该分支路径上的消息）
 export function extractMessages(entries, leafId) {
   // 若指定 leafId：只返回该分支路径上的消息（沿 parentId 回溯）

@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { extractText, extractImages, extractFiles } from "./session-utils.mjs";
+import { classifySessionGroup } from "./session-groups.mjs";
 
 let _sessionsDir = "";
 let _workspaceCwd = "";
@@ -36,7 +37,7 @@ export function scanSessionFiles() {
 }
 
 export function parseSessionFile(file) {
-  const info = { id: null, createdAt: null, updatedAt: null, name: null, preview: "", messageCount: 0, file, cwd: null };
+  const info = { id: null, createdAt: null, updatedAt: null, name: null, preview: "", messageCount: 0, file, cwd: null, group: null };
   try {
     const lines = fs.readFileSync(file, "utf8").split("\n").filter(Boolean);
     for (const line of lines) {
@@ -47,7 +48,10 @@ export function parseSessionFile(file) {
         continue;
       }
       if (e.timestamp && (!info.updatedAt || e.timestamp > info.updatedAt)) info.updatedAt = e.timestamp;
-      if (e.type === "session_info" && e.name) info.name = e.name;
+      if (e.type === "session_info") {
+        if (e.name) info.name = e.name;
+        if (e.group) info.group = e.group;
+      }
       if (e.type === "message" && e.message?.role === "user") {
         info.messageCount++;
         if (!info.preview) {
@@ -101,14 +105,12 @@ function listSessions() {
       messageCount: s.messageCount,
       file: s.file,
       cwd: s.cwd,
-      // 2026-08-26 分组：小语真测（[真测] 前缀命名约定）→ terminal（pi 终端/外部联系）→ workspace
-      // 测试会话不入工作空间，避免污染伙伴的会话列表
-      group: (() => {
-        const name = s.name || s.preview || "";
-        // 命名约定：以 [真测]/真测/E2E 开头的会话归入小语真测组（测试不入工作空间）
-        if (/^(\[真测\]|真测[·:：]?|E2E)/i.test(name.trim())) return "test";
-        try { return path.resolve(s.cwd || "") === path.resolve(_workspaceCwd) ? "workspace" : "terminal"; } catch { return "terminal"; }
-      })(),
+      group: classifySessionGroup({
+        name: s.name || s.preview || "",
+        cwd: s.cwd,
+        group: s.group,
+        workspaceCwd: _workspaceCwd,
+      }),
     }));
 }
 

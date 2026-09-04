@@ -22,7 +22,7 @@ import { createModelSessionApi } from "./engine/model-session.mjs";
 // ── Reasonix 机制（esengine/DeepSeek-Reasonix 借鉴）：工具结果压缩 / NEEDS_PRO 自报升级 / scavenge 捞回 ──
 import { shrinkToolResult, NEEDS_PRO_RE, scavengeToolCalls } from "./engine/reasonix-tools.mjs";
 // ── 会话解析纯函数（拆模块）：消息/文本/图片/文件提取 ──
-import { extractMessages, extractText, extractImages, extractFiles } from "./engine/session-utils.mjs";
+import { extractMessages, extractText, extractImages, extractFiles, resolveLeafId, windowMessages } from "./engine/session-utils.mjs";
 import { initSessionFiles, scanSessionFiles, parseSessionFile, parseSessionFileCached, readEntriesFromFile, getSessionList, invalidateSessionCache, extractMessageFiles, extractMessageImages } from "./engine/session-files.mjs";
 // ── 统一 HTTP 客户端（拆模块）：原生 fetch + 自动系统代理（env → Windows 注册表），替代 python 子进程 ──
 import { httpJsonFetch, httpBufferFetch } from "./engine/http.mjs";
@@ -74,7 +74,8 @@ import { createCodeMode } from "./code-mode/code-mode.mjs";
 import { createTimeEngine } from "./engine/time-engine.mjs";
 import { sanitizeSessionFile } from "./engine/session-sanitize.mjs";
 import { createCorsPolicy } from "./engine/cors-policy.mjs";
-import { initSessionDb, handleDbList, handleDbRebuild, handleDbSanitize, handleDbMeta, handleDbStats } from "./engine/session-db.mjs";
+import { initSessionDb, handleDbList, handleDbRebuild, handleDbSanitize, handleDbMeta, handleDbStats, handleDbSweep, sweepSessionsNow } from "./engine/session-db.mjs";
+import { isListedGroup } from "./engine/session-groups.mjs";
 import { initRecallApi, rebuildIndex, handleRecall, handleRecallAsk, handleSummaries, buildSummaries, recallStats } from "./engine/recall-api.mjs";
 const memoryApi = await import("./engine/memory.mjs");
 const { initMemorySync } = await import("./engine/memory-sync.mjs");
@@ -223,7 +224,7 @@ initMediaApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, authPath: AUT
 initAsrApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, httpJsonFetch }); // 语音转文字（mimo-v2.5-asr 免费通道）
 initDshKeys({ dshWebPort: 3080, readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, ModelRuntime, refreshModelList, setModelList: (l) => { modelList = l; }, getDefaultModel: () => defaultModel, setDefaultModel: (m) => { defaultModel = m; }, setModelRuntime: (r) => { modelRuntime = r; }, getModelRuntime: () => modelRuntime, keepModels: KEEP_MODELS, resetModelHealth }); // dsh/keys/模型管理注入
 initStatsApi({ getAgentDir, cwd: CONFIG.cwd, DefaultResourceLoader, openSession, ensureAgent, getDefaultModel: () => defaultModel }); // 统计/技能/导出注入（08-29 补注入 openSession/ensureAgent——三个 handler 裸引用坏了 9 天）
-initSessionDb({ agentDir: getAgentDir(), cwd: CONFIG.cwd }); // 会话数据库（编号/健康度/标签）
+initSessionDb({ agentDir: getAgentDir(), cwd: CONFIG.cwd, deleteSession }); // 会话数据库（编号/健康度/标签/空会话清扫）
 initRecallApi({ agentDir: getAgentDir(), chat: unifiedChat, getDefaultModel: () => defaultModel }); // 跨会话回忆（09-04，Hermes FTS5 思想）
 initModelClient({ readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, resolveAuth, getModelList: () => modelList, getDefaultModel: () => defaultModel, unifiedChat, detectMediaIntents, generateMediaAsync, extractMediaPrompt, readEntriesFromFile, createSseWriter }); // 直调模型客户端注入
 initSelfHeal({ directChat, runGit: (...args) => runGit(...args), cwd: CONFIG.cwd, getModelList: () => modelList, getDefaultModel: () => defaultModel, piPackage: CONFIG.piPackage }); // 自愈/更新/设计器注入（REPAIR_BACKUP_FILES 已随块迁入模块）
@@ -558,7 +559,7 @@ async function handleChat(req, res, body) {
     // 测试标记（2026-08-29）：x-pi-test 头 → 总是新建独立会话（不复用 lastUnnamed，防污染用户对话流），名字加 [真测] 前缀归入真测分组
     const isTest = String(req.headers?.["x-pi-test"] || "") === "1";
     if (isTest || body.fresh || !lastUnnamedEntry || activeSessions.get(lastUnnamedId) !== lastUnnamedEntry) {
-      const id = await createSession(isTest ? `[真测] ${message.slice(0, 30) || "API测试"}` : undefined);
+      const id = await createSession(isTest ? `[真测] ${message.slice(0, 30) || "API测试"}` : undefined, { group: isTest ? "test" : "workspace" });
       lastUnnamedId = id;
       lastUnnamedEntry = activeSessions.get(id);
       entry = lastUnnamedEntry;
@@ -1346,8 +1347,12 @@ async function handleMessages(res, id, req, url) {
   const found = getSessionList().find(s => s.id === id);
   if (!found || !found.file || !fs.existsSync(found.file)) return json(res, 404, { error: "会话不存在" });
   const entries = readEntriesFromFile(found.file);
-  const leafId = url?.searchParams?.get("leafId") || null;
-  json(res, 200, { messages: extractMessages(entries, leafId), leafId });
+  const leafId = resolveLeafId(entries, url?.searchParams?.get("leafId") || null);
+  const all = extractMessages(entries, leafId);
+  const tailRaw = url?.searchParams?.get("tail");
+  const tail = tailRaw == null || tailRaw === "" ? 80 : parseInt(tailRaw, 10);
+  const win = windowMessages(all, Number.isFinite(tail) ? tail : 80);
+  json(res, 200, { messages: win.messages, leafId, truncated: win.truncated, total: win.total });
 }
 
 // POST /api/sessions/:id/messages —— 持久化用户消息到 JSONL（防 network error 丢消息）
@@ -1449,6 +1454,7 @@ const API_ROUTES = [
   ["GET", "/api/recall/stats", (res) => json(res, 200, recallStats())],
   ["POST", "/api/sessions/db/sanitize", async (res, req) => handleDbSanitize(res, await readBody(req))],
   ["PATCH", "/api/sessions/db/meta", async (res, req) => handleDbMeta(res, await readBody(req))],
+  ["POST", "/api/sessions/db/sweep", async (res, req) => handleDbSweep(res, await readBody(req))],
   // ── 会话 ──
   ["GET", "/api/emotion", (res, req, url) => handleEmotion(res, url)],
   ["GET", "/api/emotion/tide", (res) => json(res, 200, { tide: emotion.getTide(300) })],
@@ -1574,8 +1580,13 @@ const API_ROUTES = [
   ["GET", "/api/memcompress/list", (res) => json(res, 200, { proposals: listMemoryCompress() })],
   ["POST", "/api/memcompress/apply", async (res, req) => { const b = await readBody(req); return json(res, 200, applyMemoryCompress(b.id)); }],
   ["POST", "/api/memcompress/dismiss", async (res, req) => { const b = await readBody(req); return json(res, 200, dismissMemoryCompress(b.id)); }],
-  ["GET", "/api/sessions", (res) => json(res, 200, { sessions: getSessionList() })],
-  ["POST", "/api/sessions", async (res, req) => { const body = await readBody(req); const id = await createSession(body.name); return json(res, 200, { id, name: body.name || "新会话" }); }],
+  ["GET", "/api/sessions", (res) => json(res, 200, { sessions: getSessionList().filter(s => isListedGroup(s.group)) })],
+  ["POST", "/api/sessions", async (res, req) => {
+    const body = await readBody(req);
+    const group = body.group === "test" || body.group === "terminal" ? body.group : "workspace";
+    const id = await createSession(body.name, { group });
+    return json(res, 200, { id, name: body.name || "新会话", group });
+  }],
   // ── 工作空间 ──
   ["GET", "/api/prompts", (res) => handlePrompts(res)],
   ["GET", "/api/ws/tree", (res, req, url) => handleWsTree(res, url.searchParams.get("path") || "")],
@@ -2137,6 +2148,19 @@ function checkSubscriptions() {
 }
 checkSubscriptions();
 setInterval(checkSubscriptions, 6 * 3600 * 1000); // 每 6 小时查一次
+
+// 空会话定期清扫：冷却 6 小时，进回收站，不碰置顶/外部联系/有实质内容的会话
+const SWEEP_MS = 6 * 3600 * 1000;
+async function sweepSessionsQuietly() {
+  try {
+    const r = await sweepSessionsNow({ minAgeMs: SWEEP_MS });
+    if (r.swept) console.log(`[session-sweep] 定期清理 ${r.swept} 条空会话`);
+  } catch (e) {
+    console.log("[session-sweep]", String(e.message || e).slice(0, 120));
+  }
+}
+setTimeout(sweepSessionsQuietly, 2 * 60 * 1000);
+setInterval(sweepSessionsQuietly, SWEEP_MS);
 
 startServer();
 
