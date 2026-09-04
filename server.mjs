@@ -905,6 +905,7 @@ async function handleChat(req, res, body) {
         try {
           const esKey = sessionId || findKeyByEntry(entry) || "new";
           emotion.updateFromOutput(esKey, collected); // 曦系⑥：输出侧感知，回复长短也影响唤醒（09-04）
+          emotion.recordFeeling(esKey, message); // 曦系二期：真实感受存档（事+感+强度）
           const es = emotion.getSnapshot(esKey);
           if (es) { writer.push("emotion", { state: es }); busEmit("emotion", { state: es }); }
         } catch {}
@@ -1451,6 +1452,7 @@ const API_ROUTES = [
   // ── 会话 ──
   ["GET", "/api/emotion", (res, req, url) => handleEmotion(res, url)],
   ["GET", "/api/emotion/tide", (res) => json(res, 200, { tide: emotion.getTide(300) })],
+  ["GET", "/api/emotion/feelings", (res) => json(res, 200, { feelings: emotion.getFeelings(50) })],
   ["GET", "/api/agent-status", (res) => handleAgentStatus(res)],
   // ── 记忆园丁：只报告记忆健康（重复/过时/膨胀），不自动写记忆（防污染）──
   ["GET", "/api/memory-gardener", (res) => json(res, 200, { ...gardenMemory(WS_ROOT), report: { ...scanMemoryHealth(WS_ROOT), reviewed: reviewedKeys(WS_ROOT) } })],
@@ -1818,6 +1820,11 @@ const API_ROUTES = [
   }],
   ["GET", "/api/novel/detail", (res, req, url) => json(res, 200, novelStudio.bookDetail(url.searchParams.get("id") || ""))],
   ["GET", "/api/novel/chapter", (res, req, url) => json(res, 200, novelStudio.readChapter(url.searchParams.get("id") || "", url.searchParams.get("file") || ""))],
+  ["POST", "/api/novel/chapter", async (res, req) => {
+    const b = await readBody(req);
+    const r = novelStudio.writeChapter(b?.id || "", b?.file || "", b?.content);
+    json(res, r.error ? 400 : 200, r);
+  }],
   ["GET", "/api/novel/node", (res, req, url) => json(res, 200, novelStudio.readNode(url.searchParams.get("id") || "", url.searchParams.get("node") || ""))],
   ["POST", "/api/novel/node", async (res, req) => {
     const b = await readBody(req);

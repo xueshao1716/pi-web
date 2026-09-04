@@ -221,6 +221,7 @@ export const AsrApi = {
 export const EmotionApi = {
   get: (sid?: string) => api<any>(`/api/emotion${sid ? `?session=${encodeURIComponent(sid)}` : ''}`),
   tide: () => api<{ tide: any[] }>('/api/emotion/tide'),
+  feelings: () => api<{ feelings: any[] }>('/api/emotion/feelings'),
 }
 // 全局执行状态：哪些会话的 agent 正在跑（状态灯轮询，含后台/他端发起）
 export const AgentStatusApi = {
@@ -295,7 +296,7 @@ export const WorkshopApi = {
   // PPT 设计稿模式（HTML 路线，2026-09-03）：SSE 逐页推 HTML，前端 iframe 真渲染
   runHtml: (body: { theme: string; pages: number; themeKey: string; audience?: string }, onEvent: (ev: { type: string; data: any }) => void) =>
     WorkshopApi.runLike('/api/workshop/ppt/html', body, onEvent),
-  refinePage: (body: { dir: string; file: string; instruction: string }, onEvent: (ev: { type: string; data: any }) => void) =>
+  refinePage: (body: { dir: string; file: string; instruction: string; model?: string }, onEvent: (ev: { type: string; data: any }) => void) =>
     WorkshopApi.runLike('/api/workshop/ppt-html/refine', body, onEvent),
   saveHtmlPage: (body: { file: string; html: string; title?: string }) =>
     api<{ ok: boolean }>('/api/workshop/ppt-html/save', { method: 'POST', body, timeoutMs: 30000 }),
@@ -309,7 +310,11 @@ export const WorkshopApi = {
           body: JSON.stringify(body),
           signal: ctrl.signal,
         })
-        if (!r.ok || !r.body) { onEvent({ type: 'error', data: { message: `HTTP ${r.status}` } }); return }
+        if (!r.ok || !r.body) {
+          let msg = `HTTP ${r.status}`
+          try { const j = JSON.parse(await r.text()); if (j?.error) msg = String(j.error) } catch {}
+          onEvent({ type: 'error', data: { message: msg } }); return
+        }
         const reader = r.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ''
@@ -343,51 +348,83 @@ export const WorkshopApi = {
 }
 
 // ── 小说工坊（书架式：作品沉淀/真相文件/第N章递进）──
-export interface NovelBook { id: string; title: string; genre: string; protagonist?: string; status?: string; narrator?: string; chapters: number; createdAt?: string }
-export interface NovelChapter { file: string; no: number; size: number; mtimeMs: number }
+export interface NovelBook {
+  id: string; title: string; genre: string; protagonist?: string; status?: string; narrator?: string
+  chapters: number; createdAt?: string; pipelineReady?: number; pipelineTotal?: number
+}
+export interface NovelChapter { file: string; no: number; size: number; mtimeMs: number; title?: string; chars?: number }
+export interface NovelPipelineNode {
+  id: string; phase: string; label: string; kind: string; generate?: boolean; ready: boolean; chars: number
+}
+function novelSse(path: string, body: object, onEvent: (ev: { type: string; data: any }) => void) {
+  const ctrl = new AbortController()
+  ;(async () => {
+    try {
+      const r = await fetch(apiUrl(path), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${_token}` },
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+      })
+      if (!r.ok || !r.body) {
+        let msg = `HTTP ${r.status}`
+        try { const j = JSON.parse(await r.text()); if (j?.error) msg = String(j.error) } catch {}
+        onEvent({ type: 'error', data: { message: msg } }); return
+      }
+      const reader = r.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const chunks = buffer.split('\n\n')
+        buffer = chunks.pop() || ''
+        for (const chunk of chunks) {
+          let ev = '', data = ''
+          for (const line of chunk.split('\n')) {
+            if (line.startsWith('event:')) ev = line.slice(6).trim()
+            else if (line.startsWith('data:')) data += line.slice(5).trim()
+          }
+          if (ev && data) { try { onEvent({ type: ev, data: JSON.parse(data) }) } catch {} }
+        }
+      }
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') onEvent({ type: 'error', data: { message: String(e?.message || e) } })
+    }
+  })()
+  return () => ctrl.abort()
+}
 export const NovelApi = {
   books: () => api<{ books: NovelBook[] }>('/api/novel/books'),
   create: (body: { title: string; genre: string; protagonist?: string; setting?: string; narrator?: string }) =>
     api<{ ok?: boolean; id?: string; error?: string }>('/api/novel/books', { method: 'POST', body }),
+  update: (body: { id: string; title?: string; status?: string; genre?: string; protagonist?: string; setting?: string }) =>
+    api<{ ok?: boolean; error?: string }>('/api/novel/books', { method: 'PATCH', body }),
+  remove: (id: string) =>
+    api<{ ok?: boolean; error?: string }>(`/api/novel/books?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
   detail: (id: string) =>
-    api<{ id: string; meta?: any; chapters: NovelChapter[]; truth?: any; nextCh: number; error?: string }>(`/api/novel/detail?id=${encodeURIComponent(id)}`),
+    api<{ id: string; meta?: any; chapters: NovelChapter[]; truth?: any; nextCh: number; pipeline?: NovelPipelineNode[]; notes?: string; error?: string }>(`/api/novel/detail?id=${encodeURIComponent(id)}`),
   chapter: (id: string, file: string) =>
     api<{ ok?: boolean; file: string; content: string; error?: string }>(`/api/novel/chapter?id=${encodeURIComponent(id)}&file=${encodeURIComponent(file)}`),
-  write: (body: { id: string; outline?: string }, onEvent: (ev: { type: string; data: any }) => void) => {
-    const ctrl = new AbortController()
-    ;(async () => {
-      try {
-        const r = await fetch(apiUrl('/api/novel/write'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${_token}` },
-          body: JSON.stringify(body),
-          signal: ctrl.signal,
-        })
-        if (!r.ok || !r.body) { onEvent({ type: 'error', data: { message: `HTTP ${r.status}` } }); return }
-        const reader = r.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ''
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-          const chunks = buffer.split('\n\n')
-          buffer = chunks.pop() || ''
-          for (const chunk of chunks) {
-            let ev = '', data = ''
-            for (const line of chunk.split('\n')) {
-              if (line.startsWith('event:')) ev = line.slice(6).trim()
-              else if (line.startsWith('data:')) data += line.slice(5).trim()
-            }
-            if (ev && data) { try { onEvent({ type: ev, data: JSON.parse(data) }) } catch {} }
-          }
-        }
-      } catch (e: any) {
-        if (e?.name !== 'AbortError') onEvent({ type: 'error', data: { message: String(e?.message || e) } })
-      }
-    })()
-    return () => ctrl.abort()
-  },
+  saveChapter: (body: { id: string; file: string; content: string }) =>
+    api<{ ok?: boolean; error?: string }>('/api/novel/chapter', { method: 'POST', body }),
+  node: (id: string, node: string) =>
+    api<{ ok?: boolean; content: string; error?: string }>(`/api/novel/node?id=${encodeURIComponent(id)}&node=${encodeURIComponent(node)}`),
+  saveNode: (body: { id: string; node: string; content: string }) =>
+    api<{ ok?: boolean; error?: string }>('/api/novel/node', { method: 'POST', body }),
+  export: (id: string) =>
+    api<{ ok?: boolean; content: string; chapters?: number; error?: string }>(`/api/novel/export?id=${encodeURIComponent(id)}`),
+  write: (body: { id: string; outline?: string; note?: string; model?: string }, onEvent: (ev: { type: string; data: any }) => void) =>
+    novelSse('/api/novel/write', body, onEvent),
+  advance: (body: { id: string; node: string; note?: string; model?: string }, onEvent: (ev: { type: string; data: any }) => void) =>
+    novelSse('/api/novel/advance', body, onEvent),
+  revise: (body: { id: string; note?: string; model?: string }, onEvent: (ev: { type: string; data: any }) => void) =>
+    novelSse('/api/novel/revise', body, onEvent),
+  studio: (body: { id: string; note?: string; model?: string }, onEvent: (ev: { type: string; data: any }) => void) =>
+    novelSse('/api/novel/studio', body, onEvent),
+  saveNotes: (body: { id: string; notes: string }) =>
+    api<{ ok?: boolean; error?: string }>('/api/novel/notes', { method: 'POST', body }),
 }
 
 // ── 代码模式（终端面板）──

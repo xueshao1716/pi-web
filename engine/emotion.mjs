@@ -21,7 +21,7 @@ const PERSONALITY = { valence: 0.55, arousal: 0.35, dominance: 0.5 };
 const DEFAULT_STATE = {
   valence: 0.5, arousal: 0.3, dominance: 0.5, intensity: 0.1,
   primary: "calm", secondary: "loving",
-  lastTalk: null, lastResidueAt: null, lastTideAt: null,
+  lastTalk: null, lastResidueAt: null, lastTideAt: null, lastStrongAt: null, lastFeelingApplyTs: null,
   residue: { warmth: 0, hurt: 0, curiosity: 0, last_event: "", last_event_time: "" },
 };
 const states = new Map(); // sessionId -> state
@@ -44,6 +44,77 @@ function getState(key) {
   if (!st.secondary) st.secondary = DEFAULT_STATE.secondary;
   if (!st.residue) st.residue = { ...DEFAULT_STATE.residue };
   return st;
+}
+
+// ══ RealFeeling 真实感受事件流（曦系二期：xi emotion.rs record_feeling / apply_real_feelings）══
+// 每轮对话存档“发生什么事 + 当时什么感受 + 多强烈”到 记忆/情绪感受.jsonl；
+// 新感受到来时调制 VAD 与残留；刚经历高强度情绪时会话有余温，衰减变慢。
+function feelingsFile() { return path.join(wsRoot || ".", "记忆", "情绪感受.jsonl"); }
+
+// 记录一条真实感受（server turn_end 调用；曦语义：event=用户消息摘要，felt=主情绪(强度%)）
+export function recordFeeling(key, eventText) {
+  try {
+    if (!wsRoot) return;
+    const st = getState(key);
+    const line = JSON.stringify({
+      ts: new Date().toISOString(),
+      key: String(key).slice(0, 24),
+      event: String(eventText || "").slice(0, 50),
+      felt: `${st.primary}(${Math.round(st.intensity * 100)}%)`,
+      intensity: st.intensity,
+    });
+    const f = feelingsFile();
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.appendFileSync(f, line + "\n", "utf8");
+    if (st.intensity > 0.5) st.lastStrongAt = Date.now(); // 余温起点：高强度情绪后衰减变慢
+    // 自清理：超 2000 行裁到 1000（曦有 emotion_archive.py 归档，这里轻量化）
+    const content = fs.readFileSync(f, "utf8");
+    const lines = content.trim().split("\n");
+    if (lines.length > 2000) fs.writeFileSync(f, lines.slice(-1000).join("\n") + "\n", "utf8");
+  } catch {}
+}
+
+// 读最近 limit 条感受（尾部往前扫）；withinMs 给定时只取窗口内的
+function loadFeelings(limit = 3, withinMs = null) {
+  try {
+    if (!wsRoot || !fs.existsSync(feelingsFile())) return [];
+    const lines = fs.readFileSync(feelingsFile(), "utf8").trim().split("\n");
+    const out = [];
+    for (let i = lines.length - 1; i >= 0 && out.length < limit; i--) {
+      try {
+        const o = JSON.parse(lines[i]);
+        if (withinMs && Date.now() - new Date(o.ts).getTime() > withinMs) continue;
+        out.push(o);
+      } catch {}
+    }
+    return out;
+  } catch { return [];
+  }
+}
+
+// apply_real_feelings（曦语义）：强度>0.5 抬愉悦+唤醒+温暖残留；低强度微降愉悦；显著事件记“最近触动”
+function applyFeelings(st) {
+  const r = st.residue;
+  const since = st.lastFeelingApplyTs || 0;
+  const recent = loadFeelings(3).filter((f) => new Date(f.ts).getTime() > since); // 只调制新感受（曦是周期 tick+decay 对冲，这里去重语义更干净）
+  if (!recent.length) return;
+  for (const f of recent) {
+    const strength = +f.intensity || 0;
+    if (strength > 0.5) {
+      st.valence = clamp(st.valence + 0.1 * strength);
+      st.arousal = clamp(st.arousal + 0.05 * strength);
+      if (st.valence > 0) r.warmth = Math.min(1, r.warmth + strength * 0.02);
+    } else {
+      st.valence = clamp(st.valence - 0.03);
+      if (st.valence < -0.1) r.hurt = Math.min(1, r.hurt + 0.01);
+    }
+  }
+  const last = recent[recent.length - 1];
+  if (last && last.intensity > 0.6) {
+    r.last_event = String(last.event || "").slice(0, 60);
+    r.last_event_time = last.ts;
+  }
+  st.lastFeelingApplyTs = Date.now();
 }
 
 // ── 情绪词典（xi-system emotion.rs EMOTIONS，主情绪 = 欧氏最近点）──
@@ -113,6 +184,9 @@ export function updateEmotion(key, message) {
   const text = String(message || "").slice(0, 200);
   const tags = [];
 
+  // 真实感受回流：上一轮存档的感受调制当前状态起点（曦：apply_real_feelings）
+  applyFeelings(st);
+
   // ① 时间节律（曦系）：早晨微暖微醒，深夜情绪安静
   const h = new Date().getHours();
   let timeV = 0, timeA = 0;
@@ -142,7 +216,8 @@ export function updateEmotion(key, message) {
   if (st.lastTalk) {
     const hours = (Date.now() - st.lastTalk) / 3600000;
     if (hours > 1) {
-      const t = Math.min(1, hours / 4);
+      const warm = st.lastStrongAt && Date.now() - st.lastStrongAt < 30 * 60_000; // 余温：刚经历高强度情绪，热乎气散得慢（曦：has_recent_feelings → decay 减速）
+      const t = Math.min(1, hours / (warm ? 8 : 4));
       st.valence = lerp(st.valence, PERSONALITY.valence + residueEffect, t);
       st.arousal = lerp(st.arousal, PERSONALITY.arousal, t);
       st.dominance = lerp(st.dominance, PERSONALITY.dominance, t);
@@ -278,6 +353,9 @@ export function getSnapshot(key) {
 
 // 会话关闭清理
 export function clearEmotion(key) { states.delete(key); }
+
+// 真实感受列表（API 用）：时间正序最近 limit 条
+export function getFeelings(limit = 50) { return loadFeelings(limit).reverse(); }
 
 // 情绪潮汐历史（09-03）：最近 N 个情绪事件点，供工作台曲线展示
 export function getTide(limit = 300) {

@@ -5,6 +5,7 @@ import {
   Play, Pause, CheckCircle2, AlertTriangle, ArrowRight,
 } from 'lucide-react'
 import { SessionsApi, TasksApi, StatsApi, WsApi, SubagentApi, EmotionApi, type TimeTask, type SubagentRun } from '../api'
+import { useApp } from '../store'
 import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
 import ActivityFeed from '../components/ActivityFeed'
@@ -89,7 +90,7 @@ function DeliveryCard({ d }: { d: { name: string; mtime?: string; type?: string 
         <span className="text-[12px] font-medium text-pi-text truncate">{d.name}</span>
       </div>
       <div className="flex items-center gap-1 mt-1 text-[10px] text-pi-dim2">
-        <CheckCircle2 className="w-3 h-3" />{d.mtime ? d.mtime.slice(5, 16).replace('T', ' ') : '交付/ 目录'}
+        <CheckCircle2 className="w-3 h-3" />{d.mtime ? d.mtime.slice(5, 16).replace('T', ' ') : '刚刚'}
       </div>
     </div>
   )
@@ -129,6 +130,7 @@ function SubagentCard({ r }: { r: SubagentRun }) {
 }
 
 export default function Board() {
+  const { selectSession } = useApp()
   const { data: sessData } = useSWR('board-sessions', () => SessionsApi.list(), { refreshInterval: 30_000 })
   const { data: taskData } = useSWR('board-tasks', () => TasksApi.list(), { refreshInterval: 15_000 })
   const { data: statData } = useSWR('board-stats', () => StatsApi.providers(), { refreshInterval: 60_000 })
@@ -156,19 +158,43 @@ export default function Board() {
     return { todaySessions, activeMsgs, running, scheduled, finished, cost, tokens, msgs, todayDelivs, deliveries, saRunning, dailyDays }
   }, [sessions, tasks, providers, deliveries, dailyDays, saRunning])
 
+  const lastSession = useMemo(() => {
+    return [...sessions].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0]
+  }, [sessions])
+
   const paused = tasks.filter(t => t.state === 'paused')
+  const goChat = () => { location.hash = '#/chat' }
+  const continueLast = () => { if (lastSession) selectSession(lastSession.id); goChat() }
 
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="max-w-[1080px] mx-auto px-4 sm:px-6 py-5 flex flex-col gap-4">
-        <PageHeader title="工作台" description="一屏总览：在做什么、干成了什么、花了多少" />
+        <PageHeader title="工作台" description="接下来做什么：接着聊、去创作、看交付" />
+
+        <div data-slot="board-next" className="panel p-3 flex flex-col gap-2">
+          <div className="text-[12px] font-semibold text-pi-text px-1">接下来做什么</div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="min-h-11 px-3 rounded-pi-md bg-pi-accent text-white text-[12px] font-medium" onClick={continueLast}>
+              {lastSession ? `继续「${lastSession.name || '上次对话'}」` : '开始对话'}
+            </button>
+            <button type="button" className="min-h-11 px-3 rounded-pi-md bg-pi-bg3 text-pi-text text-[12px] hover:bg-pi-bg-hover" onClick={() => { location.hash = '#/workshop' }}>
+              去创作
+            </button>
+            <button type="button" className="min-h-11 px-3 rounded-pi-md bg-pi-bg3 text-pi-text text-[12px] hover:bg-pi-bg-hover" onClick={() => { location.hash = stats.deliveries.length ? '#/assets' : '#/workshop' }}>
+              {stats.deliveries.length ? '看交付' : '还没有新作品'}
+            </button>
+            <button type="button" className="min-h-11 px-3 rounded-pi-md bg-pi-bg3 text-pi-text text-[12px] hover:bg-pi-bg-hover" onClick={() => { location.hash = '#/tasks' }}>
+              去任务
+            </button>
+          </div>
+        </div>
 
         {/* 概览统计卡 */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard icon={MessagesSquare} label="今日会话" value={String(stats.todaySessions)} hint={`全部 ${sessions.length} 个会话`} />
           <StatCard icon={Clock4} label="进行中任务" value={String(stats.running.length)} hint={`调度中 ${stats.scheduled.length} · 暂停 ${paused.length}`} tone="accent" />
           <StatCard icon={Wallet} label="累计模型成本" value={fmtCost(stats.cost)} hint={`${fmtTokens(stats.tokens)} tokens · ${stats.msgs} 次请求`} />
-          <StatCard icon={Package} label="今日交付" value={String(stats.todayDelivs.length)} hint={`交付/ 共 ${stats.deliveries.length} 件`} tone="accent" />
+          <StatCard icon={Package} label="今日交付" value={String(stats.todayDelivs.length)} hint={`共 ${stats.deliveries.length} 件`} tone="accent" />
         </div>
 
         {/* 泳道看板 + 活动时间线 */}
@@ -196,21 +222,9 @@ export default function Board() {
 
           <Lane title="最近交付" icon={Package} count={stats.deliveries.length}>
             {stats.deliveries.length === 0
-              ? <div className="flex-1 grid place-items-center text-[11px] text-pi-dim2 py-6"><span>交付/ 目录还是空的</span></div>
+              ? <div className="flex-1 grid place-items-center text-[11px] text-pi-dim2 py-6"><span>还没有新作品，去创作里做一份</span></div>
               : stats.deliveries.slice(0, 6).map(d => <DeliveryCard key={d.name} d={d} />)}
           </Lane>
-        </div>
-
-        {/* 7 天用量图表（淡墨柱：accent 半透明叠层，淡入=output 占比） */}
-        <div className="panel p-3 relative">
-          <div className="flex items-center gap-2 px-1 pb-2 mb-2 border-b border-pi-border-soft">
-            <Wallet className="w-4 h-4 text-pi-dim" strokeWidth={2} />
-            <span className="text-[12px] font-semibold text-pi-text">近 7 天用量</span>
-            <span className="text-[10px] text-pi-dim2">深柱 = 输出 tokens</span>
-          </div>
-          {dailyDays.length === 0
-            ? <div className="h-[110px] grid place-items-center text-[11px] text-pi-dim2">暂无用量数据</div>
-            : <UsageChart days={dailyDays} />}
         </div>
 
         {/* 活动时间线 */}
@@ -225,6 +239,18 @@ export default function Board() {
           <div className="max-h-[360px] overflow-y-auto">
             <ActivityFeed />
           </div>
+        </div>
+
+        {/* 7 天用量图表放到后面：先写下一步，再看花了多少 */}
+        <div className="panel p-3 relative">
+          <div className="flex items-center gap-2 px-1 pb-2 mb-2 border-b border-pi-border-soft">
+            <Wallet className="w-4 h-4 text-pi-dim" strokeWidth={2} />
+            <span className="text-[12px] font-semibold text-pi-text">近 7 天用量</span>
+            <span className="text-[10px] text-pi-dim2">深柱 = 输出 tokens</span>
+          </div>
+          {dailyDays.length === 0
+            ? <div className="h-[110px] grid place-items-center text-[11px] text-pi-dim2">暂无用量数据</div>
+            : <UsageChart days={dailyDays} />}
         </div>
 
         {paused.length > 0 && (
@@ -262,7 +288,9 @@ function TideBar({ label, value, max = 1, tone }: { label: string; value: number
 function EmotionTideCard() {
   const { data: snap } = useSWR('board-emo', () => EmotionApi.get(), { refreshInterval: 60_000 })
   const { data: tideData } = useSWR('board-tide', () => EmotionApi.tide(), { refreshInterval: 120_000 })
+  const { data: feelData } = useSWR('board-feelings', () => EmotionApi.feelings(), { refreshInterval: 120_000 })
   const tide = (tideData?.tide || []).slice(-48)
+  const lastFeel = (feelData?.feelings || []).slice(-1)[0]
   const meta = snap ? emoMeta(snap) : null
   const r = snap?.residue || {}
   // valence 曲线：SVG 折线，中线 0
@@ -293,6 +321,11 @@ function EmotionTideCard() {
           <TideBar label="好奇" value={r.curiosity ?? 0} tone="bg-pi-info/80" />
         </div>
       </div>
+      {lastFeel && (
+        <div className="mt-2 px-1 text-[10px] text-pi-dim2 truncate">
+          <span className="text-pi-dim">最近触动</span> · {lastFeel.felt} —— “{lastFeel.event}”
+        </div>
+      )}
       {tide.length > 1 && (
         <div className="mt-2 px-1">
           <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-[56px]" preserveAspectRatio="none">

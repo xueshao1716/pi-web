@@ -2,7 +2,10 @@
 // 运行：node --test tests/unit/emotion.test.mjs
 import { test, describe } from "node:test";
 import assert from "node:assert";
-import { updateEmotion, emotionPrompt, getSnapshot, clearEmotion, setMemoryNudgeHook } from "../../engine/emotion.mjs";
+import fs from "node:fs";
+import path from "node:path";
+import { updateEmotion, emotionPrompt, getSnapshot, clearEmotion, setMemoryNudgeHook, recordFeeling, getFeelings, init } from "../../engine/emotion.mjs";
+import os from "node:os";
 
 describe("emotion.mjs 情绪引擎", () => {
   test("用户烦躁 → 触发安抚模式指令", () => {
@@ -67,5 +70,28 @@ describe("emotion.mjs 情绪引擎", () => {
     updateEmotion("t-nudge-hurt", "这破东西又出bug了，烦死了");
     assert.equal(hits.length, n, "同一累积周期不得重复提案");
     setMemoryNudgeHook(null);
+  });
+
+  test("RealFeeling：高强度感受回流抬愉悦+温暖，存档格式正确（曦系二期）", () => {
+    init(fs.mkdtempSync(path.join(os.tmpdir(), "feel-"))); // 隔离的潮汐/感受目录
+    clearEmotion("t-feel");
+    recordFeeling("t-feel", "用户狠狠夸了我一顿，很开心"); // 第一条（中性低强度）
+    // 造第二条高强度：把会话推到强情绪再记
+    updateEmotion("t-feel", "太完美了，厉害！");
+    recordFeeling("t-feel", "太完美了，厉害！");
+    const vBefore = getSnapshot("t-feel").valence;
+    const wBefore = getSnapshot("t-feel").residue.warmth;
+    // 下一条消息进来：新感受回流应抬愉悦（强度>0.5 → +0.1*strength）
+    updateEmotion("t-feel", "继续下一个任务");
+    const snap = getSnapshot("t-feel");
+    assert.ok(snap.valence >= vBefore, "高强度感受回流后愉悦不降");
+    assert.ok(snap.residue.warmth >= wBefore, "感受回流不削温暖");
+    // 存档格式（曦语义：event 前 50 字 / felt = primary(xx%)）
+    const list = getFeelings(10);
+    assert.ok(list.length >= 2, "应有存档");
+    assert.ok(typeof list[0].event === "string" && list[0].event.length <= 50, "event 截到 50 字");
+    assert.match(list[0].felt, /\w+\(\d+%\)/, "felt = primary(xx%)");
+    assert.ok(typeof list[0].intensity === "number", "intensity 数值");
+    assert.ok(new Date(list[0].ts).getTime() <= new Date(list[list.length - 1].ts).getTime(), "getFeelings 时间正序");
   });
 });
