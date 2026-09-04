@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import {
   Activity, BrainCircuit, Cpu, Database, Factory, FolderKanban,
-  LayoutGrid, MonitorCog, PackageCheck, Palette, PanelRight, Sparkles,
+  LayoutDashboard, LayoutGrid, MonitorCog, PackageCheck, Palette, PanelRight, Sparkles,
   TerminalSquare, X,
 } from 'lucide-react'
 import type { Route } from '../hooks/useHashRoute'
@@ -9,6 +9,7 @@ import type { Route } from '../hooks/useHashRoute'
 export type UtilityPanelKey = 'workspace' | 'deliveries' | 'terminal' | 'activity' | 'tui'
 
 const MORE_ROUTES: { route: Route; icon: typeof Sparkles; label: string }[] = [
+  { route: 'board', icon: LayoutDashboard, label: '工作台' },
   { route: 'lingxi', icon: Sparkles, label: '灵感速记' },
   { route: 'workshop', icon: Factory, label: '创作工坊' },
   { route: 'models', icon: BrainCircuit, label: '模型中心' },

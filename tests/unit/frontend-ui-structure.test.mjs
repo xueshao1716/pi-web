@@ -57,7 +57,7 @@ test('移动底栏固定为对话、会话、资产、任务、更多，且删�
 
 test('更多菜单承载设置路由和辅助面板，并提供可访问状态', () => {
   const menu = read('components', 'MobileMoreMenu.tsx')
-  for (const route of ['lingxi', 'workshop', 'models', 'apps', 'engine', 'themes', 'sessiondb', 'system']) {
+  for (const route of ['board', 'lingxi', 'workshop', 'models', 'apps', 'engine', 'themes', 'sessiondb', 'system']) {
     assert.ok(menu.includes(`route: '${route}'`), `更多菜单缺少 ${route} 路由`)
   }
   for (const panel of ['workspace', 'deliveries', 'terminal', 'activity', 'tui']) {
@@ -337,9 +337,12 @@ test('工作台看板挂在桌面导航，并读现有 API 做一屏总览', () 
   const layout = read('AppLayout.tsx')
   const routes = read('hooks', 'useHashRoute.tsx')
   const board = read('pages', 'Board.tsx')
+  const menu = read('components', 'MobileMoreMenu.tsx')
   assert.ok(routes.includes("'board'"), 'hash 路由必须包含 board')
   assert.ok(layout.includes("route: 'board'"), '桌面导航必须注册工作台')
   assert.ok(layout.includes("label: '工作台'"), '工作台导航文案必须是工作台')
+  assert.ok(menu.includes("route: 'board'"), '手机更多菜单必须有工作台')
+  assert.ok(menu.includes("label: '工作台'"), '手机更多菜单工作台文案必须是工作台')
   assert.ok(board.includes('<PageHeader'), '工作台必须使用 PageHeader')
   assert.ok(board.includes('title="工作台"'), '工作台页头标题必须是工作台')
   for (const api of ['SessionsApi.list()', 'TasksApi.list()', 'StatsApi.providers()', 'StatsApi.daily()', 'WsApi.deliveries()', 'SubagentApi.runs()']) {
