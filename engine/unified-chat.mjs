@@ -342,7 +342,7 @@ export function toolBindingArgsObj(name, args) {
 }
 
 // ══ 消息看板：pi 更新 + 能力看板 ══
-const APP_VERSION = "2.5.0"; // pi-web 正式版本（每次发版 bump + 记入 CHANGELOG.md + 资源戳 v= 与 sw.js CACHE 同步）
+const APP_VERSION = "2.6.0"; // pi-web 正式版本（每次发版 bump + 记入 CHANGELOG.md）
 const CAPABILITIES = [
   { icon: "💬", name: "多模型对话", desc: "deepseek / 小米 mimo / Agnes，思考 + 工具调用" },
   { icon: "🛠", name: "编程工具", desc: "读文件 / 写文件 / 编辑 / 跑命令（与 TUI 同一引擎）" },
@@ -400,7 +400,7 @@ except Exception as e:
   // pi-web 自身更新日志（CHANGELOG.md 最近 5 个版本，每个最多 6 行）
   let changelog = [];
   try {
-    const cl = fs.readFileSync(path.join(__dirname, "CHANGELOG.md"), "utf8");
+    const cl = fs.readFileSync(path.join(import.meta.dirname, "..", "CHANGELOG.md"), "utf8");
     const blocks = [...cl.matchAll(/##\s+\[?v?([\d.]+)\]?[^\n]*\n([\s\S]*?)(?=\n##\s|\s*$)/g)];
     changelog = blocks.slice(0, 5).map(b => ({ version: b[1], lines: b[2].trim().split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#")).slice(0, 6) }));
   } catch {}

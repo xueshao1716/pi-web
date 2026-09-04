@@ -1,6 +1,16 @@
 # pi-web 更新日志
 
-> 每次发版：bump `server.mjs` 的 `APP_VERSION` → 这里加一条 → `public/index.html` 资源戳 `v=` +1 → `public/sw.js` 的 `CACHE` 名 +1 → 双推。
+> 每次发版：bump `engine/unified-chat.mjs` 的 `APP_VERSION` → 这里加一条 → 构建 `frontend/dist` → 双推。
+
+## [2.6.0] - 2026-09-04
+### 新增
+- 工作台看板（桌面侧栏 + 手机「更多」）、进化引擎与跨会话回忆
+- 水墨 / 竹影主题；本机 Aieyra Anthropic 网关给 Claude Code
+- ppt-html 模板路径可配置（`PPT_HTML_TEMPLATES`）
+### 修复
+- PPT 生成与单页 refine 的 SSE 断连会 abort/dispose agent
+- htmlPath 前缀穿越；小说目录与自愈提示词不再写死 D 盘路径
+- CHANGELOG 看板实际能读到仓库根的更新日志
 
 ## [2.5.0] - 2026-08-15
 ### 新增
