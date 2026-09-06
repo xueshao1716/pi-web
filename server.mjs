@@ -1542,6 +1542,7 @@ const API_ROUTES = [
   ["POST", "/api/sessions/db/sweep", async (res, req) => handleDbSweep(res, await readBody(req))],
   // ── 会话 ──
   ["GET", "/api/emotion", (res, req, url) => handleEmotion(res, url)],
+  ["GET", "/api/run/overview", (res) => runApi.overview(res)],
   ["GET", "/api/emotion/tide", (res) => json(res, 200, { tide: emotion.getTide(300) })],
   ["GET", "/api/emotion/feelings", (res) => json(res, 200, { feelings: emotion.getFeelings(50) })],
   ["GET", "/api/agent-status", (res) => handleAgentStatus(res)],

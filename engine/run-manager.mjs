@@ -176,6 +176,7 @@ export function createRunManager({ store, eventLog, executeChat, instanceId, onS
       return run
     },
     get(runId) { return store.get(runId) },
+    list() { return store.list() },
     readAfter(runId, after) { return eventLog.readAfter(runId, after) },
     subscribe(runId, listener) { return eventLog.subscribe(runId, listener) },
     stop(runId) {
