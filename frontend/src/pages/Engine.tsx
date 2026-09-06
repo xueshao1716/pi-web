@@ -62,6 +62,14 @@ function EnginePairPanel() {
         <Slot slot="secondary" label="次引擎" />
       </div>
       {data?.deferred && <div className="text-[11px] text-pi-dim2 mt-2">本轮实际走 {data.lead === 'yuanshu' ? '元枢' : data.lead}（{data.deferred} 被兑底）</div>}
+      {data?.eval && (
+        <div className="text-[11px] text-pi-dim2 mt-2">
+          评测绳 {data.eval.passed}/{data.eval.total} · {Math.round((data.eval.score || 0) * 100)}%
+          {data.eval.byTag && Object.entries(data.eval.byTag).map(([k, v]) => (
+            <span key={k} className="ml-2">{k} {v.passed}/{v.total}</span>
+          ))}
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 mt-3">
         {catalog.map((e) => {
           const role = e.id === data?.primary ? '主驾' : e.id === data?.secondary ? '次席' : null

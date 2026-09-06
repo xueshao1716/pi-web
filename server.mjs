@@ -1812,12 +1812,12 @@ const API_ROUTES = [
     } catch (e) { json(res, 500, { error: String(e?.message || e) }); }
   }],
   // ── Gateway 2.0 插件化引擎（dsh 设计沉淀）──
-  ["GET", "/api/engine/pair", (res) => json(res, 200, describePair())],
+  ["GET", "/api/engine/pair", async (res) => json(res, 200, await describePair())],
   ["POST", "/api/engine/pair", async (res, req) => {
     try {
       const b = await readBody(req, 1);
-      if (b?.swap) return json(res, 200, describePair(swapEnginePair()));
-      json(res, 200, describePair(saveEnginePair(b || {})));
+      if (b?.swap) return json(res, 200, await describePair(swapEnginePair()));
+      json(res, 200, await describePair(saveEnginePair(b || {})));
     } catch (e) { json(res, 400, { error: String(e?.message || e).slice(0, 120) }); }
   }],
   ["GET", "/api/engine/status", async (res) => {

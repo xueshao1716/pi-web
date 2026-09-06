@@ -42,6 +42,7 @@ export function pluginFromBody(body = {}) {
 export function defaultCapabilities({ gatewayReady, codeReady } = {}) {
   return [
     { id: "pair", name: "主次引擎切换", desc: "下一句对话生效", have: true, live: true },
+    { id: "eval", name: "元枢评测绳", desc: "冻结用例出分数，不跑真模型", have: true, live: true },
     { id: "sidecar", name: "Gateway 旁路循环", desc: "探活 / 预置插件，不替换主聊天", have: !!gatewayReady, live: true },
     { id: "code", name: "Code Mode", desc: "程序编排工具绑定", have: !!codeReady, live: true },
     { id: "tools", name: "主聊天工具表", desc: "UNIFIED_TOOLS 实时列出", have: true, live: true },

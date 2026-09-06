@@ -2,6 +2,7 @@
 // 元枢是自己的引擎胚子；pi / dsh 是可替换适配器，不是永久双核。
 import fs from "node:fs";
 import { atomicWriteJson } from "./atomic-io.mjs";
+import { runYuanshuEval } from "./yuanshu-eval.mjs";
 
 export const ENGINE_CATALOG = {
   yuanshu: {
@@ -10,8 +11,8 @@ export const ENGINE_CATALOG = {
     canLead: true,
     desc: "自制对话循环，最终要长成的引擎",
     intro: "自制对话循环。记忆、出图、规划、空回合重试和工具中止都挂在这条上，最终要自己当家。",
-    can: ["任意 OpenAI 兼容通道，含非 SDK 原生", "工具调度：只读可并行、写互斥", "空回复重试后再兑底；断连杀掉 bash / dsh"],
-    cannot: ["还不是默认主驾，炸了仍靠次席或 pi 兑底", "任务跟 HTTP 绑死，刷新会掐掉这一轮", "没有独立评测绳，Gateway 插件循环仍是演示"],
+    can: ["任意 OpenAI 兼容通道，含非 SDK 原生", "工具调度：只读可并行、写互斥", "空回复重试后再兑底；断连杀掉 bash / dsh", "独立评测绳出分数（空回合/截断/卡住/记忆，不跑真模型）", "VAD 情绪自己开轮注入、收轮推 SSE，不靠 pi"],
+    cannot: ["还不是默认主驾，炸了仍靠次席或 pi 兑底", "任务跟 HTTP 绑死，刷新会掐掉这一轮", "评测绳不证明出片和联网，Gateway 插件循环仍是旁路"],
   },
   pi: {
     id: "pi",
@@ -100,14 +101,16 @@ export function leadNote(decision) {
   return `本轮主引擎 · ${lead}`;
 }
 
-export function describePair(pair = loadEnginePair(), ctx = {}) {
+export async function describePair(pair = loadEnginePair(), ctx = {}) {
   const p = (() => { try { return normalizePair(pair); } catch { return { ...DEFAULT_PAIR }; } })();
   const decision = resolveLead(p, ctx);
+  const evalReport = await runYuanshuEval();
   return {
     ...p,
     catalog: Object.values(ENGINE_CATALOG),
     lead: decision.lead,
     deferred: decision.deferred,
     reason: decision.reason,
+    eval: evalReport,
   };
 }

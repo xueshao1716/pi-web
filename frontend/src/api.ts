@@ -527,7 +527,7 @@ export const SystemApi = {
 export const EngineApi = {
   status: () => api<any>('/api/engine/status'),
   tools: () => api<{ tools: { name: string; description: string }[]; count: number; dsh: boolean; skill: boolean }>('/api/engine/tools'),
-  pair: () => api<{ primary: string; secondary: string; catalog: { id: string; label: string; canLead: boolean; desc: string; intro?: string; can?: string[]; cannot?: string[] }[]; lead: string; deferred: string | null }>('/api/engine/pair'),
+  pair: () => api<{ primary: string; secondary: string; catalog: { id: string; label: string; canLead: boolean; desc: string; intro?: string; can?: string[]; cannot?: string[] }[]; lead: string; deferred: string | null; eval?: { passed: number; total: number; score: number; byTag?: Record<string, { passed: number; total: number }> } }>('/api/engine/pair'),
   savePair: (body: { primary?: string; secondary?: string; swap?: boolean }) =>
     api<{ primary: string; secondary: string; lead: string; deferred: string | null; error?: string }>('/api/engine/pair', { method: 'POST', body }),
   registerPlugin: (def: any) => api<any>('/api/engine/plugins/register', { method: 'POST', body: def }),

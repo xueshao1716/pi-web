@@ -48,6 +48,9 @@
 - 元枢治理层（2026-09-06，对照 Claude/OpenHands/OpenCode）：`todo_write` 清单、`delegate_task` 子代理、OpenHands 式卡住检测、任务匹配技能预点名、循环中段压缩、Auto 走 `routeForAuto`
 - 对话内嵌视频播放器：正文/交付行/工具输出里的 mp4 路径收成 `/api/ws/file`；协议讲能力和汇报，不写死播放方式。pi 首轮就有 `generate_video` 等宿主工具
 - 元枢会话连续性（2026-09-06）：用户原话先落盘，打断也留痕；有历史就注明不是新开。创作先判断，搜两轮锁不到就动手
+- 元枢评测绳（2026-09-06）：`runYuanshuEval` 冻结用例出 `passed/total/score`；`GET /api/engine/pair` 带 `eval`；不跑真模型，不证明出片/联网
+- 元枢情绪（2026-09-06）：`beginYuanshuEmotion` / `endYuanshuEmotion` 挂进 `handleUnifiedChat`；同一句 10 秒内不重复加 VAD（pi 兑底再进一次也不叠）
+- 元枢 vs pi 横评（2026-09-06）：同一 `/api/chat` + deepseek-v4-flash；现网 9/10 平手，元枢均时更短；契约绳元枢现 18/18（含情绪开轮收轮）。不够切默认主驾。脚本 `bench/engine-bench.mjs`
 
 ## 模型路由
 

@@ -24,6 +24,7 @@ import { readEntriesFromFile } from "./session-files.mjs";
 import { loadProjectRules, loadMemory, shouldInjectFullMemory, setLastUserQuery, loadSkillIndex, loadExperienceIndex } from "./context-loader.mjs";
 import { buildYuanshuContext } from "./yuanshu-protocol.mjs";
 import { persistYuanshuUser, persistYuanshuAssistant, abortedAssistantText } from "./yuanshu-session.mjs";
+import { beginYuanshuEmotion, endYuanshuEmotion } from "./yuanshu-emotion.mjs";
 import { resolveAuth } from "./dsh-keys.mjs";
 import { runYuanshuToolRound, attachYuanshuCodeTool, toolCallLoopKey } from "./yuanshu-loop.mjs";
 import {
@@ -481,6 +482,10 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     }
   } catch {}
   writer = writer || createSseWriter(res);
+  let collected = "";
+  const finishEmotion = () => {
+    try { endYuanshuEmotion(sessionId || "new", message, collected, writer); } catch {}
+  };
   touchTask(taskId, { stage: "处理中" });
   let hist = [];
   try {
@@ -582,6 +587,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     hist,
   });
   if (ysCtx.length) history = [...ysCtx.map(c => ({ role: "system", content: c })), ...history];
+  history = beginYuanshuEmotion(sessionId || "new", message, history);
   history = await maybeCompactHistory(history, chatModel);
   // Plan 模式（unifiedChat 兕底路径）：工具定义层过滤为只读（read/web_search）——模型只能请求只读工具，无写路径
   // 注意：thinkOn=false 时 toolDefs 为 undefined（unifiedChat 内部才默认 UNIFIED_TOOLS），必须显式构建只读集，否则拦截被短路
@@ -598,20 +604,23 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     // history 末条已是 handleChat 改写后的规划指令消息（含需求），直接复用；只传只读工具定义
     const result = await unifiedChat(chatModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: locked });
     if (!result || result.error) {
-      clearTask(taskId, "error"); writer.push("error", { message: result?.error || "模型未返回内容" }); return;
+      clearTask(taskId, "error"); writer.push("error", { message: result?.error || "模型未返回内容" }); finishEmotion(); return;
     }
     if (result.aborted || signal?.aborted) {
       try { persistUser(); persistYuanshuAssistant(entry.sm, abortedAssistantText(result)); } catch {}
-      clearTask(taskId, "aborted"); return;
+      collected = abortedAssistantText(result);
+      clearTask(taskId, "aborted"); finishEmotion(); return;
     }
     const text = result.text;
-    if (!text) { writer.push("error", { message: "模型未返回内容" }); return; }
+    if (!text) { writer.push("error", { message: "模型未返回内容" }); finishEmotion(); return; }
     try { persistYuanshuAssistant(entry.sm, text); } catch {}
     if (entry.agent) { try { entry.agent.dispose(); } catch {} entry.agent = null; }
     if (result.think) { writer.push("think", { text: result.think }); writer.push("think_end", {}); }
     writer.push("delta", { text });
     writer.push("done", { sessionId });
+    collected = text;
     clearTask(taskId, "done");
+    finishEmotion();
   }
   const chatOpts = {
     onTool: onToolStart,
@@ -629,7 +638,8 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
   let result = await unifiedChat(chatModel, history, chatOpts);
   if (result?.aborted || signal?.aborted) {
     try { persistUser(); persistYuanshuAssistant(entry.sm, assistantContentWithMedia(abortedAssistantText(result), mediaItems)); } catch {}
-    clearTask(taskId, "aborted"); return;
+    collected = abortedAssistantText(result);
+    clearTask(taskId, "aborted"); finishEmotion(); return;
   }
   if (result?.empty && !result.text) {
     const fbModel = pickFallbackExcluding(chatModel);
@@ -638,7 +648,8 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
       const fb = await unifiedChat(fbModel, history, { ...chatOpts });
       if (fb?.aborted || signal?.aborted) {
         try { persistUser(); persistYuanshuAssistant(entry.sm, assistantContentWithMedia(abortedAssistantText(fb), mediaItems)); } catch {}
-        clearTask(taskId, "aborted"); return;
+        collected = abortedAssistantText(fb);
+        clearTask(taskId, "aborted"); finishEmotion(); return;
       }
       if (fb?.text && !fb.error && !fb.empty) result = fb;
       else result = { ...result, error: EMPTY_TURN_ERROR };
@@ -654,11 +665,14 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
         persistYuanshuAssistant(entry.sm, assistantContentWithMedia(result?.text || "", mediaItems));
       } catch {}
       writer.push("done", { sessionId, model: { provider: chatModel.provider, id: chatModel.id } });
+      collected = result?.text || "";
       clearTask(taskId, "done");
+      finishEmotion();
       return;
     }
     clearTask(taskId, "error");
     writer.push("error", { message: result?.error || "模型未返回内容，请稍后重试" });
+    finishEmotion();
     return;
   }
   let text = result.text;
@@ -670,9 +684,11 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
       } catch {}
       writer.push("done", { sessionId, model: result.usedModel || { provider: chatModel.provider, id: chatModel.id } });
       clearTask(taskId, "done");
+      finishEmotion();
       return;
     }
     writer.push("error", { message: "模型未返回内容，请稍后重试" });
+    finishEmotion();
     return;
   }
   // ══ NEEDS_PRO 自报升级（Reasonix P3，2026-08-19）：模型认为任务超纲 → 用 pro 模型重试一次（纯自报、无静默升级）
@@ -729,7 +745,9 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
   if (result.think && !result.streamed) { writer.push("think", { text: result.think }); writer.push("think_end", {}); }
   if (!result.streamed) writer.push("delta", { text });
   writer.push("done", { sessionId, model: result.usedModel || { provider: chatModel.provider, id: chatModel.id } });
+  collected = text;
   clearTask(taskId, "done");
+  finishEmotion();
   console.log(`[pi-web] 统一通道: ${(result.usedModel || chatModel).provider}/${(result.usedModel || chatModel).id}`);
 }
 
