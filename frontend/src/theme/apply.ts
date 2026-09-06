@@ -1,5 +1,6 @@
 import { generateTheme, SEEDS } from './generate.mjs'
 import { ThemeApi } from '../api'
+import { persistWallpaper } from './wallpaper.mjs'
 
 // ── 主题应用单一真源（08-29 从 ThemeSwitcher 抽出，ThemesPage/ThemeSwitcher 共用）──
 // 流程：seed(+accent 覆盖) → generateTheme 派生全量变量 → 写 CSS 变量 + data-theme + localStorage
@@ -30,6 +31,19 @@ export function persistTheme(theme: string, accent: string) {
 export function applyTheme(theme: string, accent: string) {
   applyThemeVars(theme, accent)
   persistTheme(theme, accent)
+}
+
+export function restoreThemePreferences(preferences: { theme?: string; accent?: string; wallpaper?: string }) {
+  const theme = preferences.theme || currentTheme().theme
+  const accent = typeof preferences.accent === 'string' ? preferences.accent : currentTheme().accent
+  applyThemeVars(theme, accent)
+  try {
+    localStorage.setItem('pi_theme', theme)
+    localStorage.setItem('pi_accent', accent)
+  } catch {}
+  // An explicit empty wallpaper clears a choice made on another client.
+  if (typeof preferences.wallpaper === 'string') persistWallpaper(preferences.wallpaper)
+  window.dispatchEvent(new CustomEvent('pi-theme-changed', { detail: { theme, accent } }))
 }
 
 const DEFAULT_THEME = 'mist'

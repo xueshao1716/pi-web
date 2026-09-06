@@ -36,10 +36,11 @@ test("主题页和布局必须用共享壁纸函数，禁止一律 url(${wallpap
   assert.ok(!layout.includes("url(${w})"), "AppLayout 不得把渐变包进 url()");
 });
 
-test("有壁纸时 CSS 必须让画布半透明，否则实底会把壁纸盖死", () => {
+test("壁纸仅在背景层显示，工作画布保留实底", () => {
   const css = read("frontend", "src", "styles.css");
   assert.ok(css.includes("body.has-wallpaper"), "必须有 has-wallpaper 状态");
-  assert.ok(css.includes("body.has-wallpaper .col-canvas"), "中栏画布必须让壁纸透出来");
+  const canvas = css.split("body.has-wallpaper .col-canvas {")[1]?.split("}")[0] || "";
+  assert.ok(canvas.includes("background: var(--pi-bg)"), "中栏画布必须保留可读的实底");
 });
 
 test("只改主题/主色时不得把已保存的壁纸写成空", () => {
@@ -75,7 +76,10 @@ test("ThemeApi.save 不得把省略的 wallpaper 默认成空串写进请求体"
   assert.ok(!block.includes("wallpaper: string = ''") && !block.includes('wallpaper: string = ""'), "不得默认 wallpaper 为空串");
 });
 
-test("ThemeSwitcher 拉服务端偏好必须应用壁纸", () => {
-  const src = read("frontend", "src", "components", "ThemeSwitcher.tsx");
-  assert.ok(src.includes("d.wallpaper"), "GET theme-prefs 的 wallpaper 必须落到本地并 apply");
+test("公共主题同步必须恢复壁纸，包括显式空值", () => {
+  const hook = read("frontend", "src", "hooks", "useThemePreferences.ts");
+  const apply = read("frontend", "src", "theme", "apply.ts");
+  assert.ok(hook.includes("restoreThemePreferences(preferences)"), "两端必须走统一恢复逻辑");
+  const wallpaperLine = apply.split("\n").find(line => line.includes("persistWallpaper(preferences.wallpaper)"));
+  assert.ok(wallpaperLine?.includes("typeof preferences.wallpaper === 'string'"), "显式空值也必须应用以清除旧壁纸");
 });

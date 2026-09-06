@@ -80,7 +80,18 @@ export default function Themes() {
   const [wallpaper, setWallpaper] = useState(() => currentWallpaper())
   const fileRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => { applyTheme(theme, accent) }, [theme, accent])
+  // AppLayout owns remote hydration; this page only applies explicit edits.
+  const selectTheme = (next: string) => { setTheme(next); applyTheme(next, accent) }
+  const selectAccent = (next: string) => { setAccent(next); applyTheme(theme, next) }
+  useEffect(() => {
+    const onExt = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {}
+      if (detail.theme) setTheme(detail.theme)
+      if (typeof detail.accent === 'string') setAccent(detail.accent)
+    }
+    window.addEventListener('pi-theme-changed', onExt)
+    return () => window.removeEventListener('pi-theme-changed', onExt)
+  }, [])
   useEffect(() => {
     const s = (SEEDS as any)[theme] as Seed
     if (s) setDensity(s.step ?? 0.043)
@@ -106,7 +117,7 @@ export default function Themes() {
 
   const handleReset = () => {
     const s = (SEEDS as any)[theme] as Seed
-    setAccent(s.accent)
+    selectAccent(s.accent)
     setDensity(s.step ?? 0.043)
     toast('已恢复该主题默认值')
   }
@@ -144,7 +155,7 @@ export default function Themes() {
                 key={id}
                 id={id}
                 active={theme === id}
-                onApply={() => { setTheme(id); toast(`已切换：${THEME_BY_ID[id]?.name || id}`, 'ok') }}
+                onApply={() => { selectTheme(id); toast(`已切换：${THEME_BY_ID[id]?.name || id}`, 'ok') }}
               />
             ))}
           </div>
@@ -179,12 +190,12 @@ export default function Themes() {
               <div>
                 <div className="text-[12px] text-pi-dim2 font-semibold mb-2">主色</div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <button type="button" className={`w-8 h-8 rounded-full border-2 text-[11px] flex items-center justify-center ${!accent ? 'border-pi-accent' : 'border-pi-border'}`} style={{ background: (SEEDS as any)[theme]?.accent, color: 'var(--pi-bg)' }} onClick={() => setAccent('')} title="主题默认主色">默认</button>
+                  <button type="button" className={`w-8 h-8 rounded-full border-2 text-[11px] flex items-center justify-center ${!accent ? 'border-pi-accent' : 'border-pi-border'}`} style={{ background: (SEEDS as any)[theme]?.accent, color: 'var(--pi-bg)' }} onClick={() => selectAccent('')} title="主题默认主色">默认</button>
                   {ACCENT_SWATCHES.map(c => (
                     <button
                       type="button"
                       key={c}
-                      onClick={() => setAccent(c)}
+                      onClick={() => selectAccent(c)}
                       aria-label={`使用主色 ${c}`}
                       aria-pressed={accent === c}
                       className={`w-8 h-8 rounded-full border-2 transition-transform ${accent === c ? 'border-pi-accent scale-110' : 'border-transparent'}`}
@@ -198,7 +209,7 @@ export default function Themes() {
                       type="color"
                       value={accent || (SEEDS as any)[theme]?.accent || '#5468ff'}
                       className="w-8 h-8 rounded cursor-pointer bg-transparent border border-pi-border"
-                      onChange={e => setAccent(e.target.value)}
+                      onChange={e => selectAccent(e.target.value)}
                     />
                   </label>
                 </div>

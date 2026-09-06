@@ -11,12 +11,10 @@ import TurnList from './TurnList'
 import ChatRunStatus from './ChatRunStatus'
 import { useAutoScroll } from '../hooks/useAutoScroll'
 import { toast } from './Toast'
-import GradientField from './GradientField'
 import { emoMeta, emoTooltip, type EmoMeta } from '../lib/emotion'
 import { MoodOrb } from './MoodOrb'
 import type { FileAttachment } from './SendBox'
 import type { ChatMessage, RunningTool } from '../types'
-import WebglBackdrop from './WebglBackdrop'
 import { saveMessage, getMessages, deleteMessage, mergeMessages, type LocalMessage } from '../lib/local-db'
 import { notifyTaskDone } from '../lib/notify'
 import { StreamAssembler, type AssemblerSnapshot } from '../lib/stream-assembler'
@@ -721,51 +719,36 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     location.hash = '#/workshop'
   }
   const welcomeActions = [
-    { Icon: Plus, label: '新建对话', desc: '从一个问题或任务开始', act: newSession },
-    { Icon: ImagePlus, label: 'AI 绘画', desc: '一句描述生成图片', act: () => openWorkshop('image') },
-    { Icon: Presentation, label: '生成 PPT', desc: '把主题整理成演示文稿', act: () => openWorkshop('ppt') },
-    { Icon: Clock4, label: '定时任务', desc: '让小语按时间自动完成工作', act: () => { location.hash = '#/tasks' } },
-    { Icon: Database, label: '会话管理', desc: '查看、筛选与清理长会话', act: () => { location.hash = '#/sessiondb' } },
-    { Icon: SquareTerminal, label: '终端', desc: '查看命令执行与工程状态', act: () => openPanel('terminal') },
+    { Icon: Plus, label: '新建对话', act: newSession },
+    { Icon: ImagePlus, label: 'AI 绘画', act: () => openWorkshop('image') },
+    { Icon: Presentation, label: '生成 PPT', act: () => openWorkshop('ppt') },
+    { Icon: Clock4, label: '定时任务', act: () => { location.hash = '#/tasks' } },
+    { Icon: Database, label: '会话管理', act: () => { location.hash = '#/sessiondb' } },
+    { Icon: SquareTerminal, label: '终端', act: () => openPanel('terminal') },
   ]
   const welcome = (
-    <div className="relative h-full">
-      {/* 空态门户氛围：动态 3D 渐变场（懒加载，深色主题才渲染，不拦交互不进主包） */}
-      <GradientField />
-      <div className="chat-welcome chat-welcome--field relative h-full overflow-y-auto px-4 py-8 sm:px-8 sm:py-12">
-      <div className="chat-reading-column welcome-content">
-        <div className="welcome-intro">
-          <div className="welcome-mark" aria-hidden="true">语</div>
-          <div>
-            <h1 className="page-title">今天想完成什么？</h1>
-            <p className="text-[15px] text-pi-dim leading-relaxed mt-2 max-w-[52ch]">从一句话开始，也可以直接进入一个工具。小语会把过程、产物和后续任务都留在同一个工作空间。</p>
-          </div>
+    <div className="chat-welcome chat-workstart">
+      <div className="chat-reading-column">
+        <div className="workstart-identity">
+          <img src="/static/branding/yuanshu-app-icon.png" width="48" height="48" alt="" />
+          <div><h1>元枢</h1><p>小语的工作空间</p></div>
         </div>
-
-        <section className="mt-9" aria-labelledby="quick-actions-title">
+        <section className="workstart-actions" aria-labelledby="quick-actions-title">
           <div className="chat-section-head">
-            <h2 id="quick-actions-title">常用功能</h2>
-            <span>快速进入，不用翻菜单</span>
+            <h2 id="quick-actions-title">开始工作</h2>
+            <button type="button" className="workstart-search" onClick={() => window.dispatchEvent(new Event('pi-open-palette'))} title="搜索命令"><Command className="w-4 h-4" />搜索</button>
           </div>
-          <div className="quick-action-grid">
-            {welcomeActions.map(({ Icon, label, desc, act }) => (
-              <button key={label} onClick={act} className="quick-action-item">
-                <span className="quick-action-icon"><Icon className="w-[18px] h-[18px]" strokeWidth={1.8} /></span>
-                <span className="min-w-0 flex-1 text-left">
-                  <span className="block text-[13px] font-semibold text-pi-text">{label}</span>
-                  <span className="block text-[12px] text-pi-dim2 mt-0.5 leading-relaxed">{desc}</span>
-                </span>
-                <ChevronRight className="quick-action-chevron w-4 h-4 flex-shrink-0" strokeWidth={1.8} />
+          <div className="workstart-command-grid">
+            {welcomeActions.map(({ Icon, label, act }) => (
+              <button type="button" key={label} onClick={act} className="workstart-command">
+                <Icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
+                <span>{label}</span>
+                <ChevronRight className="workstart-chevron w-4 h-4" strokeWidth={1.8} />
               </button>
             ))}
           </div>
         </section>
 
-        <div className="welcome-hint mt-8">
-          <Command className="w-4 h-4" strokeWidth={1.8} />
-          <span><kbd>Ctrl / ⌘ K</kbd> 打开全局命令面板；在输入框输入 <kbd>/</kbd> 使用快捷命令。</span>
-        </div>
-      </div>
       </div>
     </div>
   )
@@ -823,7 +806,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
       </div>
       {/* 顶栏 */}
       <div className="flex items-center px-5 h-14 border-b border-pi-border bg-pi-bg1 flex-shrink-0 gap-2">
-        {!compactHeader && <div className="font-medium text-[15px] text-pi-text">会话</div>}
+        <div className="font-medium text-[15px] text-pi-text min-w-0 truncate">{compactHeader ? '小语' : '对话'}</div>
         <div className="ml-auto" />
         {/* 执行状态（对标老版 .status-pill；aria-live 让屏幕阅读器感知流式开始/结束）*/}
         <div role="status" aria-live="polite" className={`status-pill text-[11px] text-pi-dim flex items-center gap-1.5 px-2.5 py-1 rounded-full border bg-pi-bg2/50 ${liveCls}`}>

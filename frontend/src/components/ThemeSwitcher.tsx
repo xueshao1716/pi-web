@@ -1,9 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Palette } from 'lucide-react'
 import { THEME_CATALOG, ACCENT_PRESETS as ACCENTS } from '../theme/palettes'
-import { applyThemeVars, currentTheme } from '../theme/apply'
-import { persistWallpaper } from '../theme/wallpaper.mjs'
-import { ThemeApi } from '../api'
+import { applyTheme, currentTheme } from '../theme/apply'
 // 主题预设：data-theme 属性驱动（styles.css [data-theme] 变量覆盖）；色板定义在 theme/palettes.ts
 // ⚠️ 08-26 单一真源：主色自定义 = generateTheme(seed) 派生整套色板写 CSS 变量（非只改 3 个），
 //    与 WebglBackdrop 联动（派生后 --pi-accent/--pi-accent2 变化 → 背景自动跟随）
@@ -23,29 +21,8 @@ export default function ThemeSwitcher() {
     window.addEventListener('pi-theme-changed', onExt)
     return () => window.removeEventListener('pi-theme-changed', onExt)
   }, [])
-  // 跨端同步（08-26）：挂载时拉服务端偏好（一端更新→各端打开一致），之后变更回写服务端；localStorage 作本地回退
-  const remoteReady = useRef(false)
-  useEffect(() => {
-    let alive = true
-    ThemeApi.get().then(d => {
-      if (!alive || !d) return
-      if (d.theme) setTheme(d.theme)
-      setAccent(d.accent || '')
-      if (typeof d.wallpaper === 'string' && d.wallpaper) persistWallpaper(d.wallpaper)
-    }).catch(() => {}).finally(() => { if (alive) { remoteReady.current = true } })
-    return () => { alive = false }
-  }, [])
-  useEffect(() => {
-    if (!remoteReady.current) return
-    ThemeApi.save(theme, accent).catch(() => {})
-  }, [theme, accent])
-
-  // 应用主题：走 applyThemeVars，与主题页同源（含 shuimo/bamboo/wood 的 data-theme）
-  useEffect(() => {
-    applyThemeVars(theme, accent)
-    try { localStorage.setItem('pi_theme', theme) } catch {}
-    try { localStorage.setItem('pi_accent', accent) } catch {}
-  }, [theme, accent])
+  const selectTheme = (value: string) => applyTheme(value, accent)
+  const selectAccent = (value: string) => applyTheme(theme, value)
 
   return (
     <div className="relative">
@@ -63,7 +40,7 @@ export default function ThemeSwitcher() {
           <div className="absolute left-0 bottom-11 z-20 panel p-2 flex flex-col gap-1 w-44">
             <div className="text-[10px] text-pi-dim2 px-2 pt-0.5 pb-1 font-semibold">主题</div>
             {THEME_CATALOG.map(t => (
-              <button key={t.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-pi-sm hover:bg-pi-bg3 text-xs ${theme === t.id ? 'text-pi-text' : 'text-pi-dim'}`} onClick={() => setTheme(t.id)}>
+              <button key={t.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-pi-sm hover:bg-pi-bg3 text-xs ${theme === t.id ? 'text-pi-text' : 'text-pi-dim'}`} onClick={() => selectTheme(t.id)}>
                 <span className="w-4 h-4 rounded-full border border-pi-border" style={{ background: t.swatch }} />
                 {t.name} {theme === t.id && <span className="ml-auto text-pi-accent">✓</span>}
               </button>
@@ -74,15 +51,15 @@ export default function ThemeSwitcher() {
               {ACCENTS.map(a => (
                 <button key={a.color} title={a.name}
                   className={`w-4 h-4 rounded-full transition-transform hover:scale-110 ${accent === a.color ? 'ring-2 ring-offset-1 ring-pi-text ring-offset-transparent' : ''}`}
-                  style={{ background: a.color }} onClick={() => setAccent(a.color)} />
+                  style={{ background: a.color }} onClick={() => selectAccent(a.color)} />
               ))}
             </div>
             <div className="flex items-center gap-2 px-2 pb-1.5">
               <input type="color" aria-label="自定义主色" value={accent || ACCENTS[0].color}
-                onChange={e => setAccent(e.target.value)}
+                onChange={e => selectAccent(e.target.value)}
                 className="w-8 h-6 rounded-pi-sm border border-pi-border-soft bg-transparent cursor-pointer p-0" />
               <input aria-label="主色 HEX" value={accent} placeholder="#4a58fa…"
-                onChange={e => setAccent(e.target.value)}
+                onChange={e => selectAccent(e.target.value)}
                 className="flex-1 min-w-0 text-[10px] bg-pi-field border border-pi-border-soft rounded-pi-sm px-2 py-1 text-pi-text outline-none focus:border-pi-accent" />
             </div>
             <div className="h-px bg-pi-border-soft my-1" />

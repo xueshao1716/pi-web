@@ -227,7 +227,7 @@ test('主题 Token 与 CSS 导出只位于默认关闭的开发者选项', () =>
 test('主题页保留即时应用、精调、壁纸、保存与重置行为，且非 badge 不使用 10px', () => {
   const themes = read('pages', 'Themes.tsx')
   for (const behavior of [
-    'applyTheme(theme, accent)',
+    'const selectTheme =',
     'seedVars(theme, accent, density)',
     'setWallpaper(reader.result as string)',
     "setWallpaper('')",

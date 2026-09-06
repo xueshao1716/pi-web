@@ -22,7 +22,7 @@ test("水墨竹影进入色板、种子、主题页，apply 写入 data-theme", 
   assert.ok(themes.includes("THEME_CATALOG"), "主题页必须读统一目录");
   assert.ok(palettes.includes("name: '水墨'"), "色板必须有水墨");
   assert.ok(palettes.includes("name: '竹影'"), "色板必须有竹影");
-  assert.ok(switcher.includes("applyThemeVars"), "ThemeSwitcher 必须走 apply 同源，避免 data-theme 列表分叉");
+  assert.ok(switcher.includes("import { applyTheme, currentTheme } from '../theme/apply'"), "ThemeSwitcher 必须走 apply 同源，避免 data-theme 列表分叉");
 });
 
 test("拟态木进入色板、种子、主题页，apply 写 data-theme，翠绿作主色", () => {

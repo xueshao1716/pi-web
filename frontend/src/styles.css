@@ -295,27 +295,101 @@ body.has-wallpaper {
   background: transparent;
 }
 body.has-wallpaper #pi-wallpaper {
-  opacity: 0.55;
+  opacity: 0.22;
 }
 body.has-wallpaper .col-sidebar {
-  background: color-mix(in srgb, var(--pi-bg2) 82%, transparent);
+  background: color-mix(in srgb, var(--pi-bg1) 94%, transparent);
 }
 body.has-wallpaper .col-canvas {
-  background: color-mix(in srgb, var(--pi-bg) 48%, transparent);
+  background: var(--pi-bg);
 }
 body.has-wallpaper .col-right {
-  background: color-mix(in srgb, var(--pi-bg1) 82%, transparent);
+  background: var(--pi-bg1);
 }
 body.has-wallpaper .chat-welcome {
-  background: transparent;
+  background: color-mix(in srgb, var(--pi-bg) 94%, transparent);
 }
 body.has-wallpaper .mobile-app-root {
-  background: transparent;
+  background: var(--pi-bg);
 }
 body.has-wallpaper .mobile-tab-bar,
 body.has-wallpaper .mobile-composer {
-  background: color-mix(in srgb, var(--pi-bg1) 88%, transparent);
+  background: var(--pi-bg1);
   backdrop-filter: blur(12px);
+}
+
+/* ── 桌面工作导航：标签常驻，图标只做识别锚点，不再把核心入口藏在 tooltip 里 ── */
+.desktop-rail { width: 132px; }
+.desktop-brand { display: flex; align-items: center; gap: 8px; width: 100%; padding: 0 8px 20px; color: var(--pi-text); font-weight: 700; font-size: 16px; }
+.desktop-brand img { flex: 0 0 28px; border-radius: 6px; }
+.desktop-rail-item {
+  width: 100%; min-height: 42px; padding: 0 11px;
+  justify-content: flex-start; font-size: 13px; font-weight: 500;
+}
+.desktop-rail-item > svg { flex: 0 0 18px; }
+.desktop-rail-item[aria-current="page"] { background: var(--pi-accent-soft); color: var(--pi-text); font-weight: 650; box-shadow: none; }
+.desktop-rail-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── 引擎页：先读结论，再按需展开复杂诊断 ── */
+.engine-overview { padding: 0 0 20px; }
+.engine-overview-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-block: 1px solid var(--pi-border); }
+.engine-overview-fact { min-width: 0; padding: 20px 16px; background: var(--pi-bg1); }
+.engine-overview-fact + .engine-overview-fact { border-left: 1px solid var(--pi-border-soft); }
+.engine-overview-fact dt { color: var(--pi-dim); font-size: 12px; }
+.engine-overview-fact dd { margin-top: 8px; color: var(--pi-text); font-size: 18px; font-weight: 650; overflow-wrap: anywhere; }
+.engine-overview-fact dd[data-warning="true"] { color: var(--pi-danger); }
+.engine-model-selection { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 16px; padding-block: 12px 0; font-size: 12px; }
+.engine-model-selection dt { color: var(--pi-dim); }
+.engine-model-selection dd { color: var(--pi-text); overflow-wrap: anywhere; min-width: 0; }
+.engine-sections { display: grid; }
+.engine-detail { border-top: 1px solid var(--pi-border); }
+.engine-detail > summary { display: flex; align-items: center; gap: 12px; min-height: 68px; padding: 12px 4px 12px 0; color: var(--pi-text); cursor: pointer; list-style: none; }
+.engine-detail > summary::-webkit-details-marker { display: none; }
+.engine-detail > summary > svg { width: 18px; height: 18px; flex: 0 0 18px; color: var(--pi-dim); }
+.engine-detail > summary > .engine-detail-chevron { width: 16px; height: 16px; flex-basis: 16px; transition: transform .18s var(--pi-ease); }
+.engine-detail[open] > summary > .engine-detail-chevron { transform: rotate(180deg); }
+.engine-detail > summary:hover { background: var(--pi-bg-hover); }
+.engine-detail-title { font-size: 14px; font-weight: 650; }
+.engine-detail-hint { margin-left: auto; text-align: right; max-width: 42%; color: var(--pi-dim); font-size: 12px; overflow-wrap: anywhere; }
+.engine-detail-content { padding: 0 0 16px; }
+.engine-detail-content > section:first-child { border-top: 0; padding-top: 4px; }
+
+.chat-workstart { min-height: 100%; display: flex; align-items: center; padding: 36px 8px; }
+.workstart-identity { display: flex; align-items: center; gap: 16px; margin-bottom: 36px; }
+.workstart-identity img { flex: 0 0 48px; border-radius: 8px; }
+.workstart-identity h1 { color: var(--pi-text); font-size: 28px; line-height: 1.3; font-weight: 650; letter-spacing: 0; }
+.workstart-identity p { margin-top: 4px; color: var(--pi-dim); font-size: 14px; }
+.workstart-actions { border-top: 1px solid var(--pi-border); padding-top: 12px; }
+.workstart-search { display: flex; align-items: center; gap: 6px; min-height: 36px; font-size: 12px; color: var(--pi-dim); }
+.workstart-search:hover { color: var(--pi-text); }
+.workstart-command-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 16px; }
+.workstart-command { min-width: 0; min-height: 56px; display: flex; align-items: center; gap: 10px; padding-inline: 12px; border-radius: 6px; text-align: left; color: var(--pi-text); font-size: 13px; }
+.workstart-command > svg { flex-shrink: 0; color: var(--pi-dim); }
+.workstart-command:nth-child(2) > svg:first-child { color: var(--pi-accent); }
+.workstart-command:nth-child(3) > svg:first-child { color: var(--pi-success); }
+.workstart-command:hover { background: var(--pi-bg2); }
+.workstart-command > .workstart-chevron { margin-left: auto; width: 14px; color: var(--pi-dim2); }
+@media (max-width: 768px) {
+  .engine-overview-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .engine-overview-fact { padding: 16px 12px; }
+  .engine-overview-fact:nth-child(odd) { border-left: 0; }
+  .engine-overview-fact:nth-child(n+3) { border-top: 1px solid var(--pi-border-soft); }
+  .engine-detail > summary { gap: 8px; min-height: 64px; }
+  .engine-detail-title { font-size: 13px; }
+  .engine-detail-hint { max-width: 32%; font-size: 11px; }
+  .chat-workstart { padding: 24px 0; }
+  .workstart-command-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 8px; }
+  .workstart-command { padding-inline: 8px; }
+  .workstart-identity { margin-bottom: 28px; }
+}
+
+/* 中等桌面保留主工作区：会话栏与右工具栏同时打开时，侧栏让出空间。 */
+@media (min-width: 769px) and (max-width: 1279px) {
+  .has-utility-panel > .col-sidebar:not(.desktop-rail) { display: none; }
+}
+@media (min-width: 769px) and (max-width: 1100px) {
+  .workstart-command-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 8px; }
+  .workstart-command { padding-inline: 8px; }
 }
 
 /* ── 欢迎页快捷卡彩色化（08-23）：每张卡自己的强调色，拉彩色占比 */

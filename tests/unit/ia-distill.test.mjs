@@ -40,7 +40,7 @@ test('桌面主栏只留对话工作台创作资产任务，其余进更多', ()
   const more = read('components', 'DesktopMoreMenu.tsx')
   assert.ok(layout.includes('RAIL_PRIMARY'), '桌面壳必须按主栏名单渲染')
   assert.ok(layout.includes('RAIL_MORE'), '桌面壳必须把长尾放进更多')
-  assert.ok(more.includes('aria-label="更多"'), '桌面必须有更多按钮')
+  assert.ok(more.includes("aria-label={moreActive ?") && more.includes(": '更多'}"), '桌面必须有可访问的更多按钮')
 })
 
 test('⌘K 能打开工作台、创作、主题、灵感、能力、会话库、系统', () => {

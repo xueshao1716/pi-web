@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { CheckCircle2, LoaderCircle, RefreshCw } from 'lucide-react'
+import { Activity, Boxes, CheckCircle2, ChevronDown, LoaderCircle, RefreshCw, SlidersHorizontal, SquareTerminal, Wrench } from 'lucide-react'
 import useSWR from 'swr'
 import { EngineApi, RunApi } from '../api'
 import { useApp } from '../store'
@@ -48,28 +48,57 @@ export default function Engine() {
   }
   const openSession = (id: string) => { selectSession(id); location.hash = '#/chat' }
   const label = (id?: string) => pair?.catalog.find(item => item.id === id)?.label || id || '加载中'
-  const observation = runError || refreshFailed.runs ? <span className="text-sm text-pi-danger">观测暂不可用</span>
+  const activeCount = runData?.active.length ?? 0
+  const failedCount = runData?.recent.filter(run => run.status === 'failed' || run.status === 'interrupted').length ?? 0
+  const mountedPluginCount = status?.plugins?.filter((plugin: any) => plugin.mounted).length ?? 0
+  const toolCount = toolsData?.tools?.length ?? 0
+  const runUnavailable = !!(runError || refreshFailed.runs)
+  const toolsUnavailable = !!(toolsError || refreshFailed.tools)
+  const statusUnavailable = !!(statusError || refreshFailed.status)
+  const pairUnavailable = !!(pairError || refreshFailed.pair)
+  const primary = pairUnavailable ? '暂不可用' : label(pair?.primary)
+  const secondary = pairUnavailable ? '暂不可用' : label(pair?.secondary)
+  const observation = runUnavailable ? <span className="text-sm text-pi-danger">观测暂不可用</span>
     : !runData ? <span role="status" className="text-sm text-pi-dim">加载中</span>
     : <span className="inline-flex items-center gap-2 text-sm text-pi-text">{runData.active.length ? <LoaderCircle className="w-4 h-4 text-pi-accent animate-spin" /> : <CheckCircle2 className="w-4 h-4 text-pi-success" />}{runData.active.length ? `${runData.active.length} 个任务运行中` : '当前无活动任务'}</span>
 
   return <div className="flex-1 overflow-y-auto relative z-10 bg-pi-bg">
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
-      <PageHeader title="引擎控制台" description="主聊天引擎 / 运行诊断 / Gateway 旁路" meta={observation} actions={
+      <PageHeader title="引擎控制台" meta={observation} actions={
         <button type="button" className="btn-ghost min-h-11" disabled={refreshing} onClick={() => void probe()}><RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />刷新状态</button>
       } />
       {refreshError && <p role="alert" className="text-sm text-pi-danger mb-3">{refreshError}</p>}
-      <dl className="grid grid-cols-2 sm:grid-cols-4 gap-4 pb-5 text-sm">
-        <div className="min-w-0"><dt className="text-pi-dim">配置主驾</dt><dd className="text-pi-text font-medium mt-1 break-all">{pairError || refreshFailed.pair ? '暂不可用' : label(pair?.primary)}</dd></div>
-        <div className="min-w-0"><dt className="text-pi-dim">配置次席</dt><dd className="text-pi-text font-medium mt-1 break-all">{pairError || refreshFailed.pair ? '暂不可用' : label(pair?.secondary)}</dd></div>
-        <div className="min-w-0"><dt className="text-pi-dim">当前模型选择</dt><dd className="text-pi-text mt-1 break-all">{currentModel === 'auto/auto' ? '自动路由' : currentModel}</dd></div>
-        <div className="min-w-0"><dt className="text-pi-dim">旁路插件</dt><dd className="text-pi-text mt-1">{statusError || refreshFailed.status ? '暂不可用' : status ? `${(status.plugins || []).filter((p: any) => p.mounted).length} / ${(status.plugins || []).length} 已挂载` : '加载中'}</dd></div>
-      </dl>
-      <EngineRunDiagnostics data={runData} error={runError || refreshFailed.runs} onOpenSession={openSession} />
-      <EnginePairPanel data={pair} error={pairError || refreshFailed.pair} onReload={reloadPair} />
-      <EngineTools data={toolsData} error={toolsError || refreshFailed.tools} />
-      <EngineGatewayPanels data={status} error={statusError || refreshFailed.status} onReload={reloadStatus} onProbe={probe} probing={refreshing || isValidating} />
+      <section className="engine-overview" data-slot="engine-overview">
+        <dl className="engine-overview-facts">
+          <div className="engine-overview-fact"><dt>配置主驾</dt><dd>{primary}</dd></div>
+          <div className="engine-overview-fact"><dt>配置次席</dt><dd>{secondary}</dd></div>
+          <div className="engine-overview-fact"><dt>正在运行</dt><dd>{runUnavailable ? '暂不可用' : runData ? `${activeCount} 个任务` : '加载中'}</dd></div>
+          <div className="engine-overview-fact"><dt>最近 {runData?.recent.length ?? ''} 次运行异常</dt><dd data-warning={!runUnavailable && failedCount > 0}>{runUnavailable ? '暂不可用' : runData ? `${failedCount} 次` : '加载中'}</dd></div>
+        </dl>
+        <dl className="engine-model-selection"><dt>当前模型选择</dt><dd>{currentModel === 'auto/auto' ? '自动路由' : currentModel}</dd></dl>
+      </section>
+      <div className="engine-sections" data-slot="engine-sections">
+        <details className="engine-detail" name="engine-section">
+          <summary><Activity aria-hidden="true" /><span className="engine-detail-title">运行诊断</span><span className="engine-detail-hint">{runUnavailable ? '暂不可用' : runData ? `${runData.recent.length} 次运行记录` : '加载中'}</span><ChevronDown className="engine-detail-chevron" aria-hidden="true" /></summary>
+          <div className="engine-detail-content"><EngineRunDiagnostics data={runData} error={runError || refreshFailed.runs} onOpenSession={openSession} /></div>
+        </details>
+        <details className="engine-detail" name="engine-section">
+          <summary><SlidersHorizontal aria-hidden="true" /><span className="engine-detail-title">引擎配置</span><span className="engine-detail-hint">{primary}</span><ChevronDown className="engine-detail-chevron" aria-hidden="true" /></summary>
+          <div className="engine-detail-content">
+            <EnginePairPanel data={pair} error={pairError || refreshFailed.pair} onReload={reloadPair} />
+          </div>
+        </details>
+        <details className="engine-detail" name="engine-section">
+          <summary><Wrench aria-hidden="true" /><span className="engine-detail-title">工具目录</span><span className="engine-detail-hint">{toolsUnavailable ? '暂不可用' : toolsData ? `${toolCount} 个已注册` : '加载中'}</span><ChevronDown className="engine-detail-chevron" aria-hidden="true" /></summary>
+          <div className="engine-detail-content"><EngineTools data={toolsData} error={toolsError || refreshFailed.tools} /></div>
+        </details>
+        <details className="engine-detail" name="engine-section">
+          <summary><Boxes aria-hidden="true" /><span className="engine-detail-title">Gateway 与旁路</span><span className="engine-detail-hint">{statusUnavailable ? '暂不可用' : status ? `${mountedPluginCount} 个插件已挂载` : '加载中'}</span><ChevronDown className="engine-detail-chevron" aria-hidden="true" /></summary>
+          <div className="engine-detail-content"><EngineGatewayPanels data={status} error={statusError || refreshFailed.status} onReload={reloadStatus} onProbe={probe} probing={refreshing || isValidating} /></div>
+        </details>
+      </div>
       <section className="border-t border-pi-border-soft py-5">
-        <button type="button" className="btn-ghost min-h-11" aria-expanded={terminalOpen} onClick={() => { setTerminalMounted(true); setTerminalOpen(value => !value) }}>{terminalOpen ? '收起代码模式' : '打开代码模式'}</button>
+        <button type="button" className="btn-ghost min-h-11" aria-expanded={terminalOpen} onClick={() => { setTerminalMounted(true); setTerminalOpen(value => !value) }}><SquareTerminal className="w-4 h-4" />{terminalOpen ? '收起代码模式' : '打开代码模式'}</button>
         {terminalMounted && <div className={terminalOpen ? 'flex h-[520px] max-h-[65vh] mt-3 flex-col border border-pi-border-soft rounded-pi-md overflow-hidden' : 'hidden'}><TerminalPanel /></div>}
       </section>
     </div>

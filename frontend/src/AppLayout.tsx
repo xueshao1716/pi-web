@@ -18,6 +18,7 @@ import { RAIL_MORE, RAIL_PRIMARY, ROUTE_LABELS } from './nav'
 import * as T from '@radix-ui/react-tooltip'
 import { applyWallpaper, currentWallpaper } from './theme/wallpaper.mjs'
 import { installVisualViewportHeight } from './lib/viewport'
+import { useThemePreferences } from './hooks/useThemePreferences'
 
 // 页面 lazy（路线图：每路由 lazy + ErrorBoundary）
 const ModelHub = lazy(() => import('./pages/ModelHub'))
@@ -93,6 +94,7 @@ function PageBody({ route }: { route: Route }) {
 
 export default function AppLayout() {
   const { authed, logout } = useApp()
+  const themeReady = useThemePreferences(authed)
   // 首启向导（M1）：登录后零密钥 → 引导初始化；?setup=1 强制唤出
   const [needsSetup, setNeedsSetup] = useState(false)
   useEffect(() => {
@@ -126,14 +128,14 @@ export default function AppLayout() {
 
   useEffect(() => installVisualViewportHeight(), [])
 
-  // ── 全局壁纸：渐变直接写 background-image，图片才包 url()；有壁纸时 body.has-wallpaper 让画布透出来 ──
+  // Theme hydration runs before either shell mounts its wallpaper element.
   useEffect(() => {
     const apply = () => applyWallpaper(currentWallpaper())
     apply()
     window.addEventListener('pi-wallpaper-changed', apply)
     const t = setTimeout(apply, 300)
     return () => { window.removeEventListener('pi-wallpaper-changed', apply); clearTimeout(t) }
-  }, [])
+  }, [themeReady, isMobile, needsSetup])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -174,6 +176,7 @@ export default function AppLayout() {
   )
 
   if (!authed) return <ShellFrame><Login /></ShellFrame>
+  if (!themeReady) return <ShellFrame><div className="flex-1 flex items-center justify-center bg-pi-bg text-pi-dim text-sm" role="status">正在加载工作区...</div></ShellFrame>
   if (needsSetup) return <ShellFrame><SetupWizard onDone={() => setNeedsSetup(false)} /></ShellFrame>
 
   /* ── 页面容器（非 chat 路由共用）── */
@@ -263,12 +266,11 @@ export default function AppLayout() {
   /* ── 桌面布局：图标 rail + 会话列表 + 主区 + 动态右栏 ── */
   return (
     <ShellFrame>
-    <div className="flex-1 flex min-w-0 text-pi-text relative">
+    <div className={`flex-1 flex min-w-0 text-pi-text relative ${rightPanel !== 'chat' ? 'has-utility-panel' : ''}`}>
       <div id="pi-wallpaper" className="fixed inset-0 z-0 pointer-events-none" />
       {/* 图标导航 rail：实底 Logo，不用渐变 */}
-      <nav className="w-[60px] flex-shrink-0 flex flex-col items-center py-4 gap-2 col-sidebar border-r border-pi-border relative z-20">
-        <div className="w-9 h-9 rounded-xl bg-pi-accent flex items-center justify-center text-white font-bold text-sm mb-3"
-          style={{ boxShadow: 'var(--pi-shadow-sm)' }}>语</div>
+      <nav className="desktop-rail flex-shrink-0 flex flex-col items-center py-4 px-2 gap-1.5 col-sidebar border-r border-pi-border relative z-20" aria-label="主导航">
+        <div className="desktop-brand"><img src="/static/branding/yuanshu-app-icon.png" alt="" width="28" height="28" /><span>元枢</span></div>
         {sidebarCollapsed && (
           <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-colors"
             aria-label="展开会话栏" title="展开会话栏" onClick={toggleSidebar}>
@@ -278,11 +280,12 @@ export default function AppLayout() {
         {RAIL_PRIMARY.map(railItem).map(n => (
           <T.Root key={n.route}>
             <T.Trigger asChild>
-              <button aria-label={n.label} aria-current={route === n.route ? 'page' : undefined}
-                className={`w-10 h-10 rounded-xl flex items-center justify-center relative transition-[background-color,color,border-color,box-shadow,transform] duration-200 ${
+              <button aria-label={n.label} aria-current={route === n.route ? 'page' : undefined} title={n.label}
+                className={`desktop-rail-item rounded-pi-md flex items-center gap-2 relative transition-[background-color,color,border-color,box-shadow,transform] duration-200 ${
                   route === n.route ? 'bg-pi-accent text-white shadow-md shadow-pi-accent/25' : 'text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3'}`}
                 onClick={() => nav(n.route)}>
                 <n.icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
+                <span className="desktop-rail-label">{n.label}</span>
               </button>
             </T.Trigger>
             <T.Portal>
