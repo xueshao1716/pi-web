@@ -8,6 +8,7 @@ import { RunsApi, SessionsApi, AsrApi, EmotionApi, AgentStatusApi, streamSession
 import Message from './Message'
 import SendBox from './SendBox'
 import TurnList from './TurnList'
+import ChatRunStatus from './ChatRunStatus'
 import { useAutoScroll } from '../hooks/useAutoScroll'
 import { toast } from './Toast'
 import GradientField from './GradientField'
@@ -928,6 +929,10 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
               />
             </div>
           )}
+      </div>
+
+      <div className="chat-reading-column mx-auto w-full px-3 sm:px-4">
+        <ChatRunStatus sessionId={currentSessionId} onStop={stop} />
       </div>
 
       {/* 输入栏 */}
