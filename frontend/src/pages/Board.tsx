@@ -342,7 +342,7 @@ function EmotionTideCard() {
             <path d={path} fill="none" className="stroke-pi-accent" strokeWidth="1.5" />
             {vals.map((v, i) => <circle key={i} cx={px(i)} cy={py(v)} r="1.6" className="fill-pi-accent" opacity="0.7" />)}
           </svg>
-          <div className="text-[9px] text-pi-dim2 text-right">愉悦度曲线 · 中线为平静</div>
+          <div className="text-[10px] text-pi-dim2 text-right">愉悦度曲线 · 中线为平静</div>
         </div>
       )}
     </div>

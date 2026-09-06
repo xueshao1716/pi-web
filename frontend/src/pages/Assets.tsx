@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Film, Music, FileText, ImagePlus, FolderOpen, Images as ImagesIcon, Package } from 'lucide-react'
 import EmptyState from '../components/EmptyState'
 import useSWR from 'swr'
@@ -20,7 +20,7 @@ const fmtDate = (d: string) => (d || '').slice(5).replace('-', '/')
 function ArtifactTile({ a, onOpen }: { a: Artifact; onOpen: () => void }) {
   const isImg = IMG_RE.test(a.name)
   return (
-    <div className="group panel !p-2 cursor-pointer overflow-hidden flex flex-col gap-1.5 card-hover" onClick={onOpen}>
+    <button type="button" aria-label={`${isImg ? '预览' : '打开'}资产：${a.name}`} className="group panel !p-2 cursor-pointer overflow-hidden flex flex-col gap-1.5 card-hover text-left w-full" onClick={onOpen}>
       <div className="relative rounded-pi-md bg-pi-bg3/60 aspect-[4/3] overflow-hidden flex items-center justify-center">
         {isImg
           ? <img src={withFileToken(a.url)} alt={a.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-[1.06] transition-transform duration-300" />
@@ -36,7 +36,7 @@ function ArtifactTile({ a, onOpen }: { a: Artifact; onOpen: () => void }) {
         <span className="truncate px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3">{a.type}</span>
         <span className="flex-shrink-0 ml-2">{fmtSize(a.size)} · {fmtDate(a.date)}</span>
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -44,6 +44,12 @@ export default function Assets() {
   const [typeFilter, setTypeFilter] = useState('全部')
   const [kw, setKw] = useState('')
   const [viewer, setViewer] = useState<Artifact | null>(null)
+  useEffect(() => {
+    if (!viewer) return
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') setViewer(null) }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [viewer])
   // swr：资产清单缓存 + 聚焦重验证（生成新图后切回来自动出现）
   const { data: artData, isLoading, mutate: mutateArtifacts } = useSWR('artifacts', () => WsApi.artifacts(), { revalidateOnFocus: true, dedupingInterval: 10000 })
   const { data: delData } = useSWR('deliveries', () => WsApi.deliveries(), { dedupingInterval: 60000 })
@@ -106,16 +112,18 @@ export default function Assets() {
             <h2 className="text-sm font-semibold text-pi-text mb-2 inline-flex items-center gap-1.5"><Package className="w-4 h-4" /> 成品交付</h2>
             <div className="panel !p-0 overflow-hidden mb-8">
               {deliveries.map(d => (
-                <div key={d.wsPath}
+                <button type="button" key={d.wsPath}
                   className={`flex items-center gap-3 px-4 py-2.5 border-b border-pi-border-soft/50 last:border-0 transition-colors ${d.type === 'file' ? 'hover:bg-pi-bg3/40 cursor-pointer' : 'text-pi-dim2'}`}
                   title={d.type === 'dir' ? '目录请在工作空间中打开' : undefined}
+                  aria-label={d.type === 'file' ? `打开交付物：${d.name}` : `${d.name}（目录）`}
+                  disabled={d.type !== 'file'}
                   onClick={() => {
                     if (d.type === 'file') window.open(withFileToken(d.url), '_blank')
                   }}>
                   <span>{d.type === 'dir' ? <FolderOpen className="w-4 h-4" /> : <FileText className="w-4 h-4" />}</span>
                   <span className="text-[13px] text-pi-text truncate flex-1">{d.name}</span>
                   <span className="text-[10px] text-pi-dim2">{fmtSize(d.size)}</span>
-                </div>
+                </button>
               ))}
             </div>
           </>
@@ -124,14 +132,22 @@ export default function Assets() {
 
       {/* 图片灯箱 */}
       {viewer && (
-        <div className="fixed inset-0 z-[var(--pi-z-viewer)] bg-black/85 flex items-center justify-center p-8" onClick={() => setViewer(null)}>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`预览资产：${viewer.name}`}
+          className="fixed inset-0 z-[var(--pi-z-viewer)] bg-black/85 flex items-center justify-center p-8"
+          onClick={() => setViewer(null)}
+          onKeyDown={e => { if (e.key === 'Escape') setViewer(null) }}
+          tabIndex={-1}
+        >
           <div className="max-w-[90vw] max-h-[88vh] flex flex-col gap-2" onClick={e => e.stopPropagation()}>
             <img src={withFileToken(viewer.url)} alt={viewer.name} className="max-w-full max-h-[78vh] object-contain rounded-pi-lg border border-pi-border" />
             <div className="flex items-center gap-3 text-xs text-pi-dim">
               <span className="truncate flex-1">{viewer.name}</span>
               <span>{fmtSize(viewer.size)}</span>
-              <button className="btn-tool !py-1" onClick={() => window.open(viewer.url, '_blank')}>新窗口打开</button>
-              <button className="btn-tool !py-1" onClick={() => setViewer(null)}>✕</button>
+              <button type="button" className="btn-tool !py-1" onClick={() => window.open(withFileToken(viewer.url), '_blank', 'noopener,noreferrer')}>新窗口打开</button>
+              <button type="button" className="btn-tool !py-1" aria-label="关闭预览" onClick={() => setViewer(null)}>✕</button>
             </div>
           </div>
         </div>

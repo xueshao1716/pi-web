@@ -259,3 +259,15 @@ test('原生控件遵循 React 主题控件层', () => {
   const missing = required.filter(selector => !css.includes(selector))
   assert.deepEqual(missing, [], '缺少原生控件主题规则：' + missing.join(', '))
 })
+
+test('资产库交互元素遵循键盘与对话框语义', () => {
+  const assets = readFileSync(join(ROOT, 'src/pages/Assets.tsx'), 'utf8')
+  const workflow = readFileSync(join(ROOT, 'src/components/AgentWorkflow.tsx'), 'utf8')
+  const lingxi = readFileSync(join(ROOT, 'src/pages/LingXi.tsx'), 'utf8')
+  assert.match(assets, /<button type="button" aria-label=\{`\$\{isImg \? '预览' : '打开'\}/, '资产卡片必须使用语义按钮')
+  assert.match(assets, /role="dialog"/, '灯箱必须声明 dialog 语义')
+  assert.match(assets, /aria-modal="true"/, '灯箱必须声明 aria-modal')
+  assert.match(assets, /e\.key === 'Escape'/, '灯箱必须支持 Escape 关闭')
+  assert.doesNotMatch(workflow, /border-l-2/, '工作流状态不应使用粗侧边强调线')
+  assert.match(lingxi, /bg-pi-success\/15 text-pi-success/, '灵犀状态色必须使用主题语义 token')
+})

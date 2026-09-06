@@ -56,7 +56,7 @@ function EntryCard({ e, onChanged }: { e: LingXiEntry; onChanged: () => void }) 
       <div className="mt-2 flex items-center gap-1.5 text-[10px] text-pi-dim2">
         <span className="font-mono">{fmtTime(e.ts)}</span>
         {e.status === 'adopted' && (
-          <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded-pi-pill bg-emerald-500/15 text-emerald-300 font-medium">
+          <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded-pi-pill bg-pi-success/15 text-pi-success font-medium">
             <CheckCircle2 className="w-3 h-3" />已采纳{e.target ? `→${TARGET_LABEL[e.target] ?? e.target}` : ''}
           </span>
         )}

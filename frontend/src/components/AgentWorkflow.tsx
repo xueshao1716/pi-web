@@ -17,7 +17,7 @@ interface AgentWorkflowProps {
  */
 export function AgentWorkflow({ phase, thinking, toolsRunning = 0, toolsTotal = 0 }: AgentWorkflowProps) {
   return (
-    <div className="flex items-center gap-3 py-3 px-4 border-l-2 border-pi-border-soft bg-pi-bg1 rounded-r-lg">
+    <div className="flex items-center gap-3 py-3 px-4 border border-pi-border-soft bg-pi-bg1 rounded-pi-lg">
       {/* 阶段 1: 思考 */}
       <div className={`flex items-center gap-2 ${phase === 'thinking' ? 'opacity-100' : 'opacity-40'}`}>
         <div className={`w-6 h-6 rounded-full flex items-center justify-center ${phase === 'thinking' ? 'bg-pi-accent text-white' : 'bg-pi-bg2 text-pi-dim2'}`}>

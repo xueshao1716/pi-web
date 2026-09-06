@@ -169,7 +169,8 @@ export default function SessionDb() {
                   clearInterval(timer); setSums(s.summaries); setSumBusy(false); toast('摘要批次完成', 'ok')
                 }
               }, 15000)
-              setTimeout(() => { clearInterval(timer); setSumBusy(false) }, 10 * 60_000) // 10 分钟兜底
+              const stopSummaryPolling = () => { clearInterval(timer); setSumBusy(false) }
+              setTimeout(stopSummaryPolling, 10 * 60_000) // 10 分钟兜底
             } catch (e: any) { toast('启动失败：' + (e?.message || e), 'error'); setSumBusy(false) }
           }} />
 
@@ -365,7 +366,7 @@ function RecallPanel({ onOpenSession, sums, sumBusy, onGenSums }: { onOpenSessio
           <div className="text-[10px] text-pi-dim2 px-1">命中片段（{hits.length}）</div>
           {hits.map((h: any, i: number) => (
             <div key={i} className="rounded-pi-md border border-pi-border-soft px-2.5 py-1.5 flex items-start gap-2">
-              <span className={`text-[9px] px-1 py-0.5 rounded-pi-pill flex-shrink-0 mt-0.5 ${h.role === 'user' ? 'bg-pi-accent-soft text-pi-accent' : 'bg-pi-bg3 text-pi-dim2'}`}>{h.role === 'user' ? '问' : '答'}</span>
+              <span className={`text-[10px] px-1 py-0.5 rounded-pi-pill flex-shrink-0 mt-0.5 ${h.role === 'user' ? 'bg-pi-accent-soft text-pi-accent' : 'bg-pi-bg3 text-pi-dim2'}`}>{h.role === 'user' ? '问' : '答'}</span>
               <div className="min-w-0 flex-1">
                 <div className="text-[11px] text-pi-dim truncate">{h.text}</div>
                 <div className="text-[10px] text-pi-dim2 mt-0.5 flex items-center gap-1.5">
