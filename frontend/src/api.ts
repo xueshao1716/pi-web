@@ -534,6 +534,16 @@ export const EngineApi = {
   unregisterPlugin: (id: string) => api<any>('/api/engine/plugins/unregister', { method: 'POST', body: { id } }),
 }
 
+export type RunPhase = 'queued' | 'thinking' | 'executing' | 'remembering' | 'delivering' | 'completed' | 'failed' | 'stopped' | 'interrupted'
+export interface RunSummary {
+  id: string; sessionId: string; status: string; phase: RunPhase; messagePreview: string; toolCount: number; error: string | null
+}
+export interface RunOverview { active: RunSummary[]; recent: RunSummary[]; health: { status: 'idle' | 'busy' | 'degraded'; activeCount: number; failedCount: number } }
+export const RunApi = {
+  overview: () => api<RunOverview>('/api/run/overview'),
+  get: (id: string) => api<RunSummary & { lastSeq: number }>(`/api/runs/${encodeURIComponent(id)}`),
+}
+
 // ── 用量统计（按 provider/模型聚合）──
 export interface ProviderStat { provider: string; input: number; output: number; cacheRead?: number; cost: number; messages: number }
 export const StatsApi = {
