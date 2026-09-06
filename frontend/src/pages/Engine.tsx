@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { Cpu, Plug, Wrench, FolderClosed, Brain, RefreshCw, ChevronDown, ArrowLeftRight } from 'lucide-react'
 import useSWR from 'swr'
-import { EngineApi } from '../api'
+import { EngineApi, RunApi } from '../api'
 import TerminalPanel from '../components/TerminalPanel'
+import PageHeader from '../components/PageHeader'
+import HealthBadge from '../components/HealthBadge'
+import RunTimeline from '../components/RunTimeline'
 
 // ── 引擎（独立大模块）：运行底盘 / 工具注册表 / 可插拔能力清单 ──
 
@@ -255,15 +258,18 @@ function Plugins({ data, onReload }: { data: any; onReload: () => void }) {
 export default function Engine() {
   const { data: status, mutate, isValidating } = useSWR('engine-status', () => EngineApi.status(), { refreshInterval: 60000 })
   const { data: toolsData, mutate: mutateTools } = useSWR('engine-tools', () => EngineApi.tools(), { refreshInterval: 60000 })
+  const { data: runData } = useSWR('engine-run-overview', () => RunApi.overview(), { refreshInterval: 10000 })
   const probe = async () => { await Promise.all([mutate(), mutateTools()]) }
 
   return (
     <div className="flex-1 overflow-y-auto relative z-10">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-5 sm:py-6 overflow-x-hidden">
-        <div className="mb-6">
-          <h1 className="page-title">引擎</h1>
-          <p className="text-xs text-pi-dim2 mt-1.5">主次引擎接到主聊天；下面是 Gateway 旁路，能探活、能挂预置插件、能跑代码模式</p>
-        </div>
+        <PageHeader title="引擎控制台" description="看清主驾如何判断、执行、记忆和交付；异常时从这里诊断" meta={<HealthBadge status={runData?.health.status || 'idle'} />} />
+
+        {runData?.active?.length ? <div className="panel p-3 mb-4 border-pi-accent/25 bg-pi-accent-soft/25">
+          <div className="flex items-center justify-between mb-2"><span className="text-[12px] font-semibold text-pi-text">当前运行</span><span className="text-[10px] text-pi-dim2">{runData.health.activeCount} 个任务</span></div>
+          <div className="space-y-2">{runData.active.map(run => <div key={run.id} className="flex items-center gap-3"><RunTimeline phase={run.phase} compact /><span className="truncate text-[11px] text-pi-dim flex-1">{run.messagePreview || '正在处理任务'}</span></div>)}</div>
+        </div> : null}
 
         <div className="space-y-4 page-enter">
           <EnginePairPanel />

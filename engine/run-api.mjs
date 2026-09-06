@@ -1,4 +1,5 @@
 const TERMINAL = new Set(['completed', 'failed', 'stopped', 'interrupted'])
+import { buildRunSnapshot } from './run-observability.mjs'
 
 function cursorFrom(req, url) {
   const query = Number.parseInt(url?.searchParams?.get('after') || '0', 10)
@@ -14,6 +15,11 @@ function writeEvent(res, event) {
 
 export function createRunApi({ manager, json }) {
   return {
+    overview(res) {
+      const runs = typeof manager.list === 'function' ? manager.list() : []
+      const eventsByRun = new Map(runs.map(run => [run.id, manager.readAfter(run.id, 0)]))
+      return json(res, 200, buildRunSnapshot(runs, eventsByRun))
+    },
     async create(res, body, req = null) {
       try {
         const run = manager.create(body, { headers: req?.headers, socket: req?.socket })

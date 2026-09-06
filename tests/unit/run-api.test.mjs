@@ -75,3 +75,16 @@ test('stop API 只委托 manager.stop，不与 SSE 连接生命周期耦合', as
   assert.equal(res.statusCode, 200)
   assert.equal(JSON.parse(res.text()).status, 'stopping')
 })
+
+test('overview 返回统一运行快照与健康状态', async () => {
+  const manager = { list: () => [
+    { id: 'run-1', sessionId: 's1', status: 'running', updatedAt: '2026-09-06T10:00:00Z', input: { messagePreview: '继续' } },
+    { id: 'run-2', sessionId: 's2', status: 'failed', updatedAt: '2026-09-06T09:00:00Z', error: '上游失败' },
+  ], readAfter: id => id === 'run-1' ? [{ type: 'run_started' }] : [{ type: 'failed', data: { message: '上游失败' } }] }
+  const api = createRunApi({ manager, json: fakeJson })
+  const res = new FakeResponse()
+  await api.overview(res)
+  assert.equal(res.statusCode, 200)
+  assert.deepEqual(JSON.parse(res.text()).health, { status: 'busy', activeCount: 1, failedCount: 1 })
+  assert.equal(JSON.parse(res.text()).active[0].phase, 'executing')
+})
