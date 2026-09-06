@@ -536,7 +536,7 @@ export const EngineApi = {
 
 export type RunPhase = 'queued' | 'thinking' | 'executing' | 'remembering' | 'delivering' | 'completed' | 'failed' | 'stopped' | 'interrupted'
 export interface RunSummary {
-  id: string; sessionId: string; status: string; phase: RunPhase; messagePreview: string; toolCount: number; error: string | null
+  id: string; sessionId: string; status: string; phase: RunPhase; messagePreview: string; toolCount: number; memoryCount: number; memoryPreview: string | null; error: string | null
 }
 export interface RunOverview { active: RunSummary[]; recent: RunSummary[]; health: { status: 'idle' | 'busy' | 'degraded'; activeCount: number; failedCount: number } }
 export const RunApi = {

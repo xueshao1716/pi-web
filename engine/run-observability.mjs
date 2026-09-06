@@ -30,6 +30,12 @@ function latestPhase(run, events) {
 export function summarizeRun(run, events = []) {
   const list = Array.isArray(events) ? events : []
   const toolCount = list.filter(event => event?.type === 'tool_started').length
+  const memoryEvents = list.filter(event => event?.type === 'memory_written')
+  const memoryCount = memoryEvents.reduce((total, event) => {
+    const count = Number(event?.data?.count)
+    return total + (Number.isFinite(count) && count >= 0 ? count : 1)
+  }, 0)
+  const memoryPreview = memoryEvents.map(event => event?.data?.preview || event?.data?.summary || event?.data?.text).find(Boolean)
   const lastError = [...list].reverse().find(event => event?.type === 'error' || event?.type === 'failed')
   const error = run?.error || lastError?.data?.message || lastError?.data?.error || null
   return {
@@ -39,6 +45,8 @@ export function summarizeRun(run, events = []) {
     phase: latestPhase(run, list),
     messagePreview: run?.input?.messagePreview || '',
     toolCount,
+    memoryCount,
+    memoryPreview: memoryPreview ? String(memoryPreview).slice(0, 160) : null,
     error: error ? String(error).slice(0, 240) : null,
   }
 }

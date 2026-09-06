@@ -11,5 +11,6 @@ export default function RunContextSummary({ run, sessionId }: { run: RunSummary;
     {typeof memoryCount === 'number' && <span className="inline-flex items-center gap-1 rounded-full border border-pi-border-soft px-2 py-1"><Brain className="h-3.5 w-3.5 text-pi-accent" />记忆命中 {memoryCount}</span>}
     {emotionLabel && <span className="inline-flex items-center gap-1 rounded-full border border-pi-border-soft px-2 py-1"><HeartPulse className="h-3.5 w-3.5 text-pi-pink" />情绪 {String(emotionLabel)}</span>}
     <span className="inline-flex items-center gap-1 rounded-full border border-pi-border-soft px-2 py-1"><Wrench className="h-3.5 w-3.5 text-pi-warning" />工具 {run.toolCount}</span>
+    {run.memoryPreview && <span className="basis-full truncate text-[11px] text-pi-dim" title={run.memoryPreview}>上下文：{run.memoryPreview}</span>}
   </div>
 }
