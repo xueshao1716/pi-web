@@ -62,7 +62,7 @@ test("非原生通道只逼 pi 兑底元枢；dsh 主驾不受模型下拉影响
 });
 
 test("引擎页能对调主次并写回后台", () => {
-  const src = readFileSync(join(ROOT, "frontend", "src", "pages", "Engine.tsx"), "utf8");
+  const src = readFileSync(join(ROOT, "frontend", "src", "components", "engine", "EnginePairPanel.tsx"), "utf8");
   assert.ok(src.includes("主引擎"));
   assert.ok(src.includes("次引擎"));
   assert.ok(src.includes("EngineApi.savePair"));

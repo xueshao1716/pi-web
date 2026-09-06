@@ -12,6 +12,7 @@ import {
 } from "../../engine/engine-panel.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const engineSource = () => ["pages/Engine.tsx", "components/engine/EnginePairPanel.tsx", "components/engine/EngineGatewayPanels.tsx", "components/engine/EngineTools.tsx", "components/engine/EngineRunDiagnostics.tsx"].map(file => readFileSync(join(ROOT, "frontend", "src", file), "utf8")).join('\n');
 
 test("核心底盘插件不能当普通插件卸", () => {
   assert.ok(CORE_PLUGIN_PREFIXES.length >= 4);
@@ -39,7 +40,7 @@ test("status 必须带旁路说明、能力清单、插件是否核心", () => {
 });
 
 test("引擎页下半必须探活、挂预置插件、画活能力、接代码模式", () => {
-  const src = readFileSync(join(ROOT, "frontend", "src", "pages", "Engine.tsx"), "utf8");
+  const src = engineSource();
   const server = readFileSync(join(ROOT, "server.mjs"), "utf8");
   assert.ok(src.includes("decorateEngineStatus") || server.includes("decorateEngineStatus"), "status 要带上面板装饰");
   assert.ok(src.includes("preset") && src.includes("registerPlugin"), "插件必须能挂预置，不能只卸");
@@ -51,7 +52,7 @@ test("引擎页下半必须探活、挂预置插件、画活能力、接代码�
 
 test("文字按钮必须横向：btn-tool 不能锁死 28px 方块，引擎页中文钮用 btn-ghost", () => {
   const uno = readFileSync(join(ROOT, "frontend", "uno.config.ts"), "utf8");
-  const src = readFileSync(join(ROOT, "frontend", "src", "pages", "Engine.tsx"), "utf8");
+  const src = engineSource();
   const term = readFileSync(join(ROOT, "frontend", "src", "components", "TerminalPanel.tsx"), "utf8");
   const m = uno.match(/'btn-tool':\s*'([^']+)'/);
   assert.ok(m, "要有 btn-tool 快捷类");
@@ -64,8 +65,8 @@ test("文字按钮必须横向：btn-tool 不能锁死 28px 方块，引擎页�
 });
 
 test("引擎页展示统一运行健康和阶段状态", () => {
-  const src = readFileSync(join(ROOT, "frontend", "src", "pages", "Engine.tsx"), "utf8");
+  const src = engineSource();
   assert.ok(src.includes("RunApi.overview()"));
-  assert.ok(src.includes("HealthBadge"));
+  assert.ok(src.includes("当前无活动任务"));
   assert.ok(src.includes("RunTimeline"));
 });
