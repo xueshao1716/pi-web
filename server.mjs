@@ -58,6 +58,8 @@ import { TODO_TOOL_SCHEMAS, todoExtraExecutors } from "./engine/yuanshu-todo.mjs
 import { DELEGATE_TASK_TOOL, execDelegateTask } from "./engine/yuanshu-delegate.mjs";
 import { initAsrApi, handleAsr } from "./engine/asr-api.mjs";
 import { gardenMemory, scanMemoryHealth, markReviewed, unmarkReviewed, dedupeLog, reviewedKeys } from "./engine/memory-gardener.mjs";
+import { upsertMemoryFact } from "./engine/memory-facts.mjs";
+import { readSubscriptionText } from "./engine/subscription-reminder.mjs";
 import { systemInfo as buildSystemInfo, loadNetworkConfig, saveNetworkConfig, checkUpdate } from "./engine/system-panel.mjs";
 import { initTuiBridge } from "./engine/tui-bridge.mjs";
 import { listLingXi, addLingXi, setLingXi, removeLingXi } from "./engine/lingxi.mjs";
@@ -1555,6 +1557,10 @@ const API_ROUTES = [
     const r = dedupeLog(WS_ROOT);
     json(res, 200, { ok: true, ...r });
   }],
+  ["POST", "/api/memory/upsert", async (res, req) => {
+    const b = await readBody(req);
+    return json(res, 200, upsertMemoryFact(WS_ROOT, b || {}));
+  }],
   ["GET", "/api/theme-prefs", (res) => json(res, 200, loadThemePrefs())],
   ["POST", "/api/theme-prefs", async (res, req) => { const b = await readBody(req, 12); return json(res, 200, saveThemePrefs(b || {})) }],
   ["GET", "/api/system/info", (res) => json(res, 200, buildSystemInfo(WS_ROOT, AGENT_DIR))],
@@ -2228,8 +2234,8 @@ function startServer() {
 function checkSubscriptions() {
   try {
     const f = path.join(CONFIG.cwd, "文档", "平台订阅费用追踪.md");
-    if (!fs.existsSync(f)) return;
-    const raw = fs.readFileSync(f, "utf8");
+    const raw = readSubscriptionText(f);
+    if (!raw) return;
     const today = new Date();
     const rows = raw.split("\n").filter(l => l.includes("|") && l.includes("2026-"));
     for (const line of rows) {
@@ -2266,5 +2272,4 @@ setTimeout(sweepSessionsQuietly, 2 * 60 * 1000);
 setInterval(sweepSessionsQuietly, SWEEP_MS);
 
 startServer();
-
 

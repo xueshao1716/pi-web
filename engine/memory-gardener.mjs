@@ -11,6 +11,7 @@ import * as fs from "node:fs";
 import { join } from "node:path";
 import { memoryPaths } from "./memory.mjs";
 import { atomicWriteText } from "./atomic-io.mjs";
+import { splitLogBlocks, blockTopic, isSupersededBlock } from "./memory-facts.mjs";
 
 const DAY = 24 * 60 * 60 * 1000;
 const STALE_DAYS = 7; // 「当前状态」节超过 7 天视作过时，建议归档
@@ -36,7 +37,7 @@ function parseLog(raw) {
 }
 
 export function scanMemoryHealth(wsRoot) {
-  const report = { totalEntries: 0, duplicates: [], staleSections: { total: 0, staleCount: 0, staleDates: [] }, recommendations: [] };
+    const report = { totalEntries: 0, duplicates: [], contradictions: [], staleSections: { total: 0, staleCount: 0, staleDates: [] }, recommendations: [] };
   try {
     const paths = memoryPaths(wsRoot);
 
@@ -60,6 +61,20 @@ export function scanMemoryHealth(wsRoot) {
             previews: arr.map(b => b.replace(/\s+/g, " ").trim().slice(0, 120)),
           });
         }
+      }
+      const currentByTopic = {};
+      for (const b of splitLogBlocks(raw).blocks) {
+        const topic = blockTopic(b);
+        if (!topic || isSupersededBlock(b)) continue;
+        (currentByTopic[topic] = currentByTopic[topic] || []).push(b);
+      }
+      for (const [topic, arr] of Object.entries(currentByTopic)) {
+        if (arr.length < 2) continue;
+        report.contradictions.push({
+          topic,
+          count: arr.length,
+          previews: arr.map(b => b.replace(/\s+/g, " ").trim().slice(0, 120)),
+        });
       }
     }
 
@@ -89,6 +104,7 @@ export function scanMemoryHealth(wsRoot) {
 
     // 3) 建议（只报告，不自动改）
     if (report.duplicates.length) report.recommendations.push(`发现 ${report.duplicates.length} 组疑似重复/流水账记忆条目（记忆日志），建议人工合并。`);
+    if (report.contradictions.length) report.recommendations.push(`发现 ${report.contradictions.length} 组现行事实对撞（同一 topic 多条 current），请用 upsertMemoryFact 只留一条。`);
     if (report.staleSections.staleCount) report.recommendations.push(`固定记忆有 ${report.staleSections.staleCount} 个超过 ${STALE_DAYS} 天的过时「当前状态」节，建议归档到历史或精简。`);
     if (report.totalEntries > LOG_BLOAT) report.recommendations.push(`记忆日志已达 ${report.totalEntries} 条，建议归档最早历史条目。`);
   } catch (e) {
@@ -101,7 +117,7 @@ export function scanMemoryHealth(wsRoot) {
 export function gardenMemory(wsRoot) {
   const r = scanMemoryHealth(wsRoot);
   if (r.error) return { ok: false, error: r.error };
-  return { ok: true, totalEntries: r.totalEntries, duplicates: r.duplicates.length, staleSections: r.staleSections.staleCount, recommendations: r.recommendations };
+  return { ok: true, totalEntries: r.totalEntries, duplicates: r.duplicates.length, contradictions: r.contradictions.length, staleSections: r.staleSections.staleCount, recommendations: r.recommendations };
 }
 
 // 固定记忆/记忆日志的绝对路径暴露（供 API 挂载用）

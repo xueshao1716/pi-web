@@ -11,7 +11,7 @@
 3. **小步提交**：不写大文件，超 ~200 行拆模块；commit 前自查 diff 有无夹带无关改动
 4. **Git 双推**：push origin main → GitHub(xueshao1716/pi-web) + Gitee(linxinyu520xue/pi-web)；push 前探活代理 127.0.0.1:7890
 5. **交付必通报**：完成调 `python D:/pi-workspace/工程/notify.py "内容"`（活动流+微信）
-6. **研究结论当日归档**：进 D:/pi-workspace/记忆/记忆日志.md，同一要点只沉淀一次
+6. **研究结论当日归档**：现行事实走 `upsertMemoryFact`（`section` + 可选 `topic`），同 topic 旧条作废；禁止只往记忆日志追加一条对打的现行。流水账仍可 `autoMemorize`
 
 ## 部署事实（改前端必读，踩过三次坑）
 

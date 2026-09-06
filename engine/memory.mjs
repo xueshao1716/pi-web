@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { atomicWriteText } from "./atomic-io.mjs";
 import path from "node:path";
 import { syncMemoryToTui } from "./memory-sync.mjs";
+import { splitLogBlocks, isSupersededBlock } from "./memory-facts.mjs";
 
 // 记忆文件位置
 export function memoryPaths(wsRoot) {
@@ -52,8 +53,8 @@ export function loadRecentMemory(wsRoot, max = 10) {
     const paths = memoryPaths(wsRoot);
     if (!fs.existsSync(paths.log)) return [];
     const raw = fs.readFileSync(paths.log, "utf8");
-    const blocks = raw.split(/\n### /).filter(b => b.trim());
-    return blocks.slice(-max).map(b => (b.startsWith("### ") ? b : "### " + b).trim());
+    const blocks = splitLogBlocks(raw).blocks.map(b => b.trim()).filter(b => b && !isSupersededBlock(b));
+    return blocks.slice(-max);
   } catch { return []; }
 }
 
@@ -67,7 +68,11 @@ function _tokenize(str) {
   const out = [];
   const s = String(str || "");
   // 英文/数字/URL
-  for (const m of s.matchAll(/[A-Za-z][A-Za-z0-9_.\-]{1,}|\d{2,}|https?:\/\/\S+/g)) out.push(m[0].toLowerCase());
+  for (const m of s.matchAll(/[A-Za-z][A-Za-z0-9_.\-]{1,}|\d{2,}|https?:\/\/\S+/g)) {
+    const tok = m[0].toLowerCase();
+    out.push(tok);
+    if (tok.includes(".")) for (const part of tok.split(".").filter(x => x.length > 1)) out.push(part);
+  }
   // 中文连续段 → bigram（长度≤2 整体作为词）
   const segs = s.replace(/[A-Za-z0-9_\-./:]/g, " ").split(/\s+/).filter(x => /[\u4e00-\u9fff]/.test(x));
   for (const seg of segs) {
@@ -78,14 +83,14 @@ function _tokenize(str) {
   }
   return [...new Set(out)];
 }
-export function searchMemoryLog(wsRoot, query, max = 5) {
+export function searchMemoryLog(wsRoot, query, max = 5, opts = {}) {
   try {
     const paths = memoryPaths(wsRoot);
     if (!fs.existsSync(paths.log)) return [];
     const st = fs.statSync(paths.log);
     if (st.mtimeMs !== _logIdx.mtime) {
       const raw = fs.readFileSync(paths.log, "utf8");
-      _logIdx.blocks = raw.split(/\n### /).filter(b => b.trim()).map(b => (b.startsWith("### ") ? b : "### " + b).trim());
+      _logIdx.blocks = splitLogBlocks(raw).blocks.map(b => b.trim()).filter(Boolean);
       _logIdx.toks = _logIdx.blocks.map(b => new Set(_tokenize(b)));
       _logIdx.mtime = st.mtimeMs;
     }
@@ -93,6 +98,7 @@ export function searchMemoryLog(wsRoot, query, max = 5) {
     if (!q.length) return [];
     const scored = [];
     for (let i = 0; i < _logIdx.blocks.length; i++) {
+      if (!opts.includeSuperseded && isSupersededBlock(_logIdx.blocks[i])) continue;
       let hits = 0;
       for (const t of q) if (_logIdx.toks[i].has(t)) hits++;
       if (hits > 0) {
@@ -130,6 +136,7 @@ export function searchMemoryLog(wsRoot, query, max = 5) {
         const q2 = q;
         const scored2 = [];
         for (let i = 0; i < _arcIdx.blocks.length; i++) {
+          if (!opts.includeSuperseded && isSupersededBlock(_arcIdx.blocks[i])) continue;
           let hits = 0;
           for (const t of q2) if (_arcIdx.toks[i].has(t)) hits++;
           if (hits > 0) {
