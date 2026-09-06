@@ -62,3 +62,10 @@ test("文字按钮必须横向：btn-tool 不能锁死 28px 方块，引擎页�
   assert.ok(src.includes("btn-ghost") && src.includes("挂回声预置"), "预置按钮用次级文字钮");
   assert.ok(term.includes("whitespace-nowrap"), "代码模式 示例/清空输出必须横向");
 });
+
+test("引擎页展示统一运行健康和阶段状态", () => {
+  const src = readFileSync(join(ROOT, "frontend", "src", "pages", "Engine.tsx"), "utf8");
+  assert.ok(src.includes("RunApi.overview()"));
+  assert.ok(src.includes("HealthBadge"));
+  assert.ok(src.includes("RunTimeline"));
+});
