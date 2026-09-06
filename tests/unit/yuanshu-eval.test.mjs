@@ -25,6 +25,6 @@ test("目录不能再写没有评测绳；引擎页要看见分数", async () =>
   assert.ok(ENGINE_CATALOG.yuanshu.can.some((s) => /评测/.test(s)));
   const d = await describePair();
   assert.ok(d.eval && d.eval.total >= 12 && d.eval.score === 1, "pair 接口要带评测数字");
-  const page = readFileSync(join(ROOT, "frontend", "src", "pages", "Engine.tsx"), "utf8");
+  const page = readFileSync(join(ROOT, "frontend", "src", "components", "engine", "EnginePairPanel.tsx"), "utf8");
   assert.ok(page.includes("eval") && (page.includes("评测") || page.includes("评测绳")), "引擎页要显示分数");
 });
