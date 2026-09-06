@@ -90,3 +90,6 @@ staging
 ```
 
 **落地前置**：pi 引擎装在哪、版本号从哪读、npm 全局目录写权限确认。先出 POC 只管 dsh（风险低），pi 引擎后跟。
+## 2026-09-06 主驾运行观测
+
+第一批升级新增 `engine/run-observability.mjs` 作为运行领域模型：从持久化 run 与事件账本生成统一快照。`/api/run/overview` 供 Board 与 Engine 使用，旧 `/api/runs/*` 接口保持不变。
