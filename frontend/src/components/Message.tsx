@@ -8,6 +8,7 @@ function LazyMarkdown({ text }: { text: string }) {
 }
 
 import { withFileToken } from '../api'
+import { scrapeVideos } from '../lib/media-embed'
 import { fmtMsgTime } from '../lib/fmt-time'
 import type { ChatMessage, RunningTool, ToolStatus } from '../types'
 import { AgentWorkflow } from './AgentWorkflow'
@@ -91,6 +92,7 @@ function Thinking({ text, live }: { text: string; live?: boolean }) {
 }
 
 function Attachments({ msg }: { msg: ChatMessage }) {
+  const videos = msg.videos?.length ? msg.videos : scrapeVideos(msg.text || '')
   return (
     <>
       {msg.images?.map((src, i) => (
@@ -100,6 +102,11 @@ function Attachments({ msg }: { msg: ChatMessage }) {
       ))}
       {msg.audios?.map((url, i) => (
         <div key={'aud' + i} className="my-1.5"><audio controls src={withFileToken(url)} className="max-w-full h-9" /></div>
+      ))}
+      {videos.map((url, i) => (
+        <div key={'vid' + i} className="my-2">
+          <video controls playsInline src={withFileToken(url)} className="w-full max-w-[560px] aspect-video rounded-pi-lg border border-pi-border-soft bg-black" />
+        </div>
       ))}
       {msg.files?.map((f, i) => (
         <div key={'file' + i} className="my-1.5 inline-flex items-center gap-2 px-3 py-1.5 rounded-pi-md border border-pi-border bg-pi-bg3/70 text-[13px] max-w-full">
@@ -175,9 +182,9 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
   
   let phase: 'thinking' | 'tools' | 'result' | 'idle' = 'idle'
   if (streaming) {
-    if (hasThinking && !hasTools && !hasText) phase = 'thinking'
-    else if (hasTools && runningTools > 0) phase = 'tools'
+    if (hasTools && runningTools > 0) phase = 'tools'
     else if (hasText) phase = 'result'
+    else phase = 'thinking'
   }
 
   return (
@@ -205,7 +212,6 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
         ) : null}
         {!streaming && <Thinking text={msg.think} live={streaming} />}
         {streaming && msg.think && <Thinking text={msg.think} live={!msg.text} />}
-        <Attachments msg={msg} />
         {msg.tools?.length ? (
           <div className="mb-2">{msg.tools.map((t, i) => <ToolCard key={t.id || i} tool={t} />)}</div>
         ) : null}
@@ -227,6 +233,7 @@ export default function Message({ msg, onEdit }: { msg: ChatMessage & { streamin
               <LazyMarkdown text={msg.text} />
             </div>
           )}
+        <Attachments msg={msg} />
         {msg.ts && !streaming && (
           <div className="hov-reveal text-[11px] text-pi-dim2 mt-1 transition-opacity flex items-center gap-2">
             <span title={new Date(msg.ts).toLocaleString('zh-CN', { hour12: false })}>{fmtMsgTime(msg.ts)}</span>

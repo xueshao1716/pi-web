@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react'
 import useSWR, { mutate as globalMutate } from 'swr'
-import { ModelsApi, SessionsApi, setToken, getToken, setApiBase } from './api'
+import { ModelsApi, SessionsApi, setToken, getToken, setApiBase, getApiBase } from './api'
+import { mobileApiBaseError } from './lib/shell-origin'
 import type { Model, Session } from './types'
 
 interface AppState {
@@ -29,7 +30,11 @@ const fetchers = {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [token, setT] = useState(getToken())
-  const [authed, setAuthed] = useState(!!getToken())
+  const [authed, setAuthed] = useState(() => {
+    if (!getToken()) return false
+    const origin = typeof location !== 'undefined' ? location.origin : ''
+    return !mobileApiBaseError(getApiBase(), origin)
+  })
   const [currentModel, setCurModel] = useState(() => { try { return localStorage.getItem('pi_model') || 'auto/auto' } catch { return 'auto/auto' } })
   const [currentSessionId, setCurSid] = useState<string | null>(null)
 
@@ -80,8 +85,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [modelsData, currentModel])
 
   const login = useCallback(async (tk: string, apiBase?: string) => {
-    // 先服务端真验证再放行（修「输错 token 也进主界面」的幽灵登录态）；用原生 fetch 不走 api()，避免触发全局 401 踢出
+    const origin = typeof location !== 'undefined' ? location.origin : ''
     const base = (apiBase || (() => { try { return localStorage.getItem('pi_api_base') || '' } catch { return '' } })()).replace(/\/+$/, '')
+    const addressErr = mobileApiBaseError(base, origin)
+    if (addressErr) { const e: any = new Error(addressErr); e.status = 0; throw e }
+    // 先服务端真验证再放行（修「输错 token 也进主界面」的幽灵登录态）；用原生 fetch 不走 api()，避免触发全局 401 踢出
     const ctrl = new AbortController(); const tmo = setTimeout(() => ctrl.abort(), 8000)
     try {
       const r = await fetch(base + '/api/models', { headers: { Authorization: `Bearer ${tk}` }, signal: ctrl.signal })
@@ -97,7 +105,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
 
   const logout = useCallback(() => {
-    try { localStorage.removeItem('pi_web_token') } catch {}
+    try {
+      localStorage.removeItem('pi_web_token')
+      localStorage.removeItem('pi_api_base')
+    } catch {}
     setT(''); setAuthed(false); setCurSid(null)
     globalMutate('sessions', undefined, { revalidate: false })
     globalMutate('models', undefined, { revalidate: false })

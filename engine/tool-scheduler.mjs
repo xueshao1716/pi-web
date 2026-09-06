@@ -74,7 +74,7 @@ async function runOne(tc, { tools, onTool, onToolEnd, signal }) {
     return { id: tc.id, name: fnName, args, out };
   }
   if (onTool) onTool(tc.id, fnName, args);
-  const out = await (tools ? tools.execute(fnName, args) : { text: `未知工具: ${fnName}`, isError: true });
+  const out = await (tools ? tools.execute(fnName, args, { signal }) : { text: `未知工具: ${fnName}`, isError: true });
   if (onToolEnd) onToolEnd(tc.id, fnName, args, out);
   return { id: tc.id, name: fnName, args, out };
 }

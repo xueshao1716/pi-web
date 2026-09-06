@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useApp } from '../store'
 import WebglBackdrop from './WebglBackdrop'
+import { mobileApiBaseError } from '../lib/shell-origin'
 
 export default function Login() {
   const { login } = useApp()
@@ -11,6 +12,9 @@ export default function Login() {
 
   const submit = async () => {
     const tk = token.trim(); if (!tk) return
+    const origin = typeof location !== 'undefined' ? location.origin : ''
+    const addressErr = mobileApiBaseError(apiBase, origin)
+    if (addressErr) { setErr(addressErr); return }
     setLoading(true); setErr('')
     try { await login(tk, apiBase.trim()) }
     catch (e: any) { setErr(e?.status === 401 ? '令牌无效' : '连接失败：' + (e?.message || e)) }
@@ -26,11 +30,11 @@ export default function Login() {
           <div className="text-4xl font-black text-pi-accent tracking-tight mb-1">◈ 元枢</div>
           <div className="text-pi-dim text-sm">个人智能系统 · 小语为你值守</div>
         </div>
-        <input className="input-pi mb-3" placeholder="服务器地址（留空=本机）" value={apiBase} onChange={e => setApiBase(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} />
+        <input className="input-pi mb-3" placeholder="https://pi.myxinyu.xin 或 http://电脑IP:8787" value={apiBase} onChange={e => setApiBase(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} />
         <input className="input-pi mb-4" type="password" placeholder="访问令牌" value={token} onChange={e => setToken(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} />
         <button className="btn-primary w-full py-2.5" disabled={loading} onClick={submit}>{loading ? '连接中…' : '连接'}</button>
         {err && <div className="text-pi-red text-xs mt-3">{err}</div>}
-        <div className="text-pi-dim2 text-[11px] mt-4 leading-relaxed text-center">本机服务：访问令牌在服务器 D:\pi-web\.token 文件里（记事本打开复制）</div>
+        <div className="text-pi-dim2 text-[11px] mt-4 leading-relaxed text-center">手机请填电脑的公网或局域网地址，不要留空，也不要填 127.0.0.1（那是手机自己）。访问令牌在服务器 D:\pi-web\.token。</div>
       </div>
     </div>
   )

@@ -17,7 +17,8 @@ android {
     compileSdk = 36
     namespace = "com.yuanshu.app"
     defaultConfig {
-        manifestPlaceholders["usesCleartextTraffic"] = "false"
+        // 荣耀连电脑 8787 是明文 HTTP；正式包也必须放行，否则只能走 https 公网。
+        manifestPlaceholders["usesCleartextTraffic"] = "true"
         applicationId = "com.yuanshu.app"
         minSdk = 24
         targetSdk = 36

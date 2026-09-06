@@ -5,9 +5,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-  BASE_TOOL_SCHEMAS, createUnifiedToolExecutor, rewriteInlineCode, webSearchTool, stripHtml,
+  BASE_TOOL_SCHEMAS, createUnifiedToolExecutor, rewriteInlineCode, rewriteCmdForWin32, webSearchTool, stripHtml,
 } from "../../engine/tools/unified-tools.mjs";
 import { matchDenyRule, isProtectedPath, safeJoin, DANGEROUS_CMD_RE, INTERACTIVE_CMD_RE } from "../../engine/tools/security.mjs";
+import { commandTouchesSensitive } from "../../engine/tools/secrets-guard.mjs";
 
 test("engine/tools 安全线（security.mjs）", (t) => {
   t.test("deny 规则：隧道/强推git/系统篡改/密钥写入命中", () => {
@@ -16,11 +17,15 @@ test("engine/tools 安全线（security.mjs）", (t) => {
     assert.equal(matchDenyRule("git push -f origin main")?.id, "no-force-git");
     assert.equal(matchDenyRule("reg delete HKLM\\Soft")?.id, "no-system-mutate");
     assert.equal(matchDenyRule("echo password >> .env")?.id, "no-secrets-write");
+    assert.equal(matchDenyRule("Start-Process node node_modules/.bin/vite.js --port 5173")?.id, "no-second-server");
+    assert.equal(matchDenyRule("cd D:/pi-web && node server.mjs")?.id, "no-second-server");
+    assert.equal(matchDenyRule('curl -s -X POST http://127.0.0.1:8787/api/image -d "{}"')?.id, "no-self-image-api");
   });
   t.test("deny 规则：正常命令不误伤", () => {
-    assert.equal(matchDenyRule("node server.mjs"), null);
+    assert.equal(matchDenyRule("node --check server.mjs"), null);
     assert.equal(matchDenyRule("git status"), null);
     assert.equal(matchDenyRule("dir /b"), null);
+    assert.equal(matchDenyRule("curl -s http://127.0.0.1:8787/api/health"), null);
   });
   t.test("危险命令正则：rm -rf / format / shutdown", () => {
     assert.ok(DANGEROUS_CMD_RE.test("rm -rf /"));
@@ -48,6 +53,15 @@ test("engine/tools 安全线（security.mjs）", (t) => {
   });
 });
 
+test("凭据防护：Object.keys 不是密钥文件", () => {
+  const listModels = "node -e \"fetch('http://127.0.0.1:8787/api/models').then(r=>r.json()).then(d=>{console.log('keys:',Object.keys(d).slice(0,15).join(','))})\"";
+  assert.equal(commandTouchesSensitive(listModels), false, "JS 的 Object.keys 不能当成 .key 文件");
+  assert.equal(commandTouchesSensitive("console.log(Object.keys(data))"), false);
+  assert.equal(commandTouchesSensitive("type auth.json"), true);
+  assert.equal(commandTouchesSensitive("Get-Content .token"), true);
+  assert.equal(commandTouchesSensitive("type D:\\\\secret\\\\id_rsa"), true);
+});
+
 test("engine/tools 工具集（unified-tools.mjs）", (t) => {
   t.test("schema：5 个基础工具齐全且为 function 格式", () => {
     const names = BASE_TOOL_SCHEMAS.map((s) => s.function.name);
@@ -61,8 +75,18 @@ test("engine/tools 工具集（unified-tools.mjs）", (t) => {
     assert.equal(r.interp, process.execPath);
   });
   t.test("rewriteInlineCode：简单命令不改写", () => {
-    assert.equal(rewriteInlineCode("node server.mjs"), null);
+    assert.equal(rewriteInlineCode("node --check server.mjs"), null);
     assert.equal(rewriteInlineCode('node -e "console.log(1)"'), null); // 单行无嵌套引号
+  });
+  t.test("rewriteCmdForWin32：Unix 重定向改成 cmd 认的 nul", () => {
+    const out = rewriteCmdForWin32("ls D:/pi-web/public/static/ 2>/dev/null | head -20");
+    assert.ok(!out.includes("/dev/null"), "cmd 会把 /dev/null 当成路径");
+    assert.ok(/2>nul/i.test(out));
+  });
+  t.test("bash 工具说明必须写明是 Windows cmd，不要去 curl 出图接口", () => {
+    const bash = BASE_TOOL_SCHEMAS.find((s) => s.function.name === "bash");
+    assert.ok(/cmd/i.test(bash.function.description));
+    assert.ok(/\/api\/image|\.token|5173/i.test(bash.function.description));
   });
 
   t.test("webSearchTool：HTTP 失败返回错误文案（不抛异常）", async () => {
@@ -107,6 +131,16 @@ test("engine/tools 执行器工厂（createUnifiedToolExecutor）", (t) => {
     const r = await exec("bash", { command: "echo hello-tools" });
     assert.equal(r.isError, false);
     assert.match(r.text, /hello-tools/);
+  });
+  t.test("bash：abort 必须中止已启动的命令", async () => {
+    const ac = new AbortController();
+    const started = Date.now();
+    const p = exec("bash", { command: "node -e \"setTimeout(()=>{},30000)\"" }, { signal: ac.signal });
+    setTimeout(() => ac.abort(), 80);
+    const r = await p;
+    assert.equal(r.isError, true);
+    assert.match(r.text, /中止|断开/);
+    assert.ok(Date.now() - started < 8000, "断开后不能再等满 5 分钟");
   });
   t.test("read/write/edit：正常读写改", async () => {
     const w = await exec("write", { path: "a/b.txt", content: "hello" });

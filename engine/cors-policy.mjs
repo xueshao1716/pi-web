@@ -1,6 +1,7 @@
 const LOCAL_SHELL_ORIGINS = [
   'tauri://localhost',
   'http://tauri.localhost',
+  'https://tauri.localhost',
   'capacitor://localhost',
   'http://localhost',
 ]

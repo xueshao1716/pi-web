@@ -31,6 +31,7 @@ import { BASE_TOOL_SCHEMAS, createUnifiedToolExecutorGuarded } from "./engine/to
 import { safeJoin } from "./engine/tools/security.mjs";
 // ── dsh 执行臂工具（拆模块）：双引擎派单/并发控制/结构化回传解析 ──
 import { createDshTool } from "./engine/dsh-tool.mjs";
+import { handleDshChat } from "./engine/dsh-chat.mjs";
 
 // ── 模型路由层（拆模块）：429 降级 / 复杂度分类 / Auto 路由 / pro 候选 ──
 import { initModelRouter, isOcGoBlocked, isModelBlocked, markModelBlocked, markOcGoBlocked, ocGoCandidate, pickFallbackDefault, pickFallbackExcluding, resetModelHealth, isAutoModel, routeForAuto, routeProCandidate, markSticky, ROUTER_AUTO, isAuthErrorStatus } from "./engine/model-router.mjs";
@@ -46,9 +47,15 @@ import { createRunEventLog } from "./engine/run-event-log.mjs";
 import { createRunManager } from "./engine/run-manager.mjs";
 import { createRunApi } from "./engine/run-api.mjs";
 import { initThemePrefs, loadThemePrefs, saveThemePrefs } from "./engine/theme-prefs.mjs";
+import { initEnginePair, loadEnginePair, saveEnginePair, swapEnginePair, resolveLead, describePair, leadNote } from "./engine/engine-pair.mjs";
+import { decorateEngineStatus, pluginFromBody, isCorePlugin } from "./engine/engine-panel.mjs";
 import { initWorkspaceApi, WS_ROOT, findWorkspaceFiles, wsSafePath, saveArtifact, handleWsTree, handleWsFile, handleWsRead, handleWsWrite, handleWsArtifacts, wsNextVersion, wsCopyDir, handleWsDeliver, handleWsPackage, handleWsDeliveries, handleWsRename, handleWsDelete, handleWsSearch, handleWsProjectCreate, handleWsConvert } from "./engine/workspace-api.mjs";
 import { initContextLoader, makeLoader, loadExperience, readRulesWithImports, loadContextRules, jitRulesForPath, loadProjectRules, loadSkillIndex, execActivateSkill, ACTIVATE_SKILL_TOOL, WORK_PROTOCOL, loadMemory, loadMemoryIndex, loadExperienceIndex, shouldInjectFullMemory, setLastUserQuery } from "./engine/context-loader.mjs";
-import { initMediaApi, findMediaModel, detectMediaIntents, extractMediaPrompt, generateMediaAsync, generateTTS, generateImage, handleImage, handleImageWithSave, generateVideo, handleMedia } from "./engine/media-api.mjs";
+import { initMediaApi, findMediaModel, detectMediaIntents, extractMediaPrompt, mediaAwarePrompt, mediaReadyNotice, explainMediaError, generateMediaAsync, generateTTS, generateImage, handleImage, handleImageWithSave, generateVideo, handleMedia, assistantContentWithMedia } from "./engine/media-api.mjs";
+import { extractPlayableMedia } from "./engine/media-embed.mjs";
+import { MEDIA_TOOL_SCHEMAS, mediaExtraExecutors, formatSensitiveHint, listHostChannels } from "./engine/media-channels.mjs";
+import { TODO_TOOL_SCHEMAS, todoExtraExecutors } from "./engine/yuanshu-todo.mjs";
+import { DELEGATE_TASK_TOOL, execDelegateTask } from "./engine/yuanshu-delegate.mjs";
 import { initAsrApi, handleAsr } from "./engine/asr-api.mjs";
 import { gardenMemory, scanMemoryHealth, markReviewed, unmarkReviewed, dedupeLog, reviewedKeys } from "./engine/memory-gardener.mjs";
 import { systemInfo as buildSystemInfo, loadNetworkConfig, saveNetworkConfig, checkUpdate } from "./engine/system-panel.mjs";
@@ -86,6 +93,7 @@ emotion.setMemoryNudgeHook((info) => { try { proposeMemoryNudge(info); } catch {
 // 隔离子任务执行器（P2）：注入模型适配依赖（复用系统代理栈）
 const subagent = await import("./engine/subagent.mjs");
 const workshop = await import("./engine/workshop.mjs");
+const { handleWorkshopUiChat } = await import("./engine/workshop-ui-chat.mjs");
 const gallery = await import("./engine/gallery.mjs");
 const distill = await import("./engine/distill-theme.mjs");
 const { WORKSHOP_PAGES } = workshop;
@@ -220,6 +228,7 @@ try {
   if (reg?.length) console.log(`[sdk-providers] agent 通道已注册: ${reg.join(", ")}`);
 } catch (e) { console.log(`[sdk-providers] 注册失败: ${String(e?.message || e).slice(0, 150)}`); }
 initThemePrefs(path.join(AGENT_DIR, "theme-prefs.json")); // 主题偏好跨端同步
+initEnginePair(path.join(AGENT_DIR, "engine-pair.json")); // 主次引擎对，下一条消息生效
 initMediaApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, authPath: AUTH_PATH, getModelList: () => modelList }); // 媒体生成层注入
 initAsrApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, httpJsonFetch }); // 语音转文字（mimo-v2.5-asr 免费通道）
 initDshKeys({ dshWebPort: 3080, readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, ModelRuntime, refreshModelList, setModelList: (l) => { modelList = l; }, getDefaultModel: () => defaultModel, setDefaultModel: (m) => { defaultModel = m; }, setModelRuntime: (r) => { modelRuntime = r; }, getModelRuntime: () => modelRuntime, keepModels: KEEP_MODELS, resetModelHealth }); // dsh/keys/模型管理注入
@@ -441,7 +450,10 @@ async function handleStatic(req, res) {
 // 此处组合 server 特有的工具（技能激活 + 外部思考）
 const UNIFIED_TOOLS = [
   ...BASE_TOOL_SCHEMAS,
+  ...MEDIA_TOOL_SCHEMAS,
+  ...TODO_TOOL_SCHEMAS,
   ACTIVATE_SKILL_TOOL,
+  DELEGATE_TASK_TOOL,
 ];
 // ══ 外部思考工具（externalThinking 调试开关，默认关）══
 // 思路：关闭模型原生隐藏思考后，给它一张外部"草稿纸"（think 工具），
@@ -459,19 +471,23 @@ const executeUnifiedTool = createUnifiedToolExecutorGuarded({
   safePath: wsSafePath,
   activateSkill: (name) => execActivateSkill(name),
   timeEngine: () => timeEngine,
-  // 外部自定义工具执行器：dsh_task（pi 格式 execute → unified 结果格式）
+  sensitiveHint: () => formatSensitiveHint(listHostChannels({ getModelList: () => modelList })),
+  // 外部自定义工具执行器：dsh_task（pi 格式 execute → unified 结果格式）+ 宿主媒体密文通道
   extraExecutors: {
-    dsh_task: async (args) => {
+    dsh_task: async (args, ctx) => {
       const t = globalThis.__piWebDshTool;
       if (!t?.execute) return { text: "[dsh] 执行臂未初始化", isError: true };
-      const r = await t.execute("unified-" + Date.now(), args || {});
+      const r = await t.execute("unified-" + Date.now(), args || {}, ctx?.signal);
       const text = (r?.content || []).map((c) => c.text || "").join("\n").trim();
       return { text: text || "（dsh 无输出）", isError: !!r?.isError };
     },
+    ...mediaExtraExecutors({ getModelList: () => modelList, generateMediaAsync }),
+    ...todoExtraExecutors(),
+    delegate_task: execDelegateTask,
   },
 });
 
-initSessionManager({ cwd: CONFIG.cwd, sessionsDir: SESSIONS_DIR, tools: CONFIG.tools, piPackage: CONFIG.piPackage, isModelBlocked, createAgentSessionServices, createAgentSessionFromServices, getModelRuntime: () => modelRuntime, loadSessionModelKey, getModelList: () => modelList, getDefaultModel: () => defaultModel, activeSessions, SessionManager, SettingsManager, DefaultResourceLoader, getAgentDir, readJsonFile, writeJsonFile, isExternalThinking, THINK_TOOL, modelCapabilities, bindOutputGuardDeps, extractMessages, createSseWriter, unifiedChat }); // 会话管理注入
+initSessionManager({ cwd: CONFIG.cwd, sessionsDir: SESSIONS_DIR, tools: CONFIG.tools, piPackage: CONFIG.piPackage, isModelBlocked, createAgentSessionServices, createAgentSessionFromServices, getModelRuntime: () => modelRuntime, loadSessionModelKey, getModelList: () => modelList, getDefaultModel: () => defaultModel, activeSessions, SessionManager, SettingsManager, DefaultResourceLoader, getAgentDir, readJsonFile, writeJsonFile, isExternalThinking, THINK_TOOL, modelCapabilities, bindOutputGuardDeps, extractMessages, createSseWriter, unifiedChat, generateMediaAsync }); // 会话管理注入
 initUnifiedChat({ executeUnifiedTool, findKeyByEntry, readJsonFile, getModelList: () => modelList, getDefaultModel: () => defaultModel, authPath: AUTH_PATH, modelsPath: MODELS_PATH, cwd: CONFIG.cwd, piPackage: CONFIG.piPackage, UNIFIED_TOOLS, getAgentDir }); // 统一对话通道注入
 initRefineApi({ cwd: CONFIG.cwd }); // 经验沉淀台注入
 initMcpServer({ modelRouter: (await import("./engine/model-router.mjs")), memoryApi: memoryApi, emotion, getDefaultModel: () => defaultModel, wsRoot: () => CONFIG.cwd, json }); // MCP 认知层注入
@@ -722,23 +738,29 @@ async function handleChat(req, res, body) {
       }
     } catch {}
   }
-  // 通道策略：默认用 pi agent 官方管线（与 TUI 同源，工具执行/打断/竞态都成熟），
-  // 自制 unifiedChat 仅作兑底（官方管线异常时降级）。设置 PI_USE_AGENT=0 可强制走 unifiedChat
-  // ⚠️ 2026-08-27：请求的是非 SDK 原生通道（claude-relay/bigmodel/sensenova 等自定义中转）时，
-  //    agent 路径会静默兑底到别的模型（选了它实际没跑到）→ 改走 unifiedChat 直连（任意 OpenAI 兼容可用）。
+  // 通道策略：主次引擎对（engine-pair）决定本轮主驾。默认仍是 pi 主驾、元枢兑底。
+  // PI_USE_AGENT=0 → 强制元枢。非 SDK 原生通道只逼 pi agent 兑底（dsh 有自己的通道）。
   const reqProv = (typeof body.model === "string" && body.model.includes("/"))
     ? body.model.split("/")[0]
     : null;
-  const useAgent = process.env.PI_USE_AGENT !== "0" && !!defaultModel
-    && (!reqProv || NATIVE_PROVIDERS.has(reqProv));
-  if (defaultModel && !useAgent) {
+  const engineDecision = resolveLead(loadEnginePair(), {
+    forceYuanshu: process.env.PI_USE_AGENT === "0",
+    nativeChannel: !reqProv || NATIVE_PROVIDERS.has(reqProv),
+  });
+  const useAgent = !!defaultModel && engineDecision.lead === "pi";
+  if (engineDecision.lead === "dsh" || (defaultModel && !useAgent)) {
     const hb2 = startSseHeartbeat(res);
-    // 打断支持：客户端断开 SSE 时中止 unifiedChat（不再继续工具调用/模型请求）
+    // 打断支持：客户端断开 SSE 时中止 unifiedChat / dsh 子进程
     const abortCtrl = new AbortController();
     const onClose = () => { try { abortCtrl.abort(); } catch {} };
     req.on("close", onClose);
     try {
-      await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl.signal, undefined, thinkOn, body.taskKey, (entry.modelKey && !isAutoModel(entry.modelKey)) ? entry.modelKey : null);
+      try { sseWrite(res, "note", { text: leadNote(engineDecision) }); } catch {}
+      if (engineDecision.lead === "dsh") {
+        await handleDshChat(res, entry, message, sessionId || findKeyByEntry(entry), abortCtrl.signal, { cwd: CONFIG.cwd });
+      } else {
+        await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl.signal, undefined, thinkOn, body.taskKey, (entry.modelKey && !isAutoModel(entry.modelKey)) ? entry.modelKey : null);
+      }
     } catch (e) {
       try { sseWrite(res, "error", { message: String(e?.message || e) }); } catch {}
     } finally {
@@ -799,6 +821,7 @@ async function handleChat(req, res, body) {
   let bootstrapTurn = isFirstTurn(entry.sm) && process.env.PI_TWO_PHASE !== "0";
   const hbTimer = startSseHeartbeat(res); // 心跳保活（公网隧道不因 idle 断开）
   const writer = createSseWriter(res); // 背压控制：慢网络时事件排队等 drain，不丢不堆
+  try { writer.push("note", { text: leadNote(engineDecision) }); } catch {}
   // Cursor Router 播报：Auto 路由决策对用户透明（取 Cursor 可用性长板，可解释）
   if (autoRoute && autoRoute.auto && effModel) {
     const routeBadge = autoRoute.level === "complex" ? "🛰️ 复杂任务" : "⚡ 日常任务";
@@ -847,6 +870,39 @@ async function handleChat(req, res, body) {
   let mediaPromise = mediaIntents.length
     ? Promise.all(mediaIntents.map(it => generateMediaAsync(it, extractMediaPrompt(message))))
     : Promise.resolve([]);
+  let settledMedia = [];
+  const mediaDelivered = mediaIntents.length
+    ? mediaPromise.then(async (results) => {
+        const items = [];
+        const errors = [];
+        for (const mr of results || []) {
+          if (!mr) continue;
+          if (mr.error && !mr.url) { errors.push(mr.error); continue; }
+          if (!mr.url) continue;
+          try { mr.url = await saveArtifact(mr); } catch {}
+          items.push(mr);
+          try { writer.push("media", mr); busEmit("media", mr); } catch {}
+        }
+        settledMedia = items;
+        const notice = mediaReadyNotice(items);
+        if (notice) {
+          try {
+            await entry.agent?.sendCustomMessage?.(
+              { customType: "context", content: [{ type: "text", text: notice }] },
+              { deliverAs: "nextTurn" }
+            );
+          } catch {}
+        } else if (mediaIntents.some(i => i.type === "image")) {
+          const miss = `图像模型这次没出成图${errors.length ? "：" + explainMediaError(errors[0]) : ""}。你可以继续用工具画 SVG 或其他成品交出来。`;
+          try { writer.push("note", { text: miss }); busEmit("note", { text: miss }); } catch {}
+        }
+        return items;
+      }).catch((e) => {
+        const miss = `出图未成功：${explainMediaError(e)}。思考和工具不受影响。`;
+        try { writer.push("note", { text: miss }); busEmit("note", { text: miss }); } catch {}
+        return [];
+      })
+    : Promise.resolve([]);
   const unsubscribe = agent.subscribe((event) => {
     try {
       // 两阶段引导 promote：首轮产生首个文本/工具事件 → 恢复完整工具集（下个 turn 生效，零成本）
@@ -886,6 +942,17 @@ async function handleChat(req, res, body) {
           : "";
         writer.push("tool_end", { name: event.toolName, id: event.toolCallId, isError: !!event.isError, output: text });
         busEmit("tool_end", { name: event.toolName, id: event.toolCallId, isError: !!event.isError, output: text });
+        const media = event.result?.details?.media;
+        if (media?.url) {
+          try { writer.push("media", media); busEmit("media", media); } catch {}
+        } else if (text) {
+          try {
+            const scraped = extractPlayableMedia(text);
+            for (const url of scraped.videos) { writer.push("media", { type: "video", url }); busEmit("media", { type: "video", url }); }
+            for (const url of scraped.images) { writer.push("media", { type: "image", url }); busEmit("media", { type: "image", url }); }
+            for (const url of scraped.audios) { writer.push("media", { type: "audio", url }); busEmit("media", { type: "audio", url }); }
+          } catch {}
+        }
       } else if (event.type === "turn_end") {
         writer.push("turn_end", {});
         busEmit("turn_end", {});
@@ -1015,8 +1082,15 @@ async function handleChat(req, res, body) {
         );
       } catch {}
     }
-    // 媒体生成与主模型并行（拿到文字即可继续推下一步，不用等全部完成）
-    const mediaResults = mediaIntents.length ? await mediaPromise : [];
+    // 出图与主模型真正并行：先注入「正在出图、照常思考、允许交 SVG」，立刻 prompt。
+    // 图若在注入 context 的几百毫秒里已经回来，settledMedia 会带上路径；否则 nextTurn 再告知。
+    if (mediaIntents.length && !settledMedia.length) {
+      const drawingNote = mediaIntents.some(i => i.type === "video")
+        ? "视频模型正在出片，完成后会显示在对话里。"
+        : "图像模型正在出图，完成后会显示在对话里。";
+      try { writer.push("note", { text: drawingNote }); busEmit("note", { text: drawingNote }); } catch {}
+    }
+    promptMsg = mediaAwarePrompt(promptMsg, settledMedia);
     // 图像兜底：当前模型不支持图片且消息带图 → 临时切套餐内图像模型识别，处理完恢复原模型
     let visionSwitched = false, origAgentModel = null, visionModel = null;
     if (images.length) {
@@ -1063,11 +1137,6 @@ async function handleChat(req, res, body) {
           console.log(`[pi-web] 图像兜底已恢复: ${origAgentModel.provider}/${origAgentModel.id}`);
         } catch (e) { console.log(`[pi-web] 图像兜底恢复失败: ${String(e?.message || e).slice(0, 80)}`); }
       }
-    }
-    for (const mr of mediaResults) {
-      if (!mr) continue;
-      if (mr.url) mr.url = await saveArtifact(mr);  // 产物落盘 → 本地路径
-      writer.push("media", mr);
     }
     // 空回复兜底：agent 完成但无任何文本输出（部分推理模型偶发把回答全放 <think>）→ 直调模型接口补一次
     if (!sawDelta) {
@@ -1276,10 +1345,24 @@ async function handleChat(req, res, body) {
       }
     } catch {}
     clearTask(taskId, "done");
+    try { await mediaDelivered; } catch {}
+    if (settledMedia.length) {
+      try {
+        entry.sm.appendMessage({
+          role: "assistant",
+          content: assistantContentWithMedia("", settledMedia),
+        });
+      } catch {}
+    }
     writer.push("done", { sessionId: sessionId || findKeyByEntry(entry) });
   } catch (e) {
     // 官方 agent 管线异常 → 降级到自制 unifiedChat 兑底（避免任务静默失败）
     const agentErr = String(e?.message || e);
+    try { await mediaDelivered; } catch {}
+    if (/fetch failed|Failed to fetch/i.test(agentErr)) {
+      const netNote = `⚠️ ${explainMediaError(agentErr)}。思考和工具若已开始会保留；出图走旁路，失败不会再挡住主模型。`;
+      try { writer.push("note", { text: netNote }); busEmit("note", { text: netNote }); } catch {}
+    }
     // 429/额度检测（修复 B）：agent 管线错误里出现 opencode-go 额度耗尽 → 标记降级，后续 Auto 路由避开
     // 2026-08-21 用户理念：429/400 等链接/资源错误 → 主动告知原因 + 通断探测拿好模型顶上
     const briefErr = agentErr.slice(0, 80);
@@ -1322,7 +1405,7 @@ async function handleChat(req, res, body) {
       await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl2.signal, writer, undefined, body.taskKey);
       req.removeListener("close", onClose2);
     } catch (e2) {
-      try { writer.push("error", { message: `降级通道也失败: ${String(e2?.message || e2)}` }); } catch {}
+      try { writer.push("error", { message: `降级通道也失败: ${explainMediaError(e2)}` }); } catch {}
     }
   } finally {
     clearTask(taskId, "done"); // 兜底：任何路径结束都清快照，防残留 running
@@ -1729,7 +1812,20 @@ const API_ROUTES = [
     } catch (e) { json(res, 500, { error: String(e?.message || e) }); }
   }],
   // ── Gateway 2.0 插件化引擎（dsh 设计沉淀）──
-  ["GET", "/api/engine/status", async (res) => { try { json(res, 200, (await initEngine()).status()); } catch (e) { json(res, 500, { error: String(e?.message || e) }); } }],
+  ["GET", "/api/engine/pair", (res) => json(res, 200, describePair())],
+  ["POST", "/api/engine/pair", async (res, req) => {
+    try {
+      const b = await readBody(req, 1);
+      if (b?.swap) return json(res, 200, describePair(swapEnginePair()));
+      json(res, 200, describePair(saveEnginePair(b || {})));
+    } catch (e) { json(res, 400, { error: String(e?.message || e).slice(0, 120) }); }
+  }],
+  ["GET", "/api/engine/status", async (res) => {
+    try {
+      const gw = await initEngine();
+      json(res, 200, decorateEngineStatus(gw.status(), { gatewayReady: true, codeReady: !!getCodeRuntime() }));
+    } catch (e) { json(res, 500, { error: String(e?.message || e) }); }
+  }],
   // 真实工具集（主聊天 UNIFIED_TOOLS）：名字+描述+是否 dsh 注入，供引擎页「工具注册表」可视化
   ["GET", "/api/engine/tools", async (res) => {
     try {
@@ -1743,8 +1839,7 @@ const API_ROUTES = [
   }],
   ["POST", "/api/engine/plugins/register", async (res, req) => {
     try {
-      const def = await readBody(req, 2);
-      if (!def?.id) return json(res, 400, { error: "插件需要 id" });
+      const def = pluginFromBody(await readBody(req, 2));
       const gw = await initEngine();
       const r = await gw.registerPlugin(def);
       json(res, 200, r);
@@ -1753,8 +1848,10 @@ const API_ROUTES = [
   ["POST", "/api/engine/plugins/unregister", async (res, req) => {
     try {
       const body = await readBody(req, 1);
+      const id = String(body?.id || "");
+      if (isCorePlugin(id)) return json(res, 400, { error: "核心底盘不能卸" });
       const gw = await initEngine();
-      json(res, 200, { removed: await gw.unregisterPlugin(String(body?.id || "")) });
+      json(res, 200, { removed: await gw.unregisterPlugin(id) });
     } catch (e) { json(res, 400, { error: String(e?.message || e) }); }
   }],
   ["POST", "/api/engine/chat", async (res, req) => {
@@ -1799,6 +1896,7 @@ const API_ROUTES = [
   ["POST", "/api/parse-file", async (res, req) => handleParseFile(res, await readBody(req, 12))],
   // ── 专项工作台 ──
   ["POST", "/api/workshop/ppt", async (res, req) => workshop.handleWorkshopPpt({ ...wsCtx(), req }, res, await readBody(req))],
+  ["POST", "/api/workshop-ui/v1/chat/completions", async (res, req) => handleWorkshopUiChat({ ...wsCtx(), req, directChat }, res, await readBody(req))],
   // PPT 设计干预：大纲编辑后本地重建 .pptx（2026-09-03）
   ["POST", "/api/workshop/pptx/rebuild", async (res, req) => workshop.rebuildPptx(wsCtx(), res, await readBody(req))],
   ["GET", "/api/workshop/ppt/history", (res) => workshop.listPptHistory(wsCtx(), res)],
@@ -1940,6 +2038,11 @@ const server = http.createServer(async (req, res) => {
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    // 官方 M3E Canvas（Next 静态导出）需要内联脚本；本路径允许同源 iframe，其余仍 DENY
+    if (url.pathname.startsWith("/static/workshop-ui")) {
+      res.setHeader("X-Frame-Options", "SAMEORIGIN");
+      res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.loli.net; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; worker-src 'self' blob:; font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com https://fonts.loli.net https://gstatic.loli.net; frame-ancestors 'self'");
+    }
     const isStatic = (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/sw.js" || url.pathname === "/api/health" || WORKSHOP_PAGES[url.pathname])) ||
                      (req.method === "GET" && (url.pathname.startsWith("/static/") || url.pathname.startsWith("/assets/") || url.pathname.startsWith("/legacy/") || url.pathname === "/vite.svg" || url.pathname === "/manifest.webmanifest" || url.pathname.startsWith("/icons/")));
     // 健康探活接口免 token（只返回 {ok:true}，无敏感信息）：安卓客户端连接页需在没有 token 时也能探地址是否可达（2026-08-31 修：之前需鉴权导致探活永远 401，客户端误判为连不上）

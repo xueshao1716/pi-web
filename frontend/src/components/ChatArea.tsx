@@ -20,6 +20,7 @@ import { saveMessage, getMessages, deleteMessage, mergeMessages, type LocalMessa
 import { notifyTaskDone } from '../lib/notify'
 import { StreamAssembler, type AssemblerSnapshot } from '../lib/stream-assembler'
 import { advanceRunCursor, isTerminalRunStatus, type RunCursor, type RunEvent } from '../lib/run-events'
+import { scrapeVideos } from '../lib/media-embed'
 
 // 流式状态：覆盖服务端全部 SSE 事件（delta/think/think_end/tool/tool_output/
 // tool_end/turn_end/file/image/media/note/emotion/done/error）
@@ -33,10 +34,11 @@ interface StreamState {
   files: { path: string; name?: string }[]
   images: string[]
   audios: string[]
+  videos: string[]
   error?: string
 }
 
-const emptyStream = (): StreamState => ({ text: '', think: '', thinkDone: false, conclusion: '', tools: [], notes: [], files: [], images: [], audios: [] })
+const emptyStream = (): StreamState => ({ text: '', think: '', thinkDone: false, conclusion: '', tools: [], notes: [], files: [], images: [], audios: [], videos: [] })
 
 // 10 分钟无新事件才判定为死流；长任务可能在模型思考或工具执行阶段暂时没有增量。
 const IDLE_WARN_MS = 600_000
@@ -61,7 +63,7 @@ function saveActiveRun(record: ActiveRunRecord) {
     // 大图片/音频不进 localStorage；文本、工具与 seq 必须同一次写入，避免游标领先快照后无法重放。
     localStorage.setItem(activeRunKey(record.sessionId), JSON.stringify({
       ...record,
-      stream: { ...record.stream, images: [], audios: [] },
+      stream: { ...record.stream, images: [], audios: [], videos: [] },
     }))
   } catch {}
 }
@@ -72,6 +74,14 @@ function clearActiveRun(sessionId: string) {
 
 function toDataUri(raw: string, mime?: string): string {
   return raw.startsWith('data:') ? raw : `data:${mime || 'image/png'};base64,${raw}`
+}
+
+function friendlyStreamError(raw?: string) {
+  if (!raw) return ''
+  if (/fetch failed|Failed to fetch/i.test(raw)) {
+    return '上游网络失败（代理或出图/模型接口不通）。出图失败不该挡住思考和工具；看上面过程区判断停在哪。'
+  }
+  return raw
 }
 
 export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
@@ -102,7 +112,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   // 手动下拉、当前 Run 完成、其他端真正完成一轮时才同步。
   const msgKey = currentSessionId ? ['messages', currentSessionId] : null
   const { data: msgData, isLoading, mutate: mutateMsgs } = useSWR(msgKey,
-    ([, sid]: readonly [string, string]) => SessionsApi.messages(sid),
+    ([, sid]: readonly [string, string]) => SessionsApi.messages(sid, { tail: 80 }),
     { revalidateOnFocus: false, revalidateOnReconnect: false, dedupingInterval: 3000 })
   // ── 本地消息存储：从 IndexedDB 加载，与服务端数据合并 ──
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>([])
@@ -126,6 +136,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         files: lm.files,
         images: lm.images,
         audios: lm.audios,
+        videos: lm.videos,
         model: lm.model,
         ts: lm.ts,
         streaming: lm.streaming,
@@ -154,6 +165,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
           files: m.files,
           images: m.images,
           audios: m.audios,
+          videos: m.videos,
           model: m.model,
           ts: m.ts,
           synced: !m.isDraft,
@@ -171,6 +183,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         files: lm.files,
         images: lm.images,
         audios: lm.audios,
+        videos: lm.videos,
         model: lm.model,
         ts: lm.ts,
         streaming: lm.streaming,
@@ -196,6 +209,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         files: msg.files,
         images: msg.images,
         audios: msg.audios,
+        videos: msg.videos,
         model: msg.model,
         ts: msg.ts,
         synced: !msg.streaming && !msg.isDraft,
@@ -297,7 +311,10 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
       syncTimerRef.current = setTimeout(() => { if (alive && !streamRef.current) mutateMsgs() }, 500)
     }
+    let primed = false
     const off = streamSession(currentSessionId, 0, (event) => {
+      if (!event?.type && Number.isInteger(event?.lastSeq)) { primed = true; return }
+      if (!primed) return
       if (event?.type === 'message' || event?.type === 'turn_end' || event?.type === 'session_updated') syncCommittedHistory()
     })
     return () => { alive = false; off(); if (syncTimerRef.current) clearTimeout(syncTimerRef.current) }
@@ -371,6 +388,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         files: s.files,
         images: s.images,
         audios: s.audios,
+        videos: s.videos,
         ts: new Date().toISOString(),
         streaming: true,
         isDraft: true,
@@ -396,12 +414,14 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     if (active) clearActiveRun(active.sessionId)
     activeRunRef.current = null
     if (!s) return
-    if (s.text || s.think || s.tools.length || s.files.length || s.images.length || s.audios.length || s.error) {
+    const scraped = scrapeVideos([s.text, ...s.tools.map(t => t.output || '')].join('\n'))
+    const videos = [...s.videos, ...scraped.filter(u => !s.videos.includes(u))]
+    if (s.text || s.think || s.tools.length || s.files.length || s.images.length || s.audios.length || videos.length || s.error) {
       appendMessage({
         id: finalId || ('a' + Date.now()), role: 'assistant',
-        text: s.text + (s.error ? `\n\n⚠️ ${s.error}` : ''),
+        text: s.text + (s.error ? `\n\n⚠️ ${friendlyStreamError(s.error)}` : ''),
         think: s.think, tools: s.tools, notes: s.notes,
-        files: s.files, images: s.images, audios: s.audios,
+        files: s.files, images: s.images, audios: s.audios, videos,
         ts: new Date().toISOString(),
         streaming: false, isDraft: false,
         ...(model ? { model } : {}),
@@ -478,6 +498,10 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         break
       case 'tool_end':
         asmRef.current?.toolEnd(d.id, !!d.isError, d.output)
+        {
+          const found = scrapeVideos(String(d.output || ''))
+          if (found.length) updStream(p => ({ ...p, videos: [...p.videos, ...found.filter(u => !p.videos.includes(u))] }))
+        }
         break
       case 'file':
         if (d.path) updStream(p => ({ ...p, files: [...p.files, { path: d.path, name: d.name }] }))
@@ -488,6 +512,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
       case 'media':
         if (d.type === 'image' && d.url) updStream(p => ({ ...p, images: [...p.images, d.url] }))
         else if (d.type === 'audio' && d.url) updStream(p => ({ ...p, audios: [...p.audios, d.url] }))
+        else if (d.type === 'video' && d.url) updStream(p => ({ ...p, videos: [...p.videos, d.url] }))
         break
       case 'note':
         updStream(p => ({ ...p, notes: [...p.notes, d.text || d.note || ''].filter(Boolean) }))
@@ -503,11 +528,11 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         if (d.model) pendingModelRef.current = d.model
         break
       case 'error':
-        updStream(p => ({ ...p, error: d.message || d.error || '未知错误' }))
+        updStream(p => ({ ...p, error: friendlyStreamError(d.message || d.error || '未知错误') }))
         asmRef.current?.flushNow()
         break
       case 'failed':
-        updStream(p => ({ ...p, error: p.error || d.message || '任务执行失败' }))
+        updStream(p => ({ ...p, error: p.error || friendlyStreamError(d.message || '任务执行失败') }))
         asmRef.current?.flushNow()
         finalize(pendingModelRef.current)
         break
@@ -643,7 +668,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
       }
       connectRun(record)
     } catch (error: any) {
-      updStream(p => ({ ...p, error: error?.status === 409 ? '当前会话已有任务运行中' : (error?.message || '创建任务失败') }))
+      updStream(p => ({ ...p, error: error?.status === 409 ? '当前会话已有任务运行中' : friendlyStreamError(error?.message || '创建任务失败') }))
       finalize()
     }
     scroll()
@@ -861,12 +886,22 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         ) : messages.length === 0 && !stream && !draftMsg ? welcome
           : (
             <div className="chat-reading-column w-full py-4 sm:py-6">
+              {msgData?.truncated && (
+                <button
+                  className="mb-3 w-full min-h-11 text-xs text-pi-dim hover:text-pi-text border border-pi-border-soft rounded-pi-md"
+                  onClick={() => {
+                    if (!currentSessionId) return
+                    mutateMsgs(SessionsApi.messages(currentSessionId, { tail: 0, leafId: msgData.leafId }), { revalidate: false })
+                  }}>
+                  加载更早的对话{typeof msgData.total === 'number' ? `（共 ${msgData.total} 条）` : ''}
+                </button>
+              )}
               <TurnList
                 messages={normalMessages}
                 streamingNode={stream ? (() => {
                   // 阶段分区渲染：工具前文字在上、结论在工具卡后（conclusion 存在即启用分区）；
                   // 错误信息拼在最后一块，避免重复展示
-                  const errTail = stream.error ? `\n\n⚠️ ${stream.error}` : ''
+                  const errTail = stream.error ? `\n\n⚠️ ${friendlyStreamError(stream.error)}` : ''
                   const hasConclusion = !!stream.conclusion
                   const preToolText = hasConclusion ? stream.text.slice(0, Math.max(0, stream.text.length - stream.conclusion.length)) : stream.text
                   return <Message msg={{
@@ -874,7 +909,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
                     text: hasConclusion ? preToolText : stream.text + errTail,
                     conclusion: hasConclusion ? stream.conclusion + errTail : undefined,
                     think: stream.think, tools: stream.tools, notes: stream.notes,
-                    files: stream.files, images: stream.images, audios: stream.audios,
+                    files: stream.files, images: stream.images, audios: stream.audios, videos: stream.videos,
                     streaming: true,
                   }} />
                 })() : draftMsg ? (

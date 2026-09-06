@@ -6,6 +6,15 @@ function layoutViewportHeight(): number {
   return Math.max(window.innerHeight, document.documentElement.clientHeight)
 }
 
+/** WindowInsets 是物理像素。矮屏（荣耀畅玩 HD+）若把 800px 当 CSS 高度，输入框会被顶到最上。 */
+export function nativeImeToCss(raw: number, layoutHeight: number, dpr: number): number {
+  const height = Math.max(1, layoutHeight)
+  const density = Math.max(1, dpr)
+  let n = Math.max(0, Number(raw) || 0)
+  if (n > height) n = n / density
+  return Math.min(n, height * 0.45)
+}
+
 let nativeKeyboardInset = 0
 
 function isTextEditorFocused(): boolean {
@@ -48,8 +57,8 @@ function installViewportController() {
       if (visualKeyboardInset > 80) return visualHeight
       // adjustResize 已经缩短布局时，使用缩短后的布局高度。
       if (layoutHeight < baseLayoutHeight - 80) return layoutHeight
-      // overlay IME：布局没变，只能用原生 inset 计算可见高度。
-      return Math.max(0, baseLayoutHeight - nativeKeyboardInset)
+      // overlay IME：布局没变，只能用原生 inset 计算可见高度；至少留一半以上，避免输入框被抬到屏幕上沿。
+      return Math.max(layoutHeight * 0.55, baseLayoutHeight - nativeKeyboardInset)
     }
     return visualHeight
   }
@@ -78,7 +87,11 @@ function installViewportController() {
 
   const onNativeIme = (event: Event) => {
     const detail = (event as CustomEvent<{ height?: number }>).detail
-    nativeKeyboardInset = Math.max(0, Number(detail?.height) || 0)
+    nativeKeyboardInset = nativeImeToCss(
+      Number(detail?.height) || 0,
+      layoutViewportHeight(),
+      window.devicePixelRatio || 1,
+    )
     update()
   }
 

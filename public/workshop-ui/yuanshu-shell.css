@@ -1,0 +1,144 @@
+/* 元枢壳：官方画布上面加我们的顶栏，并压掉 100% 桌面字号 */
+:root { --yuanshu-bar: 44px; --yuanshu-scale: 0.72; }
+
+#yuanshu-bar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 2147483646;
+  height: var(--yuanshu-bar);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px 0 14px;
+  box-sizing: border-box;
+  background: color-mix(in srgb, var(--pi-bg, #f3f5fa) 86%, transparent);
+  color: var(--pi-text, #1c2333);
+  border-bottom: 1px solid color-mix(in srgb, var(--pi-text, #1c2333) 14%, transparent);
+  backdrop-filter: blur(12px);
+  font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+}
+#yuanshu-bar::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--pi-accent, #4a58fa);
+}
+#yuanshu-bar a {
+  color: var(--pi-accent, #4a58fa);
+  text-decoration: none;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 13px;
+}
+#yuanshu-bar a:hover { color: var(--pi-text, #1c2333); }
+#yuanshu-bar .brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+#yuanshu-bar .brand i {
+  font-style: normal;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--pi-accent, #4a58fa);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+#yuanshu-bar .brand strong {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+#yuanshu-bar .brand span {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--pi-text, #1c2333) 58%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#yuanshu-bar .yuanshu-model {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: color-mix(in srgb, var(--pi-text, #1c2333) 58%, transparent);
+  font-size: 12px;
+  min-width: 0;
+}
+#yuanshu-bar .yuanshu-model select {
+  max-width: min(42vw, 260px);
+  min-height: 32px;
+  border: 1px solid color-mix(in srgb, var(--pi-text, #1c2333) 16%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--pi-bg, #f3f5fa) 88%, var(--pi-text, #1c2333) 12%);
+  color: var(--pi-text, #1c2333);
+  font-size: 12px;
+}
+
+#yuanshu-wallpaper {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+html, body {
+  background: var(--pi-bg, #f3f5fa) !important;
+  color: var(--pi-text, #1c2333);
+}
+body.has-wallpaper { background: transparent !important; }
+body.has-wallpaper #yuanshu-wallpaper { opacity: 0.55; }
+
+.app-root {
+  position: fixed !important;
+  top: var(--yuanshu-bar) !important;
+  left: 0 !important;
+  width: calc(100vw / var(--yuanshu-scale)) !important;
+  height: calc((100vh - var(--yuanshu-bar)) / var(--yuanshu-scale)) !important;
+  transform: scale(var(--yuanshu-scale));
+  transform-origin: top left;
+  background: color-mix(in srgb, var(--pi-bg, #f3f5fa) 62%, transparent) !important;
+}
+
+#yuanshu-ai-panel {
+  margin: 8px 4px 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--pi-bg, #f3f5fa) 82%, transparent);
+  color: var(--pi-text, #1c2333);
+  font-size: 13px;
+  line-height: 1.45;
+}
+#yuanshu-ai-panel p { margin: 0 0 10px; }
+#yuanshu-ai-panel .hint { font-size: 12px; color: color-mix(in srgb, var(--pi-text, #1c2333) 58%, transparent); margin: 10px 0 0; }
+#yuanshu-ai-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+#yuanshu-ai-panel select {
+  min-height: 36px;
+  border: 1px solid color-mix(in srgb, var(--pi-text, #1c2333) 16%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--pi-bg, #f3f5fa) 88%, var(--pi-text, #1c2333) 12%);
+  color: var(--pi-text, #1c2333);
+}
+
+a[href*="github.com/lnkiai/m3e-canvas"],
+.app-root a[href*="platform.openai.com"],
+.app-root a[href*="console.anthropic.com"],
+.app-root a[href*="aistudio.google.com"],
+.app-root a[href*="platform.deepseek.com"],
+.app-root input[type="password"] { display: none !important; }

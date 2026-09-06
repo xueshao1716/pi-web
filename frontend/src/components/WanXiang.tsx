@@ -109,7 +109,7 @@ const Field = ({ label, children }: { label: string; children: React.ReactNode }
 )
 
 // ─── 主组件 ───
-export default function WanXiang() {
+export default function WanXiang({ onUsePrompt }: { onUsePrompt?: (prompt: string) => void } = {}) {
   // 场景
   const [scene, setScene] = useState<keyof typeof SCENES>('idcard')
   // 五要素
@@ -150,6 +150,7 @@ export default function WanXiang() {
   const [gambleLocks, setGambleLocks] = useState<Set<string>>(new Set(['gender']))
   // 输出
   const [output, setOutput] = useState('')
+  const [visualPrompt, setVisualPrompt] = useState('')
   const [copied, setCopied] = useState('')
 
   // 场景切换 → 自动填充
@@ -198,6 +199,9 @@ export default function WanXiang() {
     if (emotion) tech.push('情绪光晕，光晕自然扩散，氛围感强')
 
     const parts = [main, _outfit, comp, amb, _style, _bg, tech.join('，')].filter(Boolean)
+    const visual = parts.join('，')
+    setVisualPrompt(visual)
+    onUsePrompt?.(visual)
 
     if (platform === 'dreamina') {
       const negArr: string[] = []
@@ -221,7 +225,7 @@ export default function WanXiang() {
       if (negBg) negArr.push(...NEG_BG.split('，'))
       setOutput(parts.join(', ') + '\n\nNegative prompt: ' + negArr.filter(Boolean).join(', ') + '\n\nControlNet: openpose + depth | LoRA: <lora:body_proportion_v2:0.7>')
     }
-  }, [gender, age, ptype, look, height, weight, body, face, skintone, outfit, shot, angle, pose, expression, lighting, mood, style, bg, uhq, zero, deai, composition, emotion, platform, negUniversal, negReal, negBg, gamble, gambleChance, gambleLocks])
+  }, [gender, age, ptype, look, height, weight, body, face, skintone, outfit, shot, angle, pose, expression, lighting, mood, style, bg, uhq, zero, deai, composition, emotion, platform, negUniversal, negReal, negBg, gamble, gambleChance, gambleLocks, onUsePrompt])
 
   const copyToClipboard = useCallback(async () => {
     if (!output) return
@@ -355,9 +359,14 @@ export default function WanXiang() {
         <div className="panel !p-3 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-[13px] font-semibold text-pi-text">生成结果</span>
-            <button onClick={copyToClipboard} className="btn-tool text-xs inline-flex items-center gap-1.5">
-              {copied ? <><Check className="w-3.5 h-3.5 text-emerald-400" />已复制</> : <><Copy className="w-3.5 h-3.5" />复制</>}
-            </button>
+            <div className="flex items-center gap-1.5">
+              {onUsePrompt && (
+                <button onClick={() => onUsePrompt(visualPrompt || output)} className="btn-tool text-xs">填入出图框</button>
+              )}
+              <button onClick={copyToClipboard} className="btn-tool text-xs inline-flex items-center gap-1.5">
+                {copied ? <><Check className="w-3.5 h-3.5 text-emerald-400" />已复制</> : <><Copy className="w-3.5 h-3.5" />复制</>}
+              </button>
+            </div>
           </div>
           <pre className="bg-black/30 rounded-pi-md p-3 text-[12px] text-pi-dim whitespace-pre-wrap leading-relaxed max-h-80 overflow-y-auto font-mono">{output}</pre>
         </div>

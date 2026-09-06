@@ -1,23 +1,24 @@
 import { useEffect, useRef } from 'react'
 import {
   Activity, BrainCircuit, Cpu, Database, Factory, FolderKanban,
-  LayoutDashboard, LayoutGrid, MonitorCog, PackageCheck, Palette, PanelRight, Sparkles,
+  LayoutDashboard, LayoutGrid, LogOut, MonitorCog, PackageCheck, Palette, PanelRight, Sparkles,
   TerminalSquare, X,
 } from 'lucide-react'
 import type { Route } from '../hooks/useHashRoute'
+import { ROUTE_LABELS } from '../nav'
 
 export type UtilityPanelKey = 'workspace' | 'deliveries' | 'terminal' | 'activity' | 'tui'
 
 const MORE_ROUTES: { route: Route; icon: typeof Sparkles; label: string }[] = [
-  { route: 'board', icon: LayoutDashboard, label: '工作台' },
-  { route: 'lingxi', icon: Sparkles, label: '灵感速记' },
-  { route: 'workshop', icon: Factory, label: '创作工坊' },
-  { route: 'models', icon: BrainCircuit, label: '模型中心' },
-  { route: 'apps', icon: LayoutGrid, label: '知识工具' },
-  { route: 'engine', icon: Cpu, label: '系统能力' },
-  { route: 'themes', icon: Palette, label: '主题' },
-  { route: 'sessiondb', icon: Database, label: '会话库' },
-  { route: 'system', icon: MonitorCog, label: '系统' },
+  { route: 'board', icon: LayoutDashboard, label: ROUTE_LABELS.board },
+  { route: 'lingxi', icon: Sparkles, label: ROUTE_LABELS.lingxi },
+  { route: 'workshop', icon: Factory, label: ROUTE_LABELS.workshop },
+  { route: 'models', icon: BrainCircuit, label: ROUTE_LABELS.models },
+  { route: 'apps', icon: LayoutGrid, label: ROUTE_LABELS.apps },
+  { route: 'engine', icon: Cpu, label: ROUTE_LABELS.engine },
+  { route: 'themes', icon: Palette, label: ROUTE_LABELS.themes },
+  { route: 'sessiondb', icon: Database, label: ROUTE_LABELS.sessiondb },
+  { route: 'system', icon: MonitorCog, label: ROUTE_LABELS.system },
 ]
 
 const PANEL_ACTIONS: { panel: UtilityPanelKey; icon: typeof Sparkles; label: string }[] = [
@@ -30,13 +31,14 @@ const PANEL_ACTIONS: { panel: UtilityPanelKey; icon: typeof Sparkles; label: str
 
 const FOCUSABLE_SELECTOR = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
-export default function MobileMoreMenu({ open, onClose, route, nav, onOpenPanel, onOpenTheme }: {
+export default function MobileMoreMenu({ open, onClose, route, nav, onOpenPanel, onOpenTheme, onLogout }: {
   open: boolean
   onClose: () => void
   route: Route
   nav: (route: Route) => void
   onOpenPanel: (panel: UtilityPanelKey) => void
   onOpenTheme: () => void
+  onLogout: () => void
 }) {
   const sheetRef = useRef<HTMLElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
@@ -131,6 +133,15 @@ export default function MobileMoreMenu({ open, onClose, route, nav, onOpenPanel,
               </button>
             ))}
           </div>
+
+          <div className="my-3 border-t border-pi-border-soft" />
+          <button
+            className="mobile-more-action w-full justify-start gap-2 rounded-pi-md px-3 text-xs text-pi-red hover:bg-pi-bg3"
+            onClick={() => { onClose(); onLogout() }}
+          >
+            <LogOut className="h-[18px] w-[18px]" strokeWidth={1.8} />
+            <span>退出登录</span>
+          </button>
         </div>
       </section>
     </div>

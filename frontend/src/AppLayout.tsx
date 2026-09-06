@@ -12,8 +12,11 @@ import ChatArea from './components/ChatArea'
 import ThemeSwitcher from './components/ThemeSwitcher'
 import CommandPalette from './components/CommandPalette'
 import MobileMoreMenu, { type UtilityPanelKey } from './components/MobileMoreMenu'
+import DesktopMoreMenu from './components/DesktopMoreMenu'
 import UtilityPanel from './components/UtilityPanel'
+import { RAIL_MORE, RAIL_PRIMARY, ROUTE_LABELS } from './nav'
 import * as T from '@radix-ui/react-tooltip'
+import { applyWallpaper, currentWallpaper } from './theme/wallpaper.mjs'
 import { installVisualViewportHeight } from './lib/viewport'
 
 // 页面 lazy（路线图：每路由 lazy + ErrorBoundary）
@@ -45,23 +48,25 @@ type PageRoute = {
 
 // 页面注册表是路由、页面渲染和桌面导航的单一来源；移动端导航是刻意不同的信息架构。
 const PAGE_ROUTES: PageRoute[] = [
-  { route: 'board', icon: LayoutDashboard, label: '工作台', Page: BoardPage },
-  { route: 'lingxi', icon: Sparkles, label: '灵感', Page: LingXiPage },
-  { route: 'workshop', icon: Factory, label: '创作', Page: WorkshopPage },
-  { route: 'models', icon: BrainCircuit, label: '模型', Page: ModelHub, nav: false },
-  { route: 'assets', icon: Images, label: '资产', Page: Assets },
-  { route: 'tasks', icon: Clock4, label: '任务', Page: Tasks },
-  { route: 'apps', icon: LayoutGrid, label: '知识', Page: Apps },
-  { route: 'engine', icon: Cpu, label: '能力', Page: EnginePage },
-  { route: 'themes', icon: Palette, label: '主题', Page: ThemesPage, nav: false },
-  { route: 'sessiondb', icon: Database, label: '会话库', Page: SessionDbPage },
-  { route: 'system', icon: MonitorCog, label: '系统', Page: SystemPage },
+  { route: 'board', icon: LayoutDashboard, label: ROUTE_LABELS.board, Page: BoardPage },
+  { route: 'lingxi', icon: Sparkles, label: ROUTE_LABELS.lingxi, Page: LingXiPage },
+  { route: 'workshop', icon: Factory, label: ROUTE_LABELS.workshop, Page: WorkshopPage },
+  { route: 'models', icon: BrainCircuit, label: ROUTE_LABELS.models, Page: ModelHub, nav: false },
+  { route: 'assets', icon: Images, label: ROUTE_LABELS.assets, Page: Assets },
+  { route: 'tasks', icon: Clock4, label: ROUTE_LABELS.tasks, Page: Tasks },
+  { route: 'apps', icon: LayoutGrid, label: ROUTE_LABELS.apps, Page: Apps },
+  { route: 'engine', icon: Cpu, label: ROUTE_LABELS.engine, Page: EnginePage },
+  { route: 'themes', icon: Palette, label: ROUTE_LABELS.themes, Page: ThemesPage, nav: false },
+  { route: 'sessiondb', icon: Database, label: ROUTE_LABELS.sessiondb, Page: SessionDbPage },
+  { route: 'system', icon: MonitorCog, label: ROUTE_LABELS.system, Page: SystemPage },
 ]
 const APP_ROUTES: Route[] = ['chat', ...PAGE_ROUTES.map(p => p.route)]
-const NAV: { route: Route; icon: typeof MessagesSquare; label: string }[] = [
-  { route: 'chat', icon: MessagesSquare, label: '对话' },
-  ...PAGE_ROUTES.filter(p => p.nav !== false).map(({ route, icon, label }) => ({ route, icon, label })),
-]
+const PAGE_BY_ROUTE = Object.fromEntries(PAGE_ROUTES.map(p => [p.route, p])) as Record<string, PageRoute>
+const railItem = (route: (typeof RAIL_PRIMARY)[number] | (typeof RAIL_MORE)[number]) => {
+  if (route === 'chat') return { route: 'chat' as Route, icon: MessagesSquare, label: ROUTE_LABELS.chat }
+  const page = PAGE_BY_ROUTE[route]
+  return { route: route as Route, icon: page.icon, label: page.label }
+}
 
 function PageLoader() {
   return <div className="flex-1 flex items-center justify-center text-pi-dim2 text-sm">加载中…</div>
@@ -121,25 +126,10 @@ export default function AppLayout() {
 
   useEffect(() => installVisualViewportHeight(), [])
 
-  // ── 全局壁纸应用：读 localStorage/theme-prefs 应用到 #pi-wallpaper，任何页面都生效 ──
+  // ── 全局壁纸：渐变直接写 background-image，图片才包 url()；有壁纸时 body.has-wallpaper 让画布透出来 ──
   useEffect(() => {
-    const apply = () => {
-      const wp = document.getElementById('pi-wallpaper') as HTMLElement | null
-      if (!wp) return
-      try {
-        const w = localStorage.getItem('pi_wallpaper') || ''
-        if (w) {
-          wp.style.backgroundImage = `url(${w})`
-          wp.style.backgroundSize = 'cover'
-          wp.style.backgroundPosition = 'center'
-          wp.style.backgroundRepeat = 'no-repeat'
-        } else {
-          wp.style.backgroundImage = ''; wp.style.backgroundSize = ''; wp.style.backgroundPosition = ''; wp.style.backgroundRepeat = ''
-        }
-      } catch {}
-    }
+    const apply = () => applyWallpaper(currentWallpaper())
     apply()
-    // ThemeEditor 保存壁纸后派发，全局同步；挂载后 DOM 就绪也应用一次
     window.addEventListener('pi-wallpaper-changed', apply)
     const t = setTimeout(apply, 300)
     return () => { window.removeEventListener('pi-wallpaper-changed', apply); clearTimeout(t) }
@@ -191,7 +181,7 @@ export default function AppLayout() {
   const pageArea = (route !== 'chat') && (
     <div key={route} className="flex-1 flex flex-col min-h-0 min-w-0 overflow-x-hidden page-enter">
       <Suspense fallback={<PageLoader />}>
-        <PageErrorBoundary page={NAV.find(n => n.route === route)?.label || route}>
+        <PageErrorBoundary page={PAGE_BY_ROUTE[route]?.label || route}>
           <PageBody route={route} />
         </PageErrorBoundary>
       </Suspense>
@@ -212,7 +202,9 @@ export default function AppLayout() {
             </div>
           ) : route === 'chat' ? (
             <div className="flex-1 flex flex-col min-w-0 min-h-0">
-              <ChatArea compactHeader />
+              <PageErrorBoundary page="对话">
+                <ChatArea compactHeader />
+              </PageErrorBoundary>
               {rightPanel !== 'chat' && (
                 <UtilityPanel
                   active={rightPanel}
@@ -259,6 +251,7 @@ export default function AppLayout() {
           nav={(nextRoute) => { setMobileDrawer('none'); nav(nextRoute) }}
           onOpenPanel={(panel) => { setMobileDrawer('none'); nav('chat'); setRightPanel(panel) }}
           onOpenTheme={() => { setMobileDrawer('none'); nav('themes') }}
+          onLogout={logout}
         />
 
         {modelOpen && <LazyModelManager visible onClose={() => setModelOpen(false)} />}
@@ -282,7 +275,7 @@ export default function AppLayout() {
             <PanelLeftOpen className="w-[18px] h-[18px]" strokeWidth={1.8} />
           </button>
         )}
-        {NAV.map(n => (
+        {RAIL_PRIMARY.map(railItem).map(n => (
           <T.Root key={n.route}>
             <T.Trigger asChild>
               <button aria-label={n.label} aria-current={route === n.route ? 'page' : undefined}
@@ -300,6 +293,7 @@ export default function AppLayout() {
             </T.Portal>
           </T.Root>
         ))}
+        <DesktopMoreMenu items={RAIL_MORE.map(railItem)} route={route} nav={nav} />
         <div className="mt-auto mb-2 flex flex-col gap-1.5">
           <ThemeSwitcher />
           <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-colors" title="模型与通道" aria-label="模型与通道" onClick={() => nav('models')}><Settings2 className="w-[18px] h-[18px]" strokeWidth={1.8} /></button>
@@ -311,7 +305,11 @@ export default function AppLayout() {
       {route === 'chat' && !sidebarCollapsed && <Sidebar onCollapse={toggleSidebar} />}
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0 relative z-10 col-canvas">
-        {route === 'chat' ? <ChatArea rightPanel={rightPanel} onRightPanel={setRightPanel} /> : pageArea}
+        {route === 'chat' ? (
+          <PageErrorBoundary page="对话">
+            <ChatArea rightPanel={rightPanel} onRightPanel={setRightPanel} />
+          </PageErrorBoundary>
+        ) : pageArea}
       </div>
 
       {/* 默认是真右栏；仅终端与 TUI 可由用户显式展开。 */}

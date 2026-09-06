@@ -8,7 +8,9 @@
 //   ③ 输出层：所有工具输出过密钥值正则 → 兜底脱敏（防①②漏网，如 python 读文件）
 //
 // 白名单边界：守卫只作用于 unifiedChat 对话通道的工具。宿主（小语本体/ pi agent
-// 通道）不经此层——密钥管理是宿主职权，对话通道模型一律不见凭据。
+// 通道）不经此层——密钥管理是宿主职权。对话通道不见明文密钥，但 read/bash 命中
+// 凭据文件时改走密文通道提示（list_channels / generate_*），不再死拒把活停掉。
+// 写/改密钥文件仍拒绝。
 
 import path from "node:path";
 
@@ -37,7 +39,7 @@ export function isSensitivePath(p) {
 // bash 命令里是否引用了敏感文件（字符串级检查——简单但有效，配合③兜底）
 export function commandTouchesSensitive(cmd) {
   const s = String(cmd || "");
-  const candidates = s.match(/[A-Za-z]:[\\/][^\s"'|;&<>]*|(^|[\s"'/])[^\s"'|;&<>]+\.(json|pem|key|token|env)/gi) || [];
+  const candidates = s.match(/[A-Za-z]:[\\/][^\s"'|;&<>]*|(^|[\s"'/])[^\s"'|;&<>]+\.(json|pem|key|token|env)\b/gi) || [];
   for (const c of candidates) {
     if (isSensitivePath(c.replace(/^[^A-Za-z]*/, ""))) return true;
   }

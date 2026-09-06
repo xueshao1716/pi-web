@@ -176,7 +176,7 @@ export default function Apps() {
     <div className="flex-1 overflow-y-auto relative z-10">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
         <PageHeader
-          title="应用中心"
+          title="知识"
           description="在知识资产与系统改进工具之间切换，让每类工作保留自己的操作语境。"
         />
 

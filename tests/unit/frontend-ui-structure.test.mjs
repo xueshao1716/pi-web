@@ -15,7 +15,10 @@ test('聊天与首页数据层不因焦点切换自动整页重载，外部事�
   assert.match(store, /revalidateOnFocus:\s*false/, '全局模型/会话缓存失焦恢复时不得自动整页重拉')
   assert.match(store, /revalidateOnReconnect:\s*false/, '全局模型/会话缓存断线恢复时不得自动整页重拉')
   assert.match(chat, /revalidateOnFocus:\s*false/, '长会话切回前台不得自动重取并替换整段消息')
+  assert.ok(chat.includes('let primed = false') || chat.includes('primed = false'), '打开会话必须等 subscribed 再同步，避免重放 session_updated 触发第二次整段 /messages')
   assert.ok(chat.includes("event?.type === 'message' || event?.type === 'turn_end' || event?.type === 'session_updated'"), '会话同步只应在新消息或轮次结束边界触发')
+  assert.ok(chat.includes('if (!primed) return') || chat.includes('if (!primed)'), '重放阶段不得 mutateMsgs')
+  assert.ok(chat.includes('SessionsApi.messages(sid, { tail:') || chat.includes('SessionsApi.messages(sid,{ tail:'), '打开会话只拉尾部窗口')
   assert.doesNotMatch(chat, /setTimeout\(\(\) => \{ if \(alive && !streamRef\.current\) mutateMsgs\(\) \}, 6000\)/, '连接短暂出错不得用延迟整段重载制造闪屏')
 })
 
@@ -24,6 +27,8 @@ test('会话 SSE 解析命名 session_updated 事件，确保跨端记录及时�
   assert.match(api, /eventType = 'message'/, 'streamSession 必须解析 SSE 默认事件类型')
   assert.match(api, /\['message', 'subscribed', 'session_updated'\]/, 'streamSession 必须识别后端命名的 session_updated 事件')
   assert.match(api, /Authorization:\s*`Bearer \$\{_token\}`/, 'streamSession 必须发送 Authorization')
+  assert.ok(api.includes('/messages') && api.includes('tail'), 'messages API 必须能带 tail 尾窗')
+  assert.ok(api.includes('leafId'), 'messages API 必须能带当前枝 leafId')
 })
 test('对话欢迎页提供高频工作入口，长会话阅读区有稳定的阅读列', () => {
   const chat = read('components', 'ChatArea.tsx')
@@ -33,6 +38,16 @@ test('对话欢迎页提供高频工作入口，长会话阅读区有稳定的�
   }
   assert.ok(chat.includes('chat-reading-column'), '长会话消息区必须有语义阅读列')
   assert.ok(turns.includes('chat-history-head'), '长会话折叠历史必须有明确阅读分隔')
+})
+
+test('侧栏三个主分组：工作会话、小语真测、小语终端，工作会话在前', () => {
+  const sidebar = read('components', 'Sidebar.tsx')
+  assert.ok(sidebar.includes("workspace: '工作会话'"), '工作分组文案必须是工作会话')
+  assert.ok(sidebar.includes("test: '小语真测'"), '真测分组文案必须是小语真测')
+  assert.ok(sidebar.includes("terminal: '小语终端'"), '终端分组文案必须是小语终端')
+  assert.ok(sidebar.includes("const GROUP_ORDER = ['workspace', 'test', 'terminal']"), '分组顺序必须是工作会话 → 小语真测 → 小语终端')
+  assert.ok(!sidebar.includes('工作空间会话'), '不得继续使用工作空间会话旧文案')
+  assert.ok(!sidebar.includes('小语会话（终端）'), '不得继续使用小语会话（终端）旧文案')
 })
 
 test('侧栏品牌头使用与安装包一致的元枢 App 图标，并只保留小语身份名', () => {
@@ -50,7 +65,7 @@ test('移动底栏固定为对话、会话、资产、任务、更多，且删�
   const labels = [...layout.matchAll(/label: '([^']+)'/g)].map(match => match[1])
   const mobileTabs = labels.slice(-5)
   assert.deepEqual(mobileTabs, ['对话', '会话', '资产', '任务', '更多'])
-  assert.ok(layout.includes('<MobileMoreMenu'), '移动端必须使用统一 MobileMoreMenu')
+  assert.ok(layout.includes('onLogout={logout}'), '移动壳必须把 logout 交给更多菜单')
   assert.ok(!layout.includes('MobileFab'), 'AppLayout 不得继续引用 MobileFab')
   assert.equal(existsSync(join(SRC, 'components', 'MobileFab.tsx')), false, '可拖动 FAB 文件必须删除')
 })
@@ -65,6 +80,8 @@ test('更多菜单承载设置路由和辅助面板，并提供可访问状态',
   }
   assert.ok(menu.includes("e.key === 'Escape'"), '更多菜单必须支持 Esc 关闭')
   assert.ok(menu.includes('aria-current'), '更多菜单当前路由必须暴露 aria-current')
+  assert.ok(menu.includes('退出登录'), '手机更多菜单必须提供退出登录')
+  assert.ok(menu.includes('onLogout'), '退出必须走壳层 logout，不能只跳路由')
 })
 
 test('更多菜单打开时底栏只能有更多一个 aria-current', () => {
@@ -340,9 +357,9 @@ test('工作台看板挂在桌面导航，并读现有 API 做一屏总览', () 
   const menu = read('components', 'MobileMoreMenu.tsx')
   assert.ok(routes.includes("'board'"), 'hash 路由必须包含 board')
   assert.ok(layout.includes("route: 'board'"), '桌面导航必须注册工作台')
-  assert.ok(layout.includes("label: '工作台'"), '工作台导航文案必须是工作台')
+  assert.ok(layout.includes('ROUTE_LABELS.board'), '工作台导航文案必须引用词表')
   assert.ok(menu.includes("route: 'board'"), '手机更多菜单必须有工作台')
-  assert.ok(menu.includes("label: '工作台'"), '手机更多菜单工作台文案必须是工作台')
+  assert.ok(menu.includes('ROUTE_LABELS.board'), '手机更多菜单工作台文案必须引用词表')
   assert.ok(board.includes('<PageHeader'), '工作台必须使用 PageHeader')
   assert.ok(board.includes('title="工作台"'), '工作台页头标题必须是工作台')
   for (const api of ['SessionsApi.list()', 'TasksApi.list()', 'StatsApi.providers()', 'StatsApi.daily()', 'WsApi.deliveries()', 'SubagentApi.runs()']) {
@@ -356,9 +373,10 @@ test('任务与会话库保留既有 API 行为', () => {
     assert.ok(tasks.includes(api), `任务中心必须保留：${api}`)
   }
   const sessionDb = read('pages', 'SessionDb.tsx')
-  for (const behavior of ["api('/api/sessions/db/list')", "api('/api/sessions/db/stats')", "api('/api/sessions/db/rebuild'", "api('/api/sessions/db/sanitize'", "api('/api/sessions/db/meta'"]) {
+  for (const behavior of ["api('/api/sessions/db/list')", "api('/api/sessions/db/stats')", "api('/api/sessions/db/rebuild'", "api('/api/sessions/db/sanitize'", "api('/api/sessions/db/meta'", "api('/api/sessions/db/sweep'"]) {
     assert.ok(sessionDb.includes(behavior), `会话库必须保留统一远程地址调用：${behavior}`)
   }
+  assert.ok(sessionDb.includes('清理空会话'), '会话库必须提供清理空会话入口')
 })
 
 test('思考过程正文使用隔离的实底阅读面板，避免主题色层覆盖文字', () => {
@@ -376,6 +394,26 @@ test('思考过程触发标签在主题底色上使用主文字色，避免同�
   assert.match(thinkingTrigger, /bg-pi-accent\/6/, '思考标签背景必须是轻量半透明色')
   assert.match(thinkingTrigger, /border-pi-accent\/12/, '思考标签边框必须退为低对比度提示')
   assert.match(thinkingTrigger, /hover:bg-pi-accent\/10/, '悬浮时仅作轻微反馈，不能形成主题色块')
+})
+
+test('流式中即使还没有思考/工具/正文，也要显示思考阶段，不能空白干等', () => {
+  const message = read('components', 'Message.tsx')
+  const assistant = message.slice(message.indexOf('const hasThinking'))
+  const phaseBlock = assistant.slice(assistant.indexOf('let phase:'), assistant.indexOf('return ('))
+  assert.ok(phaseBlock.includes("else phase = 'thinking'"), '流式空窗必须落到思考阶段，不能停在 idle 把工作流藏掉')
+  assert.ok(phaseBlock.includes('if (streaming)'), '阶段判定只在流式中启用')
+  assert.ok(!phaseBlock.includes('hasThinking && !hasTools && !hasText'), '不得要求先有思考文本才显示思考阶段')
+})
+
+test('助手配图必须在正文后面，不能插在思考过程和工具卡中间', () => {
+  const message = read('components', 'Message.tsx')
+  const assistant = message.slice(message.indexOf('const hasThinking'))
+  const attachAt = assistant.lastIndexOf('<Attachments msg={msg} />')
+  const thinkAt = assistant.lastIndexOf('<Thinking')
+  const toolsAt = assistant.lastIndexOf('{msg.tools?.length')
+  const mdAt = Math.max(assistant.lastIndexOf('<LazyMarkdown text={msg.text}'), assistant.lastIndexOf('<LazyMarkdown text={msg.conclusion}'))
+  assert.ok(attachAt > thinkAt && attachAt > toolsAt, '配图不得出现在思考/工具卡之前，否则会被当成思考过程的图')
+  assert.ok(attachAt > mdAt, '配图跟在助手正文后面')
 })
 
 test('移动更多菜单当前项在主题底色上使用主文字色，避免同色吞字', () => {

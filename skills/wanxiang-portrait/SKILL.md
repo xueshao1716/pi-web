@@ -91,6 +91,7 @@ description: 万像人物写真提示词生成系统。按专业体系生成 AI 
 4. 按需叠加：零器材 / 超高清 / 去AI化 / 情绪光影
 5. 平台适配输出（格式对应四大平台）
 6. 附负面词
+7. **出图**：由 pi-web 旁路完成（`engine/media-api.mjs` 的 `generateImage` / 对话里说「画/配图」即可）。不要 curl `/api/image`，不要读 `.token`，不要无令牌打 `/api/models`。复杂章节用 **read** 读本技能包 `wx_full.txt`（findstr 读不了 UTF-8 中文）。
 
 ## 参考文档（完整原文——复杂需求必须读取，勿只看本摘要）
 

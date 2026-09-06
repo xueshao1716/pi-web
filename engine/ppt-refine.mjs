@@ -8,6 +8,7 @@ import fs from "node:fs";
 import { readDeck } from "./gallery-core.mjs";
 import { lintPage } from "./slides-lint-core.mjs";
 import { readThemeCss } from "./ppt-html-paths.mjs";
+import { pickWorkshopModel } from "./workshop-model.mjs";
 
 /** 客户端断开时调用 stop；返回 release，正常结束时摘掉监听以免二次 stop。 */
 export function attachSseAbort(req, stop) {
@@ -68,7 +69,7 @@ export async function handlePptRefine(ctx, res, body) {
   };
   timer = setTimeout(() => finish(false, "超时（8 分钟）"), 8 * 60 * 1000);
   try {
-    agent = await createSessionAgent(sm, defaultModel);
+    agent = await createSessionAgent(sm, pickWorkshopModel(ctx, body) || defaultModel);
     const unsub = agent.subscribe((ev) => {
       try {
         if (ev.type === "tool_execution_start") write("tool", { name: ev.toolName, id: ev.toolCallId });

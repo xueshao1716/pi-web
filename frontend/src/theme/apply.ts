@@ -9,7 +9,7 @@ export type ThemeSeed = { bg: string; text: string; accent: string; step: number
 
 export function applyThemeVars(theme: string, accent: string) {
   const el = document.documentElement as any
-  if (['mist', 'ink', 'violet', 'kraft', 'shuimo', 'bamboo'].includes(theme)) el.dataset.theme = theme
+  if (['mist', 'ink', 'violet', 'kraft', 'shuimo', 'bamboo', 'wood'].includes(theme)) el.dataset.theme = theme
   else delete el.dataset.theme
 
   const seed: ThemeSeed = (SEEDS as any)[theme] || (SEEDS as any).mist
@@ -32,11 +32,22 @@ export function applyTheme(theme: string, accent: string) {
   persistTheme(theme, accent)
 }
 
+const DEFAULT_THEME = 'mist'
+
 export function currentTheme(): { theme: string; accent: string } {
   try {
-    return {
-      theme: localStorage.getItem('pi_theme') || 'mist',
-      accent: localStorage.getItem('pi_accent') || '',
+    let theme = localStorage.getItem('pi_theme')
+    const accent = localStorage.getItem('pi_accent') || ''
+    if (theme == null) return { theme: DEFAULT_THEME, accent }
+    if (theme === 'deep' && !localStorage.getItem('pi_theme_migrated')) {
+      localStorage.setItem('pi_theme_migrated', '1')
+      return { theme: DEFAULT_THEME, accent }
     }
-  } catch { return { theme: 'mist', accent: '' } }
+    return { theme, accent }
+  } catch { return { theme: DEFAULT_THEME, accent: '' } }
+}
+
+export function bootTheme() {
+  const { theme, accent } = currentTheme()
+  applyThemeVars(theme, accent)
 }

@@ -44,7 +44,7 @@ export default defineConfig({
     'btn': 'press inline-flex items-center justify-center gap-1.5 rounded-pi-md px-2.5 py-1 text-sm font-medium cursor-pointer select-none disabled:opacity-50 disabled:pointer-events-none',
     'btn-primary': 'btn btn-grad text-white hover:brightness-110 active:scale-[.98]',
     'btn-ghost': 'btn text-pi-dim hover:text-pi-text hover:bg-pi-bg3',
-    'btn-tool': 'btn w-7 h-7 p-0 text-pi-dim hover:text-pi-text hover:bg-pi-bg-hover active:bg-pi-bg-active rounded-pi-sm',
+    'btn-tool': 'btn min-h-7 min-w-7 h-7 w-auto px-2 whitespace-nowrap text-pi-dim hover:text-pi-text hover:bg-pi-bg-hover active:bg-pi-bg-active rounded-pi-sm',
     'card': 'rounded-pi-lg border border-pi-border-soft bg-pi-bg1',
     'panel': 'rounded-pi-lg bg-pi-bg1 border border-pi-border-soft',
     'input-pi': 'w-full px-3 py-2 rounded-pi-md bg-pi-field border border-pi-field-border text-pi-text text-sm outline-none focus:border-pi-accent focus:ring-1 focus:ring-pi-accent/40 placeholder:text-pi-dim2 transition-colors',

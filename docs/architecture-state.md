@@ -1,7 +1,7 @@
 # pi-web 架构状态快照（活文档）
 
 > 模式借鉴 KickSide `.ai/architecture/current-state.md`：每次后端结构改动，**同步更新本文件**。
-> 这是"当前是什么"，不是"设计成什么"。过时即失职。最后更新：2026-08-26 12:4x by 小语
+> 这是"当前是什么"，不是"设计成什么"。过时即失职。最后更新：2026-09-06 by 小语
 
 ## 进程拓扑（谁在跑、怎么拉起）
 
@@ -33,6 +33,21 @@
 - 直接使用 pi 引擎会话文件：`~/.pi/agent/sessions/<encoded-cwd>/`
 - 列表 API 分组：cwd=工作区 → workspace 组；其他 → terminal 组（📱 小语会话（终端）置顶）
 - 会话级模型持久化：`session-model-keys.json`（重启/LRU 恢复）
+
+## 引擎主次对（2026-09-06）
+
+- 后台 `engine-pair.json`：`primary` / `secondary`（默认 pi 主驾、元枢兑底；先长元枢，外置搁下）
+- `GET/POST /api/engine/pair`；`handleChat` 每轮 `resolveLead`
+- 元枢主循环：`unifiedChat` + `yuanshu-loop`（调度器 abort/并行）；`run_code` 进主工具表
+- 元枢再稳：空回合 3 次重试后兑底、截断 tool JSON 立刻停、bash/dsh_task 吃 abort
+- dsh 主驾走 `handleDshChat`（headless 一轮），不是 unifiedChat 套皮
+- 媒体密文通道（2026-09-06）：`detectMediaIntents` 认视频；`generate_video` / `generate_image` / `generate_tts` / `list_channels` 宿主代持密钥；翻 auth.json 改提示下一步，不再死拒
+- Agnes 2.5 创建体由 `videoCreateBody` 补 `mode=text`（keyframe/reference 按素材推断）；轮询带 `model_name`；创建 400 由 `repairVideoRequest` 补字段再试一次
+- 元枢常驻 `YUANSHU_PROTOCOL` + 仓库根 `skills/` 索引（不再扫空的 `engine/skills`）；工具失败经 `coachToolFailure` 纠偏，禁止 bash 探 API
+- `leadNote` 非原生通道写「该通道走自制循环」，不再说「适配器未就绪」
+- 元枢治理层（2026-09-06，对照 Claude/OpenHands/OpenCode）：`todo_write` 清单、`delegate_task` 子代理、OpenHands 式卡住检测、任务匹配技能预点名、循环中段压缩、Auto 走 `routeForAuto`
+- 对话内嵌视频播放器：正文/交付行/工具输出里的 mp4 路径收成 `/api/ws/file`；协议讲能力和汇报，不写死播放方式。pi 首轮就有 `generate_video` 等宿主工具
+- 元枢会话连续性（2026-09-06）：用户原话先落盘，打断也留痕；有历史就注明不是新开。创作先判断，搜两轮锁不到就动手
 
 ## 模型路由
 

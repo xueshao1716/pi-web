@@ -28,3 +28,15 @@ test('前端必须消费原生 IME 高度且不与 visualViewport 双重缩短',
   assert.match(viewport, /visualInset|visualViewport/, '必须保留浏览器 visualViewport 兼容路径')
   assert.match(css, /pi-native-keyboard-inset/, '移动根布局必须使用原生键盘高度兜底')
 })
+
+test('原生 IME 高度必须换成 CSS 像素，避免荣耀矮屏把输入框顶到最上', () => {
+  const src = read('app', 'src-tauri', 'gen', 'android', 'app', 'src', 'main', 'java', 'com', 'yuanshu', 'app', 'MainActivity.kt')
+  assert.match(src, /displayMetrics\.density/, 'WindowInsets 是物理像素，注入 WebView 前必须除以 density')
+  assert.match(src, /imeBottom\s*\/\s*density/, '注入的 height 必须是 CSS 像素')
+})
+
+test('键盘打开时收起底栏，输入框只贴键盘上沿而不是再叠一层 TabBar', () => {
+  const css = read('frontend', 'src', 'styles.css')
+  assert.match(css, /html\.keyboard-open\s+\.mobile-tab-bar/, '键盘打开必须收起移动底栏')
+  assert.match(css, /safe-area-inset-left/, '横屏刘海左右安全区必须吃进移动根布局')
+})

@@ -58,7 +58,7 @@ test('endpoint resolution uses the configured remote API base', async () => {
   assert.match(tui, /webSocketUrl\(/)
   assert.doesNotMatch(tui, /location\.host\/ws\/tui/)
   const store = await read('frontend', 'src', 'store.tsx')
-  assert.match(store, /import \{ ModelsApi, SessionsApi, setToken, getToken, setApiBase \} from ['"]\.\/api['"]/, 'login must update the in-memory API base')
+  assert.match(store, /import \{ ModelsApi, SessionsApi, setToken, getToken, setApiBase, getApiBase \} from ['"]\.\/api['"]/, 'login must update the in-memory API base')
   assert.match(store, /setApiBase\(base\)/, 'successful login must update API base before requests continue')
 })
 
@@ -135,6 +135,8 @@ test('HTTP responses expose the browser security baseline and redact nested erro
   const http = await read('engine', 'http-utils.mjs')
   const server = await read('server.mjs')
   assert.match(server, /Content-Security-Policy/, 'server must send a CSP')
+  assert.match(server, /fonts\.loli\.net/, 'CSP 必须放行水墨楷体用的 fonts.loli.net')
+  assert.match(server, /gstatic\.loli\.net/, 'CSP 必须放行 gstatic.loli.net 字体文件')
   assert.match(server, /X-Content-Type-Options.*nosniff/, 'server must disable MIME sniffing')
   assert.match(server, /X-Frame-Options.*DENY/, 'server must deny framing')
   assert.match(server, /Referrer-Policy.*no-referrer/, 'server must avoid referrer leakage')

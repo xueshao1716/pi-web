@@ -41,6 +41,7 @@ export interface ChatMessage {
   files?: { path: string; name?: string }[]
   images?: string[]   // dataURI 或 URL
   audios?: string[]   // URL
+  videos?: string[]   // URL
   notes?: string[]    // 系统提示条（SSE note 事件）
   tools?: ToolCall[]
   think?: string
@@ -59,6 +60,8 @@ export interface Artifact {
   path: string
   size: number
   url: string
+  prompt?: string
+  mtimeMs?: number
 }
 
 // 工具调用 5 态归一（AionUi normalizeToolCall 路线）——前端统一状态，不直接消费上游原始态
@@ -78,6 +81,8 @@ export interface RunningTool {
 export interface SessionMessages {
   messages: ChatMessage[]
   leafId?: string | null
+  truncated?: boolean
+  total?: number
 }
 
 // SSE 事件（/api/sessions/:id/stream）

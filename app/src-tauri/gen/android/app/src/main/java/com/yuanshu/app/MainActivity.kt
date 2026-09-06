@@ -40,10 +40,12 @@ class MainActivity : TauriActivity() {
     // IME bottom inset 转成稳定 DOM 事件，前端只在布局没有自行缩短时使用它兜底。
     ViewCompat.setOnApplyWindowInsetsListener(webView) { view: View, insets: WindowInsetsCompat ->
       val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+      val density = view.resources.displayMetrics.density.coerceAtLeast(1f)
+      val cssIme = (imeBottom / density).toInt()
       val script = """
         (function() {
           window.dispatchEvent(new CustomEvent('yuanshu-ime', {
-            detail: { height: $imeBottom, visible: ${imeBottom > 0} }
+            detail: { height: $cssIme, visible: ${imeBottom > 0} }
           }));
         })();
       """.trimIndent()

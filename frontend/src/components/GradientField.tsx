@@ -6,7 +6,7 @@
 // · 深色主题才渲染（浅色底下深色渐变不搭，回退无背景）；挂载时判定，不做实时响应
 // · WebGL 预检，失败静默回退（欢迎页没有背景也成立）
 // · pointer-events-none / aria-hidden，纯装饰不拦交互
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 
 const Field = lazy(() => import('./ShaderGradientInner'))
 
@@ -20,11 +20,17 @@ function isDarkTheme(): boolean {
     else {
       const hex = raw.replace('#', '')
       const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex
-      if (full.length !== 6) return true
+      if (full.length !== 6) return false
       r = parseInt(full.slice(0, 2), 16); g = parseInt(full.slice(2, 4), 16); b = parseInt(full.slice(4, 6), 16)
     }
     return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.45
-  } catch { return true }
+  } catch { return false }
+}
+
+class FieldGuard extends Component<{ children: ReactNode }, { dead: boolean }> {
+  state = { dead: false }
+  static getDerivedStateFromError() { return { dead: true } }
+  render() { return this.state.dead ? null : this.props.children }
 }
 
 function webglOk(): boolean {
@@ -44,9 +50,11 @@ export default function GradientField() {
   if (!on) return null
   return (
     <div aria-hidden="true" className="gradient-field pointer-events-none absolute inset-0 overflow-hidden">
-      <Suspense fallback={null}>
-        <Field />
-      </Suspense>
+      <FieldGuard>
+        <Suspense fallback={null}>
+          <Field />
+        </Suspense>
+      </FieldGuard>
     </div>
   )
 }

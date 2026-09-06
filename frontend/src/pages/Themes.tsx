@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, Code2, Download, RotateCcw, Trash2, Upload } from 'lucide-react'
 import { generateTheme, SEEDS } from '../theme/generate.mjs'
 import { applyTheme, currentTheme } from '../theme/apply'
+import { persistWallpaper, currentWallpaper } from '../theme/wallpaper.mjs'
+import { THEME_CATALOG } from '../theme/palettes'
 import { ThemeApi } from '../api'
 import PageHeader from '../components/PageHeader'
 import SectionHeader from '../components/SectionHeader'
@@ -9,17 +11,7 @@ import { toast } from '../components/Toast'
 
 type Seed = { bg: string; text: string; accent: string; step: number; light?: boolean; overrides?: Record<string, string> }
 
-const THEME_META: Record<string, { label: string; desc: string }> = {
-  mist: { label: '晨雾', desc: '浅色 · 冷靛蓝主色' },
-  kraft: { label: '牛皮纸', desc: '浅色 · 暖纸质感' },
-  shuimo: { label: '水墨', desc: '浅色 · 宣纸朱砂楷体' },
-  bamboo: { label: '竹影', desc: '浅色 · 竹青自然系' },
-  ink: { label: '墨黑', desc: '深色 · 极简石墨' },
-  violet: { label: '紫晶', desc: '深色 · 紫罗兰光晕' },
-  sepia: { label: '褐纱', desc: '深色 · 暖褐护眼' },
-  moss: { label: '苔原', desc: '深色 · 苔绿自然系' },
-  azure: { label: '远岚', desc: '深色 · 天青蓝调' },
-}
+const THEME_BY_ID = Object.fromEntries(THEME_CATALOG.map(t => [t.id, t]))
 
 const ACCENT_SWATCHES = ['#5468ff', '#8b7cf6', '#38bdf8', '#34d399', '#f59e0b', '#f47067', '#ec4899', '#d97706']
 
@@ -39,25 +31,9 @@ function seedVars(theme: string, accentOverride = '', stepOverride = 0): Record<
   return generateTheme(s) as Record<string, string>
 }
 
-function applyWallpaperEl(wallpaper: string) {
-  const wp = document.getElementById('pi-wallpaper') as HTMLElement | null
-  if (!wp) return
-  if (wallpaper) {
-    wp.style.backgroundImage = `url(${wallpaper})`
-    wp.style.backgroundSize = 'cover'
-    wp.style.backgroundPosition = 'center'
-    wp.style.backgroundRepeat = 'no-repeat'
-  } else {
-    wp.style.backgroundImage = ''
-    wp.style.backgroundSize = ''
-    wp.style.backgroundPosition = ''
-    wp.style.backgroundRepeat = ''
-  }
-}
-
 function ThemeCard({ id, active, onApply }: { id: string; active: boolean; onApply: () => void }) {
   const vars = useMemo(() => seedVars(id), [id])
-  const meta = THEME_META[id] || { label: id, desc: '' }
+  const meta = THEME_BY_ID[id] || { name: id, desc: '' }
   const seed = (SEEDS as any)[id] as Seed
 
   return (
@@ -84,7 +60,7 @@ function ThemeCard({ id, active, onApply }: { id: string; active: boolean; onApp
       </div>
       <div className="px-3 py-2 flex items-center gap-2" style={{ background: 'var(--pi-bg1)', borderTop: '1px solid var(--pi-border)' }}>
         <span className="w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ background: seed?.accent }} />
-        <span className="text-[13px] font-medium" style={{ color: 'var(--pi-text)' }}>{meta.label}</span>
+        <span className="text-[13px] font-medium" style={{ color: 'var(--pi-text)' }}>{meta.name}</span>
         <span className="text-[11px] truncate" style={{ color: 'var(--pi-dim2)' }}>{meta.desc}</span>
         {active && (
           <span className="ml-auto flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-pi-sm flex-shrink-0" style={{ background: 'var(--pi-accent-soft)', color: 'var(--pi-accent-soft-fg)' }}>
@@ -101,7 +77,7 @@ export default function Themes() {
   const [theme, setTheme] = useState(init.current.theme)
   const [accent, setAccent] = useState(init.current.accent)
   const [density, setDensity] = useState<number>(() => ((SEEDS as any)[init.current.theme]?.step) || 0.043)
-  const [wallpaper, setWallpaper] = useState(() => { try { return localStorage.getItem('pi_wallpaper') || '' } catch { return '' } })
+  const [wallpaper, setWallpaper] = useState(() => currentWallpaper())
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { applyTheme(theme, accent) }, [theme, accent])
@@ -117,14 +93,13 @@ export default function Themes() {
   }, [theme, accent, density])
 
   useEffect(() => {
-    applyWallpaperEl(wallpaper)
-    try { localStorage.setItem('pi_wallpaper', wallpaper) } catch {}
+    const saved = persistWallpaper(wallpaper)
+    if (!saved.ok && wallpaper.startsWith('data:')) toast('图片太大，浏览器存不下。请改用较小的图或填 URL。', 'error')
   }, [wallpaper])
 
   const saveAll = async () => {
     try {
       await ThemeApi.save(theme, accent, wallpaper)
-      window.dispatchEvent(new CustomEvent('pi-wallpaper-changed'))
       toast('已保存到服务端（所有端同步）', 'ok')
     } catch { toast('保存失败', 'error') }
   }
@@ -149,7 +124,7 @@ export default function Themes() {
     toast('CSS 变量已导出')
   }
 
-  const ids = Object.keys(SEEDS).filter(k => THEME_META[k])
+  const ids = THEME_CATALOG.map(t => t.id)
   const tokens = seedVars(theme, accent, density)
 
   return (
@@ -158,7 +133,7 @@ export default function Themes() {
         <PageHeader
           title="主题系统"
           description="选择一套外观基底，再精调主色、层级密度与壁纸；修改会即时应用，保存后同步到所有端。"
-          meta={<span className="text-[11px] text-pi-dim2">当前：{THEME_META[theme]?.label || theme}</span>}
+          meta={<span className="text-[11px] text-pi-dim2">当前：{THEME_BY_ID[theme]?.name || theme}</span>}
         />
 
         <section data-slot="theme-gallery" className="mb-8">
@@ -169,7 +144,7 @@ export default function Themes() {
                 key={id}
                 id={id}
                 active={theme === id}
-                onApply={() => { setTheme(id); toast(`已切换：${THEME_META[id]?.label || id}`, 'ok') }}
+                onApply={() => { setTheme(id); toast(`已切换：${THEME_BY_ID[id]?.name || id}`, 'ok') }}
               />
             ))}
           </div>
@@ -181,7 +156,7 @@ export default function Themes() {
             <div className="rounded-pi-lg border border-pi-border overflow-hidden lg:sticky lg:top-6">
               <div className="p-4 sm:p-5 space-y-3" style={{ background: 'var(--pi-bg)' }}>
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[11px] px-2 py-0.5 rounded-pi-sm" style={{ background: 'var(--pi-accent-soft)', color: 'var(--pi-accent-soft-fg)' }}>{THEME_META[theme]?.label || theme}</span>
+                  <span className="text-[11px] px-2 py-0.5 rounded-pi-sm" style={{ background: 'var(--pi-accent-soft)', color: 'var(--pi-accent-soft-fg)' }}>{THEME_BY_ID[theme]?.name || theme}</span>
                   <span className="text-[11px]" style={{ color: 'var(--pi-dim2)' }}>step {density.toFixed(3)}</span>
                 </div>
                 <div className="max-w-[82%] px-3 py-2 text-[13px] rounded-pi-md" style={{ background: 'var(--pi-bg2)', color: 'var(--pi-text)' }}>
@@ -285,6 +260,11 @@ export default function Themes() {
                   onChange={e => {
                     const f = e.target.files?.[0]
                     if (!f) return
+                    if (f.size > 1.5 * 1024 * 1024) {
+                      toast('图片超过 1.5MB，请压缩后再传或改用 URL', 'error')
+                      e.target.value = ''
+                      return
+                    }
                     const reader = new FileReader()
                     reader.onload = () => setWallpaper(reader.result as string)
                     reader.readAsDataURL(f)

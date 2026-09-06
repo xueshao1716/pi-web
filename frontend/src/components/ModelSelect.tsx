@@ -25,7 +25,7 @@ export function modelLabel(m: Model): string {
 // item 视觉契约：高亮态由 Radix data-highlighted / data-state=checked 驱动
 const ITEM_CLS = 'outline-none flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-colors data-[highlighted]:bg-pi-bg-hover data-[state=checked]:bg-pi-accent/12'
 
-export default function ModelSelect({ compact = false, zClass = 'z-50' }: { compact?: boolean; zClass?: string }) {
+export default function ModelSelect({ compact = false, zClass = 'z-50', side = 'top' }: { compact?: boolean; zClass?: string; side?: 'top' | 'bottom' }) {
   const { models, currentModel, setCurrentModel } = useApp()
 
   const isAuto = currentModel === 'auto/auto'
@@ -65,7 +65,7 @@ export default function ModelSelect({ compact = false, zClass = 'z-50' }: { comp
       </DM.Trigger>
 
       <DM.Portal>
-        <DM.Content data-slot="model-listbox" side="top" align="start" sideOffset={6}
+        <DM.Content data-slot="model-listbox" side={side} align="start" sideOffset={6}
           className={`w-72 max-h-80 overflow-y-auto rounded-pi-lg border border-pi-border bg-pi-bg1/95 shadow-2xl ${zClass}`}
           style={{ animationDuration: '0.15s' }}>
           <DM.RadioGroup value={currentModel} onValueChange={select}>

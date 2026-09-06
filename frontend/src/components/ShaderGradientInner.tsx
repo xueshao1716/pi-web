@@ -18,8 +18,7 @@ export default function ShaderGradientInner() {
           uAmplitude={1.1}
           uFrequency={1.4}
           uDensity={0.9}
-          lightType="env"
-          envPreset="dawn"
+          lightType="3d"
         />
       </ShaderGradientCanvas>
     </div>

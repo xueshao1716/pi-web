@@ -9,17 +9,20 @@ export const COLOR_ERROR = '#ef4444'
 export const COLOR_TOOL_FALLBACK = '#c084fc'
 export const ACCENT_LIGHT = '#6b7dff' // 靛蓝在浅色主题下的提亮变体
 
-// 主题切换器预设（08-23 从 ThemeSwitcher 迁入：色板定义归 theme/ 管辖）
-export const THEME_PRESETS = [
-  { id: 'highLum', name: '银灰', swatch: 'linear-gradient(135deg,#f5f6f8,#ffffff)', light: true, default: true }, // 新默认：高亮低饱和
-  { id: 'deep', name: '深空蓝', swatch: 'linear-gradient(135deg,#080d1a,#121d36)' },
-  { id: 'ink', name: '墨玉黑', swatch: 'linear-gradient(135deg,#000,#1a1a1f)' },
-  { id: 'violet', name: '紫夜', swatch: 'linear-gradient(135deg,#0d0a1a,#251d52)' },
-  { id: 'mist', name: '晨雾', swatch: 'linear-gradient(135deg,#f3f5fa,#ffffff)', light: true },
-  { id: 'kraft', name: '牛皮纸', swatch: 'linear-gradient(135deg,#e5d4aa,#c9a66b)', light: true },
-  { id: 'shuimo', name: '水墨', swatch: 'linear-gradient(135deg,#f7f4ec,#b54334)', light: true },
-  { id: 'bamboo', name: '竹影', swatch: 'linear-gradient(135deg,#f1f5ec,#3f7a50)', light: true },
-]
+// 切换器与主题页共用这一份目录；highLum/deep 仍可经 SEEDS 应用，只是不再单独陈列
+export const THEME_CATALOG = [
+  { id: 'mist', name: '晨雾', desc: '浅色 · 冷靛蓝主色', swatch: 'linear-gradient(135deg,#f3f5fa,#ffffff)', light: true },
+  { id: 'kraft', name: '牛皮纸', desc: '浅色 · 纤维纸面火漆橙', swatch: 'linear-gradient(135deg,#e5d4aa,#b45309)', light: true },
+  { id: 'shuimo', name: '水墨', desc: '浅色 · 宣纸朱砂楷体', swatch: 'linear-gradient(135deg,#f7f4ec,#b54334)', light: true },
+  { id: 'bamboo', name: '竹影', desc: '浅色 · 竹青自然系', swatch: 'linear-gradient(135deg,#f1f5ec,#3f7a50)', light: true },
+  { id: 'wood', name: '拟木', desc: '浅色 · 枫木台面翠绿镶嵌', swatch: 'linear-gradient(135deg,#e8d4b2,#0b8a54)', light: true },
+  { id: 'ink', name: '墨黑', desc: '深色 · 极简石墨', swatch: 'linear-gradient(135deg,#000,#1a1a1f)' },
+  { id: 'violet', name: '紫晶', desc: '深色 · 紫罗兰光晕', swatch: 'linear-gradient(135deg,#0d0a1a,#251d52)' },
+  { id: 'sepia', name: '褐纱', desc: '深色 · 暖褐护眼', swatch: 'linear-gradient(135deg,#171310,#d97706)' },
+  { id: 'moss', name: '苔原', desc: '深色 · 苔绿自然系', swatch: 'linear-gradient(135deg,#0c120e,#3f9e6e)' },
+  { id: 'azure', name: '远岚', desc: '深色 · 天青蓝调', swatch: 'linear-gradient(135deg,#0a101c,#38bdf8)' },
+] as const
+export const THEME_PRESETS = THEME_CATALOG
 export const ACCENT_PRESETS = [
   { name: '靛蓝', color: '#4a58fa' },
   { name: '紫罗兰', color: '#8b7cf6' },

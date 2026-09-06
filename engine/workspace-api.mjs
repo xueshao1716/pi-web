@@ -73,21 +73,76 @@ export function findWorkspaceFiles({ keyword = "", types = null, max = 8, maxDep
 export function wsSafePath(p) {
   return safeJoin(WS_ROOT, p);
 }
+export function looksLikeImageBytes(buf) {
+  if (!buf || buf.length < 8) return false;
+  const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return true; // PNG
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return true; // JPEG
+  if (b.length >= 3 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return true; // GIF
+  if (b.length >= 12 && b.toString("ascii", 0, 4) === "RIFF" && b.toString("ascii", 8, 12) === "WEBP") return true;
+  return false;
+}
+
+export function localDayStamp(now = new Date()) {
+  const d = now instanceof Date ? now : new Date(now);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export function artifactBaseName({ prompt = "", now = new Date() } = {}) {
+  const p = String(prompt || "");
+  let slug = "产物";
+  if (/小语/.test(p) && /少女|半身像/.test(p)) slug = "小语肖像";
+  else {
+    const cleaned = p.replace(/[\\/:*?"<>|\s，。！？、,.]+/g, "").slice(0, 10);
+    if (cleaned) slug = cleaned;
+  }
+  const d = now instanceof Date ? now : new Date(now);
+  const stamp = String(d.getHours()).padStart(2, "0")
+    + String(d.getMinutes()).padStart(2, "0")
+    + String(d.getSeconds()).padStart(2, "0")
+    + "-" + String(d.getMilliseconds()).padStart(3, "0");
+  return `${slug}_${stamp}`;
+}
+
+export function artifactSidecarPath(filePath) {
+  return String(filePath || "").replace(/\.[^.\\/]+$/, "") + ".json";
+}
+
+export function writeArtifactSidecar(filePath, { prompt = "", type = "" } = {}) {
+  const text = String(prompt || "").trim();
+  if (!text || !filePath) return;
+  fs.writeFileSync(artifactSidecarPath(filePath), JSON.stringify({
+    prompt: text.slice(0, 4000),
+    type,
+    ts: new Date().toISOString(),
+  }));
+}
+
+export function readArtifactSidecar(filePath) {
+  try {
+    const j = JSON.parse(fs.readFileSync(artifactSidecarPath(filePath), "utf8"));
+    return String(j.prompt || "").slice(0, 4000);
+  } catch {
+    return "";
+  }
+}
+
 // 媒体产物落盘：远程 URL 下载 / data URL 保存 → 返回本地可访问路径
 export async function saveArtifact(artifact) {
   try {
-    const date = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const date = localDayStamp(now);
     const typeDir = artifact.type === "image" ? "图片" : artifact.type === "audio" ? "音频" : "视频";
     const dir = path.join(WS_ROOT, "生成物", typeDir, date);
     fs.mkdirSync(dir, { recursive: true });
     // 精确到毫秒，避免同一分钟连续生成时静默覆盖前一张。
-    const now = new Date();
-    const ts = now.toTimeString().slice(0, 8).replace(/:/g, "") + "-" + String(now.getMilliseconds()).padStart(3, "0");
     const ext = artifact.type === "image" ? ".png" : artifact.type === "audio" ? ".wav" : ".mp4";
-    const file = path.join(dir, `产物_${ts}${ext}`);
+    const file = path.join(dir, `${artifactBaseName({ prompt: artifact.prompt, now })}${ext}`);
     if (artifact.url.startsWith("data:")) {
       const b64 = artifact.url.split(",")[1];
-      fs.writeFileSync(file, Buffer.from(b64, "base64"));
+      const dataBuf = Buffer.from(b64, "base64");
+      if (artifact.type === "image" && !looksLikeImageBytes(dataBuf)) throw new Error("data URL 不是图片");
+      fs.writeFileSync(file, dataBuf);
     } else if (artifact.url.startsWith("http")) {
       // P0 安全修复：SSRF 防护——禁止下载内网/回环地址
       try {
@@ -106,10 +161,12 @@ export async function saveArtifact(artifact) {
       const buf = r.buffer();
       // 响应体大小限制：50MB（防 OOM）
       if (buf.length > 50 * 1024 * 1024) throw new Error(`下载内容超过 50MB 限制`);
+      if (artifact.type === "image" && !looksLikeImageBytes(buf)) throw new Error("下载内容不是图片（可能是 HTML 错误页）");
       fs.writeFileSync(file, buf);
     } else {
       return artifact.url;
     }
+    writeArtifactSidecar(file, { prompt: artifact.prompt, type: artifact.type });
     console.log(`[pi-web] 产物已落盘: ${file}`);
     // 用签名 URL（免鉴权，24h 有效）——img 标签可直接加载，无需带 token
     try {
@@ -229,11 +286,15 @@ export async function handleWsArtifacts(res) {
   const genDir = path.join(WS_ROOT, "生成物");
   const push = (fp, type, date) => {
     try {
-      if (!fs.statSync(fp).isFile()) return;
+      if (/\.json$/i.test(fp)) return;
+      const st = fs.statSync(fp);
+      if (!st.isFile()) return;
       out.push({
         name: path.basename(fp), type, date,
         path: path.relative(WS_ROOT, fp).replace(/\\/g, "/"),
-        size: fs.statSync(fp).size,
+        size: st.size,
+        mtimeMs: st.mtimeMs,
+        prompt: readArtifactSidecar(fp),
         url: `/api/ws/file?path=${encodeURIComponent(fp)}`,
       });
     } catch {}
@@ -258,7 +319,7 @@ export async function handleWsArtifacts(res) {
       }
     }
   } catch {}
-  out.sort((a, b) => b.date.localeCompare(a.date));
+  out.sort((a, b) => (b.mtimeMs || 0) - (a.mtimeMs || 0) || b.date.localeCompare(a.date));
   json(res, 200, { artifacts: out.slice(0, 500) });
 }
 

@@ -105,6 +105,16 @@ describe("lib/static.mjs 静态资源服务", () => {
     assert.equal(res2.headers["Cache-Control"], "no-cache");
   });
 
+  test("index.html / 根路径即使带 ?v= 也必须 no-cache，不能把整站钉死在旧 bundle", async () => {
+    const s = createStaticServer({ publicDir: tmpDir, mime: MIME });
+    const root = mockRes();
+    await s.handle(mockReq("/?v=novel-pipe"), root);
+    assert.equal(root.headers["Cache-Control"], "no-cache");
+    const html = mockRes();
+    await s.handle(mockReq("/index.html?v=1"), html);
+    assert.equal(html.headers["Cache-Control"], "no-cache");
+  });
+
   test("sw.js 不缓存 + Service-Worker-Allowed 覆盖根", async () => {
     const s = createStaticServer({ publicDir: tmpDir, mime: MIME });
     const res = mockRes();
@@ -120,6 +130,10 @@ describe("lib/static.mjs 静态资源服务", () => {
     assert.equal(r1.file, path.join(tmpDir, "app.js"));
     const r2 = resolveStaticPath(tmpDir, "/");
     assert.equal(r2.file, path.join(tmpDir, "index.html"));
+    fs.mkdirSync(path.join(tmpDir, "workshop-ui"));
+    fs.writeFileSync(path.join(tmpDir, "workshop-ui", "index.html"), "<h1>m3e</h1>");
+    const rDir = resolveStaticPath(tmpDir, "/workshop-ui/");
+    assert.equal(rDir.file, path.join(tmpDir, "workshop-ui", "index.html"));
     // 穿越形态：WHATWG URL 折叠 /.. → 落在 root 内不存在的路径（安全 404）；startsWith 防御是未来改动的兜底
     const r3 = resolveStaticPath(tmpDir, "/../secrets.txt");
     assert.equal(r3.file.startsWith(tmpDir), true);

@@ -290,6 +290,34 @@ body {
 .col-canvas { background: var(--pi-bg); }
 .col-right { background: var(--pi-bg1); }
 
+/* 有壁纸时让壳层半透明，否则实底会把 #pi-wallpaper 完全盖住 */
+body.has-wallpaper {
+  background: transparent;
+}
+body.has-wallpaper #pi-wallpaper {
+  opacity: 0.55;
+}
+body.has-wallpaper .col-sidebar {
+  background: color-mix(in srgb, var(--pi-bg2) 82%, transparent);
+}
+body.has-wallpaper .col-canvas {
+  background: color-mix(in srgb, var(--pi-bg) 48%, transparent);
+}
+body.has-wallpaper .col-right {
+  background: color-mix(in srgb, var(--pi-bg1) 82%, transparent);
+}
+body.has-wallpaper .chat-welcome {
+  background: transparent;
+}
+body.has-wallpaper .mobile-app-root {
+  background: transparent;
+}
+body.has-wallpaper .mobile-tab-bar,
+body.has-wallpaper .mobile-composer {
+  background: color-mix(in srgb, var(--pi-bg1) 88%, transparent);
+  backdrop-filter: blur(12px);
+}
+
 /* ── 欢迎页快捷卡彩色化（08-23）：每张卡自己的强调色，拉彩色占比 */
 .chip-blue   { background: color-mix(in oklab, var(--pi-accent) 10%, transparent);  border-color: color-mix(in oklab, var(--pi-accent) 28%, transparent); }
 .chip-blue:hover   { background: color-mix(in oklab, var(--pi-accent) 18%, transparent); }

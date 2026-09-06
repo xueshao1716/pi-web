@@ -50,6 +50,7 @@ TOKEN=$(python -c "print(open('D:/pi-web/.token').read().strip())")   # .token �
   验证功能进没进产物要 grep 对应 chunk（Workshop-*.js），不是主 index bundle
 - Windows 下 `node server.mjs` 双实例不会端口冲突报错，请求随机分发——查进程数再动
 - 手机端（元枢 Tauri 打包）用的是打包时快照，改前端后需要重新打包才能更新
+- **禁止把探测输出追加进会越写越大的文件**（2026-09-05：某会话把一条 `Select-String ... server.mjs` 死循环写入 `D:\pi-workspace\tmp-routes.txt`，11 小时灌出 128GB，D 盘只剩 0.84GB）。探测落 `D:\pi-workspace\tmp\`，用完立刻删；单文件不许超过 50MB；PowerShell 里 `$_` 会被吃掉，别把命令文本本身写进目标文件再循环读
 
 ## 代码审查要点（review 时按此扫）
 

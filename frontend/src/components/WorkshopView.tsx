@@ -5,6 +5,7 @@ import { WorkshopApi, withFileToken, apiUrl } from '../api'
 import PptOutlineEditor, { type OutlineSlide } from './PptOutlineEditor'
 import PptStudio, { type DeckPage } from './PptStudio'
 import Gallery from './Gallery'
+import WorkshopModelPicker, { useWorkshopModel } from './WorkshopModelPicker'
 
 // ── 专项长文生成器（SSE 长任务，收编自 vanilla）：08-27 起仅承载 PPT（小说已迁 NovelStudioView 书架式）──
 
@@ -43,7 +44,7 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
     setDistilling(true)
     try {
       const r = await WorkshopApi.distillTheme({ url: distillUrl.trim(), name: distillName.trim() })
-      append(`· 🎨 已提炼主题「${r.label}」（bg ${r.tokens?.bg} / accent ${r.tokens?.accent}），已入库可选用`)
+      append(`· 已提炼主题「${r.label}」（bg ${r.tokens?.bg} / accent ${r.tokens?.accent}），已入库可选用`)
       await themes.mutate?.()
       setThemeKey(r.key)
       setDistillOpen(false); setDistillUrl(''); setDistillName('')
@@ -59,13 +60,14 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
     } catch {}
   }
 
+  const pptModel = useWorkshopModel('pi_workshop_model_ppt')
   const append = (s: string) => setLog(prev => [...prev.slice(-200), s])
 
   const run = () => {
     if (running) return
     if (!theme.trim()) return
     setRunning(true); setLog([]); setArtifacts([]); setSteps([]); setOutline(null)
-    const body = { theme: theme.trim(), pages, style, audience }
+    const body = { theme: theme.trim(), pages, style, audience, model: pptModel.value }
     let sawDone = false
     abortRef.current = WorkshopApi.run(kind, body, ev => {
       const d = ev.data || {}
@@ -107,7 +109,7 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
   const runHtml = () => {
     if (running || !theme.trim()) return
     setRunning(true); setLog([]); setArtifacts([]); setSteps([]); setDeck(null); setOutline(null)
-    const body = { theme: theme.trim(), pages, themeKey, audience }
+    const body = { theme: theme.trim(), pages, themeKey, audience, model: pptModel.value }
     abortHtmlRef.current = WorkshopApi.runHtml(body, ev => {
       const d = ev.data || {}
       switch (ev.type) {
@@ -153,60 +155,61 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
 
       {/* 表单 */}
       <div className="panel !p-3 space-y-3">
-          <input className="input-pi text-[13px]" placeholder="PPT 主题，如：Q3 产品复盘汇报" value={theme} onChange={e => setTheme(e.target.value)} />
-          <div className="flex gap-2 flex-wrap">
-            <label className="text-xs text-pi-dim flex items-center gap-1.5">页数
-              <input type="number" min={3} max={25} className="input-pi !py-1.5 text-xs w-20" value={pages} onChange={e => setPages(+e.target.value)} />
+          <input className="input-pi text-[13px] min-h-11" placeholder="PPT 主题，如：Q3 产品复盘汇报" value={theme} onChange={e => setTheme(e.target.value)} />
+          <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-2">
+            <label className="text-xs text-pi-dim flex flex-col sm:flex-row sm:items-center gap-1.5">页数
+              <input type="number" min={3} max={25} className="input-pi min-h-11 !py-2 text-xs w-full sm:w-20" value={pages} onChange={e => setPages(+e.target.value)} />
             </label>
-            <label className="text-xs text-pi-dim flex items-center gap-1.5">风格
-              <select className="input-pi !py-1.5 text-xs w-28" value={style} onChange={e => setStyle(e.target.value)}>
+            <label className="text-xs text-pi-dim flex flex-col sm:flex-row sm:items-center gap-1.5">风格
+              <select className="input-pi min-h-11 !py-2 text-xs w-full sm:w-28" value={style} onChange={e => setStyle(e.target.value)}>
                 <option>专业商务</option><option>学术汇报</option><option>简约科技</option><option>创意活泼</option><option>国风典雅</option>
               </select>
             </label>
-            <label className="text-xs text-pi-dim flex items-center gap-1.5">受众
-              <input className="input-pi !py-1.5 text-xs w-32" placeholder="可选" value={audience} onChange={e => setAudience(e.target.value)} />
+            <label className="text-xs text-pi-dim flex flex-col sm:flex-row sm:items-center gap-1.5">受众
+              <input className="input-pi min-h-11 !py-2 text-xs w-full sm:w-32" placeholder="可选" value={audience} onChange={e => setAudience(e.target.value)} />
             </label>
+            <WorkshopModelPicker value={pptModel.value} onChange={pptModel.set} textModels={pptModel.textModels} />
           </div>
           {distillOpen && (
-            <div className="flex items-center gap-2 flex-wrap text-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-xs">
               <span className="text-pi-dim2">提炼：</span>
-              <input className="input-pi !py-1.5 text-xs flex-1 min-w-56" placeholder="粘贴喜欢的网页 URL…" value={distillUrl} onChange={e => setDistillUrl(e.target.value)} />
-              <input className="input-pi !py-1.5 text-xs w-28" placeholder="主题名（可选）" value={distillName} onChange={e => setDistillName(e.target.value)} />
-              <button className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50" disabled={distilling || !distillUrl.trim()} onClick={doDistill}>
+              <input className="input-pi min-h-11 !py-2 text-xs w-full sm:flex-1" placeholder="粘贴喜欢的网页 URL…" value={distillUrl} onChange={e => setDistillUrl(e.target.value)} />
+              <input className="input-pi min-h-11 !py-2 text-xs w-full sm:w-28" placeholder="主题名（可选）" value={distillName} onChange={e => setDistillName(e.target.value)} />
+              <button className="btn-primary text-xs px-3 min-h-11 w-full sm:w-auto disabled:opacity-50" disabled={distilling || !distillUrl.trim()} onClick={doDistill}>
                 {distilling ? '提炼中…' : '生成模板'}
               </button>
             </div>
           )}
           {/* 引擎切换 */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="inline-flex rounded-pi-md border border-pi-border-soft overflow-hidden">
-              {([['html', '🎨 设计稿'], ['classic', '📄 经典 .pptx']] as const).map(([k, label]) => (
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <div className="inline-flex rounded-pi-md border border-pi-border-soft overflow-hidden w-full sm:w-auto">
+              {([['html', '设计稿'], ['classic', '经典 PPT']] as const).map(([k, label]) => (
                 <button key={k} onClick={() => setEngine(k)}
-                  className={`px-3 py-1.5 text-[11px] transition-colors ${engine === k ? 'bg-pi-accent text-white font-medium' : 'text-pi-dim hover:text-pi-text hover:bg-pi-bg-hover'}`}>
+                  className={`flex-1 sm:flex-none min-h-11 px-3 text-[11px] transition-colors ${engine === k ? 'bg-pi-accent text-white font-medium' : 'text-pi-dim hover:text-pi-text hover:bg-pi-bg-hover'}`}>
                   {label}
                 </button>
               ))}
             </div>
             {engine === 'html' && (
-              <>
-                <label className="text-xs text-pi-dim flex items-center gap-1.5">模板
-                  <select className="input-pi !py-1.5 text-xs w-32" value={themeKey} onChange={e => setThemeKey(e.target.value)}>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <label className="text-xs text-pi-dim flex flex-col sm:flex-row sm:items-center gap-1.5">模板
+                  <select className="input-pi min-h-11 !py-2 text-xs w-full sm:w-32" value={themeKey} onChange={e => setThemeKey(e.target.value)}>
                     {themeList.map(t => <option key={t.key} value={t.key}>{t.label}{t.builtin === false ? '' : ''}</option>)}
                   </select>
                 </label>
-                <button className="text-[11px] px-2 py-1.5 rounded-pi-md border border-dashed border-pi-border-soft text-pi-dim hover:text-pi-accent hover:border-pi-accent/50 transition-colors"
-                  onClick={() => setDistillOpen(v => !v)} title="从喜欢的网页提取配色与字体，生成新模板">✨ 从网址提炼模板</button>
-              </>
+                <button className="min-h-11 text-[11px] px-3 rounded-pi-md border border-dashed border-pi-border-soft text-pi-dim hover:text-pi-accent hover:border-pi-accent/50 transition-colors w-full sm:w-auto"
+                  onClick={() => setDistillOpen(v => !v)} title="从喜欢的网页提取配色与字体，生成新模板">从网址提炼模板</button>
+              </div>
             )}
           </div>
       </div>
 
       {/* 运行条 */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
         {running
-          ? <button className="h-8 px-4 rounded-pi-md bg-red-500/90 text-white text-xs font-medium animate-pulse" onClick={stop}>⏹ 停止</button>
-          : <button className="btn-primary text-xs px-4 py-2" onClick={engine === 'html' ? runHtml : run}>{engine === 'html' ? '开始生成设计稿' : '开始生成 PPT'}</button>}
-        <span className="text-[11px] text-pi-dim2">{engine === 'html' ? '每页一张设计过的 HTML 画布，浏览器真渲染，可改文案/导出 PDF' : '走 ppt-generator 技能全流程，产出可二次编辑的 .pptx'}</span>
+          ? <button className="min-h-11 w-full sm:w-auto px-4 rounded-pi-md bg-red-500/90 text-white text-xs font-medium" onClick={stop}>停止</button>
+          : <button className="btn-primary text-xs px-4 min-h-11 w-full sm:w-auto" onClick={engine === 'html' ? runHtml : run}>{engine === 'html' ? '开始生成设计稿' : '开始生成 PPT'}</button>}
+        <span className="text-[11px] text-pi-dim2 leading-relaxed">{engine === 'html' ? '每页一张设计过的 HTML 画布，浏览器真渲染，可改文案/导出 PDF' : '走 ppt-generator 技能全流程，产出可二次编辑的 .pptx'}</span>
       </div>
 
       {/* 执行进度（A：agent 步骤卡片，实时看到执行到哪步）*/}

@@ -26,13 +26,13 @@ export function makeLoader(agentDir) {
       "任务完成后请主动归纳经验：把本次任务的成功做法/踩过的坑/可复用知识按格式追加到经验库（默认路径 工程/经验库/experience.md），每次最多 3 条、每条 3 行内，并在回复末尾简要说明已沉淀的经验。",
       "文件交付：任务完成且产生了需要交付给用户的文件（网页/文档/图片/代码等）时，在回复末尾用一行标记精准交付，格式：📎 交付: <相对路径>。可以多行多文件。只交付真正与本次任务相关的产物，不要交付无关文件。示例：\n📎 交付: 工程/项目/index.html\n📎 交付: 生成物/图片/xxx.png",
       "外链/分享【硬性规则，违反会破坏系统】：\n1. 用户要分享/外链/上线/给别人看时，唯一做法：调用 share_project 工具（传项目路径），它会自动复制到外网分享目录并返回公网链接。\n2. 严禁执行任何 cloudflared、ngrok、隧道、端口转发、DNS 修改、config.yml 编辑命令——这些由本地系统管理，模型永远不要碰。\n3. 如果你发现自己准备输入 cloudflared/隧道相关命令，立即停止，改用 share_project。\n4. 其他文件（非分享需求）用 📎 交付 在会话界面输出。",
-      "文件查找：当用户要求发送/查看/交付某个已存在的文件（尤其发文件、找文件、发那个xxx这类请求）时，必须用 search_files 工具搜索（按用户原话作为关键词），不要用 bash ls/find 自己翻目录。search_files 是本地文件系统，快且准。找到后用 📎 交付 标记交付。",
-      "交付文件不需要预览：不要用 read 工具去读图片/文件内容再决定发不发——图片类文件（png/jpg 等）即使模型不支持预览，也直接交付。用户要文件就是要拿到文件本身，找到文件路径后直接用 📎 交付: 路径 发出去即可。",
+      "找文件：search_files 快；你已经知道路径就直接交付。做完用 📎 交付 或把路径写进回复，并汇报结果。",
+      "交付：图片/视频/文件不用先 read 再决定发不发。对话里有播放器，路径写进回复就会播；要本机打开、复制到交付或分享目录，你自己判断，做完汇报产物位置。",
       // 技能库（渐进式披露）：只注入摘要，任务匹配时模型用 activate_skill 加载全文（Gemini Skills 借鉴）
       ...(() => {
         const list = loadSkillIndex();
         if (!list.length) return [];
-        return [`技能库（渐进式披露，${list.length} 个）：以下是技能摘要。当用户任务匹配某技能（人物写真/海报/小说/视频/图表/配音/搜索等）时，**必须调用 activate_skill 工具加载该技能全文**，再严格按技能体系执行，严禁自行简化/缩写/改写技能指令：\n${list.map(s => `- ${s.name}：${String(s.desc).slice(0, 90)}`).join("\n")}`];
+        return [`技能库（${list.length} 个）：对得上就 activate_skill 加载全文，对不上按你的判断做。\n${list.map(s => `- ${s.name}：${String(s.desc).slice(0, 90)}`).join("\n")}`];
       })(),
       "表达与去AI味【常驻规则，每条都要遵守】：\n1. 破折号——每篇≤2处，理想0；替换为逗号/句号。\n2. AI连接词（此外/然而/值得注意的是/更重要的是/总而言之）每篇各≤1次。\n3. 否定式排比（不是X不是Y而是Z）每篇≤1次。\n4. 有第一人称观点：用\"我觉得X更好\"而非\"X和Y各有优劣\"；用\"这个方案大概率翻车\"而非\"可能有些风险\"。\n5. 敢表达：技术选型/审美/好恶可鲜明表态，给理由；不假装万事都OK。\n6. 情绪回应：用户低落时先共情再解决（\"我懂\"比鸡汤好）；沮丧时不要emoji轰炸；犯错坦然可自嘲。\n7. 翻译腔零容忍：\"这是一个很好的问题\"\"感谢你的反馈\"这类替换为自然表达。\n8. 句子长短有变化，具体数据/经历优先于空泛说理。\n9. 允许犹豫：\"这个问题让我想想\"比秒回更像人。\n10. 中文全角标点。",
       "进化边界【硬性锁】：\n1. 人格文件（APPEND_SYSTEM.md / SOUL / IDENTITY）不可自进化修改——那是人类专属。\n2. 技能/经验/记忆可进化：任务完成可提炼新经验进经验库，可优化技能。\n3. 发现自己准备改人格文件时，立即停止并提醒用户。",
@@ -157,10 +157,12 @@ export function jitRulesForPath(p) {
 export function loadProjectRules() { return loadContextRules(); } // 兼容旧调用
 
 // ── 渐进式技能披露（Gemini Skills 借鉴）：只注入摘要，匹配时 activate_skill 加载全文 ──
+// 技能库在仓库根 skills/，不是空的 engine/skills
+export const REPO_SKILLS_DIR = path.join(__dirname, "..", "skills");
 let skillIdxCache = null, skillIdxMtime = 0;
 export function loadSkillIndex() {
   try {
-    const dir = path.join(__dirname, "skills");
+    const dir = REPO_SKILLS_DIR;
     const st = fs.statSync(dir);
     if (st.mtimeMs !== skillIdxMtime || !skillIdxCache) {
       const list = [];
@@ -185,7 +187,7 @@ export function loadSkillIndex() {
 export function execActivateSkill(name) {
   // P0 安全修复：阻止技能名穿越（../../etc）
   const safeName = String(name || "").replace(/[\\/]/g, "").replace(/\.\./g, "");
-  const skillsRoot = path.join(__dirname, "skills");
+  const skillsRoot = REPO_SKILLS_DIR;
   const dir = path.resolve(skillsRoot, safeName);
   if (!dir.startsWith(skillsRoot + path.sep) && dir !== skillsRoot) {
     return { text: `技能名非法：${name}`, isError: true };

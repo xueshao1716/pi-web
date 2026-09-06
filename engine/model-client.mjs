@@ -182,7 +182,7 @@ export async function handleDirectChat(res, entry, message, sessionId, writer) {
   writer.push("delta", { text });
   const mediaResults = await mediaPromise;
   for (const mr of mediaResults) {
-    if (!mr) continue;
+    if (!mr?.url) continue;
     if (mr.url) mr.url = await saveArtifact(mr);  // 产物落盘 → 本地路径
     writer.push("media", mr);
   }
@@ -192,9 +192,18 @@ export async function handleDirectChat(res, entry, message, sessionId, writer) {
 
 // 上下文压缩 v2（借鉴 Claude Code 摘要式压缩）：历史超限时用模型生成"结构化摘要"替换旧消息
 // 保留六类关键信息（Claude 同款：意图/技术概念/文件路径命令/错误修复/已完成/待办），支持定向焦点（/compact focus on X）
-export async function maybeCompactHistory(history, model, focus = "") {
+export function needsMidLoopCompact(history, { turn = 0, lastCompactTurn = 0 } = {}) {
+  if (!Array.isArray(history) || turn - lastCompactTurn < 6) return false;
+  const chars = history.reduce((n, m) => n + String(m.content || "").length, 0);
+  if (history.length >= 16 && chars >= 20000 && turn >= 8) return true;
+  return turn >= 8 && chars >= 40000;
+}
+
+export async function maybeCompactHistory(history, model, focus = "", opts = {}) {
   const total = history.reduce((n, m) => n + String(m.content || "").length, 0);
-  if (history.length < 12 || total < 80000) return history;
+  const minMessages = opts.minMessages ?? 12;
+  const minChars = opts.minChars ?? 80000;
+  if (history.length < minMessages || total < minChars) return history;
   const keep = history.slice(-10);
   const old = history.slice(0, -10);
   const oldText = old.map(m => `${m.role}: ${typeof m.content === "string" ? m.content.slice(0, 800) : "(工具调用)"}`).join("\n");

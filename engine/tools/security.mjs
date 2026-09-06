@@ -15,6 +15,8 @@ export const USER_DENY_PATTERNS = [
   { id: "no-force-git", re: /\bgit\b[^\n]*\b(push\s+(-f|--force)|reset\s+--hard|clean\s+-[a-z]*f|checkout\s+--\s+\.|rebase\s+--force|filter-branch)\b/i },
   { id: "no-system-mutate", re: /\b(reg\s+delete|netsh\s+.*(add|delete|set)|net\s+user|sc\s+delete|diskpart|format\s+[a-zA-Z]:|bcdedit|takeown|icacls\s+.*\/(grant|deny)|taskkill\s+\/f\s+\/pid\s+0)\b/i },
   { id: "no-secrets-write", re: /(\b|\\|\.)(token|secret|password|api[_-]?key)\b[^\n]*(>|>>|set\s+[A-Z_]+=|echo)/i },
+  { id: "no-second-server", re: /\b(vite(\.js)?\b[\s\S]{0,80}--port\s*5173|\bnode(?:\.exe)?\s+server\.mjs\b)/i },
+  { id: "no-self-image-api", re: /\b(curl|wget|Invoke-WebRequest|\birm\b|\biwr\b)\b[\s\S]{0,400}\/api\/image\b/i },
 ];
 
 // ── 受保护路径（仓库法律：只读不写，写操作直接拒绝）──

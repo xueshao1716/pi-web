@@ -61,6 +61,7 @@ export async function api<T = any>(path: string, opts: any = {}): Promise<T> {
       let emsg: string
       if (data && typeof data.error === 'string') emsg = data.error
       else if (data && data.error && typeof data.error === 'object') emsg = (data.error.message ? `[${data.error.kind || 'error'}] ` : '') + (data.error.message || JSON.stringify(data.error))
+      else if (r.status === 524) emsg = '网关等不及出片（524）。请短轮询任务，不要一条请求干等。'
       else emsg = `HTTP ${r.status}`
       const err = new Error(emsg); (err as any).status = r.status; throw err
     }
@@ -78,7 +79,13 @@ export const ModelsApi = {
 export const SessionsApi = {
   list: () => api<{ sessions: Session[] }>('/api/sessions'),
   create: (name?: string) => api<{ id: string; name: string }>('/api/sessions', { method: 'POST', body: { name } }),
-  messages: (sid: string) => api<SessionMessages>(`/api/sessions/${encodeURIComponent(sid)}/messages`),
+  messages: (sid: string, opts?: { leafId?: string | null; tail?: number }) => {
+    const q = new URLSearchParams()
+    if (opts?.leafId) q.set('leafId', opts.leafId)
+    if (opts?.tail != null) q.set('tail', String(opts.tail))
+    const qs = q.toString()
+    return api<SessionMessages>(`/api/sessions/${encodeURIComponent(sid)}/messages${qs ? `?${qs}` : ''}`)
+  },
   rename: (sid: string, name: string) => api<{ ok: boolean }>(`/api/sessions/${encodeURIComponent(sid)}/rename`, { method: 'POST', body: { name } }),
   remove: (sid: string) => api<{ ok: boolean }>(`/api/sessions/${encodeURIComponent(sid)}`, { method: 'DELETE' }),
   stats: (sid: string) => api<any>(`/api/sessions/${encodeURIComponent(sid)}/stats`),
@@ -270,14 +277,19 @@ export const LingXiApi = {
 // ── 主题偏好跨端同步（08-26：一端更新，各端打开拉取一致）──
 export const ThemeApi = {
   get: () => api<{ theme: string; accent: string; wallpaper: string }>('/api/theme-prefs'),
-  save: (theme: string, accent: string, wallpaper: string = '') =>
-    api<{ theme: string; accent: string; wallpaper: string }>('/api/theme-prefs', { method: 'POST', body: { theme, accent, wallpaper } }),
+  save: (theme: string, accent: string, wallpaper?: string) => {
+    const body: { theme: string; accent: string; wallpaper?: string } = { theme, accent }
+    if (wallpaper !== undefined) body.wallpaper = wallpaper
+    return api<{ theme: string; accent: string; wallpaper: string }>('/api/theme-prefs', { method: 'POST', body })
+  },
 }
 
 // ── 出图（自动落盘生成物/图片/日期，资产库联动）──
 export const MediaApi = {
   image: (body: { provider: string; modelId: string; prompt: string; size?: string }) =>
     api<{ image?: string; error?: string }>('/api/image', { method: 'POST', body, timeoutMs: 190000 }),
+  video: (body: { provider: string; modelId: string; prompt?: string; seconds?: string; size?: string; aspect_ratio?: string; mode?: string; task_id?: string }) =>
+    api<{ video?: string; error?: string; task_id?: string; status?: string }>('/api/media', { method: 'POST', body, timeoutMs: 70000 }),
 }
 
 // ── 专项工作台（SSE 长任务：PPT/小说生成，事件 note/delta/file/done/error）──
@@ -515,6 +527,9 @@ export const SystemApi = {
 export const EngineApi = {
   status: () => api<any>('/api/engine/status'),
   tools: () => api<{ tools: { name: string; description: string }[]; count: number; dsh: boolean; skill: boolean }>('/api/engine/tools'),
+  pair: () => api<{ primary: string; secondary: string; catalog: { id: string; label: string; canLead: boolean; desc: string; intro?: string; can?: string[]; cannot?: string[] }[]; lead: string; deferred: string | null }>('/api/engine/pair'),
+  savePair: (body: { primary?: string; secondary?: string; swap?: boolean }) =>
+    api<{ primary: string; secondary: string; lead: string; deferred: string | null; error?: string }>('/api/engine/pair', { method: 'POST', body }),
   registerPlugin: (def: any) => api<any>('/api/engine/plugins/register', { method: 'POST', body: def }),
   unregisterPlugin: (id: string) => api<any>('/api/engine/plugins/unregister', { method: 'POST', body: { id } }),
 }

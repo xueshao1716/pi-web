@@ -4,9 +4,11 @@
 import path from "node:path";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { validateSlides, findSlidesJson, appendHistory, readHistory } from "./workshop-ppt-core.mjs";
 import { lintDeck, lintPage } from "./slides-lint-core.mjs";
 import { readThemeCss } from "./ppt-html-paths.mjs";
+import { pickWorkshopModel } from "./workshop-model.mjs";
 import { attachSseAbort } from "./ppt-refine.mjs";
 export { handlePptRefine } from "./ppt-refine.mjs";
 
@@ -36,10 +38,12 @@ export async function findSkillPath(ctx, name) {
     if (s?.filePath) return s.filePath;
   } catch {}
   // 回退：多目录搜索（pi 引擎扫描范围外的地方装技能）——技能仓库可能新增，候选逐个探测
-  const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]):/, "$1"));
+  const here = path.dirname(fileURLToPath(import.meta.url));
   const os = await import("node:os");
   const fallbackDirs = [
-    path.join(here, "skills"),                            // pi-web 内置 engine/skills/
+    path.join(here, "skills"),                            // engine/skills/
+    path.join(here, "..", "skills"),                      // 仓库根 skills/（novel-forge-v10）
+    ctx?.CONFIG?.cwd ? path.join(ctx.CONFIG.cwd, "skills") : "",
     path.join(os.homedir(), ".agents", "skills"),          // 用户级 .agents/skills/（ppt-generator 等在这）
     process.env.PI_SKILL_EXTRA_DIR || "",
     process.env.PI_NOVEL_FORGE_DIR || "",
@@ -63,6 +67,7 @@ export async function handleWorkshopPpt(ctx, res, body) {
   const pages = Math.min(Math.max(parseInt(body?.pages, 10) || 10, 3), 25);
   const style = String(body?.style || "专业商务").slice(0, 20);
   const audience = String(body?.audience || "").slice(0, 40);
+  const picked = pickWorkshopModel(ctx, body) || defaultModel;
   const skillPath = await findSkillPath(ctx, "ppt-generator");
   if (!skillPath) return json(res, 500, { error: "未找到 ppt-generator 技能" });
   // findSkillPath 返回 SKILL.md 文件路径（loader 的 filePath 是文件）→ skillDir 才是技能根目录
@@ -78,7 +83,7 @@ export async function handleWorkshopPpt(ctx, res, body) {
   let timer = null;
   let finished = false;
   try {
-    agent = await createSessionAgent(sm, defaultModel);
+    agent = await createSessionAgent(sm, picked);
     write("note", { text: "🧠 已启动七角色协作流程（主题→模板→内容→配图→润色→构建）…" });
     const unsub = agent.subscribe((ev) => {
       try {
@@ -246,6 +251,7 @@ export async function handleWorkshopPptHtml(ctx, res, body) {
   const pages = Math.min(Math.max(parseInt(body?.pages, 10) || 8, 3), 20);
   const themeKey = ["navy", "magazine", "dark", "riso"].includes(body?.themeKey) ? body.themeKey : "navy";
   const audience = String(body?.audience || "").slice(0, 40);
+  const picked = pickWorkshopModel(ctx, body) || defaultModel;
   const skillPath = await findSkillPath(ctx, "ppt-html");
   if (!skillPath) return json(res, 500, { error: "未找到 ppt-html 技能" });
   const skillDir = path.dirname(skillPath);
@@ -262,7 +268,7 @@ export async function handleWorkshopPptHtml(ctx, res, body) {
   let timer = null;
   let finished = false;
   try {
-    agent = await createSessionAgent(sm, defaultModel);
+    agent = await createSessionAgent(sm, picked);
     const unsub = agent.subscribe((ev) => {
       try {
         if (ev.type === "tool_execution_start") {

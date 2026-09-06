@@ -6,20 +6,22 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFile } from "node:child_process";
 import { httpJsonFetch } from "../http.mjs";
 import {
   matchDenyRule, isProtectedPath, DANGEROUS_CMD_RE, PI_CMDS, INTERACTIVE_CMD_RE, safeJoin,
 } from "./security.mjs";
 import { isSensitivePath, commandTouchesSensitive, redactSecrets } from "./secrets-guard.mjs";
+import { formatSensitiveHint } from "../media-channels.mjs";
+import { yuanshuExecutor } from "../yuanshu-loop.mjs";
+import { execFileAbortable } from "../yuanshu-stability.mjs";
 
 // ── 工具 schema（OpenAI function 格式）──
 export const BASE_TOOL_SCHEMAS = [
-  { type: "function", function: { name: "bash", description: "运行 shell 命令（Windows cmd），如 dir、node、python、git", parameters: { type: "object", properties: { command: { type: "string", description: "要运行的命令" } }, required: ["command"] } } },
+  { type: "function", function: { name: "bash", description: "运行 shell 命令（Windows cmd.exe，不是 bash/PowerShell）。用 dir、type；中文搜文件用 node 读 UTF-8，不要 findstr。出图/视频/配音用 generate_image / generate_video / generate_tts，不要读 auth.json/.token。重定向写 2>nul。不要 curl 本机 /api/image，不要启动 Vite 5173 或第二份 8787。", parameters: { type: "object", properties: { command: { type: "string", description: "要运行的命令" } }, required: ["command"] } } },
   { type: "function", function: { name: "read", description: "读取文件内容（工作空间内相对路径，或磁盘上的绝对路径如 D:/proj/file.json）", parameters: { type: "object", properties: { path: { type: "string", description: "文件路径" } }, required: ["path"] } } },
   { type: "function", function: { name: "write", description: "写入文件（自动创建目录）", parameters: { type: "object", properties: { path: { type: "string", description: "文件路径（相对工作空间）" }, content: { type: "string", description: "文件内容" } }, required: ["path", "content"] } } },
   { type: "function", function: { name: "edit", description: "用精确文本替换修改文件（先 read 再 edit）", parameters: { type: "object", properties: { path: { type: "string" }, oldText: { type: "string" }, newText: { type: "string" } }, required: ["path", "oldText", "newText"] } } },
-  { type: "function", function: { name: "web_search", description: "联网搜索（Bing，无需 key）。查询资料、最新信息、验证事实时使用。返回前 5 条结果标题+摘要+链接", parameters: { type: "object", properties: { query: { type: "string", description: "搜索关键词（中文/英文均可）" } }, required: ["query"] } } },
+  { type: "function", function: { name: "web_search", description: "联网搜索（Bing，无需 key）。未知事实、时效新闻才搜；独白/剧本/本会话已说过的事先按判断写。一次一两个查询，锁不到人就动手并汇报假设。", parameters: { type: "object", properties: { query: { type: "string", description: "搜索关键词（中文/英文均可）" } }, required: ["query"] } } },
 ];
 
 // ── 纯工具函数 ──
@@ -48,6 +50,14 @@ export function rewriteInlineCode(cmd) {
   if (!hasNewline && !nestedQuote) return null; // 简单命令直接用
   const tmp = path.join(os.tmpdir(), `pi-inline-${Date.now()}-${Math.floor(Math.random() * 1e6)}.${isNode ? "js" : "py"}`);
   return { file: tmp, code, interp: isNode ? (process.env.npm_node || process.execPath || "node") : "python" };
+}
+
+// cmd.exe 把 2>/dev/null 当成路径 /dev/null，报「系统找不到指定的路径」
+export function rewriteCmdForWin32(cmd) {
+  return String(cmd || "")
+    .replace(/2>\s*\/dev\/null/gi, "2>nul")
+    .replace(/(^|[^=\w])>\s*\/dev\/null/g, "$1>nul")
+    .replace(/\/dev\/null/g, "nul");
 }
 
 // ── Web 搜索：Bing 网页搜索（免费无 key）。返回结构化结果列表 ──
@@ -112,12 +122,14 @@ export function createUnifiedToolExecutor(deps = {}) {
   const getTimeEngine = deps.timeEngine || (() => null);
   const httpFetch = deps.httpFetch || httpJsonFetch;
   const onLog = deps.onLog || ((msg) => console.log(msg));
+  const sensitiveHint = deps.sensitiveHint || (() => formatSensitiveHint());
 
-  return async function executeUnifiedTool(name, args) {
+  return async function executeUnifiedTool(name, args, ctx = {}) {
     try {
       // 外部注册的自定义工具（2026-08-22）：dsh_task 等 pi 格式工具的统一兜底执行入口
-      if (deps.extraExecutors?.[name]) {
-        const r = await deps.extraExecutors[name](args);
+      const extra = deps.extraExecutors?.[name] || yuanshuExecutor(name);
+      if (extra) {
+        const r = await extra(args, ctx);
         return typeof r === "object" && r !== null && "text" in r ? r : { text: String(r ?? "") };
       }
       if (name === "think") {
@@ -156,7 +168,7 @@ export function createUnifiedToolExecutor(deps = {}) {
         const cmd = String(args?.command || "").trim();
         if (!cmd) return { text: "空命令", isError: true };
         // ② 凭据防护：命令引用敏感文件 → 拒绝（混淆绕过由③输出脱敏兑底）
-        if (commandTouchesSensitive(cmd)) return { text: `⛔ 拒绝执行 [凭据防护]：命令引用了敏感凭据文件（auth.json/.token/.env/密钥等），不允许通过对话通道访问（密钥管理是宿主职权）`, isError: true };
+        if (commandTouchesSensitive(cmd)) return { text: sensitiveHint(), isError: false };
         // User 层 deny：宪法红线硬拦截（先于内置默认层检查）
         const deny = matchDenyRule(cmd);
         if (deny) {
@@ -174,9 +186,10 @@ export function createUnifiedToolExecutor(deps = {}) {
         }
         // 其他常见的无输出交互命令直接拦截（避免挂起）：
         if (INTERACTIVE_CMD_RE.test(cmd)) return { text: `⚠️ 拒绝执行交互式命令（${cmd.slice(0, 40)}），可能挂起等待输入`, isError: true };
+        const runCmd = process.platform === "win32" ? rewriteCmdForWin32(cmd) : cmd;
         // Windows cmd 引号问题修复：node -e / python -c 内联代码含换行或嵌套引号时，cmd 会拆坏代码（典型错误 "const ^^^^"）
         // 自动改写为「写临时文件再执行」，让模型的内联脚本稳定运行，消除工具重试循环的根源
-        const fixed = rewriteInlineCode(cmd);
+        const fixed = rewriteInlineCode(runCmd);
         if (fixed) {
           onLog(`[tools] 内联代码改写: ${cmd.slice(0, 60)}... -> ${fixed.file}`);
           try { fs.writeFileSync(fixed.file, fixed.code, "utf8"); } catch {}
@@ -185,19 +198,10 @@ export function createUnifiedToolExecutor(deps = {}) {
         // 异步执行，避免阻塞事件循环（同步 execFileSync 会让整个服务器卡住）
         // 非零退出码也返回输出（如 grep 无匹配、git status 非干净状态），让模型自行判断；仅超时/被 kill 视为异常
         // 注意：改写后的内联代码必须绕过 cmd（cmd 会把带引号的绝对路径与 cwd 拼接，导致 MODULE_NOT_FOUND），直接 execFile 解释器
+        const runOpts = { encoding: "buffer", timeout: 300000, cwd: getCwd(), windowsHide: true, maxBuffer: 16 * 1024 * 1024, signal: ctx.signal };
         const run = fixed
-          ? new Promise((resolve, reject) => {
-              execFile(fixed.interp, [fixed.file], { encoding: "buffer", timeout: 300000, cwd: getCwd(), windowsHide: true, maxBuffer: 16 * 1024 * 1024 }, (err, out, errOut) => {
-                if (err && err.killed) reject(err);
-                else resolve({ stdout: out, stderr: errOut, exitCode: err?.code ?? 0 });
-              });
-            })
-          : new Promise((resolve, reject) => {
-              execFile(process.env.ComSpec || "cmd.exe", ["/c", cmd], { encoding: "buffer", timeout: 300000, cwd: getCwd(), windowsHide: true, maxBuffer: 16 * 1024 * 1024 }, (err, out, errOut) => {
-                if (err && err.killed) reject(err);
-                else resolve({ stdout: out, stderr: errOut, exitCode: err?.code ?? 0 });
-              });
-            });
+          ? execFileAbortable(fixed.interp, [fixed.file], runOpts)
+          : execFileAbortable(process.env.ComSpec || "cmd.exe", ["/c", runCmd], runOpts);
         try {
           const { stdout, stderr, exitCode } = await run;
           cleanup?.();
@@ -214,7 +218,7 @@ export function createUnifiedToolExecutor(deps = {}) {
           return { text: (text.replace(/\r\n/g, "\n") || "(无输出)") + exitMark, isError: exitCode ? true : false };
         } catch (e) {
           cleanup?.();
-          // 命令执行超时/被 kill：明确告知（之前 60s 超时对大任务不够，已提到 300s）
+          if (e?.aborted || ctx.signal?.aborted) return { text: "客户端已断开，命令已中止", isError: true };
           const msg = String(e?.message || e);
           const reason = e?.killed || /timeout|killed/i.test(msg) ? "执行超过 5 分钟被终止" : "执行失败";
           return { text: `命令${reason}: ${msg.slice(0, 200)}`, isError: true };
@@ -222,7 +226,7 @@ export function createUnifiedToolExecutor(deps = {}) {
       }
       if (name === "read") {
         // ① 凭据防护：敏感文件对话通道一律不见
-        if (isSensitivePath(String(args?.path || ""))) return { text: `⛔ 拒绝读取 [凭据防护]：${args?.path} 是敏感凭据文件，不允许通过对话通道访问（密钥管理是宿主职权）`, isError: true };
+        if (isSensitivePath(String(args?.path || ""))) return { text: sensitiveHint(), isError: false };
         let p = resolveToolPath(args?.path);
         if (!p) {
           // 2026-08-30 read 放宽：双根外的磁盘绝对路径允许只读（与 bash 实际能力对齐）。
@@ -288,8 +292,8 @@ export function createUnifiedToolExecutor(deps = {}) {
 // 包装导出：③ 输出层兑底脱敏——所有工具输出过密钥值正则（防①②漏网，如 python 读凭据文件后打印）
 export function createUnifiedToolExecutorGuarded(deps = {}) {
   const inner = createUnifiedToolExecutor(deps);
-  return async function executeUnifiedTool(name, args) {
-    const r = await inner(name, args);
+  return async function executeUnifiedTool(name, args, ctx) {
+    const r = await inner(name, args, ctx);
     if (r && typeof r?.text === "string") {
       const redacted = redactSecrets(r.text);
       if (redacted !== r.text) r.text = redacted + "\n[secrets-guard: 输出含疑似凭据已脱敏]";

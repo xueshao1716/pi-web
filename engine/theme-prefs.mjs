@@ -25,7 +25,13 @@ export function loadThemePrefs() {
 
 // 写：白名单字段，原子写；返回规范化对象
 export function saveThemePrefs(obj) {
-  const t = { theme: String(obj?.theme || "mist"), accent: String(obj?.accent || ""), wallpaper: String(obj?.wallpaper || "") }
+  const prev = loadThemePrefs()
+  const hasWallpaper = Object.prototype.hasOwnProperty.call(obj || {}, "wallpaper")
+  const t = {
+    theme: String(obj?.theme || prev.theme || "mist"),
+    accent: typeof obj?.accent === "string" ? obj.accent : prev.accent,
+    wallpaper: hasWallpaper ? String(obj.wallpaper || "") : prev.wallpaper,
+  }
   if (_file) { try { atomicWriteJson(_file, t) } catch {} }
   return t
 }

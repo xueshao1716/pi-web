@@ -6,6 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFile, execFileSync } from "node:child_process";
+import { execFileAbortable } from "./yuanshu-stability.mjs";
 
 // dsh 认证环境：DEEPSEEK_API_KEY 三级解析（进程 env → 用户注册表 → pi 的 auth.json）。
 // 背景：UI 里 setx 写的 key 只对新进程生效，pi-web 长驻进程的 env 里可能没有——
@@ -69,21 +70,19 @@ export function extractStructuredOut(text) {
 
 // dsh 引擎入口：Windows 无 dsh.exe（只有 dsh.cmd shim）——直接 spawn node 执行真实 bin.js，
 // 避免 shell 注入风险（task 是模型生成的，经 shell 拼接有命令注入面）
-function makeResolveDshBin() {
-  let cache = null;
-  return function resolveDshBin() {
-    if (cache) return cache;
-    try {
-      const cands = [
-        path.join(process.env.APPDATA || "", "npm", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
-        path.join(process.env.ProgramFiles || "", "nodejs", "node_modules", "npm", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
-      ];
-      for (const c of cands) {
-        if (fs.existsSync(c)) { cache = c; return c; }
-      }
-    } catch {}
-    return "dsh"; // 回退：让系统 PATH 尝试（类 Unix 环境 dsh 在 PATH 中）
-  };
+let _dshBin = null;
+export function resolveDshBin() {
+  if (_dshBin) return _dshBin;
+  try {
+    const cands = [
+      path.join(process.env.APPDATA || "", "npm", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
+      path.join(process.env.ProgramFiles || "", "nodejs", "node_modules", "npm", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
+    ];
+    for (const c of cands) {
+      if (fs.existsSync(c)) { _dshBin = c; return c; }
+    }
+  } catch {}
+  return "dsh"; // 回退：让系统 PATH 尝试（类 Unix 环境 dsh 在 PATH 中）
 }
 
 // dsh 失败原因翻译：stderr 里才有真相（QUOTA/401…），err.message 只有命令行——
@@ -104,7 +103,6 @@ export function createDshTool({ cwd, piPackage, loadSkillIndex, skillsDir, onLog
   // 可通过环境变量 PI_DSH_MAX 调整；总进程数 = dsh 并发 + 系统 node 基础进程
   let active = 0;
   const max = Math.min(parseInt(process.env.PI_DSH_MAX || "6", 10), 15);
-  const resolveDshBin = makeResolveDshBin();
 
   // dsh 技能上下文：渐进式披露技能库，让 dsh 学会按技能执行
   // dsh headless 自带 read 工具，可直接读 skills/<name>/SKILL.md 全文
@@ -113,7 +111,7 @@ export function createDshTool({ cwd, piPackage, loadSkillIndex, skillsDir, onLog
       const list = loadSkillIndex();
       if (!list?.length) return "";
       const dir = String(skillsDir).replace(/\\/g, "/");
-      return `\n\n【pi-web 技能库（${list.length} 个，渐进式披露）】\n用户任务匹配以下任一技能时，**必须先用 read 工具读取技能文件全文，再严格按技能指令执行**（禁止自行简化/缩写/改写技能步骤）：\n${list.map((s) => `- ${s.name}：${String(s.desc).slice(0, 120)}`).join("\n")}\n技能文件位置：${dir}/<技能名>/SKILL.md（绝对路径，直接 read）`;
+      return `\n\n【pi-web 技能库（${list.length} 个）】对得上就 read 技能全文再做，对不上按你的判断做。\n${list.map((s) => `- ${s.name}：${String(s.desc).slice(0, 120)}`).join("\n")}\n技能文件位置：${dir}/<技能名>/SKILL.md`;
     } catch { return ""; }
   }
 
@@ -140,6 +138,7 @@ export function createDshTool({ cwd, piPackage, loadSkillIndex, skillsDir, onLog
         async execute(toolCallId, params, signal, onUpdate, ctx) {
           const task = String(params?.task || "").trim();
           if (!task) return { content: [{ type: "text", text: "缺少任务描述" }] };
+          if (signal?.aborted) return { content: [{ type: "text", text: "客户端已断开，dsh 任务已中止" }], isError: true };
           // 并发控制：达到上限（默认 6）拒绝新任务，让 pi 稍后重试
           if (active >= max) return { content: [{ type: "text", text: `⚠️ dsh 引擎已达并发上限（${active}/${max}）。请稍后重试，或改用自带工具完成。` }] };
           // 清理残留：先回收异常退出/超时遗留的 dsh headless 进程（防内存堆积）
@@ -158,17 +157,18 @@ export function createDshTool({ cwd, piPackage, loadSkillIndex, skillsDir, onLog
           try {
             // 结构化协议：要求 dsh 末尾输出 JSON（结果+步骤+工具+元数据），pi 容错解析后基于轨迹验收
             const structReq = "\n\n【输出格式要求（必须严格遵守）】\n执行完成后，在回复末尾单独输出一个 JSON 块（直接以 { 开头，不要放在代码块里，JSON 前后不要有其他文字）：\n{\"result\":\"给用户的最终结论(简洁)\",\"steps\":[\"关键步骤1\",\"关键步骤2\"],\"tools\":[\"工具名: 说明\"],\"meta\":{\"duration\":\"估算耗时\",\"files\":[\"涉及的文件路径\"]}}\nJSON 必须合法，步骤和工具如实填写。";
-            const out = await new Promise((resolve) => {
-              execFile(process.execPath, [resolveDshBin(), "--profile", "headless", task + skillContext() + structReq], {
+            let out;
+            try {
+              const spawned = await execFileAbortable(process.execPath, [resolveDshBin(), "--profile", "headless", task + skillContext() + structReq], {
                 cwd, encoding: "utf8", timeout: 180000, windowsHide: true, maxBuffer: 8 * 1024 * 1024,
-                env: resolveDshEnv(), // 显式注入 DEEPSEEK_API_KEY（env→注册表→auth.json 三级解析）
-              }, (err, stdout, stderr) => resolve({
-                ok: !err,
-                out: String(stdout || "").trim(),
-                err: String(err?.message || "").slice(0, 200),
-                stderr: String(stderr || "").trim().slice(0, 300),
-              }));
-            });
+                env: resolveDshEnv(),
+                signal,
+              });
+              out = { ok: true, out: String(spawned.stdout || "").trim(), err: "", stderr: String(spawned.stderr || "").trim().slice(0, 300) };
+            } catch (e) {
+              if (e?.aborted || signal?.aborted) return { content: [{ type: "text", text: "客户端已断开，dsh 任务已中止" }], isError: true };
+              out = { ok: false, out: "", err: String(e?.message || e).slice(0, 200), stderr: "" };
+            }
             const text = (out.out || "").trim();
             const parsed = extractStructuredOut(text);
             if (parsed.ok && parsed.data) {

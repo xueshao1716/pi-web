@@ -30,7 +30,7 @@ function turnStats(turn: Turn) {
   let tools = 0, artifacts = 0
   for (const m of turn.rest) {
     tools += m.tools?.length || 0
-    artifacts += (m.files?.length || 0) + (m.images?.length || 0) + (m.audios?.length || 0)
+    artifacts += (m.files?.length || 0) + (m.images?.length || 0) + (m.audios?.length || 0) + (m.videos?.length || 0)
   }
   return { tools, artifacts }
 }

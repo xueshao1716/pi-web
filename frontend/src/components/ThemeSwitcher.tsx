@@ -1,28 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { Palette } from 'lucide-react'
-import { THEME_PRESETS as THEMES, ACCENT_PRESETS as ACCENTS } from '../theme/palettes'
-import { applyThemeVars } from '../theme/apply'
+import { THEME_CATALOG, ACCENT_PRESETS as ACCENTS } from '../theme/palettes'
+import { applyThemeVars, currentTheme } from '../theme/apply'
+import { persistWallpaper } from '../theme/wallpaper.mjs'
 import { ThemeApi } from '../api'
 // 主题预设：data-theme 属性驱动（styles.css [data-theme] 变量覆盖）；色板定义在 theme/palettes.ts
 // ⚠️ 08-26 单一真源：主色自定义 = generateTheme(seed) 派生整套色板写 CSS 变量（非只改 3 个），
 //    与 WebglBackdrop 联动（派生后 --pi-accent/--pi-accent2 变化 → 背景自动跟随）
 
 // 默认主题「晨雾」(mist)：08-26 用户拍板白色主色。一次性迁移：老默认 'deep' 自动切到 mist（打标记后不再覆盖显式选择）
-const DEFAULT_THEME = 'mist'
-function initialTheme(): string {
-  try {
-    const stored = localStorage.getItem('pi_theme')
-    if (stored == null) return DEFAULT_THEME
-    if (stored === 'deep' && !localStorage.getItem('pi_theme_migrated')) {
-      localStorage.setItem('pi_theme_migrated', '1')
-      return DEFAULT_THEME
-    }
-    return stored
-  } catch { return DEFAULT_THEME }
-}
 export default function ThemeSwitcher() {
-  const [theme, setTheme] = useState(initialTheme)
-  const [accent, setAccent] = useState(() => { try { return localStorage.getItem('pi_accent') || '' } catch { return '' } })
+  const [theme, setTheme] = useState(() => currentTheme().theme)
+  const [accent, setAccent] = useState(() => currentTheme().accent)
   const [menuOpen, setMenuOpen] = useState(false)
   // 跨组件同步（08-29）：ThemesPage 改主题时广播 pi-theme-changed，这里同步 state 避免显示漂移
   useEffect(() => {
@@ -42,6 +31,7 @@ export default function ThemeSwitcher() {
       if (!alive || !d) return
       if (d.theme) setTheme(d.theme)
       setAccent(d.accent || '')
+      if (typeof d.wallpaper === 'string' && d.wallpaper) persistWallpaper(d.wallpaper)
     }).catch(() => {}).finally(() => { if (alive) { remoteReady.current = true } })
     return () => { alive = false }
   }, [])
@@ -50,7 +40,7 @@ export default function ThemeSwitcher() {
     ThemeApi.save(theme, accent).catch(() => {})
   }, [theme, accent])
 
-  // 应用主题：走 applyThemeVars，与主题页同源（含 shuimo/bamboo 的 data-theme）
+  // 应用主题：走 applyThemeVars，与主题页同源（含 shuimo/bamboo/wood 的 data-theme）
   useEffect(() => {
     applyThemeVars(theme, accent)
     try { localStorage.setItem('pi_theme', theme) } catch {}
@@ -65,14 +55,14 @@ export default function ThemeSwitcher() {
         onClick={() => setMenuOpen(!menuOpen)}>
         <Palette className="w-[18px] h-[18px]" strokeWidth={1.8} />
         <span className="absolute bottom-1 right-1 w-2 h-2 rounded-full border border-pi-bg2"
-          style={{ background: THEMES.find(t => t.id === theme)?.swatch }} />
+          style={{ background: THEME_CATALOG.find(t => t.id === theme)?.swatch }} />
       </button>
       {menuOpen && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
           <div className="absolute left-0 bottom-11 z-20 panel p-2 flex flex-col gap-1 w-44">
             <div className="text-[10px] text-pi-dim2 px-2 pt-0.5 pb-1 font-semibold">主题</div>
-            {THEMES.map(t => (
+            {THEME_CATALOG.map(t => (
               <button key={t.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-pi-sm hover:bg-pi-bg3 text-xs ${theme === t.id ? 'text-pi-text' : 'text-pi-dim'}`} onClick={() => setTheme(t.id)}>
                 <span className="w-4 h-4 rounded-full border border-pi-border" style={{ background: t.swatch }} />
                 {t.name} {theme === t.id && <span className="ml-auto text-pi-accent">✓</span>}

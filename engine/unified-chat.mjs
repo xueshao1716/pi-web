@@ -5,23 +5,35 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { json, readBody } from "./http-utils.mjs";
-import { markModelBlocked, isAuthErrorStatus, pickFallbackDefault, pickFallbackExcluding, routeProCandidate } from "./model-router.mjs";
+import { markModelBlocked, isAuthErrorStatus, pickFallbackDefault, pickFallbackExcluding, routeProCandidate, routeForAuto } from "./model-router.mjs";
 import { classifyAnomaly, recordReply } from "./output-guard.mjs";
 import { shrinkToolResult, NEEDS_PRO_RE, scavengeToolCalls } from "./reasonix-tools.mjs";
 import { extractMessages, extractText } from "./session-utils.mjs";
 import { createSseWriter } from "./sse.mjs";
-import { httpJsonFetch } from "./http.mjs";
+import { httpJsonFetch, httpRawFetch } from "./http.mjs";
 import { createGateway } from "./gateway.mjs";
 import { CodeRuntime } from "../code-mode/code-runtime.mjs";
 import { createCodeMode } from "../code-mode/code-mode.mjs";
-import { detectMediaIntents, extractMediaPrompt, generateMediaAsync } from "./media-api.mjs";
+import { detectMediaIntents, extractMediaPrompt, generateMediaAsync, mediaAwarePrompt, explainMediaError, assistantContentWithMedia, isPureImageRequest } from "./media-api.mjs";
+import { extractPlayableMedia } from "./media-embed.mjs";
+import { readOpenAIChatStream } from "./openai-stream.mjs";
 import { saveArtifact } from "./workspace-api.mjs";
-import { directChat, maybeCompactHistory } from "./model-client.mjs";
+import { directChat, maybeCompactHistory, needsMidLoopCompact } from "./model-client.mjs";
+import { bindTodoSession, formatTodoPrompt } from "./yuanshu-todo.mjs";
 import { readEntriesFromFile } from "./session-files.mjs";
-import { jitRulesForPath, loadProjectRules, loadMemory, shouldInjectFullMemory, setLastUserQuery } from "./context-loader.mjs";
+import { loadProjectRules, loadMemory, shouldInjectFullMemory, setLastUserQuery, loadSkillIndex, loadExperienceIndex } from "./context-loader.mjs";
+import { buildYuanshuContext } from "./yuanshu-protocol.mjs";
+import { persistYuanshuUser, persistYuanshuAssistant, abortedAssistantText } from "./yuanshu-session.mjs";
 import { resolveAuth } from "./dsh-keys.mjs";
-import { policyDecide } from "./dsh-keys.mjs";
-import { wrapUntrusted } from "./prompt-security.mjs";
+import { runYuanshuToolRound, attachYuanshuCodeTool, toolCallLoopKey } from "./yuanshu-loop.mjs";
+import {
+  EMPTY_TURN_ERROR,
+  TRUNCATED_TOOL_ERROR,
+  isEmptyAssistantTurn,
+  emptyTurnDecision,
+  inspectToolCalls,
+} from "./yuanshu-stability.mjs";
+export { toolCallLoopKey };
 
 let _executeUnifiedTool = null, _findKeyByEntry = null, _readJsonFile = null, _getModelList = () => [], _getDefaultModel = () => null, _authPath = "", _modelsPath = "", _cwd = "", _piPackage = "", _unifiedTools = [], _getAgentDir = null;
 export function initUnifiedChat({ executeUnifiedTool = null, findKeyByEntry = null, readJsonFile = null, getModelList = null, getDefaultModel = null, authPath = "", modelsPath = "", cwd = "", piPackage = "", UNIFIED_TOOLS = [], getAgentDir = null } = {}) {
@@ -84,6 +96,47 @@ export function modelAllowsTools(mdef) {
   return true;
 }
 
+// 出图旁路已在跑时，主模型不必空转 20 轮「自己去调绘图 API」。普通任务仍 20。
+export function toolLoopMaxTurns(opts = {}) {
+  const n = Number(opts.maxTurns);
+  if (Number.isFinite(n) && n > 0) return Math.min(Math.max(1, Math.floor(n)), 20);
+  if (opts.imageIntent) return 6;
+  if (opts.videoIntent) return 20;
+  return 20;
+}
+
+export function splitAssistantPayload(msg) {
+  const content = String(msg?.content || "").trim();
+  let think = String(msg?.reasoning_content || "").trim();
+  let text = content;
+  if (/<think>[\s\S]*?<\/think>/.test(content)) {
+    const m = content.match(/<think>([\s\S]*?)<\/think>/);
+    if (!think) think = String(m?.[1] || "").trim();
+    text = content.replace(/<think>[\s\S]*?<\/think>\s*/g, "").trim();
+  }
+  return { think, text };
+}
+
+export function lastPartialAssistantText(history) {
+  if (!Array.isArray(history)) return "";
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i];
+    if (m?.role !== "assistant") continue;
+    const { text } = splitAssistantPayload(m);
+    if (text) return text;
+  }
+  return "";
+}
+
+// write/bash 连续画 SVG 或 curl 绘图接口：参数略变也算同一循环。普通 read/write 仍按完整参数签名。
+
+function emitRoundStream(opts, msg) {
+  const { think, text } = splitAssistantPayload(msg);
+  try { if (think && opts?.onThink) opts.onThink(think); } catch {}
+  try { if (text && opts?.onDelta) opts.onDelta(text); } catch {}
+  return { think, text };
+}
+
 export async function unifiedChat(model, messages, opts = {}) {
   const auth = _readJsonFile(_authPath);
   const key = auth[model.provider]?.key;
@@ -106,6 +159,8 @@ export async function unifiedChat(model, messages, opts = {}) {
     history.unshift({ role: "system", content: "【无工具模式】本次对话你没有工具可用（不能读写文件、执行命令、搜索网页）。不要输出 <tool_call>、<function_call> 等任何形式的工具调用——那只是文本，没有系统会执行它们。若任务需要文件内容或命令输出，请直接请用户粘贴相关内容，再基于内容回答。" });
   }
   const toolDefs = opts.tools === false || noTools ? undefined : (opts.tools || _unifiedTools);
+  const maxTurns = toolLoopMaxTurns(opts);
+  let streamed = false;
   // 官方理念：按模型声明的 reasoning/compat/thinkingLevelMap 统一适配（不按厂商特判）
   const isReasoning = mdef?.reasoning === true || model.reasoning === true;
   const compat = mdef?.compat || model.compat || {};
@@ -124,12 +179,12 @@ export async function unifiedChat(model, messages, opts = {}) {
       type: "function",
       function: { name: t.name, description: t.description || "", parameters: t.parameters || { type: "object", properties: {} } },
     });
-  const buildBody = (withThinking) => {
+  const buildBody = (withThinking, wantStream = true) => {
     const body = {
       model: model.id,
       messages: history,
       ...(toolDefs ? { tools: normTools(toolDefs), tool_choice: "auto" } : {}),
-      stream: false,
+      stream: wantStream,
       max_tokens: Math.min(mdef?.maxTokens || 8192, 8192),
     };
     // 模型参数（借鉴 Open WebUI 参数面板）：temperature / top_p 可调
@@ -140,10 +195,10 @@ export async function unifiedChat(model, messages, opts = {}) {
     if (withThinking && thinkingParam !== null) body.reasoning_effort = thinkingParam;
     return body;
   };
-  const mkReq = (u, withThinking) => httpJsonFetch(u, {
+  const mkReq = (u, withThinking, wantStream = true) => httpRawFetch(u, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify(buildBody(withThinking)),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}`, Accept: "text/event-stream" },
+    body: JSON.stringify(buildBody(withThinking, wantStream)),
     timeout: 300000,
     signal: opts.signal, // P2: 客户端断开时取消 fetch
   });
@@ -152,16 +207,20 @@ export async function unifiedChat(model, messages, opts = {}) {
   let usedModel = null; // provenance：记录实际使用的模型（Auto 路由/降级时前端可见）
   const jitInjected = new Set(); // 本会话 JIT 目录规则已注入集合（每目录一次）
   const seenCalls = new Map();
-  while (turn < 20) {
+  const stuckEvents = [];
+  let lastCompactTurn = 0;
+  let emptyTries = 0;
+  while (turn < maxTurns) {
     turn++;
     // 客户端已断开 → 立即停止（打断场景：前端 abort 后不再继续消耗模型调用）
-    if (opts.signal?.aborted) return { aborted: true };
+    if (opts.signal?.aborted) return { aborted: true, history, text: lastPartialAssistantText(history) };
     let r;
+    let wantStream = true;
     // 自动重试：网络错误/5xx 重试最多 2 次
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        r = await mkReq(`${baseNoV1}/v1/chat/completions`, usedThinking);
-        if (r.status === 404) r = await mkReq(`${baseNoV1}/chat/completions`, usedThinking);
+        r = await mkReq(`${baseNoV1}/v1/chat/completions`, usedThinking, wantStream);
+        if (r.status === 404) r = await mkReq(`${baseNoV1}/chat/completions`, usedThinking, wantStream);
         if (!r.ok && r.status >= 500 && attempt === 0) { await new Promise(x => setTimeout(x, 1500)); continue; }
         break;
       } catch (e) {
@@ -172,8 +231,14 @@ export async function unifiedChat(model, messages, opts = {}) {
     // 模型不接受 reasoning_effort → 去掉思考参数重试（统一降级，非厂商特判）
     if (!r.ok && usedThinking && (r.status === 400 || r.status === 422)) {
       usedThinking = false;
-      r = await mkReq(`${baseNoV1}/v1/chat/completions`, false);
-      if (r.status === 404) r = await mkReq(`${baseNoV1}/chat/completions`, false);
+      r = await mkReq(`${baseNoV1}/v1/chat/completions`, false, wantStream);
+      if (r.status === 404) r = await mkReq(`${baseNoV1}/chat/completions`, false, wantStream);
+    }
+    // 个别中转不接受 stream:true → 降级整包 JSON（readOpenAIChatStream 仍能抽出正文）
+    if (!r.ok && wantStream && (r.status === 400 || r.status === 422)) {
+      wantStream = false;
+      r = await mkReq(`${baseNoV1}/v1/chat/completions`, usedThinking, false);
+      if (r.status === 404) r = await mkReq(`${baseNoV1}/chat/completions`, usedThinking, false);
     }
     if (!r.ok) {
       const errBody = await r.text().catch(() => "");
@@ -182,86 +247,79 @@ export async function unifiedChat(model, messages, opts = {}) {
       else if (model.provider === "opencode-go" && /GoUsageLimit/i.test(errBody)) markModelBlocked(model, { reason: errBody });
       return { error: `HTTP ${r.status}: ${String(errBody).slice(0, 150)}` };
     }
-    const data = await r.json();
     usedModel = { provider: model.provider, id: model.id }; // provenance：本轮实际模型
-    const msg = data.choices?.[0]?.message || {};
-    const tcs = sanitizeToolCallList(msg.tool_calls);
+    let roundStreamed = false;
+    const parsed = await readOpenAIChatStream(r.body, {
+      signal: opts.signal,
+      onThink: (t) => { roundStreamed = true; streamed = true; opts.onThink?.(t); },
+      onDelta: (t) => { roundStreamed = true; streamed = true; opts.onDelta?.(t); },
+      onThinkEnd: () => { opts.onThinkEnd?.(); },
+    });
+    if (parsed.aborted || opts.signal?.aborted) {
+      const streamedText = String(parsed.message?.content || "").trim();
+      return { aborted: true, history, text: lastPartialAssistantText(history) || streamedText, streamed };
+    }
+    if (parsed.error) return { error: parsed.error };
+    const msg = parsed.message || {};
+    const inspected = inspectToolCalls(msg.tool_calls);
+    if (inspected.truncated) return { error: TRUNCATED_TOOL_ERROR };
+    const tcs = inspected.calls;
     if (tcs && tcs.length && toolDefs) {
+      if (!roundStreamed) {
+        const streamedRound = emitRoundStream(opts, msg); // 立刻 opts.onThink / opts.onDelta
+        if (streamedRound.think || streamedRound.text) streamed = true;
+      }
       history.push({ role: "assistant", content: msg.content || null, tool_calls: tcs });
-      for (const tc of tcs) {
-        let args = {};
-        try { args = JSON.parse(tc.function?.arguments || "{}"); } catch {}
-        const fnName = tc.function?.name || "";
-        // 声明式策略拦截（Gemini Policy Engine 借鉴）：deny 规则（隧道/密钥/危险操作）→ 拦截并注入引导
-        const pd = policyDecide(fnName, args);
-        if (pd.decision === "deny") {
-          if (opts.onTool) opts.onTool(tc.id, fnName, args);
-          const guide = `[系统拦截] ${pd.note}`;
-          history.push({ role: "tool", tool_call_id: tc.id, content: guide });
-          if (opts.onToolEnd) opts.onToolEnd(tc.id, fnName, args, { text: guide, isError: true });
-          continue;
+      const official = await runYuanshuToolRound({
+        toolCalls: tcs, history, execute: _executeUnifiedTool, signal: opts.signal,
+        onTool: opts.onTool, onToolEnd: opts.onToolEnd, seenCalls, jitInjected, spill: spillIfHuge,
+        stuckEvents,
+      });
+      if (official.stop) return official.stop;
+      if (needsMidLoopCompact(history, { turn, lastCompactTurn })) {
+        const compacted = await maybeCompactHistory(history, model, "", { minMessages: 10, minChars: 20000 });
+        if (compacted !== history) {
+          history.length = 0;
+          history.push(...compacted);
+          lastCompactTurn = turn;
         }
-        // 重复检测：相同工具+相同参数连续 3 次 → 中断（防死循环）
-        // 失败重试（isError）不算死循环——模型在环境问题（网络/权限）下合理重试，但连续 5 次失败也停，避免无限空转
-        const sig = fnName + ":" + JSON.stringify(args);
-        seenCalls.set(sig, (seenCalls.get(sig) || 0) + 1);
-        if (opts.onTool) opts.onTool(tc.id, fnName, args);
-        const out = await _executeUnifiedTool(fnName, args);
-        // JIT 上下文（Gemini 借鉴）：read/write/edit 带 path 时注入该目录链 GEMINI.md 约定（每目录每会话一次）
-        if (fnName === "read" || fnName === "write" || fnName === "edit") {
-          try {
-            const jits = jitRulesForPath(args.path);
-            if (jits.length) {
-              const key = jits[0].slice(0, 30);
-              if (!jitInjected.has(key)) {
-                jitInjected.add(key);
-                out.text = `[该目录约定 GEMINI.md]\n${jits.join("\n")}\n\n---\n${out.text}`;
-              }
-            }
-          } catch {}
-        }
-        const failed = out.isError === true;
-        if (!failed && seenCalls.get(sig) >= 3) {
-          return { error: "模型工具调用陷入循环，已中断（建议换一种方式提问）" };
-        }
-        if (failed && seenCalls.get(sig) >= 5) {
-          // 失败重试 5 次仍不行：作为工具结果注入，让模型看到失败原因并换策略（而非继续空转）
-          out.text = `[系统提示] 工具 ${fnName} 已连续失败 5 次（最近错误：${String(out.text || "").slice(0, 100)}）。请换一种方式完成任务，不要重复相同的失败操作。`;
-        }
-        if (opts.onToolEnd) opts.onToolEnd(tc.id, fnName, args, out);
-        // 注入防线（08-25 Odysseus 路线）：外部来源输出包装为"数据"，防提示注入
-        history.push({ role: "tool", tool_call_id: tc.id, content: wrapUntrusted(fnName, spillIfHuge(fnName, out.text)) });
       }
       continue;
     }
     // ══ P2 scavenge（Reasonix 借鉴，2026-08-19）：无 tool_calls 但思考里捞到合法工具调用 → 执行（带策略拦截）
     const scavenged = tcs?.length ? [] : scavengeToolCalls(msg.reasoning_content || "", toolDefs, seenCalls);
     if (scavenged.length) {
-      history.push({ role: "assistant", content: msg.content || null, tool_calls: scavenged.map(s => ({ id: s.id, type: "function", function: { name: s.name, arguments: JSON.stringify(s.args) } })) });
-      for (const s of scavenged) {
-        seenCalls.set(s.name + ":" + JSON.stringify(s.args), 1);
-        const pd = policyDecide(s.name, s.args);
-        if (pd.decision === "deny") {
-          const guide = `[系统拦截] ${pd.note}`;
-          if (opts.onTool) opts.onTool(s.id, s.name, s.args);
-          history.push({ role: "tool", tool_call_id: s.id, content: guide });
-          if (opts.onToolEnd) opts.onToolEnd(s.id, s.name, s.args, { text: guide, isError: true });
-          continue;
+      if (!roundStreamed) {
+        const streamedRound = emitRoundStream(opts, msg); // 立刻 opts.onThink / opts.onDelta
+        if (streamedRound.think || streamedRound.text) streamed = true;
+      }
+      const scavCalls = scavenged.map(s => ({ id: s.id, type: "function", function: { name: s.name, arguments: JSON.stringify(s.args) } }));
+      history.push({ role: "assistant", content: msg.content || null, tool_calls: scavCalls });
+      const scavengedRound = await runYuanshuToolRound({
+        toolCalls: scavCalls, history, execute: _executeUnifiedTool, signal: opts.signal,
+        onTool: opts.onTool, onToolEnd: opts.onToolEnd, seenCalls, jitInjected, spill: spillIfHuge,
+        stuckEvents,
+      });
+      if (scavengedRound.stop) return scavengedRound.stop;
+      if (needsMidLoopCompact(history, { turn, lastCompactTurn })) {
+        const compacted = await maybeCompactHistory(history, model, "", { minMessages: 10, minChars: 20000 });
+        if (compacted !== history) {
+          history.length = 0;
+          history.push(...compacted);
+          lastCompactTurn = turn;
         }
-        if (opts.onTool) opts.onTool(s.id, s.name, s.args);
-        const out = await _executeUnifiedTool(s.name, s.args);
-        if (opts.onToolEnd) opts.onToolEnd(s.id, s.name, s.args, out);
-        history.push({ role: "tool", tool_call_id: s.id, content: wrapUntrusted(s.name, spillIfHuge(s.name, out.text)) });
       }
       continue;
     }
     const content = String(msg.content || "").trim();
-    let think = String(msg.reasoning_content || "").trim();
-    let text = content;
-    if (/<think>[\s\S]*?<\/think>/.test(content)) {
-      const m = content.match(/<think>([\s\S]*?)<\/think>/);
-      if (!think) think = String(m?.[1] || "").trim();
-      text = content.replace(/<think>[\s\S]*?<\/think>\s*/g, "").trim();
+    const { think, text } = splitAssistantPayload(msg);
+    if (isEmptyAssistantTurn({ text, hasTools: false })) {
+      emptyTries += 1;
+      if (emptyTurnDecision(emptyTries) === "retry") {
+        turn -= 1;
+        continue;
+      }
+      return { empty: true, think, text: null, history, usedModel, streamed };
     }
     // 诊断：text 空时记录上游响应细节（2026-08-29 临时排查 hy4 空回复）
     if (!text) {
@@ -276,16 +334,13 @@ export async function unifiedChat(model, messages, opts = {}) {
         }) + "\n");
       } catch {}
     }
-    return { think, text: text || null, history, usedModel };
+    return { think, text: text || null, history, usedModel, streamed };
   }
-  // 超过轮数上限：尽量返回中间结果（不直接丢错误）
-  for (let i = history.length - 1; i >= 0; i--) {
-    const m = history[i];
-    if (m.role === "assistant" && m.content && !m.tool_calls) {
-      return { text: String(m.content), partial: true };
-    }
-  }
-  return { error: "工具调用超过 20 轮，已停止（任务过于复杂或陷入循环）" };
+  // 超过轮数上限：尽量返回中间结果（不直接丢错误）。出图旁路已在跑时不要用 20 轮红字盖住图。
+  const partial = lastPartialAssistantText(history);
+  if (partial) return { text: partial, partial: true, streamed };
+  if (opts.imageIntent) return { text: "", partial: true, streamed, truncated: true };
+  return { error: `工具调用超过 ${maxTurns} 轮，已停止（任务过于复杂或陷入循环）` };
 }
 
 // ══ Gateway 2.0：插件化引擎（dsh 设计沉淀——模型/工具/存储/循环全是可替换插件）══
@@ -317,9 +372,10 @@ export async function initEngine() {
     getModel: engineCurrentModel,
     sessionDir: path.join((_getAgentDir ? _getAgentDir() : ""), "engine-sessions"),
   });
-  // 注册 run_code 工具（Code Mode 作为引擎的一个普通工具，体现插件化）
+  // 注册 run_code：Gateway 旁路 + 元枢主工具表（此前只挂在 /api/engine/chat）
   gateway.tools.register(codeMode.runCodeToolDef());
-  console.log(`[engine] Gateway 2.0 就绪：适配器=${gateway.adapter.id} 工具=${gateway.tools.names().join(",")} 存储=${gateway.store.id} 循环=${gateway.loop.id}`);
+  attachYuanshuCodeTool(_unifiedTools, codeMode);
+  console.log(`[engine] 元枢就绪：适配器=${gateway.adapter.id} 工具=${gateway.tools.names().join(",")} 存储=${gateway.store.id} 循环=${gateway.loop.id}`);
   return gateway;
 }
 export function toolBindingDesc(name) {
@@ -411,6 +467,7 @@ except Exception as e:
 
 // 统一通道：所有模型走 unifiedChat（对话 + 工具 + 思考 + 媒体 + 压缩 + 重试）
 export async function handleUnifiedChat(res, entry, message, sessionId, params, signal, writer, thinkOn, taskKey, modelOverride = null) {
+  try { await initEngine(); } catch {}
   const taskId = taskKey || sessionId;
   // 兕底通道用安全模型（opencode-go 429 标记期间避开）；用户显式选中的非原生模型优先（2026-08-29 修复：
   // 之前无论选什么都用 pickFallbackDefault，导致选中 hy4-preview/claude-relay 等被静默换成商汤）
@@ -418,6 +475,10 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
   try {
     const _auth = _readJsonFile(_authPath);
     if (modelOverride && _auth[modelOverride.provider]?.key) chatModel = modelOverride;
+    else {
+      const auto = routeForAuto(message, sessionId);
+      if (auto?.model) chatModel = auto.model;
+    }
   } catch {}
   writer = writer || createSseWriter(res);
   touchTask(taskId, { stage: "处理中" });
@@ -426,17 +487,72 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     const file = entry.sm.sessionFile;
     if (file && fs.existsSync(file)) hist = extractMessages(readEntriesFromFile(file)).slice(-20);
   } catch {}
+  let userPersisted = false;
+  const persistUser = () => {
+    if (userPersisted) return;
+    persistYuanshuUser(entry.sm, message);
+    userPersisted = true;
+  };
+  try { persistUser(); } catch {}
   const mediaIntents = detectMediaIntents(message);
+  const imageIntent = mediaIntents.some(i => i.type === "image");
+  const videoIntent = mediaIntents.some(i => i.type === "video");
+  const skipTools = isPureImageRequest(message);
   const mediaPromise = mediaIntents.length
     ? Promise.all(mediaIntents.map(it => generateMediaAsync(it, extractMediaPrompt(message))))
     : Promise.resolve([]);
+  let mediaItems = [];
+  let mediaFlushing = null;
+  async function deliverUnifiedMedia() {
+    if (mediaFlushing) return mediaFlushing;
+    mediaFlushing = (async () => {
+      const results = await Promise.resolve(mediaPromise).catch((e) => {
+        try { writer.push("note", { text: `出图未成功：${explainMediaError(e)}。思考和工具不受影响。` }); } catch {}
+        return [];
+      });
+      const items = [];
+      for (const mr of results || []) {
+        if (!mr) continue;
+        if (mr.error && !mr.url) {
+          const kind = mr.type === "video" ? "视频模型这次没出成片" : mr.type === "audio" ? "配音这次没出成" : "图像模型这次没出成图";
+          try { writer.push("note", { text: `${kind}：${mr.error}` }); } catch {}
+          continue;
+        }
+        if (!mr.url) continue;
+        try { mr.url = await saveArtifact(mr); } catch {}
+        try { writer.push("media", mr); } catch {}
+        items.push(mr);
+      }
+      mediaItems = items;
+      return items;
+    })();
+    return mediaFlushing;
+  }
+  const mediaDelivered = mediaIntents.length
+    ? mediaPromise.then(() => deliverUnifiedMedia())
+    : Promise.resolve([]);
+  void mediaDelivered;
+  if (imageIntent) {
+    try { writer.push("note", { text: "图像模型正在出图，完成后会显示在对话里。" }); } catch {}
+  }
+  if (videoIntent) {
+    try { writer.push("note", { text: "视频模型正在出片，完成后会显示在对话里。" }); } catch {}
+  }
   const onToolStart = (id, name, args) => { touchTask(taskId, { stage: "执行工具", toolName: name }); writer.push("tool", { name, args, id }); };
   const onToolEnd = (id, name, args, out) => {
     touchTask(taskId, { stage: "工具完成", toolName: name });
     const text = out?.text || "";
     writer.push("tool_end", { name, id, isError: out?.isError === true, output: text.slice(0, 2000) });
+    const media = out?.media;
+    if (media?.url) writer.push("media", media);
+    else {
+      const scraped = extractPlayableMedia(text);
+      for (const url of scraped.videos) writer.push("media", { type: "video", url });
+      for (const url of scraped.images) writer.push("media", { type: "image", url });
+      for (const url of scraped.audios) writer.push("media", { type: "audio", url });
+    }
   };
-  let history = [...hist.map(h => ({ role: h.role, content: h.role === "tool" ? shrinkToolResult(h.text) : h.text })), { role: "user", content: message }];
+  let history = [...hist.map(h => ({ role: h.role, content: h.role === "tool" ? shrinkToolResult(h.text) : h.text })), { role: "user", content: mediaAwarePrompt(message, []) }];
   // 外部思考调试：注入引导语 + think 工具（默认关，本次请求开启时生效）
   if (thinkOn) {
     history = [{ role: "system", content: THINK_PROMPT }, ...history];
@@ -454,12 +570,18 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     const d = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")} ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
     history.unshift({ role: "system", content: `【时间上下文】当前时间：${d}（周${["日","一","二","三","四","五","六"][t.getDay()]}）。涉及时间/日期/定时/时效判断以此为准。` });
   } catch {}
-  // 条件注入全量记忆/经验/日志（任务型消息才带）：人格保底用常驻索引，干活时全量
-  if (shouldInjectFullMemory(message)) {
-    setLastUserQuery(message); // 供记忆关键词召回检索
-    const fullMem = loadMemory();
-    if (fullMem.length) history = [...fullMem.map(c => ({ role: "system", content: c })), ...history];
-  }
+  // 元枢常驻：工作协议 + 技能目录；任务句才带经验/记忆（人格保底用常驻索引）
+  if (shouldInjectFullMemory(message)) setLastUserQuery(message);
+  bindTodoSession(sessionId);
+  const ysCtx = buildYuanshuContext({
+    message,
+    skills: loadSkillIndex(),
+    experience: loadExperienceIndex(),
+    fullMemory: shouldInjectFullMemory(message) ? loadMemory() : [],
+    todos: formatTodoPrompt(sessionId),
+    hist,
+  });
+  if (ysCtx.length) history = [...ysCtx.map(c => ({ role: "system", content: c })), ...history];
   history = await maybeCompactHistory(history, chatModel);
   // Plan 模式（unifiedChat 兕底路径）：工具定义层过滤为只读（read/web_search）——模型只能请求只读工具，无写路径
   // 注意：thinkOn=false 时 toolDefs 为 undefined（unifiedChat 内部才默认 UNIFIED_TOOLS），必须显式构建只读集，否则拦截被短路
@@ -478,27 +600,81 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     if (!result || result.error) {
       clearTask(taskId, "error"); writer.push("error", { message: result?.error || "模型未返回内容" }); return;
     }
-    if (result.aborted || signal?.aborted) { clearTask(taskId, "aborted"); return; }
+    if (result.aborted || signal?.aborted) {
+      try { persistUser(); persistYuanshuAssistant(entry.sm, abortedAssistantText(result)); } catch {}
+      clearTask(taskId, "aborted"); return;
+    }
     const text = result.text;
     if (!text) { writer.push("error", { message: "模型未返回内容" }); return; }
-    try { entry.sm.appendMessage({ role: "user", content: [{ type: "text", text: message }] }); entry.sm.appendMessage({ role: "assistant", content: [{ type: "text", text }] }); } catch {}
+    try { persistYuanshuAssistant(entry.sm, text); } catch {}
     if (entry.agent) { try { entry.agent.dispose(); } catch {} entry.agent = null; }
     if (result.think) { writer.push("think", { text: result.think }); writer.push("think_end", {}); }
     writer.push("delta", { text });
     writer.push("done", { sessionId });
     clearTask(taskId, "done");
   }
-  const result = await unifiedChat(chatModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: toolDefs });
+  const chatOpts = {
+    onTool: onToolStart,
+    onToolEnd,
+    onThink: (t) => { writer.push("think", { text: t }); },
+    onThinkEnd: () => { writer.push("think_end", {}); },
+    onDelta: (t) => { writer.push("delta", { text: t }); },
+    params,
+    signal,
+    tools: skipTools ? false : toolDefs,
+    maxTurns: toolLoopMaxTurns({ imageIntent, videoIntent }),
+    imageIntent,
+    videoIntent,
+  };
+  let result = await unifiedChat(chatModel, history, chatOpts);
+  if (result?.aborted || signal?.aborted) {
+    try { persistUser(); persistYuanshuAssistant(entry.sm, assistantContentWithMedia(abortedAssistantText(result), mediaItems)); } catch {}
+    clearTask(taskId, "aborted"); return;
+  }
+  if (result?.empty && !result.text) {
+    const fbModel = pickFallbackExcluding(chatModel);
+    if (fbModel) {
+      writer.push("note", { text: `⚠️ 模型空回复，切换 ${fbModel.provider}/${fbModel.id} 兑底…` });
+      const fb = await unifiedChat(fbModel, history, { ...chatOpts });
+      if (fb?.aborted || signal?.aborted) {
+        try { persistUser(); persistYuanshuAssistant(entry.sm, assistantContentWithMedia(abortedAssistantText(fb), mediaItems)); } catch {}
+        clearTask(taskId, "aborted"); return;
+      }
+      if (fb?.text && !fb.error && !fb.empty) result = fb;
+      else result = { ...result, error: EMPTY_TURN_ERROR };
+    } else {
+      result = { ...result, error: EMPTY_TURN_ERROR };
+    }
+  }
   if (!result || result.error) {
+    await deliverUnifiedMedia();
+    if (mediaItems.length) {
+      if (result?.text && !result.streamed) writer.push("delta", { text: result.text });
+      try {
+        persistYuanshuAssistant(entry.sm, assistantContentWithMedia(result?.text || "", mediaItems));
+      } catch {}
+      writer.push("done", { sessionId, model: { provider: chatModel.provider, id: chatModel.id } });
+      clearTask(taskId, "done");
+      return;
+    }
     clearTask(taskId, "error");
     writer.push("error", { message: result?.error || "模型未返回内容，请稍后重试" });
     return;
   }
-  // 客户端已断开 → 不写会话、不发 SSE（避免半截结果污染会话文件）
-  if (result.aborted || signal?.aborted) { clearTask(taskId, "aborted"); return; }
-  if (result.aborted || signal?.aborted) return;
   let text = result.text;
-  if (!text) { writer.push("error", { message: "模型未返回内容，请稍后重试" }); return; }
+  if (!text) {
+    await deliverUnifiedMedia();
+    if (mediaItems.length || result.partial || result.truncated) {
+      try {
+        persistYuanshuAssistant(entry.sm, assistantContentWithMedia(result.partial ? lastPartialAssistantText(result.history || []) : "", mediaItems));
+      } catch {}
+      writer.push("done", { sessionId, model: result.usedModel || { provider: chatModel.provider, id: chatModel.id } });
+      clearTask(taskId, "done");
+      return;
+    }
+    writer.push("error", { message: "模型未返回内容，请稍后重试" });
+    return;
+  }
   // ══ NEEDS_PRO 自报升级（Reasonix P3，2026-08-19）：模型认为任务超纲 → 用 pro 模型重试一次（纯自报、无静默升级）
   const proMatch = NEEDS_PRO_RE.exec(text || "");
   if (proMatch) {
@@ -544,20 +720,14 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     recordReply(rkU, text);
   }
   try {
-    entry.sm.appendMessage({ role: "user", content: [{ type: "text", text: message }] });
+    await deliverUnifiedMedia();
     // 异常未解决时不写 assistant（避免复读/空/纯思考文本落盘污染会话，防止下轮复读死循环）
-    if (!anomalyUnresolved) entry.sm.appendMessage({ role: "assistant", content: [{ type: "text", text }] });
+    if (!anomalyUnresolved) persistYuanshuAssistant(entry.sm, assistantContentWithMedia(text, mediaItems));
   } catch {}
   if (entry.agent) { try { entry.agent.dispose(); } catch {} entry.agent = null; }
   if (!entry.sm.getSessionName()) { try { entry.sm.appendSessionInfo(message.slice(0, 24)); } catch {} }
-  if (result.think) { writer.push("think", { text: result.think }); writer.push("think_end", {}); }
-  writer.push("delta", { text });
-  const mediaResults = await mediaPromise;
-  for (const mr of mediaResults) {
-    if (!mr) continue;
-    if (mr.url) mr.url = await saveArtifact(mr);
-    writer.push("media", mr);
-  }
+  if (result.think && !result.streamed) { writer.push("think", { text: result.think }); writer.push("think_end", {}); }
+  if (!result.streamed) writer.push("delta", { text });
   writer.push("done", { sessionId, model: result.usedModel || { provider: chatModel.provider, id: chatModel.id } });
   clearTask(taskId, "done");
   console.log(`[pi-web] 统一通道: ${(result.usedModel || chatModel).provider}/${(result.usedModel || chatModel).id}`);

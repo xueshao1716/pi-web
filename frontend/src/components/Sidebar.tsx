@@ -8,12 +8,12 @@ import { useRestoreFocus } from '../hooks/useRestoreFocus'
 import { PanelLeftClose } from 'lucide-react'
 
 const GROUP_LABEL: Record<string, string> = {
+  workspace: '工作会话',
   test: '小语真测',
-  workspace: '工作空间会话',
-  terminal: '小语会话（终端）',
+  terminal: '小语终端',
 }
-// 分组排序：终端/真测置顶（外部联系+测试），工作空间在后
-const GROUP_ORDER = ['terminal', 'test', 'workspace']
+// 分组排序：工作会话 → 小语真测 → 小语终端
+const GROUP_ORDER = ['workspace', 'test', 'terminal']
 
 // 分组折叠状态持久化（记住用户偏好）
 function loadCollapsed(): Set<string> {
@@ -49,7 +49,11 @@ export default function Sidebar({ onNavigated, onCollapse }: { onNavigated?: () 
     ? sessions.filter(s => (s.name || '').toLowerCase().includes(kw) || (s.preview || '').toLowerCase().includes(kw))
     : sessions
   const groups: Record<string, Session[]> = {}
-  for (const s of filtered) { const g = s.group || 'workspace'; (groups[g] = groups[g] || []).push(s) }
+  for (const s of filtered) {
+    const g = s.group || 'workspace'
+    if (!GROUP_LABEL[g]) continue
+    (groups[g] = groups[g] || []).push(s)
+  }
   const groupKeys = Object.keys(groups).sort((a, b) => {
     const ia = GROUP_ORDER.indexOf(a), ib = GROUP_ORDER.indexOf(b)
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)

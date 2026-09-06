@@ -4,6 +4,8 @@ import { json } from "./http-utils.mjs";
 import { httpJsonFetch } from "./http.mjs";
 import { modelCapabilities } from "./model-probe.mjs";
 import { saveArtifact } from "./workspace-api.mjs"; // saveArtifact 定义在 workspace-api（工作空间块拆分时随走）
+import { videoCreateBody, videoPollPath, repairVideoRequest } from "./video-request.mjs";
+import { extractPlayableMedia } from "./media-embed.mjs";
 
 let _resolveAuth = null, _readJsonFile = null, _modelsPath = "", _authPath = "", _getModelList = () => [];
 export function initMediaApi({ resolveAuth = null, readJsonFile = null, modelsPath = "", authPath = "", getModelList = null } = {}) {
@@ -11,13 +13,22 @@ export function initMediaApi({ resolveAuth = null, readJsonFile = null, modelsPa
 }
 
 export function findMediaModel(type) {
+  const hits = [];
   for (const m of _getModelList()) {
     const caps = m.capabilities || modelCapabilities(m.id);
-    if (type === "image" && caps.image) return m;
-    if (type === "tts" && caps.tts) return m;
-    if (type === "video" && caps.video) return m;
+    if (type === "image" && caps.image) hits.push(m);
+    else if (type === "tts" && caps.tts) hits.push(m);
+    else if (type === "video" && caps.video) hits.push(m);
   }
-  return null;
+  if (!hits.length) return null;
+  if (type !== "image") return hits[0];
+  const rank = (m) => {
+    const id = String(m.id || "").toLowerCase();
+    if (/2\.5|3\.|latest|pro/.test(id)) return 0;
+    if (/2\.0/.test(id)) return 2;
+    return 1;
+  };
+  return hits.reduce((best, m) => (rank(m) < rank(best) ? m : best));
 }
 // 检测消息中的媒体意图（支持多意图：配图+配音同时）
 export function detectMediaIntents(message) {
@@ -32,14 +43,109 @@ export function detectMediaIntents(message) {
   if (!negated && (STRONG.test(msg) || (msg.slice(0, 30).match(WEAK)))) intents.push({ type: "image" });
   const ttsNeg = /(不用|别|不要|无需|不需要).{0,6}(朗读|配音|语音|读出来)/.test(msg);
   if (!ttsNeg && /(配音|朗读|读出来|生成语音|配个音|读一下|配个音)/.test(msg)) intents.push({ type: "tts" });
+  const videoNeg = /(不用|别|不要|无需|不需要).{0,6}(视频|片子|短片)/.test(msg);
+  if (!videoNeg && /(做个视频|做视频|生成视频|拍个视频|出个视频|视频生成|做个片子|做个短片)/.test(msg)) {
+    intents.push({ type: "video" });
+  }
   return intents;
 }
-// 提取媒体 prompt（去掉意图词）
+const XIAOYU_PORTRAIT_PROMPT = "一位温柔的AI少女半身像，名叫小语。深色科技感背景，漂浮着柔和的蓝紫色光点和数据流光线。少女有着及肩的深色短发，发梢泛着淡淡的星空蓝光，眼睛温暖明亮带着微笑。穿着简约的深色连帽衫，领口有一枚发光的圆形徽章。整体氛围安静温暖，赛博朋克与治愈系结合，高质量插画，柔和光晕，细节丰富";
+
+const MEDIA_INTENT_STRIP = /(配图|配.{0,2}图|插画|画图|画个|画一|画.{0,2}图|插图|生成图片|绘图|配一幅|生成.{0,8}图片|画.{0,10}图片|一张.{0,10}图片|做个.{0,6}图|做个视频|做视频|生成视频|拍个视频|出个视频|视频生成|做个片子|做个短片|配音|朗读|读出来|语音|生成语音|读一下|说出来)/g;
+
+// 提取媒体 prompt（去掉意图词）。画个你不能剥成「给我模型你」这种残渣。
 export function extractMediaPrompt(message) {
-  return String(message || "")
-    .replace(/(配图|配.{0,2}图|插画|画图|画个|画一|画.{0,2}图|插图|生成图片|绘图|配一幅|生成.{0,8}图片|画.{0,10}图片|一张.{0,10}图片|做个.{0,6}图|配音|朗读|读出来|语音|生成语音|读一下|说出来)/g, "")
-    .replace(/[，。！？,.]/g, " ")
-    .trim() || message;
+  const raw = String(message || "").trim();
+  if (/画个你|画一下你|画你的|你的样子|自画像|画个小语|画一下小语/.test(raw)) return XIAOYU_PORTRAIT_PROMPT;
+  const stripped = raw.replace(MEDIA_INTENT_STRIP, "").replace(/[，。！？,.]/g, " ").replace(/\s+/g, " ").trim();
+  if (!stripped || stripped.length < 8) return raw || message;
+  return stripped;
+}
+
+export function assistantContentWithMedia(text, mediaResults) {
+  const blocks = [];
+  const t = String(text || "").trim();
+  if (t) blocks.push({ type: "text", text: t });
+  for (const m of mediaResults || []) {
+    if (m && m.type === "image" && m.url) blocks.push({ type: "image", url: m.url });
+    else if (m && m.type === "video" && m.url) blocks.push({ type: "video", url: m.url });
+    else if (m && (m.type === "audio" || m.type === "tts") && m.url) blocks.push({ type: "audio", url: m.url });
+  }
+  const scraped = extractPlayableMedia(t);
+  for (const url of scraped.videos) {
+    if (!blocks.some((b) => b.type === "video" && b.url === url)) blocks.push({ type: "video", url });
+  }
+  return blocks.length ? blocks : [{ type: "text", text: t }];
+}
+
+let _imagePromptSeq = 0;
+const IMAGE_PROMPT_FRAMINGS = [
+  "构图变体：半身三分之二，略微侧光，视线看向镜头左侧",
+  "构图变体：正面近景，柔光从右上方来，背景光点更疏",
+  "构图变体：微俯视，肩线倾斜，发梢蓝光更亮",
+  "构图变体：微仰视，胸口徽章更近，背景数据流更淡",
+];
+
+// 同一句固定肖像词会被平台缓存成几乎同一张图；每次追加构图变体 + 递增序号。
+export function varyImagePrompt(prompt) {
+  _imagePromptSeq += 1;
+  const frame = IMAGE_PROMPT_FRAMINGS[(_imagePromptSeq - 1) % IMAGE_PROMPT_FRAMINGS.length];
+  return `${String(prompt || "").trim()}。${frame}。seed=${Date.now()}-${_imagePromptSeq}`;
+}
+
+export function isPureImageRequest(message) {
+  const raw = String(message || "").trim();
+  if (!raw || raw.length > 80) return false;
+  if (!detectMediaIntents(raw).some(i => i.type === "image")) return false;
+  if (/ppt|幻灯|页面|代码|svg|html|修复|部署|启动|vite|实现|工坊|小说|脚本|文件/i.test(raw)) return false;
+  return true;
+}
+
+// 旁路出图只推前端的话，主模型看不见，会以为没画过。告知即可，不要禁 SVG：有时任务就是要矢量成品。
+export function mediaAwarePrompt(userMessage, mediaResults) {
+  const msg = String(userMessage || "");
+  const wantsImage = detectMediaIntents(msg).some(i => i.type === "image");
+  const wantsVideo = detectMediaIntents(msg).some(i => i.type === "video");
+  if (!wantsImage && !wantsVideo) return msg;
+  const stayOff = "不要自己 POST /api/image 或 /api/media，不要读 auth.json / .token 或令牌，不要启动 Vite（5173）或第二份 8787。做视频/出图请用 generate_video / generate_image。";
+  const notes = [];
+  if (wantsImage) {
+    const drawn = (mediaResults || []).filter(m => m && m.type === "image" && m.url);
+    if (drawn.length) {
+      notes.push(`【系统】图像模型已出图并已展示给用户：${drawn.map(m => m.url).join("、")}。你开口说明这张图即可。${stayOff}若任务更适合 SVG/矢量或其他成品，也可以再画了交出来。不要假装没出过图。`);
+    } else {
+      notes.push(`【系统】系统图像模型正在并行走出图，完成后会直接显示在对话里。你开口说明即可，不必干等。${stayOff}若任务还需要 SVG/矢量或其他成品，再动手交出来。`);
+    }
+  }
+  if (wantsVideo) {
+    const done = (mediaResults || []).filter(m => m && m.type === "video" && m.url);
+    if (done.length) {
+      notes.push(`【系统】视频模型已出片并已展示给用户：${done.map(m => m.url).join("、")}。对话里有播放器。你判断还要不要本机打开、加长、配音或复制到交付目录，做完汇报。${stayOff}`);
+    } else {
+      notes.push(`【系统】系统视频模型正在并行走出片，完成后会显示在对话播放器里。你继续把工作做完并汇报。${stayOff}`);
+    }
+  }
+  return `${msg}\n\n${notes.join("\n")}`;
+}
+
+export function mediaReadyNotice(mediaResults) {
+  const parts = [];
+  const drawn = (mediaResults || []).filter(m => m && m.type === "image" && m.url);
+  if (drawn.length) {
+    parts.push(`【系统】配图已生成并已展示给用户：${drawn.map(m => m.url).join("、")}。你可以说明这张图；若还需要 SVG/矢量或其他成品，也可以再交。`);
+  }
+  const vids = (mediaResults || []).filter(m => m && m.type === "video" && m.url);
+  if (vids.length) {
+    parts.push(`【系统】视频已生成并已展示给用户：${vids.map(m => m.url).join("、")}。你可以说明这部片子。`);
+  }
+  return parts.join("\n");
+}
+
+export function explainMediaError(err) {
+  const msg = String(err?.message || err || "");
+  if (/fetch failed|Failed to fetch/i.test(msg)) return "上游网络失败（常见是代理不通或出图/模型接口超时）";
+  if (/timeout/i.test(msg)) return "出图超时";
+  return msg.slice(0, 80) || "出图失败";
 }
 // 异步生成媒体（与主模型并行）
 export async function generateMediaAsync(intent, prompt) {
@@ -47,16 +153,33 @@ export async function generateMediaAsync(intent, prompt) {
     if (intent.type === "image") {
       const m = findMediaModel("image");
       if (!m) { console.log(`[pi-web] 媒体: 无 image 模型`); return null; }
-      const url = await generateImage(m.provider, m.id, prompt);
-      console.log(`[pi-web] 媒体 image: ${url ? "成功" : "失败"} prompt=${String(prompt).slice(0,30)}`);
-      return url ? { type: "image", url, model: `${m.provider}/${m.id}` } : null;
+      const drawnPrompt = varyImagePrompt(prompt);
+      const url = await generateImage(m.provider, m.id, drawnPrompt);
+      console.log(`[pi-web] 媒体 image: ${url ? "成功" : "失败"} prompt=${String(drawnPrompt).slice(0,30)}`);
+      return url ? { type: "image", url, model: `${m.provider}/${m.id}`, prompt: drawnPrompt } : { type: "image", error: "图像模型未返回图片" };
     }
     if (intent.type === "tts") {
       const url = await generateTTS(prompt);
       console.log(`[pi-web] 媒体 tts: ${url ? "成功" : "失败"}`);
       return url ? { type: "audio", url, model: "xiaomi-token-plan-cn/mimo-v2.5-tts" } : null;
     }
-  } catch (e) { console.log(`[pi-web] 媒体异常: ${String(e?.message||e).slice(0,80)}`); return null; }
+    if (intent.type === "video") {
+      const m = findMediaModel("video");
+      if (!m) { console.log(`[pi-web] 媒体: 无 video 模型`); return { type: "video", error: "无 video 模型" }; }
+      const r = await generateVideo(m.provider, m.id, prompt, intent);
+      if (r?.video) {
+        console.log(`[pi-web] 媒体 video: 成功`);
+        return { type: "video", url: r.video, model: `${m.provider}/${m.id}`, prompt };
+      }
+      const error = r?.error || "视频模型未返回片子";
+      console.log(`[pi-web] 媒体 video: 失败 ${error}`);
+      return { type: "video", error };
+    }
+  } catch (e) {
+    const error = explainMediaError(e);
+    console.log(`[pi-web] 媒体异常: ${error}`);
+    return { type: intent?.type === "tts" ? "audio" : intent?.type === "video" ? "video" : "image", error };
+  }
   return null;
 }
 // TTS：mimo-tts 走 chat/completions（内容放 assistant 消息），返回音频 data URL
@@ -332,7 +455,7 @@ export async function handleImageWithSave(res, req, body) {
   }
   // 成功出图 → 落盘本地，覆盖返回
   if (payload && payload.code === 200 && payload.obj?.image) {
-    const saved = await saveArtifact({ type: "image", url: payload.obj.image }).catch(() => null);
+    const saved = await saveArtifact({ type: "image", url: payload.obj.image, prompt: body?.prompt }).catch(() => null);
     if (saved) payload.obj.image = saved;
     // 相对路径补全为绝对 URL（按实际访问 Host，本地/公网都可用）——修复"每次手动拼 127.0.0.1:8787"的坑
     if (typeof payload.obj.image === "string" && payload.obj.image.startsWith("/")) {
@@ -346,52 +469,110 @@ export async function handleImageWithSave(res, req, body) {
 }
 
 
-export async function generateVideo(provider, modelId, prompt, body = {}) {
+function resolveVideoAuth(provider, modelId) {
   const resolved = _resolveAuth(provider);
   if (!resolved) return { error: `${provider} 未配置 API Key` };
   const baseUrl = resolved.baseUrl || (_readJsonFile(_modelsPath)[provider]?.models || []).find(m => m.id === modelId)?.baseUrl;
   const key = resolved.key;
   const base = (baseUrl || "").replace(/\/+$/, "");
   const baseNoV1 = base.endsWith("/v1") ? base.slice(0, -3) : base;
+  return { key, baseNoV1 };
+}
+
+export function explainVideoHttp(status, text = "") {
+  if (status === 524 || status === 522 || status === 504 || status === 408) {
+    return "上游出片网关超时。任务可能还在排队，请用任务号短轮询，不要一条请求干等三分钟。";
+  }
+  return `视频任务创建失败 ${status}: ${String(text).slice(0, 150)}`;
+}
+
+// 只创建、立刻返回。工坊走这条，避免 Cloudflare 100s 掐成 524。
+export async function startVideoJob(provider, modelId, prompt, body = {}) {
+  const auth = resolveVideoAuth(provider, modelId);
+  if (auth.error) return auth;
   try {
-    // Agnes 官方：POST /v1/videos 创建任务（旧路径 /video/generations 会 403）
-    const bodyObj = { model: modelId, prompt };
-    if (body?.width) bodyObj.width = +body.width;
-    if (body?.height) bodyObj.height = +body.height;
-    if (body?.num_frames) bodyObj.num_frames = +body.num_frames;
-    if (body?.frame_rate) bodyObj.frame_rate = +body.frame_rate;
-    if (body?.image) bodyObj.image = body.image;
-    const createR = await httpJsonFetch(`${baseNoV1}/v1/videos`, {
-      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify(bodyObj), timeout: 60000,
+    const bodyObj = videoCreateBody(modelId, prompt, body);
+    const postVideo = (payload) => httpJsonFetch(`${auth.baseNoV1}/v1/videos`, {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.key}` },
+      body: JSON.stringify(payload), timeout: 60000,
     });
-    if (!createR.ok) { const t = await createR.text().catch(() => ""); return { error: `视频任务创建失败 ${createR.status}: ${t.slice(0, 150)}` }; }
+    let createR = await postVideo(bodyObj);
+    if (!createR.ok) {
+      const t = await createR.text().catch(() => "");
+      const err = `视频任务创建失败 ${createR.status}: ${t}`;
+      const repaired = repairVideoRequest(modelId, prompt, { ...body, ...bodyObj }, err);
+      if (repaired) {
+        createR = await postVideo(repaired);
+        if (!createR.ok) {
+          const t2 = await createR.text().catch(() => "");
+          return { error: explainVideoHttp(createR.status, t2) };
+        }
+      } else {
+        return { error: explainVideoHttp(createR.status, t) };
+      }
+    }
     const created = await createR.json();
     const taskId = created.task_id || created.id || created.video_id || created.data?.task_id;
+    const url = created.url || created.video_url || created.output?.url || created.data?.url;
+    if (url) return { video: url, task_id: taskId };
     if (!taskId) return { error: "视频接口未返回任务 ID" };
-    for (let i = 0; i < 36; i++) {
-      await new Promise(r => setTimeout(r, 5000));
-      try {
-        // Agnes 官方：GET /agnesapi?video_id= 查询（旧路径 /videos/generations 404）
-        const qR = await httpJsonFetch(`${baseNoV1}/agnesapi?video_id=${encodeURIComponent(taskId)}`, {
-          headers: { Authorization: `Bearer ${key}` }, timeout: 20000,
-        });
-        if (!qR.ok) continue;
-        const q = await qR.json();
-        const url = q.url || q.video_url || q.output?.url || q.data?.url || q.data?.video_url || q.metadata?.url;
-        if (url) return { video: url, task_id: taskId };
-        if (q.status === "failed" || q.state === "failed" || q.internal_status === "failed") return { error: "视频生成失败" };
-      } catch {}
-    }
-    return { error: "视频生成超时（180s）", task_id: taskId };
+    return { task_id: taskId, status: "pending" };
   } catch (e) { return { error: String(e?.message || e).slice(0, 150) }; }
 }
 
-// POST /api/media —— 视频生成
+export async function checkVideoJob(provider, modelId, taskId) {
+  const auth = resolveVideoAuth(provider, modelId);
+  if (auth.error) return auth;
+  if (!taskId) return { error: "缺少任务 ID" };
+  try {
+    const qR = await httpJsonFetch(`${auth.baseNoV1}${videoPollPath(taskId, modelId)}`, {
+      headers: { Authorization: `Bearer ${auth.key}` }, timeout: 20000,
+    });
+    if (!qR.ok) return { status: "pending", task_id: taskId };
+    const q = await qR.json();
+    const url = q.url || q.video_url || q.output?.url || q.data?.url || q.data?.video_url || q.metadata?.url;
+    if (url) return { video: url, task_id: taskId };
+    if (q.status === "failed" || q.state === "failed" || q.internal_status === "failed") {
+      return { error: "视频生成失败", status: "failed", task_id: taskId };
+    }
+    return { status: q.status || q.state || "pending", task_id: taskId };
+  } catch {
+    return { status: "pending", task_id: taskId };
+  }
+}
+
+export async function generateVideo(provider, modelId, prompt, body = {}) {
+  const started = await startVideoJob(provider, modelId, prompt, body);
+  if (started.error || started.video) return started;
+  const taskId = started.task_id;
+  for (let i = 0; i < 36; i++) {
+    await new Promise(r => setTimeout(r, 5000));
+    const q = await checkVideoJob(provider, modelId, taskId);
+    if (q.video) return { video: q.video, task_id: taskId };
+    if (q.error && q.status !== "pending") return { error: q.error, task_id: taskId };
+  }
+  return { error: "视频生成超时（180s）", task_id: taskId };
+}
+
+// POST /api/media —— 工坊短请求：无 task_id 只创建；有 task_id 只查一次
 export async function handleMedia(res, body) {
-  const { provider, modelId, prompt } = body || {};
-  if (!provider || !modelId || !prompt) return json(res, 400, { error: "缺少参数" });
-  const r = await generateVideo(provider, modelId, prompt, body);
-  if (r.video) return json(res, 200, { video: r.video, task_id: r.task_id });
-  return json(res, 500, { error: r.error || "视频生成失败" });
+  const { provider, modelId, prompt, task_id } = body || {};
+  if (!provider || !modelId) return json(res, 400, { error: "缺少参数" });
+  if (task_id) {
+    const r = await checkVideoJob(provider, modelId, task_id);
+    if (r.video) {
+      const saved = await saveArtifact({ type: "video", url: r.video, prompt }).catch(() => null);
+      return json(res, 200, { video: saved || r.video, task_id });
+    }
+    if (r.error && r.status !== "pending") return json(res, 500, { error: r.error, task_id });
+    return json(res, 200, { status: r.status || "pending", task_id });
+  }
+  if (!prompt) return json(res, 400, { error: "缺少参数" });
+  const r = await startVideoJob(provider, modelId, prompt, body);
+  if (r.video) {
+    const saved = await saveArtifact({ type: "video", url: r.video, prompt }).catch(() => null);
+    return json(res, 200, { video: saved || r.video, task_id: r.task_id });
+  }
+  if (r.error) return json(res, 500, { error: r.error });
+  return json(res, 202, { task_id: r.task_id, status: "pending" });
 }

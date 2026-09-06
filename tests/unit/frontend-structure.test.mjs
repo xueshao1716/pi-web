@@ -81,6 +81,16 @@ test('流式期间过滤本地 assistant 草稿，避免与实时流重复渲染
   assert.match(chat, /const renderMessages = stream \? messages\.filter\(m => !m\.isDraft\) : messages/, '流式期间不能把 IndexedDB 草稿和实时 assistant 同时渲染')
 })
 
+test('结构：聊天必须接住 SSE video 媒体并渲染 <video>', () => {
+  const chat = read('components', 'ChatArea.tsx')
+  const msg = read('components', 'Message.tsx')
+  const types = read('types.ts')
+  assert.ok(chat.includes("d.type === 'video'"), 'SSE media 必须收 video')
+  assert.ok(chat.includes('videos:'), '流式态必须有 videos')
+  assert.ok(msg.includes('<video'), '消息区必须能播视频')
+  assert.ok(types.includes('videos?:'), 'ChatMessage 必须有 videos')
+})
+
 test('前端收到会话已更新事件后立即刷新会话列表', () => {
   const chat = read('components', 'ChatArea.tsx')
   assert.match(chat, /case 'session_updated':[\s\S]*?refreshSessions\(\)/, 'session_updated 必须立即刷新会话列表')

@@ -155,6 +155,12 @@ export async function httpJsonFetch(url, options = {}) {
   };
 }
 
+// 不缓冲整包：给 chat/completions stream:true 用。调用方自己读 r.body。
+export async function httpRawFetch(url, options = {}) {
+  const r = await rawFetch(url, options);
+  return r;
+}
+
 // 二进制版：直接返回 Buffer（替代旧 python 子进程 base64 中转方案）
 export async function httpBufferFetch(url, options = {}) {
   const r = await rawFetch(url, options);

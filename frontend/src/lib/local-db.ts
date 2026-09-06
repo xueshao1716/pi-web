@@ -18,6 +18,7 @@ export interface LocalMessage {
   files?: any[]
   images?: string[]
   audios?: string[]
+  videos?: string[]
   model?: { provider: string; id: string }
   ts: string                    // ISO 时间戳
   synced: boolean               // 是否已同步到服务端（message_end 后标记 true）
@@ -211,6 +212,7 @@ function mergeServerMessage(local: LocalMessage, server: any): LocalMessage {
     files: local.files?.length ? local.files : server.files,
     images: local.images?.length ? local.images : server.images,
     audios: local.audios?.length ? local.audios : server.audios,
+    videos: local.videos?.length ? local.videos : server.videos,
     model: local.model || server.model,
     // 本地消息的 draft/streaming/synced 状态描述本地生命周期，不能被服务端副本抹掉。
     draft: local.draft,
@@ -229,25 +231,36 @@ export function mergeMessages(localMsgs: LocalMessage[], serverMsgs: any[]): Loc
     tools: message.tools?.map(tool => ({ ...tool })),
   }))
   const contentKeyOf = (role: string, text: string) => `${role}|${(text || '').trim().slice(0, 300)}`
+  const byId = new Map<string, number>()
+  const byContent = new Map<string, number[]>()
+  const byTool = new Map<string, number>()
+
+  const indexAt = (i: number, message: LocalMessage) => {
+    byId.set(message.id, i)
+    if (message.text?.trim()) {
+      const key = contentKeyOf(message.role, message.text)
+      const arr = byContent.get(key) || []
+      arr.push(i)
+      byContent.set(key, arr)
+    }
+    for (const tool of message.tools || []) {
+      if (tool?.id) byTool.set(tool.id, i)
+    }
+  }
+  merged.forEach((message, i) => indexAt(i, message))
 
   const findMessageIndex = (server: any, serverId: string): number => {
-    const idIndex = merged.findIndex(message => message.id === serverId)
-    if (idIndex >= 0) return idIndex
-
+    if (byId.has(serverId)) return byId.get(serverId) as number
     if (server.text?.trim()) {
       const key = contentKeyOf(server.role, server.text)
       const serverTs = new Date(server.ts).getTime()
-      const contentIndex = merged.findIndex(message => (
-        message.text?.trim()
-        && contentKeyOf(message.role, message.text) === key
-        && Math.abs(new Date(message.ts).getTime() - serverTs) < 120_000
-      ))
-      if (contentIndex >= 0) return contentIndex
+      for (const i of byContent.get(key) || []) {
+        const message = merged[i]
+        if (Math.abs(new Date(message.ts).getTime() - serverTs) < 120_000) return i
+      }
     }
-
-    const serverToolIds = new Set<string>((server.tools || []).map((tool: any) => tool?.id).filter(Boolean))
-    if (serverToolIds.size) {
-      return merged.findIndex(message => message.tools?.some(tool => serverToolIds.has(tool.id)))
+    for (const tool of server.tools || []) {
+      if (tool?.id && byTool.has(tool.id)) return byTool.get(tool.id) as number
     }
     return -1
   }
@@ -257,6 +270,7 @@ export function mergeMessages(localMsgs: LocalMessage[], serverMsgs: any[]): Loc
     const matchIndex = findMessageIndex(server, serverId)
     if (matchIndex >= 0) {
       merged[matchIndex] = mergeServerMessage(merged[matchIndex], server)
+      indexAt(matchIndex, merged[matchIndex])
       continue
     }
 
@@ -271,11 +285,13 @@ export function mergeMessages(localMsgs: LocalMessage[], serverMsgs: any[]): Loc
       files: server.files,
       images: server.images,
       audios: server.audios,
+      videos: server.videos,
       model: server.model,
       ts: server.ts,
       synced: true,
       draft: false,
     })
+    indexAt(merged.length - 1, merged[merged.length - 1])
   }
 
   merged.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())

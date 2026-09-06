@@ -22,7 +22,7 @@ export const SYSTEM_CAPABILITIES = [
   { icon: "chat", name: "多会话对话", desc: "流式输出 · 多端实时同步 · 语音输入 · 轮次折叠 · 模型参数调节" },
   { icon: "sparkles", name: "灵犀灵感池", desc: "伙伴与小语分源速记灵感，攒着一起评审采纳" },
   { icon: "clock", name: "任务中心", desc: "定时任务调度 · 手动执行 · 运行历史" },
-  { icon: "factory", name: "专项工作台", desc: "AI 绘画 · PPT 生成 · 小说工坊，成品自动入库" },
+  { icon: "factory", name: "专项工作台", desc: "AI 绘画 · 视频工坊 · PPT 生成 · 小说工坊，成品自动入库" },
   { icon: "image", name: "资产库", desc: "生成物/交付物统一管理 · 类型筛选 · 在线预览下载" },
   { icon: "brain", name: "模型中心", desc: "多通道接入 · 免费标注 · Auto 智能路由 · 会话级参数" },
   { icon: "flask", name: "应用中心", desc: "经验沉淀台 · 技能库 · 提示词库 · 改进提案" },

@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { ImagePlus, Zap, X } from 'lucide-react'
+import { mutate } from 'swr'
+import { ImagePlus, X } from 'lucide-react'
 import { MediaApi, withFileToken } from '../api'
 import { useApp } from '../store'
 import type { Model } from '../types'
+import MediaHistory from './MediaHistory'
 
 // ── 出图面板：选模型/尺寸 → 生成 → 服务端自动落盘 生成物/图片/日期 → 资产库刷新 ──
 
@@ -14,12 +16,19 @@ function capKeys(m: Model): string[] {
   return Array.isArray(cap) ? cap : Object.entries(cap || {}).filter(([, v]) => v).map(([k]) => k as string)
 }
 
-export default function GeneratePanel({ onClose, onGenerated }: { onClose?: () => void; onGenerated: () => void }) {
+export default function GeneratePanel({ onClose, onGenerated, prompt: promptProp, onPromptChange }: {
+  onClose?: () => void
+  onGenerated: () => void
+  prompt?: string
+  onPromptChange?: (value: string) => void
+}) {
   const { models } = useApp()
   const imageModels = models.filter(m => capKeys(m).includes('image'))
   const [modelIdx, setModelIdx] = useState(0)
   const [size, setSize] = useState('1024x1024')
-  const [prompt, setPrompt] = useState('')
+  const [localPrompt, setLocalPrompt] = useState('')
+  const prompt = promptProp ?? localPrompt
+  const setPrompt = onPromptChange ?? setLocalPrompt
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const [err, setErr] = useState('')
@@ -30,7 +39,7 @@ export default function GeneratePanel({ onClose, onGenerated }: { onClose?: () =
     try {
       const m = imageModels[modelIdx]
       const r = await MediaApi.image({ provider: m.provider, modelId: m.id, prompt: prompt.trim(), size })
-      if (r.image) { setResult(r.image); onGenerated() }
+      if (r.image) { setResult(r.image); onGenerated(); mutate('artifacts') }
       else setErr(r.error || '未返回图片')
     } catch (e: any) {
       // api.ts 已把对象型 error 转成可读字符串
@@ -40,17 +49,18 @@ export default function GeneratePanel({ onClose, onGenerated }: { onClose?: () =
 
   return (
     <div className="panel !p-3 mb-4 space-y-3">
-      <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
         <span className="text-sm font-semibold text-pi-text inline-flex items-center gap-1.5"><ImagePlus className="w-4 h-4" /> 生成图片</span>
-        <span className="text-[11px] text-pi-dim2">生成后自动存入「生成物/图片」，出现在下方列表</span>
+        <span className="hidden sm:inline text-[11px] text-pi-dim2">生成后自动存入「生成物/图片」</span>
         {onClose && <button className="btn-tool !px-2 ml-auto" onClick={onClose}><X className="w-4 h-4" /></button>}
       </div>
+      <MediaHistory kind="image" onPick={a => { if (a.prompt) setPrompt(a.prompt); setResult(a.url); setErr('') }} />
       {imageModels.length === 0 ? (
         <div className="text-xs text-pi-dim2 py-2">没有可用的图像模型——先到模型管理里添加（如 Agnes / 云flare Flux / 豆包 Seedream）</div>
       ) : (
         <>
-          <div className="flex gap-2 flex-wrap">
-            <select className="input-pi !py-1.5 text-xs max-w-[260px]" value={modelIdx}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <select className="input-pi min-h-11 !py-2 text-xs w-full sm:max-w-[260px]" value={modelIdx}
               onChange={e => setModelIdx(+e.target.value)}>
               {imageModels.map((m, i) => (
                 <option key={`${m.provider}/${m.id}`} value={i}>
@@ -58,15 +68,15 @@ export default function GeneratePanel({ onClose, onGenerated }: { onClose?: () =
                 </option>
               ))}
             </select>
-            <select className="input-pi !py-1.5 text-xs w-36" value={size} onChange={e => setSize(e.target.value)}>
+            <select className="input-pi min-h-11 !py-2 text-xs w-full sm:w-36" value={size} onChange={e => setSize(e.target.value)}>
               {SIZE_OPTIONS.map(s => <option key={s} value={s}>{SIZE_LABEL[s]}</option>)}
             </select>
           </div>
-          <textarea className="input-pi text-[13px] resize-none" rows={3}
+          <textarea className="input-pi text-[13px] resize-none min-h-[88px]" rows={3}
             placeholder="描述想要的画面…"
             value={prompt} onChange={e => setPrompt(e.target.value)} />
-          <div className="flex items-center gap-3">
-            <button className="btn-primary text-xs px-4 py-1.5 disabled:opacity-60" onClick={gen} disabled={busy || !prompt.trim()}>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <button className="btn-primary text-xs px-4 min-h-11 w-full sm:w-auto disabled:opacity-60" onClick={gen} disabled={busy || !prompt.trim()}>
               {busy ? '生成中…（图像模型较慢，可能 30-120s）' : '生成'}
             </button>
             {err && <span className="text-xs text-pi-red truncate">{err}</span>}

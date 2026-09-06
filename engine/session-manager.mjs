@@ -9,12 +9,14 @@ import { appendSessionGroup } from "./session-groups.mjs";
 let _cwd = "", _sessionsDir = "", _tools = [], _getModelList = () => [], _getDefaultModel = () => null, _activeSessions = null, _createAgentSessionServices = null, _createAgentSessionFromServices = null, _getModelRuntime = () => null,
     _SessionManager = null, _SettingsManager = null, _DefaultResourceLoader = null, _getAgentDir = () => "", _readJsonFile = null, _writeJsonFile = null, _piPackage = "", _isModelBlocked = () => false,
     _initSearchTool = async () => null, _initShareTool = async () => null, _initDshTool = async () => null, _isExternalThinking = () => false, _THINK_TOOL = null,
+    _generateMediaAsync = null,
     _modelCapabilities = null, _bindOutputGuardDeps = null, _extractMessages = null, _createSseWriter = null, _unifiedChat = null, _loadSessionModelKey = null;
-export function initSessionManager({ cwd = "", sessionsDir = "", tools = [], piPackage = "", isModelBlocked = null, getModelList = null, getDefaultModel = null, activeSessions = null, SessionManager = null, SettingsManager = null, DefaultResourceLoader = null, getAgentDir = null, readJsonFile = null, writeJsonFile = null, initSearchTool = null, initShareTool = null, initDshTool = null, isExternalThinking = null, THINK_TOOL = null, modelCapabilities = null, bindOutputGuardDeps = null, extractMessages = null, createSseWriter = null, unifiedChat = null, createAgentSessionServices = null, createAgentSessionFromServices = null, getModelRuntime = null, loadSessionModelKey = null } = {}) {
+export function initSessionManager({ cwd = "", sessionsDir = "", tools = [], piPackage = "", isModelBlocked = null, getModelList = null, getDefaultModel = null, activeSessions = null, SessionManager = null, SettingsManager = null, DefaultResourceLoader = null, getAgentDir = null, readJsonFile = null, writeJsonFile = null, initSearchTool = null, initShareTool = null, initDshTool = null, isExternalThinking = null, THINK_TOOL = null, modelCapabilities = null, bindOutputGuardDeps = null, extractMessages = null, createSseWriter = null, unifiedChat = null, createAgentSessionServices = null, createAgentSessionFromServices = null, getModelRuntime = null, loadSessionModelKey = null, generateMediaAsync = null } = {}) {
   _cwd = cwd; _sessionsDir = sessionsDir; _tools = tools; _piPackage = piPackage; if (isModelBlocked) _isModelBlocked = isModelBlocked; _activeSessions = activeSessions; _SessionManager = SessionManager; _SettingsManager = SettingsManager; _DefaultResourceLoader = DefaultResourceLoader; _readJsonFile = readJsonFile; _writeJsonFile = writeJsonFile;
   if (createAgentSessionServices) _createAgentSessionServices = createAgentSessionServices; if (createAgentSessionFromServices) _createAgentSessionFromServices = createAgentSessionFromServices; if (getModelRuntime) _getModelRuntime = getModelRuntime; if (loadSessionModelKey) _loadSessionModelKey = loadSessionModelKey;
   if (getModelList) _getModelList = getModelList; if (getDefaultModel) _getDefaultModel = getDefaultModel; if (getAgentDir) _getAgentDir = getAgentDir;
   if (initSearchTool) _initSearchTool = initSearchTool; if (initShareTool) _initShareTool = initShareTool; if (initDshTool) _initDshTool = initDshTool; if (isExternalThinking) _isExternalThinking = isExternalThinking; if (THINK_TOOL) _THINK_TOOL = THINK_TOOL;
+  if (generateMediaAsync) _generateMediaAsync = generateMediaAsync;
   if (modelCapabilities) _modelCapabilities = modelCapabilities; if (bindOutputGuardDeps) _bindOutputGuardDeps = bindOutputGuardDeps; if (extractMessages) _extractMessages = extractMessages; if (createSseWriter) _createSseWriter = createSseWriter; if (unifiedChat) _unifiedChat = unifiedChat;
 }
 
@@ -366,6 +368,27 @@ export async function initShareTool() {
   }
   return shareToolDef;
 }
+
+let piMediaTools = null;
+export async function initPiMediaTools() {
+  if (piMediaTools) return piMediaTools;
+  try {
+    const { createRequire } = await import("node:module");
+    const req2 = createRequire(_piPackage);
+    const { Type } = req2("typebox");
+    const { createPiMediaTools } = await import("./pi-media-tools.mjs");
+    piMediaTools = createPiMediaTools({
+      Type,
+      generateMediaAsync: _generateMediaAsync,
+      getModelList: _getModelList,
+    });
+  } catch (e) {
+    console.log(`[pi-web] 宿主媒体工具初始化失败: ${String(e?.message || e).slice(0, 80)}`);
+    piMediaTools = [];
+  }
+  return piMediaTools;
+}
+
 export async function createSessionAgent(sm, model) {
   const cwd = (typeof sm.getCwd === "function" && sm.getCwd()) || _cwd;
   const settingsManager = _SettingsManager.create(cwd, _getAgentDir());
@@ -374,19 +397,20 @@ export async function createSessionAgent(sm, model) {
   if (st) customTools.push(st);
   const sh = await initShareTool();
   if (sh) customTools.push(sh);
+  const mediaTools = await initPiMediaTools();
+  if (Array.isArray(mediaTools)) customTools.push(...mediaTools);
   // 双引擎：dsh（DeepSeek Harness）作为执行臂——pi 主引擎派单，dsh 干代码/沙箱活，pi 验收
   const dt = await _initDshTool();
   if (dt) customTools.push(dt);
   // 外部思考调试开关（externalThinking）：注入 think 工具让模型把推理写进工具参数
   if (_isExternalThinking()) customTools.push(_THINK_TOOL);
-  // 两阶段引导（dsh 生态 anchored-standard 借鉴，2026-08-17）：
-  // DeepSeek 系模型对首轮工具目录敏感——dsh 生态实测 7 工具首轮 91-92 分 vs 2-4 工具首轮 99 分。
-  // 新会话首轮只暴露文件核心工具（read/write/edit/bash），首个文本/工具事件后 promote 恢复完整集
-  // （setActiveToolsByName 下个 turn 生效，不打断当前轮）。可用环境变量 PI_TWO_PHASE=0 关闭。
+  // 两阶段引导：首轮给文件核心 + 出片/查找/分享，避免只会 bash 考古。
+  // 首个文本/工具事件后 promote 恢复完整集。PI_TWO_PHASE=0 关闭。
   const MIN_BOOTSTRAP = ["read", "write", "edit", "bash"].filter(t => _tools.includes(t));
+  const FIRST_TURN_EXTRA = ["search_files", "list_channels", "generate_video", "generate_image", "generate_tts", "share_project"];
   const bootstrap = isFirstTurn(sm) && MIN_BOOTSTRAP.length >= 2 && process.env.PI_TWO_PHASE !== "0";
   const allowedTools = bootstrap
-    ? [...new Set([...MIN_BOOTSTRAP, ...customTools.map(t => t.name).filter(n => MIN_BOOTSTRAP.includes(n))])]
+    ? [...new Set([...MIN_BOOTSTRAP, ...customTools.map(t => t.name).filter(n => MIN_BOOTSTRAP.includes(n) || FIRST_TURN_EXTRA.includes(n))])]
     : [...new Set([..._tools, ...customTools.map(t => t.name)])];
   if (bootstrap) console.log(`[agent] 两阶段引导：首轮最小工具集 ${allowedTools.join(", ")}（首个文本/工具后自动 promote 完整集）`);
   console.log(`[agent] 工具集: ${allowedTools.join(", ")}`);

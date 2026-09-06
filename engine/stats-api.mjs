@@ -230,7 +230,7 @@ export async function handleCompact(res, id) {
 }
 
 // GET /api/skills —— 技能列表（pi 引擎资源 + pi-web 内置技能）
-const BUILTIN_SKILLS_DIR = path.join(import.meta.dirname, "skills");
+const BUILTIN_SKILLS_DIR = path.join(import.meta.dirname, "..", "skills");
 export function listBuiltinSkills() {
   try {
     const root = BUILTIN_SKILLS_DIR;

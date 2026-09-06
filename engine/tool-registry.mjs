@@ -58,7 +58,7 @@ export class ToolRegistry {
     }
     if (this.defaultExecutor) {
       try {
-        const out = await this.defaultExecutor(name, args);
+        const out = await this.defaultExecutor(name, args, opts);
         return normalizeToolOut(out);
       } catch (e) {
         return { text: `工具 ${name} 执行异常: ${String(e?.message || e).slice(0, 200)}`, isError: true };

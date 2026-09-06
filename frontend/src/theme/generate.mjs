@@ -99,9 +99,17 @@ export const SEEDS = {
   mist:   { bg: '#f3f5fa', text: '#1c2333', accent: '#4a58fa', light: true, step: 0.036,
             overrides: { '--pi-green': '#16a34a', '--pi-red': '#dc4b45', '--pi-yellow': '#d97706', '--pi-accent-glow': 'rgba(74,88,250,0.12)', '--pi-glow-purple': 'rgba(100,80,200,0.06)', '--pi-glow-cyan': 'rgba(56,189,248,0.04)' } },
   kraft:  { bg: '#e5d4aa', text: '#3b2c14', accent: '#b45309', light: true, step: 0.035,
-            overrides: { '--pi-green': '#158039', '--pi-red': '#bb2c27', '--pi-yellow': '#a16207',
-                         '--pi-accent-glow': 'rgba(180,83,9,0.14)', '--pi-glow-purple': 'rgba(146,98,10,0.07)', '--pi-glow-cyan': 'rgba(120,90,20,0.05)',
-                         '--pi-shadow-sm': 'rgba(92,58,16,0.16)', '--pi-shadow-md': 'rgba(92,58,16,0.26)', '--pi-shadow-lg': 'rgba(80,50,12,0.36)' } },
+            overrides: {
+              '--pi-green': '#158039', '--pi-red': '#bb2c27', '--pi-yellow': '#a16207',
+              '--pi-accent2': '#d97706', '--pi-accent-deep': '#8f3f00',
+              '--pi-accent-glow': 'rgba(180,83,9,0.16)',
+              '--pi-glow-purple': 'rgba(146,98,10,0.07)', '--pi-glow-cyan': 'rgba(120,90,20,0.05)',
+              '--pi-border-hi': 'rgba(92,58,16,0.10)',
+              '--pi-shadow-sm': '0 1px 2px rgba(92,58,16,.16), 0 1px 0 rgba(255,244,214,.28)',
+              '--pi-shadow-md': '0 3px 8px rgba(92,58,16,.20), 0 1px 0 rgba(255,244,214,.22)',
+              '--pi-shadow-lg': '0 8px 18px rgba(80,50,12,.24), 0 1px 0 rgba(255,244,214,.18)',
+              '--pi-font-display': '"Iowan Old Style","Palatino Linotype","Songti SC","STSong",serif',
+            } },
   // 08-29 主题系统专门页新增（threeui 色板气质：sepia/moss/azure）
   sepia:  { bg: '#171310', text: '#ede4d8', accent: '#d97706', step: 0.042,
             overrides: { '--pi-green': '#5fae6e', '--pi-red': '#e06c5f', '--pi-yellow': '#d9a441',
@@ -137,6 +145,19 @@ export const SEEDS = {
               '--pi-shadow-sm': '0 1px 2px rgba(35,60,42,.06), 0 1px 4px rgba(35,60,42,.05)',
               '--pi-shadow-md': '0 2px 8px rgba(35,60,42,.08), 0 1px 3px rgba(35,60,42,.05)',
               '--pi-shadow-lg': '0 4px 16px rgba(35,60,42,.10), 0 2px 6px rgba(35,60,42,.06)',
+            } },
+  // 拟态木（09-04）：枫木台面 + 翠绿镶嵌。木纹/斜面见 styles.css 手写特化区
+  wood: { bg: '#E8D4B2', text: '#2A2118', accent: '#0B8A54', light: true, step: 0.033,
+            overrides: {
+              '--pi-green': '#0B8A54', '--pi-red': '#B24A3A', '--pi-yellow': '#C4A046',
+              '--pi-accent2': '#2BB56E', '--pi-accent-deep': '#086B42',
+              '--pi-accent-glow': 'rgba(11,138,84,0.16)',
+              '--pi-glow-purple': 'rgba(140,90,40,0.06)', '--pi-glow-cyan': 'rgba(11,138,84,0.06)',
+              '--pi-border-hi': 'rgba(70,42,16,0.08)',
+              '--pi-shadow-sm': '0 1px 2px rgba(62,38,12,.14), 0 1px 0 rgba(255,244,220,.35)',
+              '--pi-shadow-md': '0 3px 8px rgba(62,38,12,.18), inset 0 1px 0 rgba(255,246,228,.4)',
+              '--pi-shadow-lg': '0 8px 20px rgba(50,30,10,.22), inset 0 1px 0 rgba(255,246,228,.35)',
+              '--pi-font-display': '"Palatino Linotype","Songti SC","STSong","SimSun",serif',
             } },
 }
 
@@ -303,7 +324,7 @@ export function emitCss() {
   const block = (sel, vars) => `${sel} {\n${fmtVars(vars)}\n}`
   return {
     root: block(':root', deep),
-    themes: ['ink', 'violet', 'mist', 'kraft', 'shuimo', 'bamboo'].map(name =>
+    themes: ['ink', 'violet', 'mist', 'kraft', 'shuimo', 'bamboo', 'wood'].map(name =>
       block(`[data-theme="${name}"]`, generateTheme(SEEDS[name]))).join('\n'),
   }
 }

@@ -105,7 +105,9 @@ export default function PptStudio({ pages, dir, onSaved }: {
     if (refining || !refineInstr.trim() || !dir) return
     const target = mergedPages[active]
     setRefining(true); setRefineMsg('…')
-    refineAbortRef.current = WorkshopApi.refinePage({ dir, file: target.file, instruction: refineInstr.trim() }, ev => {
+    let model: string | undefined
+    try { model = localStorage.getItem('pi_workshop_model_ppt') || undefined } catch {}
+    refineAbortRef.current = WorkshopApi.refinePage({ dir, file: target.file, instruction: refineInstr.trim(), model }, ev => {
       const d = ev.data || {}
       switch (ev.type) {
         case 'note': setRefineMsg('· ' + (d.text || '').slice(0, 80)); break

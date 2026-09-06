@@ -4,6 +4,9 @@ import * as Tooltip from '@radix-ui/react-tooltip'
 import 'virtual:uno.css'
 import './styles.css'
 import App from './App'
+import { bootTheme } from './theme/apply'
+
+bootTheme()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
