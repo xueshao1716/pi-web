@@ -31,12 +31,21 @@ function resolvePiPackage() {
     // 本地安装（开发模式）
     return require.resolve("@earendil-works/pi-coding-agent/dist/index.js");
   } catch {}
-  try {
-    // 全局安装（npm root -g，跨平台）
-    const { execSync } = require("node:child_process");
-    const root = execSync("npm root -g", { encoding: "utf8" }).trim();
-    return path.join(root, "@earendil-works", "pi-coding-agent", "dist", "index.js");
-  } catch {}
+  // 全局安装多候选探测（2026-09-09：NPM_CONFIG_PREFIX 被污染指向 Program Files\nodejs 时
+  // npm root -g 返回错误路径，包实际在默认位置 %APPDATA%\npm\node_modules）
+  const { execSync } = require("node:child_process");
+  const rel = path.join("@earendil-works", "pi-coding-agent", "dist", "index.js");
+  const roots = [];
+  try { roots.push(execSync("npm root -g", { encoding: "utf8" }).trim()); } catch {}
+  if (process.platform === "win32" && process.env.APPDATA) {
+    roots.push(path.join(process.env.APPDATA, "npm", "node_modules"));
+  }
+  roots.push("/usr/local/lib/node_modules", "/usr/lib/node_modules");
+  for (const root of roots) {
+    if (!root) continue;
+    const full = path.join(root, rel);
+    try { if (fs.existsSync(full)) return full; } catch {}
+  }
   return "";
 }
 
