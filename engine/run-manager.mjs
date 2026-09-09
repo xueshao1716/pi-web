@@ -77,7 +77,7 @@ function createExecutionIo({ headers = {}, socket = {}, onEvent }) {
   return { req, res, close }
 }
 
-export function createRunManager({ store, eventLog, executeChat, instanceId, onSessionUpdated = null }) {
+export function createRunManager({ store, eventLog, executeChat, instanceId, onSessionUpdated = null, effects = null }) {
   const executions = new Map()
 
   const checkpointForEvent = (type, data = {}) => {
@@ -104,16 +104,54 @@ export function createRunManager({ store, eventLog, executeChat, instanceId, onS
       type,
       data,
     })
+    if (effects && data?.effectKey) {
+      try {
+        if (type === 'tool' || type === 'tool_start' || type === 'tool_started') {
+          effects.begin(run.id, data.effectKey, {
+            toolName: data.name || data.toolName,
+            argsHash: data.argsHash,
+            ordinal: data.ordinal,
+            turn: data.turn,
+            attempt: run.checkpoint?.attempt,
+          })
+        } else if (type === 'tool_end' || type === 'tool_finished') {
+          if (data.uncertain) effects.markUncertain(run.id, data.effectKey, 'tool_reported_uncertain')
+          else effects.complete(run.id, data.effectKey, { text: data.output || '', isError: data.isError === true })
+        }
+      } catch {}
+    }
     const patch = checkpointForEvent(type, data)
     if (patch && typeof store.saveCheckpoint === 'function') {
-      try { store.saveCheckpoint(run.id, patch) } catch {}
+      try {
+        const steps = typeof effects?.list === 'function' ? effects.list(run.id) : []
+        store.saveCheckpoint(run.id, {
+          ...patch,
+          lastEventSeq: event.seq,
+          completedSteps: steps.filter(step => step.state === 'completed').map(step => step.key),
+          uncertainSteps: steps.filter(step => step.state === 'uncertain').map(step => step.key),
+          pendingSteps: steps.filter(step => step.state === 'started').map(step => step.key),
+        })
+      } catch {}
     }
     return event
   }
 
   const makeControl = (run, body, context = {}) => ({
     runId: run.id,
-    body: { ...body },
+    body: {
+      ...body,
+      // Internal-only context: run-api strips persisted request details and
+      // this object never crosses the public JSON boundary.
+      __runContext: {
+        runId: run.id,
+        attempt: Number.isInteger(run.checkpoint?.attempt) ? run.checkpoint.attempt : 0,
+        resume: body?.resume === true,
+        checkpoint: run.checkpoint || null,
+        effects,
+        completedSteps: typeof effects?.list === 'function' ? effects.list(run.id).filter(step => step.state === 'completed').map(step => step.key) : [],
+        uncertainSteps: typeof effects?.list === 'function' ? effects.list(run.id).filter(step => step.state === 'uncertain').map(step => step.key) : [],
+      },
+    },
     context: { headers: context.headers || {}, socket: context.socket || {} },
     close: null,
     stopRequested: false,
@@ -206,13 +244,7 @@ export function createRunManager({ store, eventLog, executeChat, instanceId, onS
 
       const run = store.create({ ...body, ownerId: instanceId })
       if (TERMINAL.has(run.status) || executions.has(run.id)) return run
-      const control = {
-        runId: run.id,
-        body: { ...body },
-        context: { headers: context.headers || {}, socket: context.socket || {} },
-        close: null,
-        stopRequested: false,
-      }
+      const control = makeControl(run, body, context)
       executions.set(run.id, control)
       queueMicrotask(() => start(control))
       return run

@@ -53,6 +53,12 @@ function exclusiveDef(name) {
   return { parallel: true };
 }
 
+export function toolReplayPolicy(name) {
+  if (["read", "web_search", "list_channels", "activate_skill", "todo_read"].includes(name)) return "safe"
+  if (["write", "edit", "plan_files", "todo_write"].includes(name)) return "state-checked"
+  return "never"
+}
+
 export async function runYuanshuToolRound({
   toolCalls = [],
   history = [],
@@ -69,6 +75,8 @@ export async function runYuanshuToolRound({
   sandboxMode = "workspace-write",
   sandboxWsRoot = "",
   sandboxAsk,
+  effects = null,
+  executionContext = null,
 } = {}) {
   const tools = {
     getDef: exclusiveDef,
@@ -79,7 +87,7 @@ export async function runYuanshuToolRound({
       if (!sb.ok) {
         return { text: `${sb.tag}\n${sb.note}`, isError: true, denied: true };
       }
-      const raw = await execute(name, args, { signal });
+      const raw = await execute(name, args, { signal, ...(executionContext || {}) });
       const out = raw && typeof raw === "object" ? raw : { text: String(raw || ""), isError: true };
       if ((name === "read" || name === "write" || name === "edit") && args?.path) {
         try {
@@ -105,6 +113,9 @@ export async function runYuanshuToolRound({
     onToolEnd,
     signal,
     maxParallel: 4,
+    effects,
+    executionContext,
+    replayPolicy: toolReplayPolicy,
   });
 
   const searches = results.filter((r) => r.name === "web_search");

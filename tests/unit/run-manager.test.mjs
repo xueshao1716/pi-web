@@ -8,6 +8,7 @@ import { once } from 'node:events'
 import { createRunStore } from '../../engine/run-store.mjs'
 import { createRunEventLog } from '../../engine/run-event-log.mjs'
 import { createRunManager } from '../../engine/run-manager.mjs'
+import { createRunEffects, canonicalStepKey } from '../../engine/run-effects.mjs'
 
 const tick = () => new Promise(resolve => setImmediate(resolve))
 async function waitFor(check, attempts = 50) {
@@ -184,4 +185,52 @@ test('recover 标记 resumeAvailable，resume(runId) 发布事件并重新执行
   assert.equal(newManager.resume(run.id).status, 'completed')
   eventLog.close()
   fs.rmSync(rootDir, { recursive: true, force: true })
+})
+
+test('run manager 给执行器注入内部 runContext，恢复时递增 attempt', async () => {
+  const contexts = []
+  const effects = { marker: true }
+  const fx = fixture(async (_req, res, body) => {
+    contexts.push(body.__runContext)
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    res.end()
+  }, { effects })
+  try {
+    const run = fx.manager.create({ sessionId: 'session-context', clientRequestId: 'request-1', message: 'hello' })
+    await waitFor(() => fx.manager.get(run.id)?.status === 'completed')
+    assert.equal(contexts[0].runId, run.id)
+    assert.equal(contexts[0].attempt, 0)
+    assert.equal(contexts[0].effects, effects)
+
+    fx.store.update(run.id, { status: 'interrupted', resumeAvailable: true })
+    fx.manager.resume(run.id)
+    await waitFor(() => contexts.length === 2)
+    assert.equal(contexts[1].runId, run.id)
+    assert.equal(contexts[1].attempt, 1)
+    assert.equal(contexts[1].resume, true)
+  } finally { fx.cleanup() }
+})
+
+test('tool 事件会把 effects ledger 状态同步进 checkpoint', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'piweb-run-effects-manager-'))
+  const store = createRunStore({ rootDir, idFactory: () => 'run-effects' })
+  const eventLog = createRunEventLog({ rootDir })
+  const effects = createRunEffects({ rootDir })
+  const manager = createRunManager({
+    store, eventLog, effects, instanceId: 'instance-a',
+    executeChat: async (_req, res) => {
+      const key = canonicalStepKey('write', { path: 'a.txt', content: 'x' }, { turn: 1, index: 0 })
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      res.write(`event: tool\ndata: ${JSON.stringify({ name: 'write', effectKey: key, argsHash: 'hash', turn: 1, ordinal: 0 })}\n\n`)
+      res.write(`event: tool_end\ndata: ${JSON.stringify({ name: 'write', effectKey: key, isError: false, output: 'ok' })}\n\n`)
+      res.end()
+    },
+  })
+  try {
+    const run = manager.create({ sessionId: 'session-effects', clientRequestId: 'request-1', message: 'hello' })
+    await waitFor(() => manager.get(run.id)?.status === 'completed')
+    const current = manager.get(run.id)
+    assert.deepEqual(current.checkpoint.completedSteps, [canonicalStepKey('write', { path: 'a.txt', content: 'x' }, { turn: 1, index: 0 })])
+    assert.deepEqual(effects.get(run.id, current.checkpoint.completedSteps[0]).state, 'completed')
+  } finally { eventLog.close(); fs.rmSync(rootDir, { recursive: true, force: true }) }
 })

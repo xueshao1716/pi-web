@@ -41,12 +41,17 @@ function checkpointFor(run, patch = {}) {
     attempt: 0,
     updatedAt: run?.createdAt || null,
   }
-  return {
+  const checkpoint = {
     phase: patch.phase || current.phase || 'queued',
     step: patch.step || current.step || 'create',
     attempt: Number.isInteger(patch.attempt) && patch.attempt >= 0 ? patch.attempt : (current.attempt || 0),
     updatedAt: patch.updatedAt || current.updatedAt || run?.updatedAt || run?.createdAt || null,
   }
+  for (const key of ['turn', 'lastEventSeq', 'pendingSteps', 'completedSteps', 'uncertainSteps']) {
+    if (patch[key] !== undefined) checkpoint[key] = patch[key]
+    else if (current[key] !== undefined) checkpoint[key] = current[key]
+  }
+  return checkpoint
 }
 
 export function createRunStore({ rootDir, now = () => new Date().toISOString(), idFactory = randomUUID }) {

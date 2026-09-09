@@ -151,6 +151,18 @@ test("engine/tools 执行器工厂（createUnifiedToolExecutor）", (t) => {
     assert.equal(e.isError, false);
     assert.equal((await exec("read", { path: "a/b.txt" })).text, "world");
   });
+  t.test("write/edit：目标状态已存在时返回幂等成功", async () => {
+    await exec("write", { path: "idempotent.txt", content: "same" });
+    const same = await exec("write", { path: "idempotent.txt", content: "same" });
+    assert.equal(same.isError, false);
+    assert.match(same.text, /已是目标内容|幂等/);
+
+    const edited = await exec("edit", { path: "idempotent.txt", oldText: "same", newText: "changed" });
+    assert.equal(edited.isError, false);
+    const replay = await exec("edit", { path: "idempotent.txt", oldText: "same", newText: "changed" });
+    assert.equal(replay.isError, false);
+    assert.match(replay.text, /已是目标内容|幂等/);
+  });
   t.test("write：路径越权拒绝", async () => {
     const r = await exec("write", { path: "../escape.txt", content: "x" });
     assert.equal(r.isError, true);

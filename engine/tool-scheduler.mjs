@@ -13,6 +13,8 @@
 
 export const ABORTED_MARKER = "[系统提示] 工具调用已中止（未执行）";
 
+import { canonicalStepKey, hashArgs } from "./run-effects.mjs";
+
 export async function scheduleToolCalls({
   toolCalls = [],
   tools = null,
@@ -20,6 +22,9 @@ export async function scheduleToolCalls({
   onToolEnd = null,
   signal = null,
   maxParallel = 4,
+  effects = null,
+  executionContext = null,
+  replayPolicy = null,
 } = {}) {
   const results = [];
   let i = 0;
@@ -30,11 +35,11 @@ export async function scheduleToolCalls({
     while (j < n && !isExclusive(toolCalls[j], tools)) j++;
     if (j === i) {
       // 屏障：单独执行排他调用
-      results.push(await runOne(toolCalls[i], { tools, onTool, onToolEnd, signal }));
+      results.push(await runOne(toolCalls[i], { tools, onTool, onToolEnd, signal, effects, executionContext, replayPolicy, ordinal: i }));
       i++;
     } else {
       const seg = toolCalls.slice(i, j);
-      const done = await runParallel(seg, { tools, onTool, onToolEnd, signal, maxParallel });
+      const done = await runParallel(seg, { tools, onTool, onToolEnd, signal, effects, executionContext, replayPolicy, maxParallel, ordinalBase: i });
       results.push(...done);
       i = j;
     }
@@ -55,7 +60,7 @@ async function runParallel(seg, ctx) {
         out[idx] = abortedResult(tc, ctx);
         continue;
       }
-      out[idx] = await runOne(tc, ctx);
+      out[idx] = await runOne(tc, { ...ctx, ordinal: (ctx.ordinalBase || 0) + idx });
     }
   }
   const poolSize = Math.max(1, Math.min(ctx.maxParallel || 4, seg.length));
@@ -64,19 +69,63 @@ async function runParallel(seg, ctx) {
 }
 
 // ── 单个调用 ──
-async function runOne(tc, { tools, onTool, onToolEnd, signal }) {
+async function runOne(tc, { tools, onTool, onToolEnd, signal, effects, executionContext, replayPolicy, ordinal = 0 }) {
   let args = {};
   try { args = JSON.parse(tc.function?.arguments || "{}"); } catch {}
   const fnName = tc.function?.name || "";
+  const runId = executionContext?.runId;
+  const turn = Number.isInteger(executionContext?.turn) ? executionContext.turn : 0;
+  const effectKey = effects && runId ? canonicalStepKey(fnName, args, { turn, index: ordinal }) : null;
+  const toolContext = {
+    signal,
+    runId,
+    attempt: executionContext?.attempt,
+    turn,
+    ordinal,
+    effectKey,
+    argsHash: hashArgs(args),
+  };
   if (signal?.aborted) {
     const out = { text: ABORTED_MARKER, isError: true };
     if (onToolEnd) onToolEnd(tc.id, fnName, args, out);
     return { id: tc.id, name: fnName, args, out };
   }
-  if (onTool) onTool(tc.id, fnName, args);
-  const out = await (tools ? tools.execute(fnName, args, { signal }) : { text: `未知工具: ${fnName}`, isError: true });
-  if (onToolEnd) onToolEnd(tc.id, fnName, args, out);
-  return { id: tc.id, name: fnName, args, out };
+  let reservation = null;
+  if (effects && runId && effectKey) {
+    reservation = effects.begin(runId, effectKey, {
+      toolName: fnName,
+      argsHash: toolContext.argsHash,
+      ordinal,
+      turn,
+      attempt: executionContext?.attempt,
+      replayPolicy: replayPolicy?.(fnName, args) || "never",
+    });
+    if (reservation.action === "reuse") {
+      const out = { ...(reservation.result || { text: "（已完成，无可复用结果）" }), reused: true };
+      if (onToolEnd) onToolEnd(tc.id, fnName, args, out, toolContext);
+      return { id: tc.id, name: fnName, args, out, effectKey };
+    }
+    if (reservation.action === "blocked") {
+      const out = {
+        text: `[恢复暂停] 工具 ${fnName} 上次执行状态不确定（${reservation.reason}），未自动重试，请先确认外部状态。`,
+        isError: true,
+        uncertain: true,
+      };
+      if (onToolEnd) onToolEnd(tc.id, fnName, args, out, toolContext);
+      return { id: tc.id, name: fnName, args, out, effectKey };
+    }
+  }
+  if (onTool) onTool(tc.id, fnName, args, toolContext);
+  let out;
+  try {
+    out = await (tools ? tools.execute(fnName, args, toolContext) : { text: `未知工具: ${fnName}`, isError: true });
+  } catch (error) {
+    effects?.markUncertain?.(runId, effectKey, String(error?.message || error));
+    out = { text: `工具执行异常: ${String(error?.message || error)}`, isError: true, uncertain: true };
+  }
+  if (effects && runId && effectKey && !out?.uncertain) effects.complete(runId, effectKey, out);
+  if (onToolEnd) onToolEnd(tc.id, fnName, args, out, toolContext);
+  return { id: tc.id, name: fnName, args, out, effectKey };
 }
 
 function abortedResult(tc, ctx) {

@@ -263,6 +263,12 @@ export function createUnifiedToolExecutor(deps = {}) {
         if (isProtectedPath(p)) return { text: `⛔ 拒绝写入 [仓库法律]：${args?.path} 是受保护文件（人格/宪法/凭据），只读不写`, isError: true };
         fs.mkdirSync(path.dirname(p), { recursive: true });
         const content = String(args?.content ?? "");
+        if (fs.existsSync(p)) {
+          try {
+            const current = fs.readFileSync(p, "utf8");
+            if (current === content) return { text: `✅ ${args?.path} 已是目标内容（幂等恢复）`, isError: false, idempotent: true };
+          } catch {}
+        }
         fs.writeFileSync(p, content, "utf8");
         return { text: `✅ 已写入 ${args?.path}（${content.length} 字符）`, isError: false };
       }
@@ -274,8 +280,12 @@ export function createUnifiedToolExecutor(deps = {}) {
         if (isProtectedPath(p)) return { text: `⛔ 拒绝修改 [仓库法律]：${args?.path} 是受保护文件（人格/宪法/凭据），只读不写`, isError: true };
         const c = fs.readFileSync(p, "utf8");
         const oldT = String(args?.oldText ?? "");
-        if (!c.includes(oldT)) return { text: "未找到 oldText 片段（可能已修改）", isError: true };
-        fs.writeFileSync(p, c.replace(oldT, String(args?.newText ?? "")), "utf8");
+        const newT = String(args?.newText ?? "");
+        if (!c.includes(oldT)) {
+          if (c.includes(newT)) return { text: `✅ ${args?.path} 已是目标内容（幂等恢复）`, isError: false, idempotent: true };
+          return { text: "未找到 oldText 片段（可能已修改）", isError: true };
+        }
+        fs.writeFileSync(p, c.replace(oldT, newT), "utf8");
         return { text: `✅ 已修改 ${args?.path}`, isError: false };
       }
       if (name === "web_search") {

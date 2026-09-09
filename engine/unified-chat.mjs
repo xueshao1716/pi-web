@@ -30,6 +30,7 @@ import { persistYuanshuUser, persistYuanshuAssistant, abortedAssistantText } fro
 import { beginYuanshuEmotion, endYuanshuEmotion } from "./yuanshu-emotion.mjs";
 import { resolveAuth } from "./dsh-keys.mjs";
 import { runYuanshuToolRound, attachYuanshuCodeTool, toolCallLoopKey } from "./yuanshu-loop.mjs";
+import { canonicalStepKey, hashArgs } from "./run-effects.mjs";
 import {
   EMPTY_TURN_ERROR,
   TRUNCATED_TOOL_ERROR,
@@ -288,6 +289,8 @@ export async function unifiedChat(model, messages, opts = {}) {
         onTool: opts.onTool, onToolEnd: opts.onToolEnd, seenCalls, jitInjected, spill: spillIfHuge,
         stuckEvents, sandboxMode: opts.sandboxMode, sandboxWsRoot: opts.sandboxWsRoot || _cwd,
         sandboxAsk: opts.sandboxAsk,
+        effects: opts.effects,
+        executionContext: { ...(opts.executionContext || {}), turn },
       });
       if (official.stop) return official.stop;
       if (needsMidLoopCompact(history, { turn, lastCompactTurn })) {
@@ -314,6 +317,8 @@ export async function unifiedChat(model, messages, opts = {}) {
         onTool: opts.onTool, onToolEnd: opts.onToolEnd, seenCalls, jitInjected, spill: spillIfHuge,
         stuckEvents, sandboxMode: opts.sandboxMode, sandboxWsRoot: opts.sandboxWsRoot || _cwd,
         sandboxAsk: opts.sandboxAsk,
+        effects: opts.effects,
+        executionContext: { ...(opts.executionContext || {}), turn },
       });
       if (scavengedRound.stop) return scavengedRound.stop;
       if (needsMidLoopCompact(history, { turn, lastCompactTurn })) {
@@ -527,7 +532,7 @@ except Exception as e:
 // SSE 心跳：每 20s 发注释行保持连接活跃（对抗公网隧道/代理的 idle 超时）
 
 // 统一通道：所有模型走 unifiedChat（对话 + 工具 + 思考 + 媒体 + 压缩 + 重试）
-export async function handleUnifiedChat(res, entry, message, sessionId, params, signal, writer, thinkOn, taskKey, modelOverride = null, sandboxAskFactory = null) {
+export async function handleUnifiedChat(res, entry, message, sessionId, params, signal, writer, thinkOn, taskKey, modelOverride = null, sandboxAskFactory = null, runContext = null) {
   let engineInitError = null;
   try { await ensureEngineInit(); } catch (e) { engineInitError = e || new Error("engine_init_failed"); }
   const taskId = taskKey || sessionId;
@@ -565,7 +570,9 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     const file = entry.sm.sessionFile;
     if (file && fs.existsSync(file)) hist = extractMessages(readEntriesFromFile(file)).slice(-20);
   } catch {}
-  let userPersisted = false;
+  // 恢复同一 run 时用户原话通常已经在会话 JSONL 中；先看最后一条，
+  // 避免恢复把同一条 user 消息追加第二次。正常新请求仍允许用户重复发送相同文本。
+  let userPersisted = !!(runContext?.resume && hist.at(-1)?.role === "user" && hist.at(-1)?.text === message);
   const persistUser = () => {
     if (userPersisted) return;
     persistYuanshuUser(entry.sm, message);
@@ -576,8 +583,38 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
   const imageIntent = mediaIntents.some(i => i.type === "image");
   const videoIntent = mediaIntents.some(i => i.type === "video");
   const skipTools = isPureImageRequest(message);
+  const mediaPrompt = extractMediaPrompt(message);
+  const runMediaEffect = async (intent, index) => {
+    const effectStore = runContext?.effects;
+    const runId = runContext?.runId;
+    if (!effectStore || !runId) return generateMediaAsync(intent, mediaPrompt);
+    const key = canonicalStepKey(`media:${intent.type}`, { intent, prompt: mediaPrompt }, { turn: 0, index });
+    const reservation = effectStore.begin(runId, key, {
+      toolName: `media:${intent.type}`,
+      argsHash: hashArgs({ intent, prompt: mediaPrompt }),
+      ordinal: index,
+      turn: 0,
+      attempt: runContext?.attempt,
+      replayPolicy: "never",
+    });
+    if (reservation.action === "reuse") return { ...(reservation.result || {}), __effectReused: true };
+    if (reservation.action === "blocked") {
+      return { type: intent.type === "tts" ? "audio" : intent.type, error: "上次媒体任务状态不确定，请确认上游任务后再重试", uncertain: true };
+    }
+    try {
+      const result = await generateMediaAsync(intent, mediaPrompt);
+      const decorated = result
+        ? { ...result, __effectKey: key }
+        : { type: intent.type === "tts" ? "audio" : intent.type, error: "媒体模型未返回结果", __effectKey: key };
+      effectStore.complete(runId, key, decorated);
+      return decorated;
+    } catch (error) {
+      effectStore.markUncertain(runId, key, String(error?.message || error));
+      return { type: intent.type === "tts" ? "audio" : intent.type, error: String(error?.message || error), uncertain: true };
+    }
+  };
   const mediaPromise = mediaIntents.length
-    ? Promise.all(mediaIntents.map(it => generateMediaAsync(it, extractMediaPrompt(message))))
+    ? Promise.all(mediaIntents.map((it, index) => runMediaEffect(it, index)))
     : Promise.resolve([]);
   let mediaItems = [];
   let mediaFlushing = null;
@@ -597,9 +634,19 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
           continue;
         }
         if (!mr.url) continue;
-        try { mr.url = await saveArtifact(mr); } catch {}
-        try { writer.push("media", mr); } catch {}
-        items.push(mr);
+        if (mr.artifactUrl) mr.url = mr.artifactUrl;
+        else {
+          try { mr.url = await saveArtifact(mr); } catch {}
+          if (mr.__effectKey && runContext?.effects && runContext?.runId) {
+            try { runContext.effects.complete(runContext.runId, mr.__effectKey, { ...mr, artifactUrl: mr.url }); } catch {}
+          }
+        }
+        const clean = { ...mr };
+        delete clean.__effectKey;
+        delete clean.__effectReused;
+        delete clean.artifactUrl;
+        try { writer.push("media", clean); } catch {}
+        items.push(clean);
       }
       mediaItems = items;
       return items;
@@ -616,11 +663,11 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
   if (videoIntent) {
     try { writer.push("note", { text: "视频模型正在出片，完成后会显示在对话里。" }); } catch {}
   }
-  const onToolStart = (id, name, args) => { touchTask(taskId, { stage: "执行工具", toolName: name }); writer.push("tool", { name, args, id }); };
-  const onToolEnd = (id, name, args, out) => {
+  const onToolStart = (id, name, args, context = {}) => { touchTask(taskId, { stage: "执行工具", toolName: name }); writer.push("tool", { name, args, id, effectKey: context.effectKey || null, turn: context.turn ?? null, ordinal: context.ordinal ?? null, argsHash: context.argsHash || null }); };
+  const onToolEnd = (id, name, args, out, context = {}) => {
     touchTask(taskId, { stage: "工具完成", toolName: name });
     const text = out?.text || "";
-    writer.push("tool_end", { name, id, isError: out?.isError === true, output: text.slice(0, 2000) });
+    writer.push("tool_end", { name, id, effectKey: context.effectKey || null, turn: context.turn ?? null, ordinal: context.ordinal ?? null, isError: out?.isError === true, uncertain: out?.uncertain === true, reused: out?.reused === true, output: text.slice(0, 2000) });
     const media = out?.media;
     if (media?.url) writer.push("media", media);
     else {
@@ -660,7 +707,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
   }
   async function runLockedChat(locked) {
     // history 末条已是 handleChat 改写后的规划指令消息（含需求），直接复用；只传只读工具定义
-    const result = await unifiedChat(chatModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: locked, sandboxMode: "read-only", sandboxWsRoot: _cwd, sandboxAsk: approvalAsk });
+    const result = await unifiedChat(chatModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: locked, sandboxMode: "read-only", sandboxWsRoot: _cwd, sandboxAsk: approvalAsk, effects: runContext?.effects, executionContext: { runId: runContext?.runId, attempt: runContext?.attempt } });
     if (!result || result.error) {
       clearTask(taskId, "error"); writer.push("error", { message: result?.error || "模型未返回内容" }); finishEmotion(); return;
     }
@@ -695,6 +742,8 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     sandboxMode: isPlanLock ? "read-only" : "workspace-write",
     sandboxWsRoot: _cwd,
     sandboxAsk: approvalAsk,
+    effects: runContext?.effects,
+    executionContext: { runId: runContext?.runId, attempt: runContext?.attempt },
   };
   let result = await unifiedChat(chatModel, history, chatOpts);
   if (result?.aborted || signal?.aborted) {
@@ -758,7 +807,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     const proModel = routeProCandidate();
     if (proModel && (proModel.provider !== chatModel.provider || proModel.id !== chatModel.id)) {
       writer.push("note", { text: `🚀 模型自报任务超纲，升级 ${proModel.provider}/${proModel.id} 重试${proMatch[1] ? `（原因：${proMatch[1].trim()}）` : ""}…` });
-      const proResult = await unifiedChat(proModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: toolDefs, sandboxMode: chatOpts.sandboxMode, sandboxWsRoot: _cwd, sandboxAsk: approvalAsk });
+      const proResult = await unifiedChat(proModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: toolDefs, sandboxMode: chatOpts.sandboxMode, sandboxWsRoot: _cwd, sandboxAsk: approvalAsk, effects: runContext?.effects, executionContext: { runId: runContext?.runId, attempt: runContext?.attempt } });
       if (proResult?.text && !proResult.error) {
         const proTxt = String(proResult.text).trim();
         if (!NEEDS_PRO_RE.test(proTxt)) {

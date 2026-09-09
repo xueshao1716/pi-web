@@ -45,6 +45,7 @@ import { json, readBody } from "./engine/http-utils.mjs";
 import { createRunStore } from "./engine/run-store.mjs";
 import { createRunEventLog } from "./engine/run-event-log.mjs";
 import { createRunManager } from "./engine/run-manager.mjs";
+import { createRunEffects } from "./engine/run-effects.mjs";
 import { createRunApi } from "./engine/run-api.mjs";
 import { initThemePrefs, loadThemePrefs, saveThemePrefs } from "./engine/theme-prefs.mjs";
 import { initEnginePair, loadEnginePair, saveEnginePair, swapEnginePair, resolveLead, describePair, leadNote } from "./engine/engine-pair.mjs";
@@ -767,8 +768,11 @@ async function handleChat(req, res, body) {
     forceYuanshu: process.env.PI_USE_AGENT === "0",
     nativeChannel: !reqProv || NATIVE_PROVIDERS.has(reqProv),
   });
-  const useAgent = !!defaultModel && engineDecision.lead === "pi";
-  if (engineDecision.lead === "dsh" || (defaultModel && !useAgent)) {
+  // 恢复任务必须走带 effects ledger 的统一工具循环；SDK agent 无法在
+  // 内置 write/edit/bash 执行前可靠拦截，因此不能让恢复请求盲目重放。
+  const forceResumeUnified = body.__runContext?.resume === true;
+  const useAgent = !!defaultModel && engineDecision.lead === "pi" && !forceResumeUnified;
+  if (forceResumeUnified || engineDecision.lead === "dsh" || (defaultModel && !useAgent)) {
     const hb2 = startSseHeartbeat(res);
     // 打断支持：客户端断开 SSE 时中止 unifiedChat / dsh 子进程
     const abortCtrl = new AbortController();
@@ -776,10 +780,10 @@ async function handleChat(req, res, body) {
     req.on("close", onClose);
     try {
       try { sseWrite(res, "note", { text: leadNote(engineDecision) }); } catch {}
-      if (engineDecision.lead === "dsh") {
+      if (engineDecision.lead === "dsh" && !forceResumeUnified) {
         await handleDshChat(res, entry, message, sessionId || findKeyByEntry(entry), abortCtrl.signal, { cwd: CONFIG.cwd });
       } else {
-        await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl.signal, undefined, thinkOn, body.taskKey, (entry.modelKey && !isAutoModel(entry.modelKey)) ? entry.modelKey : null);
+        await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl.signal, undefined, thinkOn, body.taskKey, (entry.modelKey && !isAutoModel(entry.modelKey)) ? entry.modelKey : null, null, body.__runContext || null);
       }
     } catch (e) {
       try { sseWrite(res, "error", { message: String(e?.message || e) }); } catch {}
@@ -1423,7 +1427,7 @@ async function handleChat(req, res, body) {
       const abortCtrl2 = new AbortController();
       const onClose2 = () => { try { abortCtrl2.abort(); } catch {} };
       req.on("close", onClose2);
-      await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl2.signal, writer, undefined, body.taskKey);
+      await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl2.signal, writer, undefined, body.taskKey, null, null, body.__runContext || null);
       req.removeListener("close", onClose2);
     } catch (e2) {
       try { writer.push("error", { message: `降级通道也失败: ${explainMediaError(e2)}` }); } catch {}
@@ -1532,11 +1536,13 @@ const RUNS_DIR = path.join(AGENT_DIR, "pi-web-runs");
 const RUN_INSTANCE_ID = `${process.pid}-${Date.now().toString(36)}`;
 const runStore = createRunStore({ rootDir: RUNS_DIR });
 const runEventLog = createRunEventLog({ rootDir: RUNS_DIR });
+const runEffects = createRunEffects({ rootDir: RUNS_DIR });
 const runManager = createRunManager({
   store: runStore,
   eventLog: runEventLog,
   executeChat: handleChat,
   instanceId: RUN_INSTANCE_ID,
+  effects: runEffects,
   // handleChat 返回时 JSONL 已提交；通知会话订阅者刷新侧栏与多端状态。
   onSessionUpdated: ({ run }) => busPush(run.sessionId, "session_updated", { sessionId: run.sessionId }),
 });

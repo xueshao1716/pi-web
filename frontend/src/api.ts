@@ -107,6 +107,7 @@ export const RunsApi = {
     method: 'POST', body: { ...body, stream: true }, timeoutMs: 30_000,
   }),
   get: (runId: string) => api<RunInfo>(`/api/runs/${encodeURIComponent(runId)}`),
+  resume: (runId: string) => api<RunInfo>(`/api/runs/${encodeURIComponent(runId)}/resume`, { method: 'POST' }),
   stop: (runId: string) => api<RunInfo>(`/api/runs/${encodeURIComponent(runId)}/stop`, { method: 'POST' }),
   stream: (
     runId: string,
