@@ -89,3 +89,25 @@ test("园丁能扫出同一 topic 两条 current", () => {
   assert.ok(r.recommendations.some((x) => x.includes("对撞") || x.includes("现行")));
   fs.rmSync(root, { recursive: true, force: true });
 });
+
+test("searchMemoryLog 按工作区隔离索引，不能复用另一个工作区的缓存", () => {
+  const first = fs.mkdtempSync(path.join(os.tmpdir(), "mem-index-a-"));
+  const second = fs.mkdtempSync(path.join(os.tmpdir(), "mem-index-b-"));
+  try {
+    for (const [root, text] of [[first, "alpha-only"], [second, "beta-only"]]) {
+      const file = path.join(root, "记忆", "记忆日志.md");
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, `### 2026-09-09\n- 要点：${text}\n`);
+      fs.utimesSync(file, new Date("2026-09-09T00:00:00Z"), new Date("2026-09-09T00:00:00Z"));
+    }
+    const a = searchMemoryLog(first, "alpha-only", 5);
+    const b = searchMemoryLog(second, "beta-only", 5);
+    assert.equal(a.length, 1);
+    assert.equal(b.length, 1);
+    assert.match(b[0], /beta-only/);
+    assert.doesNotMatch(b[0], /alpha-only/);
+  } finally {
+    fs.rmSync(first, { recursive: true, force: true });
+    fs.rmSync(second, { recursive: true, force: true });
+  }
+});

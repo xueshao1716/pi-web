@@ -76,6 +76,17 @@ test('stop API 只委托 manager.stop，不与 SSE 连接生命周期耦合', as
   assert.equal(JSON.parse(res.text()).status, 'stopping')
 })
 
+test('resume API 只委托 manager.resume，并返回恢复中的 run', async () => {
+  let resumed = 0
+  const manager = { resume: id => { resumed++; return { id, status: 'queued', resumeAvailable: false } } }
+  const api = createRunApi({ manager, json: fakeJson })
+  const res = new FakeResponse()
+  await api.resume(res, 'run-interrupted')
+  assert.equal(resumed, 1)
+  assert.equal(res.statusCode, 200)
+  assert.equal(JSON.parse(res.text()).status, 'queued')
+})
+
 test('overview 返回统一运行快照与健康状态', async () => {
   const manager = { list: () => [
     { id: 'run-1', sessionId: 's1', status: 'running', updatedAt: '2026-09-06T10:00:00Z', input: { messagePreview: '继续' } },

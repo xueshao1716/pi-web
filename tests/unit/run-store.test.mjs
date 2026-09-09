@@ -76,3 +76,28 @@ test('启动恢复把其他 owner 的非终态 run 标记为 interrupted', () =>
     assert.equal(store.get(current.id).status, 'queued')
   } finally { cleanup() }
 })
+
+test('checkpoint 持久化 phase/step/attempt/updatedAt 并可重载', () => {
+  const { rootDir, store, cleanup } = fixture()
+  try {
+    const run = store.create({ sessionId: 'session-checkpoint', clientRequestId: 'request-1', ownerId: 'instance-a', message: 'checkpoint' })
+    assert.deepEqual(store.getCheckpoint(run.id), {
+      phase: 'queued',
+      step: 'create',
+      attempt: 0,
+      updatedAt: run.createdAt,
+    })
+
+    const updated = store.saveCheckpoint(run.id, { phase: 'executing', step: 'tool:bash', attempt: 2 })
+    assert.deepEqual(updated.checkpoint, {
+      phase: 'executing',
+      step: 'tool:bash',
+      attempt: 2,
+      updatedAt: '2026-08-31T10:00:01.000Z',
+    })
+    assert.deepEqual(store.getCheckpoint(run.id), updated.checkpoint)
+
+    const reloaded = createRunStore({ rootDir, now: () => '2026-08-31T10:00:02.000Z' })
+    assert.deepEqual(reloaded.getCheckpoint(run.id), updated.checkpoint)
+  } finally { cleanup() }
+})

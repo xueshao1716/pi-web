@@ -4,7 +4,7 @@ import { useApp } from '../store'
 import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, Command, ChevronDown, ChevronRight, PanelRight, ShieldAlert, ImagePlus, Presentation, Clock4, Database } from 'lucide-react'
 import { RefreshCw } from 'lucide-react'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
-import { RunsApi, SessionsApi, AsrApi, AgentStatusApi, streamSession, LingXiApi, ConfirmApi } from '../api'
+import { RunsApi, SessionsApi, AsrApi, AgentStatusApi, streamSession, LingXiApi, ConfirmApi, type RunSummary } from '../api'
 import Message from './Message'
 import SendBox from './SendBox'
 import TurnList from './TurnList'
@@ -686,6 +686,29 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     }
   }
 
+  const resumeRun = async (run: RunSummary) => {
+    if (streamRef.current || !run?.id) return
+    try {
+      const resumed = await RunsApi.resume(run.id)
+      const stream = emptyStream()
+      const assistantMessageId = 'a' + (Date.now() + 1)
+      assistantMsgIdRef.current = assistantMessageId
+      streamRef.current = stream
+      setStream({ ...stream })
+      makeAssembler()
+      connectRun({
+        runId: run.id,
+        sessionId: run.sessionId,
+        lastSeq: resumed.lastSeq || 0,
+        status: resumed.status,
+        assistantMessageId,
+        stream,
+      })
+    } catch (error: any) {
+      toast(`继续任务失败：${error?.message || error}`, 'error')
+    }
+  }
+
   // 危险操作确认：后端弹 confirm 事件 → 用户点允许/拒绝 → 回传后端（resolve 审批 allow/reject）
   const answerConfirm = async (ok: boolean) => {
     const c = confirm
@@ -913,7 +936,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
       </div>
 
       <div className="chat-reading-column mx-auto w-full px-3 sm:px-4">
-        <ChatRunStatus sessionId={currentSessionId} onStop={stop} />
+        <ChatRunStatus sessionId={currentSessionId} onStop={stop} onResume={resumeRun} />
       </div>
 
       {/* 输入栏 */}

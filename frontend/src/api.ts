@@ -538,12 +538,13 @@ export const EngineApi = {
 
 export type RunPhase = 'queued' | 'thinking' | 'executing' | 'remembering' | 'delivering' | 'completed' | 'failed' | 'stopped' | 'interrupted'
 export interface RunSummary {
-  id: string; sessionId: string; status: string; phase: RunPhase; messagePreview: string; toolCount: number; memoryCount: number; memoryPreview: string | null; error: string | null
+  id: string; sessionId: string; status: string; phase: RunPhase; messagePreview: string; toolCount: number; memoryCount: number; memoryPreview: string | null; error: string | null; resumeAvailable?: boolean; durationMs?: number | null; failureCategory?: string | null
 }
 export interface RunOverview { active: RunSummary[]; recent: RunSummary[]; health: { status: 'idle' | 'busy' | 'degraded'; activeCount: number; failedCount: number } }
 export const RunApi = {
   overview: () => api<RunOverview>('/api/run/overview'),
   get: (id: string) => api<RunSummary & { lastSeq: number }>(`/api/runs/${encodeURIComponent(id)}`),
+  resume: (id: string) => api<RunSummary & { lastSeq: number }>(`/api/runs/${encodeURIComponent(id)}/resume`, { method: 'POST' }),
 }
 
 // ── 用量统计（按 provider/模型聚合）──

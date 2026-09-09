@@ -126,3 +126,62 @@ test('同 session 的第二个 active run 返回 session_busy', async () => {
     await waitFor(() => fx.manager.get(first.id)?.status === 'completed')
   } finally { fx.cleanup() }
 })
+
+test('后台执行结束时持久化可序列化运行观测指标', async () => {
+  const fx = fixture(async (_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    res.write('event: tool\ndata: {"name":"read","id":"tool-1"}\n\n')
+    res.write('event: tool_end\ndata: {"name":"read","id":"tool-1","isError":false}\n\n')
+    res.write('event: done\ndata: {"model":{"provider":"provider-a","id":"model-a"}}\n\n')
+    res.end()
+  })
+  try {
+    const run = fx.manager.create({ sessionId: 'session-metrics', clientRequestId: 'request-1', message: 'metrics' })
+    await waitFor(() => fx.manager.get(run.id)?.status === 'completed')
+    const current = fx.manager.get(run.id)
+    assert.equal(typeof current.observability.durationMs, 'number')
+    assert.equal(current.observability.eventCounts.tool, 1)
+    assert.equal(current.observability.eventCounts.tool_end, 1)
+    assert.deepEqual(current.observability.lastModel, { provider: 'provider-a', id: 'model-a' })
+    assert.deepEqual(current.observability.lastTool, { id: 'tool-1', name: 'read', status: 'completed' })
+    assert.equal(current.observability.failureCategory, null)
+    assert.doesNotThrow(() => JSON.stringify(current.observability))
+  } finally { fx.cleanup() }
+})
+
+test('recover 标记 resumeAvailable，resume(runId) 发布事件并重新执行', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'piweb-run-resume-'))
+  let id = 0
+  const store = createRunStore({ rootDir, idFactory: () => `run-${++id}` })
+  const eventLog = createRunEventLog({ rootDir })
+  const calls = []
+  const executeChat = async (_req, res, body) => {
+    calls.push(body)
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    res.write('event: done\ndata: {"sessionId":"session-1"}\n\n')
+    res.end()
+  }
+  const run = store.create({ sessionId: 'session-1', clientRequestId: 'request-1', message: 'resume me', params: { temperature: 0.2 }, ownerId: 'instance-old' })
+  store.update(run.id, { status: 'running', startedAt: new Date().toISOString() })
+
+  const newManager = createRunManager({ store, eventLog, executeChat, instanceId: 'instance-new' })
+  const recovered = newManager.recover()
+  assert.equal(recovered.length, 1)
+  assert.equal(newManager.get(run.id).status, 'interrupted')
+  assert.equal(newManager.get(run.id).resumeAvailable, true)
+
+  const resumed = newManager.resume(run.id)
+  assert.equal(resumed.status, 'queued')
+  assert.equal(resumed.resumeAvailable, false)
+  assert.equal(resumed.checkpoint.phase, 'resuming')
+  assert.equal(resumed.checkpoint.attempt, 1)
+  assert.ok(newManager.readAfter(run.id, 0).some(event => event.type === 'resumed'))
+
+  await waitFor(() => newManager.get(run.id)?.status === 'completed')
+  assert.equal(calls.at(-1).message, 'resume me')
+  assert.deepEqual(calls.at(-1).params, { temperature: 0.2 })
+  assert.equal(newManager.get(run.id).resumeAvailable, false)
+  assert.equal(newManager.resume(run.id).status, 'completed')
+  eventLog.close()
+  fs.rmSync(rootDir, { recursive: true, force: true })
+})

@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import { deriveRunObservability } from './run-observability.mjs'
 
 const TERMINAL = new Set(['completed', 'failed', 'stopped', 'interrupted'])
 
@@ -79,12 +80,52 @@ function createExecutionIo({ headers = {}, socket = {}, onEvent }) {
 export function createRunManager({ store, eventLog, executeChat, instanceId, onSessionUpdated = null }) {
   const executions = new Map()
 
-  const append = (run, type, data = {}) => eventLog.append({
+  const checkpointForEvent = (type, data = {}) => {
+    const name = data?.name || data?.toolName || ''
+    if (type === 'run_started') return { phase: 'executing', step: 'chat' }
+    if (type === 'reasoning') return { phase: 'thinking', step: 'reasoning' }
+    if (type === 'tool' || type === 'tool_start' || type === 'tool_started') return { phase: 'executing', step: name ? `tool:${name}` : 'tool' }
+    if (type === 'tool_end' || type === 'tool_finished') return { phase: 'executing', step: name ? `tool:${name}:done` : 'tool:done' }
+    if (type === 'handoff') return { phase: 'executing', step: 'handoff' }
+    if (type === 'memory_written') return { phase: 'remembering', step: 'memory' }
+    if (type === 'artifact_created') return { phase: 'delivering', step: 'artifact' }
+    if (type === 'session_updated') return { phase: 'delivering', step: 'session:commit' }
+    if (type === 'error' || type === 'failed') return { phase: 'failed', step: 'error' }
+    if (type === 'completed' || type === 'done') return { phase: 'completed', step: 'done' }
+    if (type === 'stopped') return { phase: 'stopped', step: 'stopped' }
+    if (type === 'interrupted') return { phase: 'interrupted', step: 'recover' }
+    return null
+  }
+
+  const append = (run, type, data = {}) => {
+    const event = eventLog.append({
+      runId: run.id,
+      sessionId: run.sessionId,
+      type,
+      data,
+    })
+    const patch = checkpointForEvent(type, data)
+    if (patch && typeof store.saveCheckpoint === 'function') {
+      try { store.saveCheckpoint(run.id, patch) } catch {}
+    }
+    return event
+  }
+
+  const makeControl = (run, body, context = {}) => ({
     runId: run.id,
-    sessionId: run.sessionId,
-    type,
-    data,
+    body: { ...body },
+    context: { headers: context.headers || {}, socket: context.socket || {} },
+    close: null,
+    stopRequested: false,
   })
+
+  const enqueue = (run, body, context = {}) => {
+    if (TERMINAL.has(run.status) || executions.has(run.id)) return run
+    const control = makeControl(run, body, context)
+    executions.set(run.id, control)
+    queueMicrotask(() => start(control))
+    return run
+  }
 
   const finish = (runId, status, data = {}) => {
     const current = store.get(runId)
@@ -96,7 +137,8 @@ export function createRunManager({ store, eventLog, executeChat, instanceId, onS
       ...(status === 'stopped' ? { stoppedAt: new Date().toISOString() } : {}),
     })
     append(updated, status, data)
-    return updated
+    const observability = deriveRunObservability(updated, eventLog.readAfter(runId, 0))
+    return store.update(runId, { observability })
   }
 
   const start = async control => {
@@ -193,8 +235,38 @@ export function createRunManager({ store, eventLog, executeChat, instanceId, onS
     },
     recover() {
       const orphaned = store.markOrphanedInterrupted(instanceId)
-      for (const run of orphaned) append(run, 'interrupted', { reason: 'server_restarted' })
-      return orphaned
+      return orphaned.map(run => {
+        append(run, 'interrupted', { reason: 'server_restarted' })
+        return store.update(run.id, { observability: deriveRunObservability(run, eventLog.readAfter(run.id, 0)) })
+      })
+    },
+    resume(runId, context = {}) {
+      const current = store.get(runId)
+      if (!current) throw Object.assign(new Error('run_not_found'), { code: 'run_not_found' })
+      if (TERMINAL.has(current.status) && !current.resumeAvailable) return current
+      if (!current.resumeAvailable) throw Object.assign(new Error('resume_unavailable'), { code: 'resume_unavailable' })
+      if (store.findActiveBySession(current.sessionId)) throw Object.assign(new Error('session_busy'), { code: 'session_busy', activeRunId: store.findActiveBySession(current.sessionId).id })
+      const request = current.request
+      if (!request?.message && !current.input?.messagePreview) throw Object.assign(new Error('resume_request_missing'), { code: 'resume_unavailable' })
+      const checkpoint = current.checkpoint || {}
+      const nextAttempt = Number.isInteger(checkpoint.attempt) ? checkpoint.attempt + 1 : 1
+      const queued = store.update(runId, {
+        status: 'queued',
+        ownerId: instanceId,
+        resumeAvailable: false,
+        error: null,
+        checkpoint: { phase: 'resuming', step: 'resume', attempt: nextAttempt, updatedAt: new Date().toISOString() },
+      })
+      append(queued, 'resumed', { attempt: nextAttempt, from: checkpoint.step || 'unknown' })
+      const body = {
+        ...(request || {}),
+        message: request?.message || current.input?.messagePreview || '',
+        sessionId: current.sessionId,
+        clientRequestId: current.clientRequestId,
+        stream: true,
+        resume: true,
+      }
+      return enqueue(queued, body, context)
     },
   }
 }

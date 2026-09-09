@@ -61,9 +61,9 @@ export function loadRecentMemory(wsRoot, max = 10) {
 // ── 记忆日志关键词召回（无向量，bigram + token 混合）──
 // 用途：任务消息按关键词检索历史相关条目（“上次那个方案/之前说的端口”类语义引用可查）
 // 索引按 mtime 缓存，避免每次对话全量扫文件
-const _logIdx = { mtime: 0, blocks: [], toks: [] };
+const _logIdx = new Map();
 // 归档层索引（冷存储）：热区命中不足时降级检索，结果标【归档】
-const _arcIdx = { files: "", blocks: [], toks: [] };
+const _arcIdx = new Map();
 function _tokenize(str) {
   const out = [];
   const s = String(str || "");
@@ -88,25 +88,31 @@ export function searchMemoryLog(wsRoot, query, max = 5, opts = {}) {
     const paths = memoryPaths(wsRoot);
     if (!fs.existsSync(paths.log)) return [];
     const st = fs.statSync(paths.log);
-    if (st.mtimeMs !== _logIdx.mtime) {
+    const rootKey = path.resolve(wsRoot || ".");
+    const logSig = `${st.mtimeMs}:${st.size}`;
+    let logIdx = _logIdx.get(rootKey);
+    if (!logIdx || logSig !== logIdx.sig) {
       const raw = fs.readFileSync(paths.log, "utf8");
-      _logIdx.blocks = splitLogBlocks(raw).blocks.map(b => b.trim()).filter(Boolean);
-      _logIdx.toks = _logIdx.blocks.map(b => new Set(_tokenize(b)));
-      _logIdx.mtime = st.mtimeMs;
+      logIdx = {
+        sig: logSig,
+        blocks: splitLogBlocks(raw).blocks.map(b => b.trim()).filter(Boolean),
+      };
+      logIdx.toks = logIdx.blocks.map(b => new Set(_tokenize(b)));
+      _logIdx.set(rootKey, logIdx);
     }
     const q = _tokenize(query);
     if (!q.length) return [];
     const scored = [];
-    for (let i = 0; i < _logIdx.blocks.length; i++) {
-      if (!opts.includeSuperseded && isSupersededBlock(_logIdx.blocks[i])) continue;
+    for (let i = 0; i < logIdx.blocks.length; i++) {
+      if (!opts.includeSuperseded && isSupersededBlock(logIdx.blocks[i])) continue;
       let hits = 0;
-      for (const t of q) if (_logIdx.toks[i].has(t)) hits++;
+      for (const t of q) if (logIdx.toks[i].has(t)) hits++;
       if (hits > 0) {
         // 要点行命中加权（结构化召回：要点 > 信号行）
-        const m = _logIdx.blocks[i].match(/要点：([\s\S]*)/);
+        const m = logIdx.blocks[i].match(/要点：([\s\S]*)/);
         let w = 1;
         if (m) { const t2 = new Set(_tokenize(m[1])); let h2 = 0; for (const t of q) if (t2.has(t)) h2++; if (h2 > 0) w = 2; }
-        scored.push({ b: _logIdx.blocks[i], hits: hits * w, i });
+        scored.push({ b: logIdx.blocks[i], hits: hits * w, i });
       }
     }
     // 命中数优先，其次新近（序号大 = 新）
@@ -119,31 +125,34 @@ export function searchMemoryLog(wsRoot, query, max = 5, opts = {}) {
         const files = fs.existsSync(arcDir)
           ? fs.readdirSync(arcDir).filter(f => /^记忆日志-.*\.md$/.test(f)).sort().reverse()
           : [];
-        const sig = files.join(",");
-        if (sig !== _arcIdx.files) {
-          _arcIdx.blocks = []; _arcIdx.toks = [];
+        const sig = files.map(f => {
+          try { const s = fs.statSync(path.join(arcDir, f)); return `${f}:${s.mtimeMs}:${s.size}`; } catch { return f; }
+        }).join(",");
+        let arcIdx = _arcIdx.get(rootKey);
+        if (!arcIdx || sig !== arcIdx.sig) {
+          arcIdx = { sig, blocks: [], toks: [] };
           for (const f of files) {
             const raw = fs.readFileSync(path.join(arcDir, f), "utf8");
             for (const raw_blk of raw.split(/\n### /)) {
               if (!raw_blk.trim()) continue;
               const b = (raw_blk.startsWith("### ") ? raw_blk : "### " + raw_blk).trim();
-              _arcIdx.blocks.push(b);
-              _arcIdx.toks.push(new Set(_tokenize(b)));
+              arcIdx.blocks.push(b);
+              arcIdx.toks.push(new Set(_tokenize(b)));
             }
           }
-          _arcIdx.files = sig;
+          _arcIdx.set(rootKey, arcIdx);
         }
         const q2 = q;
         const scored2 = [];
-        for (let i = 0; i < _arcIdx.blocks.length; i++) {
-          if (!opts.includeSuperseded && isSupersededBlock(_arcIdx.blocks[i])) continue;
+        for (let i = 0; i < arcIdx.blocks.length; i++) {
+          if (!opts.includeSuperseded && isSupersededBlock(arcIdx.blocks[i])) continue;
           let hits = 0;
-          for (const t of q2) if (_arcIdx.toks[i].has(t)) hits++;
+          for (const t of q2) if (arcIdx.toks[i].has(t)) hits++;
           if (hits > 0) {
-            const m = _arcIdx.blocks[i].match(/要点：([\s\S]*)/);
+            const m = arcIdx.blocks[i].match(/要点：([\s\S]*)/);
             let w = 1;
             if (m) { const t2 = new Set(_tokenize(m[1])); let h2 = 0; for (const t of q2) if (t2.has(t)) h2++; if (h2 > 0) w = 2; }
-            scored2.push({ b: _arcIdx.blocks[i], hits: hits * w, i });
+            scored2.push({ b: arcIdx.blocks[i], hits: hits * w, i });
           }
         }
         scored2.sort((a, b) => b.hits - a.hits || b.i - a.i);

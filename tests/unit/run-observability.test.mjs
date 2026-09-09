@@ -20,6 +20,11 @@ test('summarizeRun includes current phase and safe error preview', () => {
   assert.deepEqual(summary, {
     id: 'r1', sessionId: 's1', status: 'failed', phase: 'failed',
     messagePreview: '做个总结', toolCount: 1, memoryCount: 0, memoryPreview: null, error: '模型失败',
+    durationMs: null,
+    eventCounts: { failed: 1, run_started: 1, tool_started: 1 },
+    lastModel: null,
+    lastTool: { name: 'read', status: 'started' },
+    failureCategory: 'model',
   })
 })
 
@@ -39,4 +44,30 @@ test('buildRunSnapshot returns empty overview without active runs', () => {
   assert.deepEqual(buildRunSnapshot([], new Map()), {
     active: [], recent: [], health: { status: 'idle', activeCount: 0, failedCount: 0 },
   })
+})
+
+test('summarizeRun exposes serializable runtime metrics from the event ledger', () => {
+  const summary = summarizeRun(
+    {
+      id: 'r3',
+      status: 'failed',
+      sessionId: 's3',
+      startedAt: '2026-09-09T10:00:00.000Z',
+      failedAt: '2026-09-09T10:00:04.250Z',
+      input: { messagePreview: '执行任务' },
+    },
+    [
+      { type: 'run_started', ts: '2026-09-09T10:00:00.000Z' },
+      { type: 'tool', ts: '2026-09-09T10:00:01.000Z', data: { name: 'read', id: 'tool-1' } },
+      { type: 'tool_end', ts: '2026-09-09T10:00:02.000Z', data: { name: 'read', id: 'tool-1', isError: false } },
+      { type: 'done', ts: '2026-09-09T10:00:03.000Z', data: { model: { provider: 'p', id: 'm' } } },
+      { type: 'error', ts: '2026-09-09T10:00:04.000Z', data: { message: '模型请求超时' } },
+    ],
+  )
+
+  assert.equal(summary.durationMs, 4250)
+  assert.deepEqual(summary.eventCounts, { done: 1, error: 1, run_started: 1, tool: 1, tool_end: 1 })
+  assert.deepEqual(summary.lastModel, { provider: 'p', id: 'm' })
+  assert.deepEqual(summary.lastTool, { id: 'tool-1', name: 'read', status: 'completed' })
+  assert.equal(summary.failureCategory, 'timeout')
 })

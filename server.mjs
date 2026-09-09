@@ -1821,6 +1821,7 @@ const API_ROUTES = [
   ["GET", /^\/api\/runs\/([^/]+)$/, (res, req, url, m) => runApi.get(res, decodeURIComponent(m[1]))],
   ["GET", /^\/api\/runs\/([^/]+)\/events$/, (res, req, url, m) => runApi.events(res, req, url, decodeURIComponent(m[1]))],
   ["POST", /^\/api\/runs\/([^/]+)\/stop$/, (res, req, url, m) => runApi.stop(res, decodeURIComponent(m[1]))],
+  ["POST", /^\/api\/runs\/([^/]+)\/resume$/, (res, req, url, m) => runApi.resume(res, decodeURIComponent(m[1]), req)],
   ["POST", "/api/chat", async (res, req) => handleChat(req, res, await readBody(req, 12))],
   ["POST", "/api/compare", async (res, req) => handleCompare(res, await readBody(req))],
   // ── Agent 活动事件（pi 事件广播扩展 → 前端实时显示小语在干嘛）──

@@ -20,6 +20,35 @@ function persistedInput(input) {
   }
 }
 
+function persistedRequest(input) {
+  const request = {
+    sessionId: String(input.sessionId || ''),
+    clientRequestId: String(input.clientRequestId || ''),
+    message: String(input.message || ''),
+    model: input.model || null,
+    params: input.params && typeof input.params === 'object' ? { ...input.params } : undefined,
+    files: Array.isArray(input.files)
+      ? input.files.map(file => ({ path: String(file?.path || '') })).filter(file => file.path)
+      : undefined,
+  }
+  return Object.fromEntries(Object.entries(request).filter(([, value]) => value !== undefined))
+}
+
+function checkpointFor(run, patch = {}) {
+  const current = run?.checkpoint || {
+    phase: run?.status || 'queued',
+    step: 'create',
+    attempt: 0,
+    updatedAt: run?.createdAt || null,
+  }
+  return {
+    phase: patch.phase || current.phase || 'queued',
+    step: patch.step || current.step || 'create',
+    attempt: Number.isInteger(patch.attempt) && patch.attempt >= 0 ? patch.attempt : (current.attempt || 0),
+    updatedAt: patch.updatedAt || current.updatedAt || run?.updatedAt || run?.createdAt || null,
+  }
+}
+
 export function createRunStore({ rootDir, now = () => new Date().toISOString(), idFactory = randomUUID }) {
   const runsDir = path.join(rootDir, 'runs')
   fs.mkdirSync(runsDir, { recursive: true })
@@ -63,6 +92,9 @@ export function createRunStore({ rootDir, now = () => new Date().toISOString(), 
         ownerId: input.ownerId || null,
         status: 'queued',
         input: persistedInput(input),
+        request: persistedRequest(input),
+        checkpoint: checkpointFor({ status: 'queued', createdAt }),
+        resumeAvailable: false,
         createdAt,
         updatedAt: createdAt,
       }
@@ -71,6 +103,18 @@ export function createRunStore({ rootDir, now = () => new Date().toISOString(), 
     },
     get,
     update,
+    getCheckpoint(id) {
+      const run = get(id)
+      return run ? checkpointFor(run) : null
+    },
+    saveCheckpoint(id, patch = {}) {
+      const current = get(id)
+      if (!current) throw new Error(`run_not_found:${id}`)
+      const checkpoint = checkpointFor(current, { ...patch, updatedAt: now() })
+      const updated = { ...current, checkpoint, updatedAt: now() }
+      atomicWriteJson(fileFor(id), updated)
+      return updated
+    },
     list,
     findActiveBySession(sessionId) {
       return list().find(run => run.sessionId === sessionId && ACTIVE_STATUSES.has(run.status)) || null
@@ -83,6 +127,8 @@ export function createRunStore({ rootDir, now = () => new Date().toISOString(), 
         status: 'interrupted',
         interruptedAt: now(),
         error: 'server_restarted',
+        resumeAvailable: true,
+        checkpoint: checkpointFor(run, { phase: 'interrupted', step: 'recover', updatedAt: now() }),
       }))
     },
   }

@@ -1,4 +1,10 @@
 const TERMINAL = new Set(['completed', 'failed', 'stopped', 'interrupted'])
+
+function publicRun(run) {
+  if (!run) return run
+  const { request, ...safe } = run
+  return safe
+}
 import { buildRunSnapshot } from './run-observability.mjs'
 
 function cursorFrom(req, url) {
@@ -11,6 +17,12 @@ function writeEvent(res, event) {
   res.write(`id: ${event.seq}\n`)
   res.write(`event: ${event.type}\n`)
   res.write(`data: ${JSON.stringify(event)}\n\n`)
+}
+
+function lastSeqOf(manager, runId) {
+  if (typeof manager?.readAfter !== 'function') return 0
+  const events = manager.readAfter(runId, 0)
+  return Array.isArray(events) ? (events.at(-1)?.seq || 0) : 0
 }
 
 export function createRunApi({ manager, json }) {
@@ -40,7 +52,7 @@ export function createRunApi({ manager, json }) {
     get(res, runId) {
       const run = manager.get(runId)
       if (!run) return json(res, 404, { error: 'run_not_found' })
-      return json(res, 200, { ...run, lastSeq: manager.readAfter(runId, 0).at(-1)?.seq || 0 })
+      return json(res, 200, { ...publicRun(run), lastSeq: lastSeqOf(manager, runId) })
     },
     events(res, req, url, runId) {
       const run = manager.get(runId)
@@ -90,6 +102,17 @@ export function createRunApi({ manager, json }) {
         return json(res, 200, manager.stop(runId))
       } catch (error) {
         if (error?.code === 'run_not_found') return json(res, 404, { error: 'run_not_found' })
+        throw error
+      }
+    },
+    resume(res, runId, req = null) {
+      try {
+        const run = manager.resume(runId, { headers: req?.headers, socket: req?.socket })
+        return json(res, 200, { ...publicRun(run), lastSeq: lastSeqOf(manager, runId) })
+      } catch (error) {
+        if (error?.code === 'run_not_found') return json(res, 404, { error: 'run_not_found' })
+        if (error?.code === 'resume_unavailable') return json(res, 409, { error: 'resume_unavailable' })
+        if (error?.code === 'session_busy') return json(res, 409, { error: 'session_busy', activeRunId: error.activeRunId })
         throw error
       }
     },
