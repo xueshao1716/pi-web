@@ -211,6 +211,30 @@ test('run manager 给执行器注入内部 runContext，恢复时递增 attempt'
   } finally { fx.cleanup() }
 })
 
+test('runContext 可把工具计划与模型历史快照写回持久化 checkpoint', async () => {
+  const contexts = []
+  const fx = fixture(async (_req, res, body) => {
+    contexts.push(body.__runContext)
+    body.__runContext.saveCheckpoint({
+      phase: 'executing',
+      step: 'tool:read',
+      turn: 1,
+      toolPlan: [{ id: 'call-1', name: 'read', args: { path: 'README.md' }, status: 'pending' }],
+      historySnapshot: [{ role: 'user', content: 'hello' }],
+    })
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    res.end()
+  })
+  try {
+    const run = fx.manager.create({ sessionId: 'session-checkpoint-context', clientRequestId: 'request-1', message: 'hello' })
+    await waitFor(() => fx.manager.get(run.id)?.status === 'completed')
+    const checkpoint = fx.manager.get(run.id).checkpoint
+    assert.equal(checkpoint.turn, 1)
+    assert.deepEqual(checkpoint.toolPlan, [{ id: 'call-1', name: 'read', args: { path: 'README.md' }, status: 'pending' }])
+    assert.deepEqual(checkpoint.historySnapshot, [{ role: 'user', content: 'hello' }])
+  } finally { fx.cleanup() }
+})
+
 test('tool 事件会把 effects ledger 状态同步进 checkpoint', async () => {
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'piweb-run-effects-manager-'))
   const store = createRunStore({ rootDir, idFactory: () => 'run-effects' })
@@ -232,5 +256,37 @@ test('tool 事件会把 effects ledger 状态同步进 checkpoint', async () => 
     const current = manager.get(run.id)
     assert.deepEqual(current.checkpoint.completedSteps, [canonicalStepKey('write', { path: 'a.txt', content: 'x' }, { turn: 1, index: 0 })])
     assert.deepEqual(effects.get(run.id, current.checkpoint.completedSteps[0]).state, 'completed')
+  } finally { eventLog.close(); fs.rmSync(rootDir, { recursive: true, force: true }) }
+})
+
+
+test('checkpoint 事件持久化工具计划与历史快照，恢复上下文保留快照', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'piweb-run-checkpoint-snapshot-'))
+  const store = createRunStore({ rootDir, idFactory: () => 'run-snapshot' })
+  const eventLog = createRunEventLog({ rootDir })
+  const snapshot = { v: 1, messages: [{ role: 'system', content: 'system' }, { role: 'tool', content: 'done' }] }
+  const toolPlan = [{ id: 'provider-id', name: 'bash', argsHash: 'hash', ordinal: 0 }]
+  const contexts = []
+  const manager = createRunManager({
+    store, eventLog, instanceId: 'instance-a',
+    executeChat: async (_req, res, body) => {
+      contexts.push(body.__runContext)
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      res.write(`event: checkpoint\ndata: ${JSON.stringify({ phase: 'tool_plan', turn: 3, toolPlan, historySnapshot: snapshot })}\n\n`)
+      res.end()
+    },
+  })
+  try {
+    const run = manager.create({ sessionId: 'session-snapshot', clientRequestId: 'request-1', message: 'hello' })
+    await waitFor(() => manager.get(run.id)?.status === 'completed')
+    assert.equal(manager.get(run.id).checkpoint.turn, 3)
+    assert.deepEqual(manager.get(run.id).checkpoint.toolPlan, toolPlan)
+    assert.deepEqual(manager.get(run.id).checkpoint.historySnapshot, snapshot)
+
+    store.update(run.id, { status: 'interrupted', resumeAvailable: true })
+    manager.resume(run.id)
+    await waitFor(() => contexts.length === 2)
+    assert.deepEqual(contexts[1].checkpoint.historySnapshot, snapshot)
+    assert.deepEqual(contexts[1].checkpoint.toolPlan, toolPlan)
   } finally { eventLog.close(); fs.rmSync(rootDir, { recursive: true, force: true }) }
 })

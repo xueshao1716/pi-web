@@ -47,7 +47,7 @@ function checkpointFor(run, patch = {}) {
     attempt: Number.isInteger(patch.attempt) && patch.attempt >= 0 ? patch.attempt : (current.attempt || 0),
     updatedAt: patch.updatedAt || current.updatedAt || run?.updatedAt || run?.createdAt || null,
   }
-  for (const key of ['turn', 'lastEventSeq', 'pendingSteps', 'completedSteps', 'uncertainSteps']) {
+  for (const key of ['turn', 'lastEventSeq', 'pendingSteps', 'completedSteps', 'uncertainSteps', 'checkpointKind', 'toolPlan', 'historySnapshot', 'historyDigest', 'historyCount']) {
     if (patch[key] !== undefined) checkpoint[key] = patch[key]
     else if (current[key] !== undefined) checkpoint[key] = current[key]
   }

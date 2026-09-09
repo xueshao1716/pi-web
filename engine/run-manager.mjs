@@ -86,6 +86,16 @@ export function createRunManager({ store, eventLog, executeChat, instanceId, onS
     if (type === 'reasoning') return { phase: 'thinking', step: 'reasoning' }
     if (type === 'tool' || type === 'tool_start' || type === 'tool_started') return { phase: 'executing', step: name ? `tool:${name}` : 'tool' }
     if (type === 'tool_end' || type === 'tool_finished') return { phase: 'executing', step: name ? `tool:${name}:done` : 'tool:done' }
+    if (type === 'checkpoint') return {
+      phase: 'executing',
+      step: data.phase === 'tool_results' ? 'tool-results' : data.phase === 'model_response' ? 'model-response' : data.phase === 'model_request' ? 'model-request' : 'tool-plan',
+      checkpointKind: data.phase || 'checkpoint',
+      ...(Number.isInteger(data.turn) ? { turn: data.turn } : {}),
+      ...(Array.isArray(data.toolPlan) ? { toolPlan: data.toolPlan } : {}),
+      ...(data.historySnapshot && typeof data.historySnapshot === 'object' ? { historySnapshot: data.historySnapshot } : data.v === 1 && Array.isArray(data.messages) ? { historySnapshot: { v: 1, turn: data.turn, messages: data.messages, digest: data.digest } } : {}),
+      ...(data.historyDigest || data.digest ? { historyDigest: String(data.historyDigest || data.digest) } : {}),
+      ...(Number.isInteger(data.historyCount) ? { historyCount: data.historyCount } : Array.isArray(data.messages) ? { historyCount: data.messages.length } : {}),
+    }
     if (type === 'handoff') return { phase: 'executing', step: 'handoff' }
     if (type === 'memory_written') return { phase: 'remembering', step: 'memory' }
     if (type === 'artifact_created') return { phase: 'delivering', step: 'artifact' }
@@ -136,26 +146,34 @@ export function createRunManager({ store, eventLog, executeChat, instanceId, onS
     return event
   }
 
-  const makeControl = (run, body, context = {}) => ({
-    runId: run.id,
-    body: {
-      ...body,
-      // Internal-only context: run-api strips persisted request details and
-      // this object never crosses the public JSON boundary.
-      __runContext: {
-        runId: run.id,
-        attempt: Number.isInteger(run.checkpoint?.attempt) ? run.checkpoint.attempt : 0,
-        resume: body?.resume === true,
-        checkpoint: run.checkpoint || null,
-        effects,
-        completedSteps: typeof effects?.list === 'function' ? effects.list(run.id).filter(step => step.state === 'completed').map(step => step.key) : [],
-        uncertainSteps: typeof effects?.list === 'function' ? effects.list(run.id).filter(step => step.state === 'uncertain').map(step => step.key) : [],
+  const makeControl = (run, body, context = {}) => {
+    const runContext = {
+      runId: run.id,
+      attempt: Number.isInteger(run.checkpoint?.attempt) ? run.checkpoint.attempt : 0,
+      resume: body?.resume === true,
+      checkpoint: run.checkpoint || null,
+      effects,
+      completedSteps: typeof effects?.list === 'function' ? effects.list(run.id).filter(step => step.state === 'completed').map(step => step.key) : [],
+      uncertainSteps: typeof effects?.list === 'function' ? effects.list(run.id).filter(step => step.state === 'uncertain').map(step => step.key) : [],
+      saveCheckpoint(patch = {}) {
+        const updated = store.saveCheckpoint(run.id, patch)
+        runContext.checkpoint = updated.checkpoint
+        return updated.checkpoint
       },
-    },
-    context: { headers: context.headers || {}, socket: context.socket || {} },
-    close: null,
-    stopRequested: false,
-  })
+    }
+    return {
+      runId: run.id,
+      body: {
+        ...body,
+        // Internal-only context: run-api strips persisted request details and
+        // this object never crosses the public JSON boundary.
+        __runContext: runContext,
+      },
+      context: { headers: context.headers || {}, socket: context.socket || {} },
+      close: null,
+      stopRequested: false,
+    }
+  }
 
   const enqueue = (run, body, context = {}) => {
     if (TERMINAL.has(run.status) || executions.has(run.id)) return run
@@ -287,7 +305,7 @@ export function createRunManager({ store, eventLog, executeChat, instanceId, onS
         ownerId: instanceId,
         resumeAvailable: false,
         error: null,
-        checkpoint: { phase: 'resuming', step: 'resume', attempt: nextAttempt, updatedAt: new Date().toISOString() },
+        checkpoint: { ...checkpoint, phase: 'resuming', step: 'resume', attempt: nextAttempt, updatedAt: new Date().toISOString() },
       })
       append(queued, 'resumed', { attempt: nextAttempt, from: checkpoint.step || 'unknown' })
       const body = {

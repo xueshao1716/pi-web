@@ -101,3 +101,23 @@ test('checkpoint 持久化 phase/step/attempt/updatedAt 并可重载', () => {
     assert.deepEqual(reloaded.getCheckpoint(run.id), updated.checkpoint)
   } finally { cleanup() }
 })
+
+test('checkpoint 持久化 toolPlan 与 historySnapshot 并可重载', () => {
+  const { rootDir, store, cleanup } = fixture()
+  try {
+    const run = store.create({ sessionId: 'session-history', clientRequestId: 'request-1', ownerId: 'instance-a', message: 'snapshot' })
+    const toolPlan = [{ id: 'call-1', name: 'read', args: { path: 'README.md' }, status: 'pending' }]
+    const historySnapshot = [
+      { role: 'system', content: 'system' },
+      { role: 'user', content: 'snapshot' },
+      { role: 'assistant', content: null, tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'read', arguments: '{"path":"README.md"}' } }] },
+    ]
+    const updated = store.saveCheckpoint(run.id, { turn: 1, toolPlan, historySnapshot })
+    assert.deepEqual(updated.checkpoint.toolPlan, toolPlan)
+    assert.deepEqual(updated.checkpoint.historySnapshot, historySnapshot)
+
+    const reloaded = createRunStore({ rootDir, now: () => '2026-08-31T10:00:03.000Z' })
+    assert.deepEqual(reloaded.getCheckpoint(run.id).toolPlan, toolPlan)
+    assert.deepEqual(reloaded.getCheckpoint(run.id).historySnapshot, historySnapshot)
+  } finally { cleanup() }
+})

@@ -3,6 +3,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { scheduleToolCalls, ABORTED_MARKER } from "../../engine/tool-scheduler.mjs";
+import { canonicalStepKey } from "../../engine/run-effects.mjs";
 
 // 构造假工具注册表：defs 记录 parallel 标记；execute 可注入耗时
 function fakeTools(defs = {}) {
@@ -114,5 +115,27 @@ describe("tool-scheduler.mjs 工具调度器", () => {
     assert.equal(results[0].out.text, "known:ok");
     assert.equal(results[1].out.isError, true);
     assert.ok(String(results[1].out.text).includes("未知工具"), "应提示未知工具");
+  });
+
+  test("恢复阻断结果保留原始 ordinal 和 effectKey", async () => {
+    const secondArgs = { path: "uncertain.txt" };
+    const secondKey = canonicalStepKey("read", secondArgs, { turn: 4, index: 1 });
+    const beginMeta = [];
+    const effects = {
+      begin(_runId, key, meta) {
+        beginMeta.push({ key, ordinal: meta.ordinal });
+        return { action: "blocked", reason: "uncertain" };
+      },
+    };
+    const resumedCall = tc("read", secondArgs);
+    Object.defineProperty(resumedCall, "__ordinal", { value: 1, enumerable: false });
+    const results = await scheduleToolCalls({
+      toolCalls: [resumedCall],
+      effects,
+      executionContext: { runId: "run-1", turn: 4 },
+    });
+    assert.equal(results[0].ordinal, 1);
+    assert.equal(results[0].effectKey, secondKey);
+    assert.deepEqual(beginMeta, [{ key: secondKey, ordinal: 1 }]);
   });
 });

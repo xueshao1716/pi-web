@@ -29,7 +29,7 @@ import { bindWorkmemSession, formatPlanPrompt } from "./yuanshu-workmem.mjs";
 import { persistYuanshuUser, persistYuanshuAssistant, abortedAssistantText } from "./yuanshu-session.mjs";
 import { beginYuanshuEmotion, endYuanshuEmotion } from "./yuanshu-emotion.mjs";
 import { resolveAuth } from "./dsh-keys.mjs";
-import { runYuanshuToolRound, attachYuanshuCodeTool, toolCallLoopKey } from "./yuanshu-loop.mjs";
+import { runYuanshuToolRound, attachYuanshuCodeTool, toolCallLoopKey, toolCallsFromPlan } from "./yuanshu-loop.mjs";
 import { canonicalStepKey, hashArgs } from "./run-effects.mjs";
 import {
   EMPTY_TURN_ERROR,
@@ -142,6 +142,110 @@ export function fallbackHistoryForDirectChat(history) {
   return history.at(-1)?.role === "user" ? history.slice(0, -1) : [...history];
 }
 
+const RUN_HISTORY_SNAPSHOT_VERSION = 1;
+const RUN_HISTORY_SNAPSHOT_MAX_MESSAGES = 16;
+const RUN_HISTORY_SNAPSHOT_MAX_CHARS = 48 * 1024;
+
+function snapshotMessage(message, maxChars) {
+  if (!message || typeof message !== "object") return null;
+  const out = { role: String(message.role || "") };
+  if (!out.role) return null;
+  if ("content" in message) {
+    if (typeof message.content === "string") out.content = message.content.slice(0, maxChars);
+    else if (message.content == null) out.content = message.content;
+    else {
+      try {
+        const value = JSON.parse(JSON.stringify(message.content));
+        out.content = Array.isArray(value) ? value.slice(0, 32) : String(JSON.stringify(value)).slice(0, maxChars);
+      } catch { out.content = String(message.content).slice(0, maxChars); }
+    }
+  }
+  if (message.tool_call_id) out.tool_call_id = String(message.tool_call_id);
+  if (Array.isArray(message.tool_calls)) {
+    out.tool_calls = message.tool_calls.slice(0, 16).map(call => ({
+      id: String(call?.id || ""),
+      type: call?.type || "function",
+      function: {
+        name: String(call?.function?.name || ""),
+        arguments: String(call?.function?.arguments || "{}").slice(0, maxChars),
+      },
+    })).filter(call => call.id && call.function.name);
+  }
+  return out;
+}
+
+export function createRunHistorySnapshot(history, { turn = 0, maxMessages = RUN_HISTORY_SNAPSHOT_MAX_MESSAGES, maxChars = RUN_HISTORY_SNAPSHOT_MAX_CHARS } = {}) {
+  const list = Array.isArray(history) ? history.filter(Boolean) : [];
+  const limit = Math.max(1, Math.min(64, Number(maxMessages) || RUN_HISTORY_SNAPSHOT_MAX_MESSAGES));
+  const systems = list.filter(message => message?.role === "system");
+  const tail = list.slice(-limit).filter(message => message?.role !== "system");
+  const selected = [...systems, ...tail];
+  const messages = [];
+  let size = 0;
+  for (const message of selected) {
+    const item = snapshotMessage(message, Math.min(12_000, maxChars));
+    if (!item) continue;
+    const itemSize = JSON.stringify(item).length;
+    if (messages.length && size + itemSize > maxChars) break;
+    messages.push(item);
+    size += itemSize;
+  }
+  return {
+    v: RUN_HISTORY_SNAPSHOT_VERSION,
+    turn: Number.isInteger(turn) ? turn : 0,
+    messages,
+    digest: hashArgs(messages),
+  };
+}
+
+export function restoreRunHistorySnapshot(snapshot) {
+  if (!snapshot || snapshot.v !== RUN_HISTORY_SNAPSHOT_VERSION || !Array.isArray(snapshot.messages)) return null;
+  const restored = snapshot.messages.map(message => snapshotMessage(message, 12_000)).filter(Boolean);
+  return restored.length ? restored : null;
+}
+
+function toolPlanFor(toolCalls, completed = null) {
+  return (Array.isArray(toolCalls) ? toolCalls : []).map((tc, ordinal) => {
+    let args = {};
+    try { args = JSON.parse(tc.function?.arguments || "{}"); } catch {}
+    const final = completed?.[ordinal];
+    return {
+      id: tc.id,
+      name: tc.function?.name || "",
+      args,
+      argsHash: hashArgs(args),
+      ordinal,
+      ...(final?.effectKey ? { effectKey: final.effectKey } : {}),
+      status: final?.status || "pending",
+      ...(final?.isError !== undefined ? { isError: final.isError === true } : {}),
+    };
+  });
+}
+
+function createRunCheckpointWriter(writer, runContext) {
+  return (snapshot = {}) => {
+    try {
+      const historySnapshot = {
+        v: snapshot.v || 1,
+        turn: Number.isInteger(snapshot.turn) ? snapshot.turn : 0,
+        messages: Array.isArray(snapshot.messages) ? snapshot.messages : [],
+        digest: snapshot.digest || null,
+      };
+      const checkpoint = {
+        ...snapshot,
+        phase: "executing",
+        step: snapshot.phase === "tool_results" ? "tool-results" : snapshot.phase === "model_response" ? "model-response" : snapshot.phase === "model_request" ? "model-request" : "tool-plan",
+        checkpointKind: snapshot.phase || "checkpoint",
+        historySnapshot,
+        historyDigest: snapshot.digest || null,
+        historyCount: historySnapshot.messages.length,
+      };
+      runContext?.saveCheckpoint?.(checkpoint);
+      writer.push("checkpoint", checkpoint);
+    } catch {}
+  };
+}
+
 // write/bash 连续画 SVG 或 curl 绘图接口：参数略变也算同一循环。普通 read/write 仍按完整参数签名。
 
 function emitRoundStream(opts, msg) {
@@ -163,13 +267,15 @@ export async function unifiedChat(model, messages, opts = {}) {
   if (!baseUrl) return { error: "无 baseUrl" };
   const base = (baseUrl || "").replace(/\/+$/, "");
   const baseNoV1 = base.endsWith("/v1") ? base.slice(0, -3) : base;
-  const history = sanitizeToolCalls([...messages]);
+  let history = sanitizeToolCalls([...messages]);
+  const restoredHistory = restoreRunHistorySnapshot(opts.resumeSnapshot);
+  if (restoredHistory?.length) history = sanitizeToolCalls(restoredHistory);
   // 工具开关：见 modelAllowsTools（anthropic-messages 默认关，compat.supportsTools 可显式开/关）
   const noTools = !modelAllowsTools(mdef);
   // 2026-08-30 修复：无工具模型注入「无工具模式」提示。agent 训练背景的模型（hy4-preview 等）
   // 被要求看文件/跑命令时会编造 <tool_call> 文本幻觉，用户看到假调用却永远等不到结果。
   // 显式告知无工具 + 引导向用户要内容，大幅减少该幻觉。
-  if (noTools) {
+  if (noTools && !history.some(message => message?.role === "system" && String(message.content || "").includes("【无工具模式】"))) {
     history.unshift({ role: "system", content: "【无工具模式】本次对话你没有工具可用（不能读写文件、执行命令、搜索网页）。不要输出 <tool_call>、<function_call> 等任何形式的工具调用——那只是文本，没有系统会执行它们。若任务需要文件内容或命令输出，请直接请用户粘贴相关内容，再基于内容回答。" });
   }
   const toolDefs = opts.tools === false || noTools ? undefined : (opts.tools || _unifiedTools);
@@ -217,17 +323,51 @@ export async function unifiedChat(model, messages, opts = {}) {
     signal: opts.signal, // P2: 客户端断开时取消 fetch
   });
   let usedThinking = thinkingParam !== null;
-  let turn = 0;
+  // A checkpointed snapshot already represents the completed model turns.
+  // Continue numbering from it so effect keys remain stable across recovery.
+  let turn = Number.isInteger(opts.resumeSnapshot?.turn) ? opts.resumeSnapshot.turn : 0;
+  if (opts.resumeCheckpointKind === "model_request") turn = Math.max(0, turn - 1);
   let usedModel = null; // provenance：记录实际使用的模型（Auto 路由/降级时前端可见）
   const jitInjected = new Set(); // 本会话 JIT 目录规则已注入集合（每目录一次）
   const seenCalls = new Map();
   const stuckEvents = [];
   let lastCompactTurn = 0;
   let emptyTries = 0;
+  const resumeSandboxAsk = opts.sandboxAsk;
+
+  // If the process stopped after the provider emitted tool calls but before
+  // the round finished, replay only those calls. The effects ledger decides
+  // whether each call is reusable or must remain fail-closed.
+  const resumeCalls = toolCallsFromPlan(opts.resumeToolPlan);
+  if (resumeCalls.length && toolDefs) {
+    const resumeTurn = Number.isInteger(opts.resumeSnapshot?.turn) ? opts.resumeSnapshot.turn : turn;
+    const resumed = await runYuanshuToolRound({
+      toolCalls: resumeCalls,
+      history,
+      execute: _executeUnifiedTool,
+      signal: opts.signal,
+      onTool: opts.onTool,
+      onToolEnd: opts.onToolEnd,
+      seenCalls,
+      jitInjected,
+      spill: spillIfHuge,
+      stuckEvents,
+      sandboxMode: opts.sandboxMode,
+      sandboxWsRoot: opts.sandboxWsRoot || _cwd,
+      sandboxAsk: resumeSandboxAsk,
+      effects: opts.effects,
+      executionContext: { ...(opts.executionContext || {}), turn: resumeTurn },
+    });
+    try { opts.onCheckpoint?.({ phase: "tool_results", turn: resumeTurn, toolPlan: toolPlanFor(resumeCalls, resumed.toolPlan), ...createRunHistorySnapshot(history, { turn: resumeTurn }) }); } catch {}
+    if (resumed.stop) return resumed.stop;
+    turn = resumeTurn;
+  }
+
   while (turn < maxTurns) {
     turn++;
     // 客户端已断开 → 立即停止（打断场景：前端 abort 后不再继续消耗模型调用）
     if (opts.signal?.aborted) return { aborted: true, history, text: lastPartialAssistantText(history) };
+    try { opts.onCheckpoint?.({ phase: "model_request", turn, toolPlan: [], ...createRunHistorySnapshot(history, { turn }) }); } catch {}
     let r;
     let wantStream = true;
     // 自动重试：网络错误/5xx 重试最多 2 次
@@ -284,6 +424,7 @@ export async function unifiedChat(model, messages, opts = {}) {
         if (streamedRound.think || streamedRound.text) streamed = true;
       }
       history.push({ role: "assistant", content: msg.content || null, tool_calls: tcs });
+      try { opts.onCheckpoint?.({ phase: "tool_plan", turn, toolPlan: toolPlanFor(tcs), ...createRunHistorySnapshot(history, { turn }) }); } catch {}
       const official = await runYuanshuToolRound({
         toolCalls: tcs, history, execute: _executeUnifiedTool, signal: opts.signal,
         onTool: opts.onTool, onToolEnd: opts.onToolEnd, seenCalls, jitInjected, spill: spillIfHuge,
@@ -292,6 +433,7 @@ export async function unifiedChat(model, messages, opts = {}) {
         effects: opts.effects,
         executionContext: { ...(opts.executionContext || {}), turn },
       });
+      try { opts.onCheckpoint?.({ phase: "tool_results", turn, toolPlan: toolPlanFor(tcs, official.toolPlan), ...createRunHistorySnapshot(history, { turn }) }); } catch {}
       if (official.stop) return official.stop;
       if (needsMidLoopCompact(history, { turn, lastCompactTurn })) {
         const packed = await compactKeepArchive(history, (h) => maybeCompactHistory(h, model, "", { minMessages: 10, minChars: 20000 }));
@@ -312,6 +454,7 @@ export async function unifiedChat(model, messages, opts = {}) {
       }
       const scavCalls = scavenged.map(s => ({ id: s.id, type: "function", function: { name: s.name, arguments: JSON.stringify(s.args) } }));
       history.push({ role: "assistant", content: msg.content || null, tool_calls: scavCalls });
+      try { opts.onCheckpoint?.({ phase: "tool_plan", turn, toolPlan: toolPlanFor(scavCalls), ...createRunHistorySnapshot(history, { turn }) }); } catch {}
       const scavengedRound = await runYuanshuToolRound({
         toolCalls: scavCalls, history, execute: _executeUnifiedTool, signal: opts.signal,
         onTool: opts.onTool, onToolEnd: opts.onToolEnd, seenCalls, jitInjected, spill: spillIfHuge,
@@ -320,6 +463,7 @@ export async function unifiedChat(model, messages, opts = {}) {
         effects: opts.effects,
         executionContext: { ...(opts.executionContext || {}), turn },
       });
+      try { opts.onCheckpoint?.({ phase: "tool_results", turn, toolPlan: toolPlanFor(scavCalls, scavengedRound.toolPlan), ...createRunHistorySnapshot(history, { turn }) }); } catch {}
       if (scavengedRound.stop) return scavengedRound.stop;
       if (needsMidLoopCompact(history, { turn, lastCompactTurn })) {
         const packed = await compactKeepArchive(history, (h) => maybeCompactHistory(h, model, "", { minMessages: 10, minChars: 20000 }));
@@ -677,6 +821,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
       for (const url of scraped.audios) writer.push("media", { type: "audio", url });
     }
   };
+  const onCheckpoint = createRunCheckpointWriter(writer, runContext);
   let history = [...hist.map(h => ({ role: h.role, content: h.role === "tool" ? shrinkToolResult(h.text) : h.text })), { role: "user", content: mediaAwarePrompt(message, []) }];
   if (shouldInjectFullMemory(message)) setLastUserQuery(message);
   bindTodoSession(sessionId);
@@ -707,11 +852,11 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
   }
   async function runLockedChat(locked) {
     // history 末条已是 handleChat 改写后的规划指令消息（含需求），直接复用；只传只读工具定义
-    const result = await unifiedChat(chatModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: locked, sandboxMode: "read-only", sandboxWsRoot: _cwd, sandboxAsk: approvalAsk, effects: runContext?.effects, executionContext: { runId: runContext?.runId, attempt: runContext?.attempt } });
+    const result = await unifiedChat(chatModel, history, { onTool: onToolStart, onToolEnd, onCheckpoint, params, signal, tools: locked, sandboxMode: "read-only", sandboxWsRoot: _cwd, sandboxAsk: approvalAsk, effects: runContext?.effects, resumeSnapshot: runContext?.resume ? runContext.checkpoint?.historySnapshot : null, resumeCheckpointKind: runContext?.resume ? runContext.checkpoint?.checkpointKind : null, resumeToolPlan: runContext?.resume && runContext.checkpoint?.checkpointKind === "tool_plan" ? runContext.checkpoint?.toolPlan : null, executionContext: { runId: runContext?.runId, attempt: runContext?.attempt } });
     if (!result || result.error) {
       clearTask(taskId, "error"); writer.push("error", { message: result?.error || "模型未返回内容" }); finishEmotion(); return;
     }
-    if (result.aborted || signal?.aborted) {
+    if (result?.aborted || signal?.aborted) {
       try { persistUser(); persistYuanshuAssistant(entry.sm, abortedAssistantText(result)); } catch {}
       collected = abortedAssistantText(result);
       clearTask(taskId, "aborted"); finishEmotion(); return;
@@ -730,6 +875,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
   const chatOpts = {
     onTool: onToolStart,
     onToolEnd,
+    onCheckpoint,
     onThink: (t) => { writer.push("think", { text: t }); },
     onThinkEnd: () => { writer.push("think_end", {}); },
     onDelta: (t) => { writer.push("delta", { text: t }); },
@@ -743,9 +889,17 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     sandboxWsRoot: _cwd,
     sandboxAsk: approvalAsk,
     effects: runContext?.effects,
+    resumeSnapshot: runContext?.resume ? runContext.checkpoint?.historySnapshot : null,
+    resumeCheckpointKind: runContext?.resume ? runContext.checkpoint?.checkpointKind : null,
+    resumeToolPlan: runContext?.resume && runContext.checkpoint?.checkpointKind === "tool_plan" ? runContext.checkpoint?.toolPlan : null,
     executionContext: { runId: runContext?.runId, attempt: runContext?.attempt },
   };
   let result = await unifiedChat(chatModel, history, chatOpts);
+  // The resumed tool plan is consumed before the first model request. Do not
+  // replay it again if output quality later triggers a fallback/pro model.
+  chatOpts.resumeToolPlan = null;
+  chatOpts.resumeSnapshot = null;
+  chatOpts.resumeCheckpointKind = null;
   if (result?.aborted || signal?.aborted) {
     try { persistUser(); persistYuanshuAssistant(entry.sm, assistantContentWithMedia(abortedAssistantText(result), mediaItems)); } catch {}
     collected = abortedAssistantText(result);
@@ -807,7 +961,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     const proModel = routeProCandidate();
     if (proModel && (proModel.provider !== chatModel.provider || proModel.id !== chatModel.id)) {
       writer.push("note", { text: `🚀 模型自报任务超纲，升级 ${proModel.provider}/${proModel.id} 重试${proMatch[1] ? `（原因：${proMatch[1].trim()}）` : ""}…` });
-      const proResult = await unifiedChat(proModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: toolDefs, sandboxMode: chatOpts.sandboxMode, sandboxWsRoot: _cwd, sandboxAsk: approvalAsk, effects: runContext?.effects, executionContext: { runId: runContext?.runId, attempt: runContext?.attempt } });
+      const proResult = await unifiedChat(proModel, history, { onTool: onToolStart, onToolEnd, onCheckpoint, params, signal, tools: toolDefs, sandboxMode: chatOpts.sandboxMode, sandboxWsRoot: _cwd, sandboxAsk: approvalAsk, effects: runContext?.effects, resumeSnapshot: null, resumeCheckpointKind: null, resumeToolPlan: null, executionContext: { runId: runContext?.runId, attempt: runContext?.attempt } });
       if (proResult?.text && !proResult.error) {
         const proTxt = String(proResult.text).trim();
         if (!NEEDS_PRO_RE.test(proTxt)) {

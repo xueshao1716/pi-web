@@ -8,6 +8,7 @@ import { coachToolFailure } from "./yuanshu-protocol.mjs";
 import { recordStuckEvent, detectStuck } from "./yuanshu-stuck.mjs";
 import { coachSearchRound } from "./yuanshu-session.mjs";
 import { gateSandboxCall } from "./yuanshu-sandbox.mjs";
+import { hashArgs } from "./run-effects.mjs";
 
 const handlers = Object.create(null);
 
@@ -57,6 +58,36 @@ export function toolReplayPolicy(name) {
   if (["read", "web_search", "list_channels", "activate_skill", "todo_read"].includes(name)) return "safe"
   if (["write", "edit", "plan_files", "todo_write"].includes(name)) return "state-checked"
   return "never"
+}
+
+// Rebuild OpenAI tool-call messages from a durable checkpoint. Completed
+// entries are already represented in history/effects and must not be replayed;
+// pending/uncertain entries are handed to the effects ledger for its normal
+// reuse or fail-closed decision.
+export function toolCallsFromPlan(plan) {
+  if (!Array.isArray(plan)) return [];
+  return plan
+    .filter(item => item && item.args && typeof item.args === "object" && item.status !== "completed" && item.status !== "error" && item.status !== "failed")
+    .map((item, index) => {
+      const args = item.args && typeof item.args === "object" ? item.args : {};
+      const call = {
+        id: String(item.id || `resume-${index}`),
+        type: "function",
+        function: {
+          name: String(item.name || ""),
+          arguments: JSON.stringify(args),
+        },
+      };
+      // Keep the original ordinal out of provider payloads while letting the
+      // scheduler derive the same durable effect key after completed entries
+      // have been filtered from the replay list.
+      Object.defineProperty(call, "__ordinal", {
+        value: Number.isInteger(item.ordinal) ? item.ordinal : index,
+        enumerable: false,
+      });
+      return call;
+    })
+    .filter(item => item.function.name);
 }
 
 export async function runYuanshuToolRound({
@@ -118,6 +149,17 @@ export async function runYuanshuToolRound({
     replayPolicy: toolReplayPolicy,
   });
 
+  const toolPlan = results.map(({ id, name, args, out, effectKey, ordinal: resultOrdinal }, ordinal) => ({
+    id,
+    name,
+    args,
+    argsHash: hashArgs(args),
+    ordinal: Number.isInteger(resultOrdinal) ? resultOrdinal : ordinal,
+    effectKey: effectKey || null,
+    status: out?.uncertain ? "uncertain" : out?.isError === true ? "error" : "completed",
+    isError: out?.isError === true,
+  }));
+
   const searches = results.filter((r) => r.name === "web_search");
   if (searches.length >= 2) {
     const last = searches[searches.length - 1];
@@ -135,7 +177,7 @@ export async function runYuanshuToolRound({
       const failed = out?.isError === true;
       if (!failed && seenCalls.get(sig) >= 3) {
         history.push({ role: "tool", tool_call_id: id, content: wrapUntrusted(name, spill(name, text)) });
-        return { history, stop: { error: "模型工具调用陷入循环，已中断（建议换一种方式提问）" } };
+        return { history, toolPlan, stop: { error: "模型工具调用陷入循环，已中断（建议换一种方式提问）" } };
       }
       if (failed && seenCalls.get(sig) >= 5) {
         out.text = `[系统提示] 工具 ${name} 已连续失败 5 次（最近错误：${text.slice(0, 100)}）。请换一种方式完成任务，不要重复相同的失败操作。`;
@@ -145,10 +187,10 @@ export async function runYuanshuToolRound({
       if (stuck) {
         out.text = `${out?.text || text}\n[宿主纠偏] ${stuck.hint}`;
         history.push({ role: "tool", tool_call_id: id, content: wrapUntrusted(name, spill(name, out.text)) });
-        return { history, stop: { error: stuck.hint } };
+        return { history, toolPlan, stop: { error: stuck.hint } };
       }
     }
     history.push({ role: "tool", tool_call_id: id, content: wrapUntrusted(name, spill(name, out?.text)) });
   }
-  return { history };
+  return { history, toolPlan };
 }

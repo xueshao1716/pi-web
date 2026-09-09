@@ -3,6 +3,17 @@ const TERMINAL = new Set(['completed', 'failed', 'stopped', 'interrupted'])
 function publicRun(run) {
   if (!run) return run
   const { request, ...safe } = run
+  if (safe.checkpoint && typeof safe.checkpoint === 'object') {
+    const { historySnapshot, ...checkpoint } = safe.checkpoint
+    if (Array.isArray(checkpoint.toolPlan)) {
+      checkpoint.toolPlan = checkpoint.toolPlan.map(step => {
+        if (!step || typeof step !== 'object') return step
+        const { args, ...publicStep } = step
+        return publicStep
+      })
+    }
+    safe.checkpoint = checkpoint
+  }
   return safe
 }
 import { buildRunSnapshot } from './run-observability.mjs'

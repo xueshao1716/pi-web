@@ -99,3 +99,26 @@ test('overview 返回统一运行快照与健康状态', async () => {
   assert.deepEqual(JSON.parse(res.text()).health, { status: 'busy', activeCount: 1, failedCount: 1 })
   assert.equal(JSON.parse(res.text()).active[0].phase, 'executing')
 })
+
+test('run 详情不把模型历史快照和工具原参数回传到前端', async () => {
+  const manager = {
+    get: () => ({
+      id: 'run-safe', status: 'interrupted', checkpoint: {
+        turn: 2,
+        historySnapshot: { v: 1, messages: [{ role: 'user', content: 'private' }] },
+        toolPlan: [{ name: 'bash', args: { command: 'echo private' }, argsHash: 'hash' }],
+        uncertainSteps: ['step-1'],
+      },
+    }),
+    readAfter: () => [],
+  }
+  const api = createRunApi({ manager, json: fakeJson })
+  const res = new FakeResponse()
+  await api.get(res, 'run-safe')
+  const body = JSON.parse(res.text())
+  assert.equal(body.checkpoint.turn, 2)
+  assert.deepEqual(body.checkpoint.uncertainSteps, ['step-1'])
+  assert.equal('historySnapshot' in body.checkpoint, false)
+  assert.equal(body.checkpoint.toolPlan[0].args, undefined)
+  assert.equal(body.checkpoint.toolPlan[0].argsHash, 'hash')
+})

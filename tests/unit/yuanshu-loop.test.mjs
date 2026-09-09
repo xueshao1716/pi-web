@@ -8,6 +8,7 @@ import { ABORTED_MARKER } from "../../engine/tool-scheduler.mjs";
 import {
   toolCallLoopKey,
   runYuanshuToolRound,
+  toolCallsFromPlan,
   attachYuanshuCodeTool,
 } from "../../engine/yuanshu-loop.mjs";
 
@@ -55,6 +56,36 @@ test("runYuanshuToolRound：策略 deny 不调用执行器", async () => {
   });
   assert.equal(ran.length, 0);
   assert.match(String(history[0].content), /系统拦截/);
+});
+
+test("runYuanshuToolRound：返回可恢复的 toolPlan 及完成状态", async () => {
+  const history = [];
+  const r = await runYuanshuToolRound({
+    toolCalls: [tc("read", { path: "README.md" }, "call-1")],
+    history,
+    execute: async () => ({ text: "ok" }),
+    seenCalls: new Map(),
+    policyDecide: () => ({ decision: "allow" }),
+    jitForPath: () => [],
+  });
+  assert.equal(r.toolPlan.length, 1);
+  assert.deepEqual(r.toolPlan[0].args, { path: "README.md" });
+  assert.equal(r.toolPlan[0].id, "call-1");
+  assert.equal(r.toolPlan[0].name, "read");
+  assert.equal(r.toolPlan[0].status, "completed");
+  assert.equal(r.toolPlan[0].isError, false);
+});
+
+test("toolCallsFromPlan：恢复时只重建未完成步骤并保留参数", () => {
+  assert.deepEqual(toolCallsFromPlan([
+    { id: "done", name: "read", args: { path: "done.txt" }, status: "completed" },
+    { id: "legacy", name: "read", status: "pending" },
+    { id: "pending", name: "write", args: { path: "next.txt", content: "x" }, status: "pending" },
+    { id: "uncertain", name: "bash", args: { command: "echo hi" }, status: "uncertain" },
+  ]), [
+    { id: "pending", type: "function", function: { name: "write", arguments: '{"path":"next.txt","content":"x"}' } },
+    { id: "uncertain", type: "function", function: { name: "bash", arguments: '{"command":"echo hi"}' } },
+  ]);
 });
 
 test("runYuanshuToolRound：相同成功调用 3 次停循环", async () => {

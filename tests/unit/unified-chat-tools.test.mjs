@@ -3,7 +3,10 @@
 // 且 wawazz 中转返回的 tool_calls.arguments 带 "{}" 脏前缀（'{}{"path":...}'），JSON.parse 直接失败。
 import { test } from "node:test";
 import assert from "node:assert";
-import { sanitizeToolCallList, repairToolArgs, modelAllowsTools } from "../../engine/unified-chat.mjs";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { sanitizeToolCallList, repairToolArgs, modelAllowsTools, createRunHistorySnapshot, restoreRunHistorySnapshot } from "../../engine/unified-chat.mjs";
 
 test("repairToolArgs：中转脏前缀修复", (t) => {
   t.test('"{}{...}" 拼接前缀 → 剥离为合法 JSON', () => {
@@ -43,4 +46,25 @@ test("modelAllowsTools：工具开关判定", (t) => {
   t.test("compat.supportsTools:false 一律关闭", () => {
     assert.equal(modelAllowsTools({ api: "openai-completions", compat: { supportsTools: false } }), false);
   });
+});
+
+test("运行历史快照：保留系统提示与工具尾部，恢复时不重复追加用户消息", () => {
+  const history = [
+    { role: "system", content: "系统规则" },
+    { role: "user", content: "需求" },
+    { role: "assistant", content: null, tool_calls: [{ id: "t1", type: "function", function: { name: "read", arguments: "{}" } }] },
+    { role: "tool", tool_call_id: "t1", content: "完成" },
+  ];
+  const snapshot = createRunHistorySnapshot(history, { turn: 2, maxMessages: 4 });
+  assert.equal(snapshot.v, 1);
+  assert.equal(snapshot.turn, 2);
+  assert.deepEqual(restoreRunHistorySnapshot(snapshot), history);
+  assert.ok(JSON.stringify(snapshot).length < 10_000);
+});
+
+test("恢复后的备用模型不得重新携带旧快照", () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+  const source = readFileSync(join(root, "engine", "unified-chat.mjs"), "utf8");
+  assert.match(source, /chatOpts\.resumeToolPlan = null;\s*chatOpts\.resumeSnapshot = null;\s*chatOpts\.resumeCheckpointKind = null/);
+  assert.match(source, /resumeSnapshot: null, resumeCheckpointKind: null, resumeToolPlan: null/);
 });

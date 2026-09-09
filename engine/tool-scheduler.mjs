@@ -57,7 +57,7 @@ async function runParallel(seg, ctx) {
       const tc = seg[idx];
       if (ctx.signal?.aborted) {
         // 未启动 → 补合成错误结果（不执行）
-        out[idx] = abortedResult(tc, ctx);
+        out[idx] = abortedResult(tc, { ...ctx, ordinal: (ctx.ordinalBase || 0) + idx });
         continue;
       }
       out[idx] = await runOne(tc, { ...ctx, ordinal: (ctx.ordinalBase || 0) + idx });
@@ -73,29 +73,30 @@ async function runOne(tc, { tools, onTool, onToolEnd, signal, effects, execution
   let args = {};
   try { args = JSON.parse(tc.function?.arguments || "{}"); } catch {}
   const fnName = tc.function?.name || "";
+  const logicalOrdinal = Number.isInteger(tc.__ordinal) ? tc.__ordinal : ordinal;
   const runId = executionContext?.runId;
   const turn = Number.isInteger(executionContext?.turn) ? executionContext.turn : 0;
-  const effectKey = effects && runId ? canonicalStepKey(fnName, args, { turn, index: ordinal }) : null;
+  const effectKey = effects && runId ? canonicalStepKey(fnName, args, { turn, index: logicalOrdinal }) : null;
   const toolContext = {
     signal,
     runId,
     attempt: executionContext?.attempt,
     turn,
-    ordinal,
+    ordinal: logicalOrdinal,
     effectKey,
     argsHash: hashArgs(args),
   };
   if (signal?.aborted) {
     const out = { text: ABORTED_MARKER, isError: true };
     if (onToolEnd) onToolEnd(tc.id, fnName, args, out);
-    return { id: tc.id, name: fnName, args, out };
+    return { id: tc.id, name: fnName, args, out, effectKey, ordinal: logicalOrdinal };
   }
   let reservation = null;
   if (effects && runId && effectKey) {
     reservation = effects.begin(runId, effectKey, {
       toolName: fnName,
       argsHash: toolContext.argsHash,
-      ordinal,
+      ordinal: logicalOrdinal,
       turn,
       attempt: executionContext?.attempt,
       replayPolicy: replayPolicy?.(fnName, args) || "never",
@@ -103,7 +104,7 @@ async function runOne(tc, { tools, onTool, onToolEnd, signal, effects, execution
     if (reservation.action === "reuse") {
       const out = { ...(reservation.result || { text: "（已完成，无可复用结果）" }), reused: true };
       if (onToolEnd) onToolEnd(tc.id, fnName, args, out, toolContext);
-      return { id: tc.id, name: fnName, args, out, effectKey };
+      return { id: tc.id, name: fnName, args, out, effectKey, ordinal: logicalOrdinal };
     }
     if (reservation.action === "blocked") {
       const out = {
@@ -112,7 +113,7 @@ async function runOne(tc, { tools, onTool, onToolEnd, signal, effects, execution
         uncertain: true,
       };
       if (onToolEnd) onToolEnd(tc.id, fnName, args, out, toolContext);
-      return { id: tc.id, name: fnName, args, out, effectKey };
+      return { id: tc.id, name: fnName, args, out, effectKey, ordinal: logicalOrdinal };
     }
   }
   if (onTool) onTool(tc.id, fnName, args, toolContext);
@@ -125,7 +126,7 @@ async function runOne(tc, { tools, onTool, onToolEnd, signal, effects, execution
   }
   if (effects && runId && effectKey && !out?.uncertain) effects.complete(runId, effectKey, out);
   if (onToolEnd) onToolEnd(tc.id, fnName, args, out, toolContext);
-  return { id: tc.id, name: fnName, args, out, effectKey };
+  return { id: tc.id, name: fnName, args, out, effectKey, ordinal: logicalOrdinal };
 }
 
 function abortedResult(tc, ctx) {
@@ -134,7 +135,11 @@ function abortedResult(tc, ctx) {
   const fnName = tc.function?.name || "";
   const out = { text: ABORTED_MARKER, isError: true };
   if (ctx.onToolEnd) ctx.onToolEnd(tc.id, fnName, args, out);
-  return { id: tc.id, name: fnName, args, out };
+  const logicalOrdinal = Number.isInteger(tc.__ordinal) ? tc.__ordinal : (Number.isInteger(ctx.ordinal) ? ctx.ordinal : 0);
+  const runId = ctx.executionContext?.runId;
+  const turn = Number.isInteger(ctx.executionContext?.turn) ? ctx.executionContext.turn : 0;
+  const effectKey = ctx.effects && runId ? canonicalStepKey(fnName, args, { turn, index: logicalOrdinal }) : null;
+  return { id: tc.id, name: fnName, args, out, effectKey, ordinal: logicalOrdinal };
 }
 
 // ── 排他判定：工具注册时 parallel:false → 屏障 ──
