@@ -81,6 +81,7 @@ test("runYuanshuToolRound 卡住必须停，不要再空转", async () => {
 test("主工具表必须挂上 todo 和 delegate_task", () => {
   const src = readFileSync(join(ROOT, "server.mjs"), "utf8");
   assert.ok(src.includes("TODO_TOOL_SCHEMAS") || src.includes("todo_write"), "Claude 式清单必须进主工具表");
+  assert.ok(src.includes("plan_files") || src.includes("PLAN_FILES_SCHEMA"), "磁盘工作记忆必须进主工具表");
   assert.ok(src.includes("delegate_task") || src.includes("DELEGATE_TASK"), "OpenHands 式子代理必须能被模型调用");
 });
 
@@ -91,4 +92,8 @@ test("handleUnifiedChat Auto 必须走 routeForAuto，循环中段必须能压�
   assert.ok(fn.includes("routeForAuto"), "元枢兑底不能只会 pickFallbackDefault");
   const loop = src.slice(src.indexOf("export async function unifiedChat"), src.indexOf("export async function unifiedChat") + 12000);
   assert.ok(loop.includes("needsMidLoopCompact") || loop.includes("maybeCompactHistory"), "中段要压上下文，不能等开场那一次");
+  assert.ok(loop.includes("compactKeepArchive"), "压缩必须留 archive，不能只换成摘要");
+  const handle = src.slice(src.indexOf("export async function handleUnifiedChat"), src.indexOf("export async function handleUnifiedChat") + 12000);
+  assert.ok(handle.includes("assembleYuanshuSystem") || handle.includes("buildYuanshuSections"), "system 必须走命名区段");
+  assert.ok(handle.includes("sandboxMode"), "规划只读要落到沙箱阶梯");
 });

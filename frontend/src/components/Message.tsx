@@ -8,7 +8,7 @@ function LazyMarkdown({ text }: { text: string }) {
 }
 
 import { withFileToken } from '../api'
-import { scrapeVideos } from '../lib/media-embed'
+import { scrapeVideos, dedupeMediaUrls, mediaPathKey } from '../lib/media-embed'
 import { fmtMsgTime } from '../lib/fmt-time'
 import type { ChatMessage, RunningTool, ToolStatus } from '../types'
 import { AgentWorkflow } from './AgentWorkflow'
@@ -92,7 +92,7 @@ function Thinking({ text, live }: { text: string; live?: boolean }) {
 }
 
 function Attachments({ msg }: { msg: ChatMessage }) {
-  const videos = msg.videos?.length ? msg.videos : scrapeVideos(msg.text || '')
+  const videos = dedupeMediaUrls(msg.videos?.length ? msg.videos : scrapeVideos(msg.text || ''))
   return (
     <>
       {msg.images?.map((src, i) => (
@@ -103,8 +103,8 @@ function Attachments({ msg }: { msg: ChatMessage }) {
       {msg.audios?.map((url, i) => (
         <div key={'aud' + i} className="my-1.5"><audio controls src={withFileToken(url)} className="max-w-full h-9" /></div>
       ))}
-      {videos.map((url, i) => (
-        <div key={'vid' + i} className="my-2">
+      {videos.map((url) => (
+        <div key={'vid:' + mediaPathKey(url)} className="my-2">
           <video controls playsInline src={withFileToken(url)} className="w-full max-w-[560px] aspect-video rounded-pi-lg border border-pi-border-soft bg-black" />
         </div>
       ))}

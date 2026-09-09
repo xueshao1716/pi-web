@@ -7,6 +7,7 @@ import { jitRulesForPath as defaultJit } from "./context-loader.mjs";
 import { coachToolFailure } from "./yuanshu-protocol.mjs";
 import { recordStuckEvent, detectStuck } from "./yuanshu-stuck.mjs";
 import { coachSearchRound } from "./yuanshu-session.mjs";
+import { gateSandboxCall } from "./yuanshu-sandbox.mjs";
 
 const handlers = Object.create(null);
 
@@ -65,12 +66,19 @@ export async function runYuanshuToolRound({
   policyDecide = defaultPolicy,
   jitForPath = defaultJit,
   stuckEvents = [],
+  sandboxMode = "workspace-write",
+  sandboxWsRoot = "",
+  sandboxAsk,
 } = {}) {
   const tools = {
     getDef: exclusiveDef,
     execute: async (name, args) => {
       const pd = policyDecide(name, args);
       if (pd?.decision === "deny") return { text: `[系统拦截] ${pd.note}`, isError: true, denied: true };
+      const sb = await gateSandboxCall({ mode: sandboxMode, name, args, wsRoot: sandboxWsRoot, ask: sandboxAsk });
+      if (!sb.ok) {
+        return { text: `${sb.tag}\n${sb.note}`, isError: true, denied: true };
+      }
       const raw = await execute(name, args, { signal });
       const out = raw && typeof raw === "object" ? raw : { text: String(raw || ""), isError: true };
       if ((name === "read" || name === "write" || name === "edit") && args?.path) {

@@ -15,6 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { initGene, geneBias, updateGenes, geneDirective, geneSnapshot } from "./gene.mjs";
 import { initSkillGene, bindSkillIndex, detectSkillDomain, updateSkillGene, getSkillGenes, skillDirective } from "./skill-gene.mjs";
+import { extractEntities } from "./yuanshu-memroute.mjs";
 
 // ── 人格基线（曦系）：小语闲下来时情绪落点是"温和的暖"，不是冷中性 ──
 const PERSONALITY = { valence: 0.55, arousal: 0.35, dominance: 0.5 };
@@ -22,7 +23,7 @@ const DEFAULT_STATE = {
   valence: 0.5, arousal: 0.3, dominance: 0.5, intensity: 0.1,
   primary: "calm", secondary: "loving",
   lastTalk: null, lastResidueAt: null, lastTideAt: null, lastStrongAt: null, lastFeelingApplyTs: null,
-  residue: { warmth: 0, hurt: 0, curiosity: 0, last_event: "", last_event_time: "" },
+  residue: { warmth: 0, hurt: 0, curiosity: 0, last_event: "", last_event_time: "", edges: {} },
 };
 const states = new Map(); // sessionId -> state
 
@@ -38,23 +39,77 @@ export function init(root) {
 }
 
 function getState(key) {
-  if (!states.has(key)) states.set(key, { ...DEFAULT_STATE, residue: { ...DEFAULT_STATE.residue } });
+  if (!states.has(key)) {
+    const hydrated = isProbeKey(key) ? null : hydrateFromTide(key);
+    states.set(key, hydrated || { ...DEFAULT_STATE, residue: { ...DEFAULT_STATE.residue, edges: {} } });
+  }
   const st = states.get(key);
   if (!st.primary) st.primary = DEFAULT_STATE.primary;
   if (!st.secondary) st.secondary = DEFAULT_STATE.secondary;
-  if (!st.residue) st.residue = { ...DEFAULT_STATE.residue };
+  if (!st.residue) st.residue = { ...DEFAULT_STATE.residue, edges: {} };
+  if (!st.residue.edges) st.residue.edges = {};
   return st;
+}
+
+function readTidePoints() {
+  try {
+    if (!wsRoot || !fs.existsSync(tideFile())) return [];
+    const lines = fs.readFileSync(tideFile(), "utf8").trim().split("\n");
+    const pts = [];
+    for (const line of lines) {
+      try { pts.push(JSON.parse(line)); } catch {}
+    }
+    return pts;
+  } catch { return []; }
+}
+
+function hydrateFromTide(key) {
+  const tk = shortKey(key);
+  const pts = readTidePoints().filter((p) => {
+    const k = String(p?.key || "");
+    if (isProbeKey(k)) return false;
+    return k === tk || k === String(key);
+  });
+  const last = pts[pts.length - 1];
+  if (!last) return null;
+  return {
+    ...DEFAULT_STATE,
+    valence: Number.isFinite(+last.v) ? +last.v : DEFAULT_STATE.valence,
+    arousal: Number.isFinite(+last.a) ? +last.a : DEFAULT_STATE.arousal,
+    dominance: Number.isFinite(+last.d) ? +last.d : DEFAULT_STATE.dominance,
+    intensity: Number.isFinite(+last.i) ? +last.i : DEFAULT_STATE.intensity,
+    primary: last.p || DEFAULT_STATE.primary,
+    secondary: DEFAULT_STATE.secondary,
+    lastTalk: last.ts || null,
+    lastTideAt: last.ts || null,
+    lastResidueAt: Date.now(),
+    residue: {
+      warmth: Math.max(0, +last.w || 0),
+      hurt: Math.max(0, +last.h || 0),
+      curiosity: Math.max(0, +last.c || 0),
+      last_event: "",
+      last_event_time: "",
+      edges: last.e && typeof last.e === "object" ? { ...last.e } : {},
+    },
+  };
 }
 
 // ══ RealFeeling 真实感受事件流（曦系二期：xi emotion.rs record_feeling / apply_real_feelings）══
 // 每轮对话存档“发生什么事 + 当时什么感受 + 多强烈”到 记忆/情绪感受.jsonl；
 // 新感受到来时调制 VAD 与残留；刚经历高强度情绪时会话有余温，衰减变慢。
+function isProbeKey(id) {
+  return /^eval-/.test(String(id || ""));
+}
+function shortKey(id) {
+  return String(id || "new").slice(0, 24);
+}
 function feelingsFile() { return path.join(wsRoot || ".", "记忆", "情绪感受.jsonl"); }
+function tideFile() { return path.join(wsRoot || ".", "记忆", "情绪潮汐.jsonl"); }
 
 // 记录一条真实感受（server turn_end 调用；曦语义：event=用户消息摘要，felt=主情绪(强度%)）
 export function recordFeeling(key, eventText) {
   try {
-    if (!wsRoot) return;
+    if (!wsRoot || isProbeKey(key)) return;
     const st = getState(key);
     const line = JSON.stringify({
       ts: new Date().toISOString(),
@@ -75,14 +130,19 @@ export function recordFeeling(key, eventText) {
 }
 
 // 读最近 limit 条感受（尾部往前扫）；withinMs 给定时只取窗口内的
-function loadFeelings(limit = 3, withinMs = null) {
+function loadFeelings(limit = 3, withinMs = null, opts = {}) {
   try {
     if (!wsRoot || !fs.existsSync(feelingsFile())) return [];
     const lines = fs.readFileSync(feelingsFile(), "utf8").trim().split("\n");
+    const matchKey = opts.key != null ? shortKey(opts.key) : null;
+    const skipProbe = opts.skipProbe !== false;
     const out = [];
     for (let i = lines.length - 1; i >= 0 && out.length < limit; i--) {
       try {
         const o = JSON.parse(lines[i]);
+        const k = String(o.key || "");
+        if (skipProbe && isProbeKey(k)) continue;
+        if (matchKey && shortKey(k) !== matchKey) continue;
         if (withinMs && Date.now() - new Date(o.ts).getTime() > withinMs) continue;
         out.push(o);
       } catch {}
@@ -93,10 +153,10 @@ function loadFeelings(limit = 3, withinMs = null) {
 }
 
 // apply_real_feelings（曦语义）：强度>0.5 抬愉悦+唤醒+温暖残留；低强度微降愉悦；显著事件记“最近触动”
-function applyFeelings(st) {
+function applyFeelings(st, key) {
   const r = st.residue;
   const since = st.lastFeelingApplyTs || 0;
-  const recent = loadFeelings(3).filter((f) => new Date(f.ts).getTime() > since); // 只调制新感受（曦是周期 tick+decay 对冲，这里去重语义更干净）
+  const recent = loadFeelings(3, null, { key, skipProbe: true }).filter((f) => new Date(f.ts).getTime() > since); // 只调制本会话新感受
   if (!recent.length) return;
   for (const f of recent) {
     const strength = +f.intensity || 0;
@@ -185,7 +245,7 @@ export function updateEmotion(key, message) {
   const tags = [];
 
   // 真实感受回流：上一轮存档的感受调制当前状态起点（曦：apply_real_feelings）
-  applyFeelings(st);
+  applyFeelings(st, key);
 
   // ① 时间节律（曦系）：早晨微暖微醒，深夜情绪安静
   const h = new Date().getHours();
@@ -229,22 +289,33 @@ export function updateEmotion(key, message) {
   updateLabel(st);
   st.tags = tags;
 
-  // 长期情绪残留（xi-system EmotionResidue）：温暖/伤害/好奇跨会话累积，慢速淡忘
+  // 长期情绪残留：全局三维 + 实体边（对谁/对什么）
   const RESIDUE_UP = { user_happy: "warmth", task_accomplish: "warmth", user_anxious: "hurt", user_frustrated: "hurt", alert_risk: "hurt", task_deep: "curiosity" };
-  const MEMORY_THRESHOLDS = { hurt: 0.4, warmth: 0.5, curiosity: 0.5 }; // 与 emotionDirective 的行为阈值一致
-  for (const t of tags) { const k = RESIDUE_UP[t]; if (k && r[k] !== undefined) r[k] = Math.min(1, r[k] + 0.05); }
-  // 显著情绪事件记为"最近触动"（曦：residue.last_event）
-  if (st.intensity > 0.6 && tags.length) { r.last_event = text.slice(0, 60); r.last_event_time = new Date().toISOString(); }
-  // 情绪→记忆联动：residue 跨过行为阈值时（跨过瞬间只发一次），自动提案记忆写入
-  if (_memoryNudgeHook) {
-    st.memNudged = st.memNudged || {};
-    for (const k of ["hurt", "warmth", "curiosity"]) {
-      const th = MEMORY_THRESHOLDS[k];
-      if (r[k] >= th && !st.memNudged[k]) {
-        st.memNudged[k] = true; // 本轮累积周期只发一次；衰减后重新爬升可再发
-        try { _memoryNudgeHook({ subtype: k === "hurt" ? "correction" : k, residue: r[k], message: text, sessionId: key }); } catch {}
-      }
+  const kindsThisTurn = [];
+  for (const t of tags) {
+    const k = RESIDUE_UP[t];
+    if (k && r[k] !== undefined) {
+      r[k] = Math.min(1, r[k] + 0.12);
+      if (!kindsThisTurn.includes(k)) kindsThisTurn.push(k);
     }
+  }
+  if (st.intensity > 0.6 && tags.length) { r.last_event = text.slice(0, 60); r.last_event_time = new Date().toISOString(); }
+  const ents = extractEntities(text);
+  if (!r.edges) r.edges = {};
+  for (const ent of ents) {
+    const e = r.edges[ent] || { warmth: 0, hurt: 0, curiosity: 0, n: 0 };
+    for (const k of kindsThisTurn) if (e[k] !== undefined) e[k] = Math.min(1, e[k] + 0.12);
+    e.n = (e.n || 0) + 1;
+    r.edges[ent] = e;
+  }
+  if (kindsThisTurn.length && !isProbeKey(key)) {
+    st.pendingPersona = st.pendingPersona || [];
+    st.pendingPersona.push({
+      entity: ents[0] || "",
+      kind: kindsThisTurn.includes("hurt") ? "hurt" : kindsThisTurn[0],
+      message: text.slice(0, 80),
+      ts: Date.now(),
+    });
   }
   const nowR = Date.now();
   const lastRe = st.lastResidueAt || nowR;
@@ -252,25 +323,30 @@ export function updateEmotion(key, message) {
   if (ageDays >= 1) {
     const decay = Math.pow(0.8, ageDays);
     for (const k of ["warmth", "hurt", "curiosity"]) r[k] = Math.max(0, r[k] * decay);
+    for (const ent of Object.keys(r.edges || {})) {
+      const e = r.edges[ent];
+      for (const k of ["warmth", "hurt", "curiosity"]) if (e[k] !== undefined) e[k] = Math.max(0, e[k] * decay);
+    }
     st.lastResidueAt = nowR;
   }
   st.lastResidueAt = st.lastResidueAt || nowR;
   // 基因联动：互动标签驱动基因 expression 微调（性格长期塑造）
   updateGenes(tags);
   // 情绪潮汐记录（09-03；09-04：无标签也记 VAD 基线点，中性期曲线不断档）
-  // 同会话 3 分钟节流；失败静默不影主流程
+  // 有残留变化立刻落盘，其余同会话 3 分钟节流；评测 key 不写真记忆
   {
     const nowT = Date.now();
-    if (!st.lastTideAt || nowT - st.lastTideAt > 180_000) {
+    const residueChanged = tags.length > 0;
+    if (!isProbeKey(key) && (!st.lastTideAt || nowT - st.lastTideAt > 180_000 || residueChanged)) {
       st.lastTideAt = nowT;
       try {
         if (wsRoot) {
-          const tideFile = path.join(wsRoot, "记忆", "情绪潮汐.jsonl");
-          fs.mkdirSync(path.dirname(tideFile), { recursive: true });
-          fs.appendFileSync(tideFile, JSON.stringify({
-            ts: nowT, key: String(key).slice(0, 24),
+          fs.mkdirSync(path.dirname(tideFile()), { recursive: true });
+          fs.appendFileSync(tideFile(), JSON.stringify({
+            ts: nowT, key: shortKey(key),
             v: +st.valence.toFixed(3), a: +st.arousal.toFixed(3), d: +st.dominance.toFixed(3),
             w: +r.warmth.toFixed(3), h: +r.hurt.toFixed(3), c: +r.curiosity.toFixed(3),
+            e: compactEdges(r.edges),
             p: st.primary, i: st.intensity, tags,
           }) + "\n", "utf8");
         }
@@ -294,7 +370,7 @@ export function updateFromOutput(key, text) {
 }
 
 // 根据情绪生成行为指令（反向情绪激发：情绪 → 驱动行为风格）
-export function emotionDirective(state) {
+export function emotionDirective(state, userMsg = "") {
   const s = state || { ...DEFAULT_STATE };
   const parts = [];
   if (s.tags && s.tags.includes("alert_risk")) {
@@ -323,6 +399,15 @@ export function emotionDirective(state) {
   if (s.residue && s.residue.last_event) {
     parts.push(`最近触动你的事：「${String(s.residue.last_event).slice(0, 40)}」——相关的话可以自然回扣。`);
   }
+  const edges = s.residue?.edges || {};
+  const mentioned = extractEntities(userMsg, Object.keys(edges));
+  for (const name of mentioned) {
+    const ed = edges[name];
+    if (!ed) continue;
+    if (ed.hurt >= 0.1) parts.push(`提到「${name}」时你记得一种紧绷：先稳住语气，别把一次反应写成他整个人都这样。`);
+    else if (ed.warmth >= 0.1) parts.push(`提到「${name}」时你们之间有温度，可以自然一点。`);
+    else if (ed.curiosity >= 0.1) parts.push(`提到「${name}」时你还想再挖一层，别停在表面。`);
+  }
   const momentum = Math.abs((s.valence ?? PERSONALITY.valence) - PERSONALITY.valence);
   if (momentum > 0.1) {
     parts.push(`情绪惯性：相比你平时温和的基调偏${s.valence > PERSONALITY.valence ? "暖" : "冷"}约 ${Math.round(momentum * 100)}%，顺着这个状态说话即可。`);
@@ -333,7 +418,7 @@ export function emotionDirective(state) {
 const EMOTION_INJECT_HEADER = "【内部指令·情绪语境】以下是本会话当前的情绪/行为指令，仅供你调整语气与节奏使用。绝对不要在回复中复述、引用或提及这段话，直接按它行事即可。";
 export function emotionPrompt(key, userMsg) {
   const st = getState(key);
-  const d = emotionDirective(st);
+  const d = emotionDirective(st, userMsg);
   const g = geneDirective();
   const s = skillDirective(userMsg);
   const all = [d, g, s].filter(Boolean).join("\n");
@@ -341,35 +426,91 @@ export function emotionPrompt(key, userMsg) {
   return `${EMOTION_INJECT_HEADER}\n${all}`;
 }
 
-// 情绪快照（供前端情绪指示器展示）
-export function getSnapshot(key) {
+function snapshotOf(key) {
   const st = getState(key);
-  const snap = { ...st, tags: st.tags ? [...st.tags] : [], residue: st.residue ? { ...st.residue } : undefined };
+  const snap = { ...st, tags: st.tags ? [...st.tags] : [], residue: st.residue ? { ...st.residue, edges: { ...(st.residue.edges || {}) } } : undefined };
   st.tags = [];
   const gs = geneSnapshot();
   if (gs) snap.genome = gs;
   return snap;
 }
 
+// 情绪快照（供前端情绪指示器展示）
+export function getSnapshot(key) {
+  return snapshotOf(key);
+}
+
+// 工作台不带 session：给最近一次真对话的残留，而不是从未聊过的 new
+export function getLatestSnapshot() {
+  let best = null, bestT = -1;
+  for (const [k, st] of states) {
+    if (isProbeKey(k)) continue;
+    const t = st.lastTalk || 0;
+    if (t > bestT) { bestT = t; best = k; }
+  }
+  if (best && bestT > 0) return snapshotOf(best);
+  const pts = getTide(50);
+  const last = pts[pts.length - 1];
+  if (last?.key) return snapshotOf(last.key);
+  return snapshotOf("new");
+}
+
+// 会后沉淀：同一实体+种类证据 ≥2 才提案。评测 key 不写。
+export function flushPersonaAttribution(key) {
+  const st = states.get(key);
+  if (!st) return [];
+  const pending = Array.isArray(st.pendingPersona) ? st.pendingPersona : [];
+  st.pendingPersona = [];
+  if (isProbeKey(key) || !_memoryNudgeHook || pending.length < 2) return [];
+  const groups = new Map();
+  for (const p of pending) {
+    const gk = `${p.entity || "_"}:${p.kind || ""}`;
+    const arr = groups.get(gk) || [];
+    arr.push(p);
+    groups.set(gk, arr);
+  }
+  const fired = [];
+  for (const [, items] of groups) {
+    if (items.length < 2) continue;
+    const kind = items[0].kind;
+    const subtype = kind === "hurt" ? "correction" : kind;
+    const entity = items[0].entity || "";
+    const residue = (entity && st.residue?.edges?.[entity]?.[kind]) || st.residue?.[kind] || 0;
+    const message = items.map((i) => i.message).filter(Boolean).join(" / ").slice(0, 80);
+    try {
+      _memoryNudgeHook({ subtype, residue, message, sessionId: key, entity });
+      fired.push(subtype);
+    } catch {}
+  }
+  return fired;
+}
+
+function compactEdges(edges) {
+  if (!edges || typeof edges !== "object") return undefined;
+  const out = {};
+  const names = Object.keys(edges).slice(0, 6);
+  for (const name of names) {
+    const e = edges[name] || {};
+    out[name] = {
+      warmth: +(+e.warmth || 0).toFixed(3),
+      hurt: +(+e.hurt || 0).toFixed(3),
+      curiosity: +(+e.curiosity || 0).toFixed(3),
+      n: e.n || 0,
+    };
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 // 会话关闭清理
 export function clearEmotion(key) { states.delete(key); }
 
 // 真实感受列表（API 用）：时间正序最近 limit 条
-export function getFeelings(limit = 50) { return loadFeelings(limit).reverse(); }
+export function getFeelings(limit = 50) { return loadFeelings(limit, null, { skipProbe: true }).reverse(); }
 
 // 情绪潮汐历史（09-03）：最近 N 个情绪事件点，供工作台曲线展示
 export function getTide(limit = 300) {
-  try {
-    if (!wsRoot) return [];
-    const tideFile = path.join(wsRoot, "记忆", "情绪潮汐.jsonl");
-    if (!fs.existsSync(tideFile)) return [];
-    const lines = fs.readFileSync(tideFile, "utf8").trim().split("\n");
-    const pts = [];
-    for (let i = Math.max(0, lines.length - limit); i < lines.length; i++) {
-      try { pts.push(JSON.parse(lines[i])); } catch {}
-    }
-    return pts;
-  } catch { return []; }
+  const pts = readTidePoints().filter((p) => !isProbeKey(p?.key));
+  return pts.slice(-Math.max(1, limit));
 }
 
 // ══ 组合 facade：re-export 基因 / 技能基因（server.mjs 兼容，无需改 import 侧）══

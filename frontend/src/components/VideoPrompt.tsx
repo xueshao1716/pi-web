@@ -1,8 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Sparkles, Copy, Check } from 'lucide-react'
-import { VIDEO_SCENES, buildVideoPrompt } from '../lib/video-prompt.mjs'
+import { VIDEO_GRAMMARS, VIDEO_EXAMPLES, VIDEO_SCENES, buildVideoPrompt, composeVideoScript } from '../lib/video-prompt.mjs'
+import PromptSmartFill from './PromptSmartFill'
 
-const SCENE_KEYS = Object.keys(VIDEO_SCENES) as Array<keyof typeof VIDEO_SCENES & string>
+type SceneKey = keyof typeof VIDEO_SCENES & string
+const GRAMMAR_KEYS = Object.keys(VIDEO_GRAMMARS) as Array<keyof typeof VIDEO_GRAMMARS & string>
+const EXAMPLE_KEYS = Object.keys(VIDEO_EXAMPLES) as Array<keyof typeof VIDEO_EXAMPLES & string>
+const FREE = VIDEO_GRAMMARS.free
 
 const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div><label className="block text-[11px] text-pi-dim2 mb-1 tracking-wide">{label}</label>{children}</div>
@@ -12,37 +16,70 @@ export default function VideoPrompt({ onUsePrompt, onSpecChange }: {
   onUsePrompt?: (prompt: string) => void
   onSpecChange?: (spec: { seconds: string; frame: string }) => void
 }) {
-  const [scene, setScene] = useState<keyof typeof VIDEO_SCENES>('cinematic')
-  const [subject, setSubject] = useState(VIDEO_SCENES.cinematic.subject)
-  const [action, setAction] = useState(VIDEO_SCENES.cinematic.action)
-  const [place, setPlace] = useState(VIDEO_SCENES.cinematic.scene)
-  const [lighting, setLighting] = useState(VIDEO_SCENES.cinematic.lighting)
-  const [camera, setCamera] = useState(VIDEO_SCENES.cinematic.camera)
-  const [style, setStyle] = useState(VIDEO_SCENES.cinematic.style)
-  const [constraint, setConstraint] = useState(VIDEO_SCENES.cinematic.constraint)
-  const [seconds, setSeconds] = useState(VIDEO_SCENES.cinematic.seconds)
-  const [frame, setFrame] = useState(VIDEO_SCENES.cinematic.frame)
+  const [scene, setScene] = useState<SceneKey>('free')
+  const [subject, setSubject] = useState('')
+  const [action, setAction] = useState('')
+  const [place, setPlace] = useState('')
+  const [lighting, setLighting] = useState(FREE.lighting)
+  const [camera, setCamera] = useState(FREE.camera)
+  const [style, setStyle] = useState(FREE.style)
+  const [constraint, setConstraint] = useState(FREE.constraint)
+  const [seconds, setSeconds] = useState(FREE.seconds)
+  const [frame, setFrame] = useState(FREE.frame)
   const [beats, setBeats] = useState('')
-  const [memory, setMemory] = useState(VIDEO_SCENES.cinematic.memory || '')
+  const [memory, setMemory] = useState('')
   const [richness, setRichness] = useState<'lite' | 'standard'>('standard')
+  const [idea, setIdea] = useState('')
   const [output, setOutput] = useState('')
   const [copied, setCopied] = useState('')
+  const autoShot = useRef({ lighting: FREE.lighting, camera: FREE.camera, style: FREE.style, memory: '' })
 
-  const pickScene = (key: keyof typeof VIDEO_SCENES) => {
-    const s = VIDEO_SCENES[key]
+  const writeShot = (shot: { lighting: string; camera: string; style: string; constraint: string; seconds: string; frame: string }) => {
+    setLighting(shot.lighting)
+    setCamera(shot.camera)
+    setStyle(shot.style)
+    setConstraint(shot.constraint)
+    setSeconds(shot.seconds)
+    setFrame(shot.frame)
+    autoShot.current = { ...autoShot.current, lighting: shot.lighting, camera: shot.camera, style: shot.style }
+    onSpecChange?.({ seconds: shot.seconds, frame: shot.frame })
+  }
+  const pickGrammar = (key: SceneKey) => {
+    const g = VIDEO_GRAMMARS[key as keyof typeof VIDEO_GRAMMARS]
+    if (!g) return
+    setScene(key)
+    setBeats('')
+    const script = composeVideoScript(g, { subject, action, scene: place })
+    writeShot(script)
+    setMemory(script.memory)
+    autoShot.current = { ...autoShot.current, memory: script.memory }
+  }
+  const pickExample = (key: SceneKey) => {
+    const s = VIDEO_EXAMPLES[key as keyof typeof VIDEO_EXAMPLES]
+    if (!s) return
     setScene(key)
     setSubject(s.subject)
     setAction(s.action)
     setPlace(s.scene)
-    setLighting(s.lighting)
-    setCamera(s.camera)
-    setStyle(s.style)
-    setConstraint(s.constraint)
-    setSeconds(s.seconds)
-    setFrame(s.frame)
     setMemory(s.memory || '')
     setBeats('')
-    onSpecChange?.({ seconds: s.seconds, frame: s.frame })
+    writeShot({
+      lighting: s.lighting, camera: s.camera, style: s.style,
+      constraint: s.constraint, seconds: s.seconds, frame: s.frame,
+    })
+  }
+  const refreshShot = (next: { subject?: string; action?: string; scene?: string }) => {
+    const g = VIDEO_GRAMMARS[scene as keyof typeof VIDEO_GRAMMARS]
+    if (!g || lighting !== autoShot.current.lighting) return
+    const script = composeVideoScript(g, {
+      subject: next.subject ?? subject,
+      action: next.action ?? action,
+      scene: next.scene ?? place,
+    })
+    setLighting(script.lighting)
+    setStyle(script.style)
+    if (!memory || memory === autoShot.current.memory) setMemory(script.memory)
+    autoShot.current = { ...autoShot.current, lighting: script.lighting, style: script.style, memory: script.memory }
   }
 
   const draft = useMemo(() => buildVideoPrompt({
@@ -64,23 +101,38 @@ export default function VideoPrompt({ onUsePrompt, onSpecChange }: {
 
   return (
     <div className="space-y-4">
-      <div className="panel !p-3">
-        <h3 className="text-[13px] font-semibold text-pi-text mb-2.5">镜头模板</h3>
-        <div className="flex flex-wrap gap-1.5">
-          {SCENE_KEYS.map((k: keyof typeof VIDEO_SCENES & string) => (
-            <button key={k} type="button" onClick={() => pickScene(k)}
-              className={`px-2.5 py-1 rounded-full text-[11px] border transition-colors duration-fast ${scene === k ? 'bg-pi-accent text-white border-pi-accent font-medium' : 'bg-transparent text-pi-dim border-pi-border-soft hover:text-pi-text hover:border-pi-dim'}`}>
-              {VIDEO_SCENES[k].icon} {VIDEO_SCENES[k].name}
-            </button>
-          ))}
+      <div className="panel !p-3 space-y-3">
+        <div>
+          <h3 className="text-[13px] font-semibold text-pi-text mb-1">运镜骨架</h3>
+          <p className="text-[11px] text-pi-dim2 mb-2">只改怎么拍和画幅，不改你写的人。</p>
+          <div className="flex flex-wrap gap-1.5">
+            {GRAMMAR_KEYS.map((k) => (
+              <button key={k} type="button" onClick={() => pickGrammar(k)}
+                className={`px-2.5 min-h-11 rounded-full text-[11px] border transition-colors duration-fast ${scene === k ? 'bg-pi-accent text-white border-pi-accent font-medium' : 'bg-transparent text-pi-dim border-pi-border-soft hover:text-pi-text hover:border-pi-dim'}`}>
+                {VIDEO_GRAMMARS[k].icon} {VIDEO_GRAMMARS[k].name}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <h3 className="text-[13px] font-semibold text-pi-text mb-1">示例成稿</h3>
+          <p className="text-[11px] text-pi-dim2 mb-2">参考片，点了会换主体和场景。</p>
+          <div className="flex flex-wrap gap-1.5">
+            {EXAMPLE_KEYS.map((k) => (
+              <button key={k} type="button" onClick={() => pickExample(k)}
+                className={`px-2.5 min-h-11 rounded-full text-[11px] border transition-colors duration-fast ${scene === k ? 'bg-pi-accent text-white border-pi-accent font-medium' : 'bg-transparent text-pi-dim border-pi-border-soft hover:text-pi-text hover:border-pi-dim'}`}>
+                {VIDEO_EXAMPLES[k].icon} {VIDEO_EXAMPLES[k].name}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       <div className="panel !p-3 space-y-3">
         <h3 className="text-[13px] font-semibold text-pi-text">镜头卡 · 主体 / 动作 / 场景</h3>
-        <Field label="主体"><input className="input-pi text-[12px] min-h-11" value={subject} onChange={e => setSubject(e.target.value)} /></Field>
-        <Field label="动作"><input className="input-pi text-[12px] min-h-11" value={action} onChange={e => setAction(e.target.value)} /></Field>
-        <Field label="场景"><input className="input-pi text-[12px] min-h-11" value={place} onChange={e => setPlace(e.target.value)} /></Field>
+        <Field label="主体"><input className="input-pi text-[12px] min-h-11" value={subject} onChange={e => { setSubject(e.target.value); refreshShot({ subject: e.target.value }) }} /></Field>
+        <Field label="动作"><input className="input-pi text-[12px] min-h-11" value={action} onChange={e => { setAction(e.target.value); refreshShot({ action: e.target.value }) }} /></Field>
+        <Field label="场景"><input className="input-pi text-[12px] min-h-11" value={place} onChange={e => { setPlace(e.target.value); refreshShot({ scene: e.target.value }) }} /></Field>
         <div className="grid grid-cols-2 gap-2">
           <Field label="光影"><input className="input-pi text-[12px] min-h-11" value={lighting} onChange={e => setLighting(e.target.value)} /></Field>
           <Field label="运镜"><input className="input-pi text-[12px] min-h-11" value={camera} onChange={e => setCamera(e.target.value)} /></Field>
@@ -116,6 +168,37 @@ export default function VideoPrompt({ onUsePrompt, onSpecChange }: {
             </Field>
           </>
         )}
+        <Field label="一句话灵感">
+          <input className="input-pi text-[12px] min-h-11" placeholder="谁、在哪、做什么。空着就按当前格子扩写。" value={idea} onChange={e => setIdea(e.target.value)} />
+        </Field>
+        <PromptSmartFill
+          kind="video"
+          idea={idea || [subject, action, place].filter(Boolean).join('，')}
+          draft={draft}
+          onFilled={({ prompt, fields }) => {
+            const next = {
+              subject: fields?.subject || subject,
+              action: fields?.action || action,
+              scene: fields?.scene || place,
+            }
+            if (fields?.subject) setSubject(fields.subject)
+            if (fields?.action) setAction(fields.action)
+            if (fields?.scene) setPlace(fields.scene)
+            const card = VIDEO_GRAMMARS[scene as keyof typeof VIDEO_GRAMMARS] || VIDEO_SCENES[scene]
+            const shot = composeVideoScript(card, next)
+            const lightingNext = fields?.lighting || shot.lighting
+            const cameraNext = fields?.camera || shot.camera
+            const styleNext = fields?.style || shot.style
+            setLighting(lightingNext)
+            setCamera(cameraNext)
+            setStyle(styleNext)
+            autoShot.current = { lighting: lightingNext, camera: cameraNext, style: styleNext, memory: fields?.memory || shot.memory }
+            setMemory(fields?.memory || shot.memory)
+            if (fields?.beats) setBeats(fields.beats)
+            setOutput(prompt)
+            onUsePrompt?.(prompt)
+          }}
+        />
       </div>
 
       <button type="button" onClick={generate} className="w-full py-3 min-h-11 rounded-pi-lg bg-gradient-to-r from-pi-accent to-pi-accent2 text-white font-semibold text-sm tracking-wider hover:brightness-110 transition-colors duration-fast">

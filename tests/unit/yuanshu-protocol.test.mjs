@@ -22,7 +22,8 @@ test("元枢工作协议必须点名宿主工具，禁止翻密钥和猜 API", (
   assert.match(YUANSHU_PROTOCOL, /验收|汇报/);
   assert.match(YUANSHU_PROTOCOL, /auth\.json|\.token/);
   assert.match(YUANSHU_PROTOCOL, /activate_skill/);
-  assert.match(YUANSHU_PROTOCOL, /独立|判断/);
+  assert.match(YUANSHU_PROTOCOL, /todo_write|plan_files/);
+  assert.match(YUANSHU_PROTOCOL, /plan_files/);
   assert.doesNotMatch(YUANSHU_PROTOCOL, /适配器未就绪/);
   assert.doesNotMatch(YUANSHU_PROTOCOL, /禁止.*播放器|禁止 start/);
 });
@@ -89,7 +90,7 @@ test("handleUnifiedChat 必须常驻元枢协议和技能目录", () => {
   const src = readFileSync(join(ROOT, "engine", "unified-chat.mjs"), "utf8");
   const start = src.indexOf("export async function handleUnifiedChat");
   const fn = src.slice(start, start + 9000);
-  assert.ok(fn.includes("buildYuanshuContext") || fn.includes("YUANSHU_PROTOCOL"), "元枢每轮必须注入工作协议");
+  assert.ok(fn.includes("assembleYuanshuSystem") || fn.includes("buildYuanshuSections") || fn.includes("YUANSHU_PROTOCOL"), "元枢每轮必须注入工作协议");
   assert.ok(fn.includes("loadSkillIndex"), "元枢必须看见技能目录");
 });
 

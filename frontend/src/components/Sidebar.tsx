@@ -65,7 +65,7 @@ export default function Sidebar({ onNavigated, onCollapse }: { onNavigated?: () 
       <div className="flex items-center gap-2.5 px-4 h-14 border-b border-pi-border-soft/50 flex-shrink-0">
         <img
           className="h-8 w-8 shrink-0 rounded-pi-md"
-          src="/static/branding/yuanshu-app-icon.png"
+          src="/static/branding/yuanshu-app-icon.png?v=desk"
           alt="元枢"
         />
         <div className="min-w-0">

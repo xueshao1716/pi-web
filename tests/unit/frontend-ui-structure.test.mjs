@@ -52,8 +52,12 @@ test('侧栏三个主分组：工作会话、小语真测、小语终端，工�
 
 test('侧栏品牌头使用与安装包一致的元枢 App 图标，并只保留小语身份名', () => {
   const sidebar = read('components', 'Sidebar.tsx')
-  assert.ok(existsSync(join(ROOT, 'frontend', 'public', 'branding', 'yuanshu-app-icon.png')), '前端静态目录必须提供元枢 App 图标')
-  assert.match(sidebar, /src="\/static\/branding\/yuanshu-app-icon\.png"/, '侧栏品牌头必须引用元枢 App 图标的服务端静态路径')
+  const brand = join(ROOT, 'frontend', 'public', 'branding', 'yuanshu-app-icon.png')
+  const desktop = join(ROOT, 'app', 'src-tauri', 'icons', '128x128.png')
+  assert.ok(existsSync(brand), '前端静态目录必须提供元枢 App 图标')
+  assert.ok(existsSync(desktop), '桌面安装包图标必须存在')
+  assert.deepEqual(readFileSync(brand), readFileSync(desktop), '网页顶栏图标必须与桌面 128 图标同一份，不能再用「元」字渐变图')
+  assert.match(sidebar, /src="\/static\/branding\/yuanshu-app-icon\.png/, '侧栏品牌头必须引用元枢 App 图标的服务端静态路径')
   assert.match(sidebar, /alt="元枢"/, '品牌图标必须提供元枢替代文本')
   assert.ok(sidebar.includes('>小语</div>'), '侧栏必须保留小语作为伙伴身份名')
   assert.doesNotMatch(sidebar, />元枢工作台</, '侧栏不得继续展示与元枢图标重复的文字副标题')
@@ -318,6 +322,14 @@ test('应用中心使用公共页头、桌面分组侧栏与移动单一选择�
   }
   assert.ok(apps.includes('进化引擎'), '应用中心必须提供进化引擎入口')
   assert.ok(apps.includes('<SectionHeader'), '当前工具必须显示自己的标题与说明')
+})
+
+test('任务运行历史展示全文，不得截成 200 字或单行裁切', () => {
+  const tasks = read('pages', 'Tasks.tsx')
+  assert.doesNotMatch(tasks, /h\.result\.slice\(0,\s*200\)/, '运行结果不得再 slice 到 200 字')
+  assert.doesNotMatch(tasks, /truncate mt-0\.5 max-h-20 overflow-hidden/, '运行结果不得用单行截断加固定高度裁切')
+  assert.ok(tasks.includes('{h.result}'), '运行结果必须渲染完整字段')
+  assert.ok(tasks.includes('whitespace-pre-wrap'), '运行结果必须可换行看全文')
 })
 
 test('任务中心统一页头、区块头、Lucide 空状态与创建首个任务动作', () => {

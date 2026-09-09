@@ -51,3 +51,13 @@ test("handleUnifiedChat 必须自己开轮收轮情绪，不能指望 handleChat
   const chatAt = fn.indexOf("await unifiedChat");
   assert.ok(beginAt >= 0 && beginAt < chatAt, "情绪指令必须在模型开跑之前注入");
 });
+
+test("收轮必须 flush 人格证据，不能在开轮过阈值就提案", () => {
+  const emo = readFileSync(join(ROOT, "engine", "yuanshu-emotion.mjs"), "utf8");
+  assert.ok(emo.includes("flushPersonaAttribution"), "endYuanshuEmotion 要冲 pending");
+  const server = readFileSync(join(ROOT, "server.mjs"), "utf8");
+  const turnAt = server.indexOf("else if (event.type === \"turn_end\")");
+  assert.ok(turnAt >= 0, "pi 必须有 turn_end 收轮");
+  const turn = server.slice(turnAt, turnAt + 1800);
+  assert.ok(turn.includes("flushPersonaAttribution"), "pi turn_end 也要冲 pending");
+});

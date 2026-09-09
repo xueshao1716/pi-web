@@ -1,6 +1,11 @@
 // 视频工坊提示词：镜头卡成稿。格子是摘要，标准档不再复印万能公式。
-import { VIDEO_SCENES } from "./video-scenes.mjs";
-export { VIDEO_SCENES };
+import { VIDEO_SCENES, VIDEO_GRAMMARS, VIDEO_EXAMPLES } from "./video-scenes.mjs";
+import { composeVideoShot, composeVideoScript } from "./video-compose.mjs";
+export { VIDEO_SCENES, VIDEO_GRAMMARS, VIDEO_EXAMPLES, composeVideoShot, composeVideoScript };
+
+function interpolate(tpl, fields) {
+  return String(tpl || "").replace(/\{(\w+)\}/g, (_, k) => fields[k] ?? "");
+}
 
 function pick(...vals) {
   for (const v of vals) {
@@ -10,13 +15,13 @@ function pick(...vals) {
   return "";
 }
 
-function defaultBeats({ subject, action, scene, camera }) {
-  return [
-    { t: "0-2", role: "起", shot: "中全景·第三人称·稳定器", text: `${subject}先出现在${scene}，看清衣服和地点，动作还没做完` },
-    { t: "2-5", role: "承", shot: "中景·第三人称·跟拍", text: `开始${action}，${camera}跟着走，只推进不收` },
-    { t: "5-8", role: "转", shot: "近景·第三人称·慢动作", text: `${action}到最清楚的一拍，这是记忆点` },
-    { t: "8-10", role: "合", shot: "中景·第三人称·缓动定格", text: `动作收住，停在还能读的一帧，不另加人物` },
-  ];
+function fillBeats(beats, fields) {
+  if (typeof beats === "string") return interpolate(beats, fields);
+  return (beats || []).map((b) => ({
+    ...b,
+    shot: interpolate(b.shot, fields),
+    text: interpolate(b.text, fields),
+  }));
 }
 
 function formatBeats(beats) {
@@ -35,6 +40,7 @@ function formatPhysics(physics) {
 }
 
 function composeLook(card, fields) {
+  if (card?.lookHint) return interpolate(card.lookHint, fields);
   if (card?.look) {
     let look = card.look;
     if (fields.subject && card.subject && fields.subject !== card.subject) {
@@ -42,27 +48,55 @@ function composeLook(card, fields) {
     }
     return look;
   }
-  return `${fields.subject}站在${fields.scene}。${fields.lighting}。他/她正在${fields.action}。镜头${fields.camera}。${fields.style}。`;
+  return `${fields.subject}在${fields.scene}${fields.action}。${fields.lighting}。镜头${fields.camera}。${fields.style}。能看清衣服料子、光的方向和地点质感。`;
+}
+
+function storyLocked(card) {
+  if (!card) return false;
+  return ["subject", "action", "scene"].some((k) => String(card[k] || "").trim());
+}
+
+function storyChanged(card, input) {
+  if (!storyLocked(card)) return false;
+  return ["subject", "action", "scene"].some((k) => {
+    const v = String(input[k] ?? "").trim();
+    return v && v !== String(card[k] || "").trim();
+  });
 }
 
 export function buildVideoPrompt(input = {}) {
   const card = input.card || VIDEO_SCENES[input.sceneKey] || null;
+  const changed = storyChanged(card, input);
+  const subject = pick(input.subject, card?.subject, "一个人");
+  const action = pick(input.action, card?.action, "做一个清楚的动作");
+  const scene = pick(input.scene, card?.scene, "一个可辨认的地点");
+  const lightingLocked = Boolean(String(input.lighting ?? "").trim());
+  const script = composeVideoScript(card, {
+    subject, action, scene, lighting: input.lighting, camera: input.camera, style: input.style,
+    lightingLocked, memory: input.memory,
+  });
   const fields = {
-    subject: pick(input.subject, card?.subject, "一个人"),
-    action: pick(input.action, card?.action, "做一个清楚的动作"),
-    scene: pick(input.scene, card?.scene, "一个可辨认的地点"),
-    lighting: pick(input.lighting, card?.lighting, "自然光"),
-    camera: pick(input.camera, card?.camera, "固定机位"),
-    style: pick(input.style, card?.style, "写实"),
+    subject,
+    action,
+    scene,
+    lighting: lightingLocked ? pick(input.lighting) : pick(script.lighting, card?.lighting, "自然光"),
+    camera: pick(input.camera, script.camera, card?.camera, "固定机位"),
+    style: pick(input.style, script.style, card?.style, "写实"),
   };
   const quality = pick(input.quality, card?.quality, "720P 清晰");
   const constraint = pick(input.constraint, card?.constraint, "无字幕无BGM无变形");
   const seconds = pick(input.seconds, card?.seconds, "10");
   const frame = pick(input.frame, card?.frame, "16:9");
-  const memory = pick(input.memory, card?.memory, `${fields.action}最清楚的那一拍`);
-  const look = composeLook(card, fields);
-  const beats = pick(input.beats) || card?.beats || defaultBeats(fields);
-  const physics = card?.physics;
+  const keepExample = storyLocked(card) && !changed;
+  const memoryUser = pick(input.memory);
+  const memoryStale = changed && (!memoryUser || memoryUser === card?.memory);
+  const memory = memoryStale
+    ? script.memory
+    : pick(memoryUser, keepExample ? card?.memory : script.memory, script.memory);
+  const look = keepExample ? composeLook(card, fields) : script.look;
+  const rawBeats = pick(input.beats) || (keepExample ? (card?.beats || script.beats) : script.beats);
+  const beats = fillBeats(rawBeats, fields);
+  const physics = keepExample ? card?.physics : script.physics;
 
   if (input.richness === "lite") {
     return `${look} ${fields.action}。${fields.lighting}。镜头${fields.camera}。核心记忆点：${memory}。${constraint}。时长${seconds}秒，画幅${frame}，${quality}。`;

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { handleWsFile, handleWsDeliveries, initWorkspaceApi, localDayStamp, artifactBaseName, looksLikeImageBytes } from "../../engine/workspace-api.mjs";
+import { readFileSync } from "node:fs";
 
 function mockRes() {
   return {
@@ -36,6 +37,30 @@ test("handleWsFile：目录必须拒绝，不能进入 createReadStream", async 
   }
 });
 
+test("handleWsFile：HEAD 要回 200 头信息，不能 404 把播放器逼进重试刷", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-web-file-head-"));
+  try {
+    const file = path.join(root, "clip.mp4");
+    fs.writeFileSync(file, Buffer.alloc(64, 1));
+    initWorkspaceApi({ wsRoot: root });
+    const res = mockRes();
+    res.destroy = () => {};
+    const url = new URL(`http://localhost/api/ws/file?path=${encodeURIComponent("clip.mp4")}`);
+    await handleWsFile(res, { method: "HEAD", headers: {} }, url);
+    assert.equal(res.status, 200);
+    assert.match(String(res.headers?.["Content-Type"] || ""), /video\/mp4|octet-stream/);
+    assert.equal(String(res.headers?.["Content-Length"]), "64");
+    assert.equal(res.body, undefined);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("server 路由表要把 HEAD /api/ws/file 接到同一 handler", () => {
+  const server = readFileSync(new URL("../../server.mjs", import.meta.url), "utf8");
+  assert.match(server, /\["HEAD",\s*"\/api\/ws\/file"/);
+});
+
 test("handleWsDeliveries：条目带 ISO mtime，供工作台判断今日交付", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-web-deliv-"));
   try {
@@ -49,6 +74,37 @@ test("handleWsDeliveries：条目带 ISO mtime，供工作台判断今日交付"
     assert.equal(body.deliveries.length, 1);
     assert.equal(body.deliveries[0].name, "demo.txt");
     assert.ok(/^\d{4}-\d{2}-\d{2}T/.test(body.deliveries[0].mtime), "mtime 必须是 ISO 时间");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("html/pdf 必须是浏览器能打开的 MIME，不能 octet-stream + nosniff 白屏", async () => {
+  const { wsFileMime } = await import("../../engine/workspace-api.mjs");
+  assert.match(wsFileMime(".html"), /text\/html/);
+  assert.match(wsFileMime(".md"), /text\/plain|text\/markdown/);
+  assert.match(wsFileMime(".pdf"), /application\/pdf/);
+  assert.equal(wsFileMime(".bin"), "application/octet-stream");
+});
+
+test("交付目录有 index.html 时必须给出可点开的入口路径", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-web-deliv-html-"));
+  try {
+    const site = path.join(root, "交付", "崆峒山");
+    fs.mkdirSync(site, { recursive: true });
+    fs.writeFileSync(path.join(site, "index.html"), "<h1>ok</h1>");
+    fs.writeFileSync(path.join(root, "交付", "说明.md"), "# hi");
+    initWorkspaceApi({ wsRoot: root });
+    const res = mockRes();
+    await handleWsDeliveries(res);
+    const body = JSON.parse(res.body);
+    const dir = body.deliveries.find(d => d.name === "崆峒山");
+    const md = body.deliveries.find(d => d.name === "说明.md");
+    assert.ok(dir, "目录要出现在列表");
+    assert.equal(dir.type, "dir");
+    assert.match(dir.openPath.replace(/\\/g, "/"), /交付\/崆峒山\/index\.html/);
+    assert.match(dir.url, /index\.html/);
+    assert.match(md.openPath.replace(/\\/g, "/"), /交付\/说明\.md/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -78,4 +134,12 @@ test("looksLikeImageBytes 认 PNG 头，拒 HTML 错误页冒充图片", () => {
   assert.equal(looksLikeImageBytes(png), true);
   assert.equal(looksLikeImageBytes(Buffer.from("<!DOCTYPE html><p>error</p>")), false);
   assert.equal(looksLikeImageBytes(Buffer.from("not an image")), false);
+});
+
+test("资产页成品交付：目录也能点开，不能 disabled 掉", () => {
+  const src = readFileSync(new URL("../../frontend/src/pages/Assets.tsx", import.meta.url), "utf8");
+  assert.ok(src.includes("成品交付"), "资产页要有成品交付分区");
+  assert.ok(!src.includes("disabled={d.type !== 'file'}"), "有入口的目录不能整行 disabled");
+  assert.ok(!src.includes("目录请在工作空间中打开"), "不能把成品文件夹推去工作空间");
+  assert.ok(src.includes("openPath") || src.includes("d.url"), "点击必须打开交付入口");
 });

@@ -4,14 +4,15 @@ import { useApp } from '../store'
 import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, Command, ChevronDown, ChevronRight, PanelRight, ShieldAlert, ImagePlus, Presentation, Clock4, Database } from 'lucide-react'
 import { RefreshCw } from 'lucide-react'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
-import { RunsApi, SessionsApi, AsrApi, EmotionApi, AgentStatusApi, streamSession, LingXiApi, ConfirmApi } from '../api'
+import { RunsApi, SessionsApi, AsrApi, AgentStatusApi, streamSession, LingXiApi, ConfirmApi } from '../api'
 import Message from './Message'
 import SendBox from './SendBox'
 import TurnList from './TurnList'
 import ChatRunStatus from './ChatRunStatus'
 import { useAutoScroll } from '../hooks/useAutoScroll'
 import { toast } from './Toast'
-import { emoMeta, emoTooltip, type EmoMeta } from '../lib/emotion'
+import { emoTooltip } from '../lib/emotion'
+import { useXiaoyuEmotion } from '../lib/useXiaoyuEmotion'
 import { MoodOrb } from './MoodOrb'
 import type { FileAttachment } from './SendBox'
 import type { ChatMessage, RunningTool } from '../types'
@@ -19,7 +20,7 @@ import { saveMessage, getMessages, deleteMessage, mergeMessages, type LocalMessa
 import { notifyTaskDone } from '../lib/notify'
 import { StreamAssembler, type AssemblerSnapshot } from '../lib/stream-assembler'
 import { advanceRunCursor, isTerminalRunStatus, type RunCursor, type RunEvent } from '../lib/run-events'
-import { scrapeVideos } from '../lib/media-embed'
+import { scrapeVideos, dedupeMediaUrls, mediaPathKey } from '../lib/media-embed'
 
 // 流式状态：覆盖服务端全部 SSE 事件（delta/think/think_end/tool/tool_output/
 // tool_end/turn_end/file/image/media/note/emotion/done/error）
@@ -113,6 +114,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   const { data: msgData, isLoading, mutate: mutateMsgs } = useSWR(msgKey,
     ([, sid]: readonly [string, string]) => SessionsApi.messages(sid, { tail: 80 }),
     { revalidateOnFocus: false, revalidateOnReconnect: false, dedupingInterval: 3000 })
+  const { state: emoState, meta: emoMetaLive, publishEmotion } = useXiaoyuEmotion()
   // ── 本地消息存储：从 IndexedDB 加载，与服务端数据合并 ──
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>([])
   const [localLoaded, setLocalLoaded] = useState(false)
@@ -290,15 +292,6 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     teardownAssembler()
     setStream(null)
   }, [currentSessionId])
-  useEffect(() => {
-    if (!currentSessionId) return
-    let alive = true
-    EmotionApi.get(currentSessionId).then((s: any) => {
-      if (alive && s && typeof s.valence !== 'undefined') setEmo({ state: s, meta: emoMeta(s) })
-    }).catch(() => {}) // 情绪拉不到就保持默认，不打扰
-    return () => { alive = false }
-  }, [currentSessionId])
-
   // 多端同步：只在新消息或一轮完成的提交边界合并历史。
   // 不能把每个 delta/工具事件都转成整段 messages 请求，否则长会话会持续闪屏并跳阅读位置。
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -414,7 +407,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     activeRunRef.current = null
     if (!s) return
     const scraped = scrapeVideos([s.text, ...s.tools.map(t => t.output || '')].join('\n'))
-    const videos = [...s.videos, ...scraped.filter(u => !s.videos.includes(u))]
+    const videos = dedupeMediaUrls([...s.videos, ...scraped])
     if (s.text || s.think || s.tools.length || s.files.length || s.images.length || s.audios.length || videos.length || s.error) {
       appendMessage({
         id: finalId || ('a' + Date.now()), role: 'assistant',
@@ -499,7 +492,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         asmRef.current?.toolEnd(d.id, !!d.isError, d.output)
         {
           const found = scrapeVideos(String(d.output || ''))
-          if (found.length) updStream(p => ({ ...p, videos: [...p.videos, ...found.filter(u => !p.videos.includes(u))] }))
+          if (found.length) updStream(p => ({ ...p, videos: dedupeMediaUrls([...p.videos, ...found]) }))
         }
         break
       case 'file':
@@ -511,13 +504,19 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
       case 'media':
         if (d.type === 'image' && d.url) updStream(p => ({ ...p, images: [...p.images, d.url] }))
         else if (d.type === 'audio' && d.url) updStream(p => ({ ...p, audios: [...p.audios, d.url] }))
-        else if (d.type === 'video' && d.url) updStream(p => ({ ...p, videos: [...p.videos, d.url] }))
+        else if (d.type === 'video' && d.url) {
+          updStream(p => {
+            const k = mediaPathKey(d.url)
+            if (k && p.videos.some(u => mediaPathKey(u) === k)) return p
+            return { ...p, videos: [...p.videos, d.url] }
+          })
+        }
         break
       case 'note':
         updStream(p => ({ ...p, notes: [...p.notes, d.text || d.note || ''].filter(Boolean) }))
         break
       case 'emotion':
-        if (d.state && typeof d.state.valence !== 'undefined') setEmo({ state: d.state, meta: emoMeta(d.state) })
+        if (d.state && typeof d.state.valence !== 'undefined') publishEmotion(d.state)
         break
       case 'confirm':
         setConfirm({ id: d.id, toolName: d.toolName, reason: d.reason, args: d.args || {}, sessionId: d.sessionId || '' })
@@ -730,7 +729,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     <div className="chat-welcome chat-workstart">
       <div className="chat-reading-column">
         <div className="workstart-identity">
-          <img src="/static/branding/yuanshu-app-icon.png" width="48" height="48" alt="" />
+          <img src="/static/branding/yuanshu-app-icon.png?v=desk" width="48" height="48" alt="" />
           <div><h1>元枢</h1><p>小语的工作空间</p></div>
         </div>
         <section className="workstart-actions" aria-labelledby="quick-actions-title">
@@ -755,8 +754,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
 
   const idleWarned = idleSeconds * 1000 >= IDLE_WARN_MS && streaming
 
-  // 情绪指示器：服务端 VAD 情绪引擎的镜像（SSE emotion 事件实时推 + 切会话拉快照），不是本地可点的玩具
-  const [emo, setEmo] = useState<{ state: any; meta: EmoMeta }>({ state: null, meta: { emoji: '🧘', label: '专注', cls: 'focus' } })
+  // 情绪指示器：与工作台共用 emotion-live，SSE 写回同一份缓存
   const [agentStatus, setAgentStatus] = useState<'idle'|'busy'|'error'>('idle')
   // 后台执行探测：轮询服务端 busy 会话表——本页没在流式但后台/他端在跑也要亮灯（用户靠它判断小语是否在工作）
   const [remoteBusy, setRemoteBusy] = useState<'self' | 'other' | null>(null)
@@ -840,8 +838,8 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         )}
         {/* 心情：服务端真实情绪镜像，只展示不可点改。灵珠连续反映 VAD（2026-09-03，替代 emoji 八桶） */}
         <div className={`emo-pill w-[30px] h-[30px] rounded-full flex items-center justify-center cursor-default transition-colors hover:bg-pi-bg2/40`}
-          title={emoTooltip(emo.state, emo.meta)}>
-          <MoodOrb state={emo.state} size={24} label={`小语情绪：${emo.meta.label}`} />
+          title={emoTooltip(emoState, emoMetaLive)}>
+          <MoodOrb state={emoState} size={24} label={`小语情绪：${emoMetaLive.label}`} />
         </div>
       </div>
 

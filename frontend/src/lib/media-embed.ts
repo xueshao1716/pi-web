@@ -26,9 +26,38 @@ export function toWorkspaceRel(p: string): string {
   return ''
 }
 
+/** 同一片子：忽略 exp/sig/token，只按 path 判重。 */
+export function mediaPathKey(url: string): string {
+  const rel = toWorkspaceRel(url)
+  if (rel) return rel.replace(/\\/g, '/').toLowerCase()
+  const m = String(url || '').match(/[?&]path=([^&\s]+)/)
+  if (m) {
+    try { return decodeURIComponent(m[1]).replace(/\\/g, '/').toLowerCase() } catch { return m[1].toLowerCase() }
+  }
+  return String(url || '').trim()
+}
+
+export function dedupeMediaUrls(urls: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const u of urls || []) {
+    if (!u) continue
+    const k = mediaPathKey(u)
+    if (!k || seen.has(k)) continue
+    seen.add(k)
+    out.push(u)
+  }
+  return out
+}
+
 export function scrapeVideos(text: string): string[] {
   const out: string[] = []
-  const add = (u: string) => { if (u && !out.includes(u)) out.push(u) }
+  const add = (u: string) => {
+    if (!u) return
+    const k = mediaPathKey(u)
+    if (!k || out.some(x => mediaPathKey(x) === k)) return
+    out.push(u)
+  }
   const raw = String(text || '')
   const hits = new Set<string>()
   for (const m of raw.matchAll(/\/api\/ws\/file\?path=[^\s)）"'<>]+/g)) hits.add(m[0].replace(/[.,;。，]+$/, ''))

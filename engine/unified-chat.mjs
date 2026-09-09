@@ -22,7 +22,10 @@ import { directChat, maybeCompactHistory, needsMidLoopCompact } from "./model-cl
 import { bindTodoSession, formatTodoPrompt } from "./yuanshu-todo.mjs";
 import { readEntriesFromFile } from "./session-files.mjs";
 import { loadProjectRules, loadMemory, shouldInjectFullMemory, setLastUserQuery, loadSkillIndex, loadExperienceIndex } from "./context-loader.mjs";
-import { buildYuanshuContext } from "./yuanshu-protocol.mjs";
+import { compactKeepArchive } from "./yuanshu-compact.mjs";
+import { prependAssembledSystem } from "./yuanshu-prompt.mjs";
+import { assembleYuanshuSystem, registerPromptSection, promptTimeText, promptPersonaText } from "./yuanshu-seams.mjs";
+import { bindWorkmemSession, formatPlanPrompt } from "./yuanshu-workmem.mjs";
 import { persistYuanshuUser, persistYuanshuAssistant, abortedAssistantText } from "./yuanshu-session.mjs";
 import { beginYuanshuEmotion, endYuanshuEmotion } from "./yuanshu-emotion.mjs";
 import { resolveAuth } from "./dsh-keys.mjs";
@@ -274,14 +277,15 @@ export async function unifiedChat(model, messages, opts = {}) {
       const official = await runYuanshuToolRound({
         toolCalls: tcs, history, execute: _executeUnifiedTool, signal: opts.signal,
         onTool: opts.onTool, onToolEnd: opts.onToolEnd, seenCalls, jitInjected, spill: spillIfHuge,
-        stuckEvents,
+        stuckEvents, sandboxMode: opts.sandboxMode, sandboxWsRoot: opts.sandboxWsRoot || _cwd,
+        sandboxAsk: opts.sandboxAsk,
       });
       if (official.stop) return official.stop;
       if (needsMidLoopCompact(history, { turn, lastCompactTurn })) {
-        const compacted = await maybeCompactHistory(history, model, "", { minMessages: 10, minChars: 20000 });
-        if (compacted !== history) {
+        const packed = await compactKeepArchive(history, (h) => maybeCompactHistory(h, model, "", { minMessages: 10, minChars: 20000 }));
+        if (packed.compacted) {
           history.length = 0;
-          history.push(...compacted);
+          history.push(...packed.view);
           lastCompactTurn = turn;
         }
       }
@@ -299,14 +303,15 @@ export async function unifiedChat(model, messages, opts = {}) {
       const scavengedRound = await runYuanshuToolRound({
         toolCalls: scavCalls, history, execute: _executeUnifiedTool, signal: opts.signal,
         onTool: opts.onTool, onToolEnd: opts.onToolEnd, seenCalls, jitInjected, spill: spillIfHuge,
-        stuckEvents,
+        stuckEvents, sandboxMode: opts.sandboxMode, sandboxWsRoot: opts.sandboxWsRoot || _cwd,
+        sandboxAsk: opts.sandboxAsk,
       });
       if (scavengedRound.stop) return scavengedRound.stop;
       if (needsMidLoopCompact(history, { turn, lastCompactTurn })) {
-        const compacted = await maybeCompactHistory(history, model, "", { minMessages: 10, minChars: 20000 });
-        if (compacted !== history) {
+        const packed = await compactKeepArchive(history, (h) => maybeCompactHistory(h, model, "", { minMessages: 10, minChars: 20000 }));
+        if (packed.compacted) {
           history.length = 0;
-          history.push(...compacted);
+          history.push(...packed.view);
           lastCompactTurn = turn;
         }
       }
@@ -376,7 +381,25 @@ export async function initEngine() {
   // 注册 run_code：Gateway 旁路 + 元枢主工具表（此前只挂在 /api/engine/chat）
   gateway.tools.register(codeMode.runCodeToolDef());
   attachYuanshuCodeTool(_unifiedTools, codeMode);
-  console.log(`[engine] 元枢就绪：适配器=${gateway.adapter.id} 工具=${gateway.tools.names().join(",")} 存储=${gateway.store.id} 循环=${gateway.loop.id}`);
+  await registerPromptSection(gateway.registry, {
+    id: "yuanshu:prompt:time",
+    name: "时间上下文",
+    section: "time",
+    contribute: (ctx) => promptTimeText(ctx?.now),
+  });
+  await registerPromptSection(gateway.registry, {
+    id: "yuanshu:prompt:persona",
+    name: "驱动身份",
+    section: "persona",
+    contribute: (ctx) => promptPersonaText(ctx?.model),
+  });
+  await registerPromptSection(gateway.registry, {
+    id: "yuanshu:prompt:plan",
+    name: "磁盘工作记忆",
+    section: "plan",
+    contribute: (ctx) => formatPlanPrompt(ctx?.sessionId, { message: ctx?.message }),
+  });
+  console.log(`[engine] 元枢就绪：适配器=${gateway.adapter.id} 工具=${gateway.tools.names().join(",")} 存储=${gateway.store.id} 循环=${gateway.loop.id} 接缝=prompt`);
   return gateway;
 }
 export function toolBindingDesc(name) {
@@ -466,9 +489,45 @@ except Exception as e:
 
 // SSE 心跳：每 20s 发注释行保持连接活跃（对抗公网隧道/代理的 idle 超时）
 
+// 引擎初始化（可观察可重试，2026-09-09 补 9/7 加固测试缺口）：失败记录 engineInitError，
+// 清空 promise 允许下次重试；不再静默吞掉
+let engineInitPromise = null;
+let engineInitError = null;
+async function ensureEngineInit() {
+  if (!engineInitPromise) {
+    engineInitPromise = initEngine().catch((e) => { engineInitPromise = null; throw e; });
+  }
+  try {
+    await engineInitPromise;
+    engineInitError = null;
+  } catch (e) {
+    engineInitError = e || new Error("engine init failed");
+    throw engineInitError;
+  }
+}
+
+// 兑底直连的历史裁剪（9/7 加固测试）：保留 system/工具上下文，去掉末尾的当前 user 消息
+// （directChat 只发 message 本身，history 再带它会造成重复）；不 mutate 原数组
+export function fallbackHistoryForDirectChat(history) {
+  const h = Array.isArray(history) ? history : [];
+  const last = h[h.length - 1];
+  if (last && last.role === "user") return h.slice(0, -1);
+  return h.slice();
+}
+
 // 统一通道：所有模型走 unifiedChat（对话 + 工具 + 思考 + 媒体 + 压缩 + 重试）
 export async function handleUnifiedChat(res, entry, message, sessionId, params, signal, writer, thinkOn, taskKey, modelOverride = null) {
-  try { await initEngine(); } catch {}
+  let engineInitError = null;
+  try { await ensureEngineInit(); } catch (e) { engineInitError = e || new Error("engine_init_failed"); }
+  if (engineInitError) {
+    try { writer.push("note", { text: `engine_init_failed：引擎初始化失败，本次降级运行（${engineInitError.message}）。` }); } catch {}
+  }
+  // 兑底通道沙箱升级审批（dsh user-approval 接缝语义）：暂无人工确认 UI 接线，
+  // 先 fail-closed 拒绝并记日志（比无应答者更可观察），后续接前端确认卡换真实现
+  const approvalAsk = async (name, args, note) => {
+    console.log(`[sandbox-approval] 兑底通道升级请求拒绝(fail-closed): ${name} ${JSON.stringify(args || {}).slice(0, 120)} ${note || ""}`);
+    return "rejected";
+  };
   const taskId = taskKey || sessionId;
   // 兕底通道用安全模型（opencode-go 429 标记期间避开）；用户显式选中的非原生模型优先（2026-08-29 修复：
   // 之前无论选什么都用 pickFallbackDefault，导致选中 hy4-preview/claude-relay 等被静默换成商汤）
@@ -558,37 +617,22 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     }
   };
   let history = [...hist.map(h => ({ role: h.role, content: h.role === "tool" ? shrinkToolResult(h.text) : h.text })), { role: "user", content: mediaAwarePrompt(message, []) }];
-  // 外部思考调试：注入引导语 + think 工具（默认关，本次请求开启时生效）
-  if (thinkOn) {
-    history = [{ role: "system", content: THINK_PROMPT }, ...history];
-  }
-  // 注入项目规则（.pi-rules.md，借鉴 Windsurf rules），确保不挤占历史上下文
-  const rules = loadProjectRules();
-  if (rules.length) history = [{ role: "system", content: rules.join("\n") }, ...history];
-  // 驱动模型身份注入（2026-08-29）：模型默认不知道自己的部署版本（Opus 被渠道污染成 Kiro、hy4 自称 Gemini），如实告知
-  try {
-    if (chatModel?.id) history.unshift({ role: "system", content: `【驱动模型】本轮由 ${chatModel.provider} 通道的 ${chatModel.id} 模型驱动，运行在 pi-web 工作台（助手角色：小语）。用户问及你的模型/版本/能力时，以此如实回答；不要自称其他产品名。` });
-  } catch {}
-  // dsh time-context 借鉴：每轮注入当前时间（agent 时间感知，涉及时效/定时判断不靠猜）
-  try {
-    const t = new Date();
-    const d = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")} ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
-    history.unshift({ role: "system", content: `【时间上下文】当前时间：${d}（周${["日","一","二","三","四","五","六"][t.getDay()]}）。涉及时间/日期/定时/时效判断以此为准。` });
-  } catch {}
-  // 元枢常驻：工作协议 + 技能目录；任务句才带经验/记忆（人格保底用常驻索引）
   if (shouldInjectFullMemory(message)) setLastUserQuery(message);
   bindTodoSession(sessionId);
-  const ysCtx = buildYuanshuContext({
+  bindWorkmemSession(sessionId);
+  const sections = assembleYuanshuSystem({
     message,
     skills: loadSkillIndex(),
     experience: loadExperienceIndex(),
     fullMemory: shouldInjectFullMemory(message) ? loadMemory() : [],
     todos: formatTodoPrompt(sessionId),
     hist,
-  });
-  if (ysCtx.length) history = [...ysCtx.map(c => ({ role: "system", content: c })), ...history];
+    rules: loadProjectRules(),
+    task: thinkOn ? "你可以调用 think 工具，在动手之前写下你的分析过程（理解、步骤、计划、可能的坑）。写完后再执行任务。think 的内容仅供调试，不展示给用户，可以放心写。" : "",
+  }, gateway?.registry, { now: new Date(), model: chatModel, sessionId, message });
+  history = prependAssembledSystem(history, sections);
   history = beginYuanshuEmotion(sessionId || "new", message, history);
-  history = await maybeCompactHistory(history, chatModel);
+  history = (await compactKeepArchive(history, (h) => maybeCompactHistory(h, chatModel))).view;
   // Plan 模式（unifiedChat 兕底路径）：工具定义层过滤为只读（read/web_search）——模型只能请求只读工具，无写路径
   // 注意：thinkOn=false 时 toolDefs 为 undefined（unifiedChat 内部才默认 UNIFIED_TOOLS），必须显式构建只读集，否则拦截被短路
   const isPlanLock = !!entry.planPending;
@@ -602,7 +646,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
   }
   async function runLockedChat(locked) {
     // history 末条已是 handleChat 改写后的规划指令消息（含需求），直接复用；只传只读工具定义
-    const result = await unifiedChat(chatModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: locked });
+    const result = await unifiedChat(chatModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: locked, sandboxMode: "read-only", sandboxWsRoot: _cwd, sandboxAsk: approvalAsk });
     if (!result || result.error) {
       clearTask(taskId, "error"); writer.push("error", { message: result?.error || "模型未返回内容" }); finishEmotion(); return;
     }
@@ -634,6 +678,9 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     maxTurns: toolLoopMaxTurns({ imageIntent, videoIntent }),
     imageIntent,
     videoIntent,
+    sandboxMode: isPlanLock ? "read-only" : "workspace-write",
+    sandboxWsRoot: _cwd,
+    sandboxAsk: approvalAsk,
   };
   let result = await unifiedChat(chatModel, history, chatOpts);
   if (result?.aborted || signal?.aborted) {
@@ -697,7 +744,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     const proModel = routeProCandidate();
     if (proModel && (proModel.provider !== chatModel.provider || proModel.id !== chatModel.id)) {
       writer.push("note", { text: `🚀 模型自报任务超纲，升级 ${proModel.provider}/${proModel.id} 重试${proMatch[1] ? `（原因：${proMatch[1].trim()}）` : ""}…` });
-      const proResult = await unifiedChat(proModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: toolDefs });
+      const proResult = await unifiedChat(proModel, history, { onTool: onToolStart, onToolEnd, params, signal, tools: toolDefs, sandboxMode: chatOpts.sandboxMode, sandboxWsRoot: _cwd, sandboxAsk: approvalAsk });
       if (proResult?.text && !proResult.error) {
         const proTxt = String(proResult.text).trim();
         if (!NEEDS_PRO_RE.test(proTxt)) {
@@ -720,7 +767,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     const fbModel = pickFallbackExcluding(chatModel);
     if (fbModel) {
       writer.push("note", { text: `⚠️ ${anomaly.reason}，自动切换 ${fbModel.provider}/${fbModel.id} 重试…` });
-      const fb = await directChat(fbModel, message);
+      const fb = await directChat(fbModel, message, fallbackHistoryForDirectChat(history), { signal });
       if (fb?.text) {
         text = fb.text;
         recordReply(rkU, text);

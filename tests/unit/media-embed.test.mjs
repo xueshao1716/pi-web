@@ -85,3 +85,12 @@ test("聊天界面要从工具输出和正文捞片子，播放器不能只有 3
   assert.ok(!vid.includes("max-w-[320px]"), "视频播放器要比配图缩略图大");
   assert.ok(/aspect-video|max-w-\[5/.test(vid), "要像播放器，不要邮票");
 });
+
+test("同一片子不同签名只能出一个播放器，media 追加也要按 path 去重", () => {
+  const embed = readFileSync(join(ROOT, "frontend", "src", "lib", "media-embed.ts"), "utf8");
+  assert.match(embed, /mediaPathKey|dedupeMediaUrls/, "要有按 path 去重");
+  const chat = readFileSync(join(ROOT, "frontend", "src", "components", "ChatArea.tsx"), "utf8");
+  assert.match(chat, /dedupeMediaUrls|mediaPathKey/, "流式追加 video 必须去重");
+  const msg = readFileSync(join(ROOT, "frontend", "src", "components", "Message.tsx"), "utf8");
+  assert.match(msg, /mediaPathKey|dedupeMediaUrls/, "历史消息播放器也要去重");
+});

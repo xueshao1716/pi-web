@@ -10,7 +10,7 @@ import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
 import ActivityFeed from '../components/ActivityFeed'
 import { MoodOrb } from '../components/MoodOrb'
-import { emoMeta } from '../lib/emotion'
+import { useXiaoyuEmotion } from '../lib/useXiaoyuEmotion'
 import HealthBadge from '../components/HealthBadge'
 import RunTimeline from '../components/RunTimeline'
 
@@ -295,12 +295,11 @@ function TideBar({ label, value, max = 1, tone }: { label: string; value: number
 }
 
 function EmotionTideCard() {
-  const { data: snap } = useSWR('board-emo', () => EmotionApi.get(), { refreshInterval: 60_000 })
+  const { state: snap, meta } = useXiaoyuEmotion()
   const { data: tideData } = useSWR('board-tide', () => EmotionApi.tide(), { refreshInterval: 120_000 })
   const { data: feelData } = useSWR('board-feelings', () => EmotionApi.feelings(), { refreshInterval: 120_000 })
   const tide = (tideData?.tide || []).slice(-48)
   const lastFeel = (feelData?.feelings || []).slice(-1)[0]
-  const meta = snap ? emoMeta(snap) : null
   const r = snap?.residue || {}
   // valence 曲线：SVG 折线，中线 0
   const W = 480, H = 56

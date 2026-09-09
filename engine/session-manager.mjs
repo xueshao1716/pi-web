@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { invalidateSessionCache, getSessionList } from "./session-files.mjs";
 import { appendSessionGroup } from "./session-groups.mjs";
+import { appendArchiveJsonl, archivePathFor } from "./yuanshu-compact.mjs";
 
 let _cwd = "", _sessionsDir = "", _tools = [], _getModelList = () => [], _getDefaultModel = () => null, _activeSessions = null, _createAgentSessionServices = null, _createAgentSessionFromServices = null, _getModelRuntime = () => null,
     _SessionManager = null, _SettingsManager = null, _DefaultResourceLoader = null, _getAgentDir = () => "", _readJsonFile = null, _writeJsonFile = null, _piPackage = "", _isModelBlocked = () => false,
@@ -188,6 +189,7 @@ ${inputText}`;
       }
     } catch (e) { dcErr = String(e?.message || e).slice(0, 200); }
     if (!summary) return { skip: true, reason: "摘要生成失败: " + (dcErr || "响应无 content") };
+    try { appendArchiveJsonl(archivePathFor(file), toSummarize); } catch {}
     // 构造新文件：非消息条目 + compaction + 保留消息链（parentId 重链到 compaction）
     const compId = `comp_${Date.now().toString(36)}`;
     const compEntry = {

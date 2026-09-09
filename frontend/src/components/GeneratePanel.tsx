@@ -5,6 +5,7 @@ import { MediaApi, withFileToken } from '../api'
 import { useApp } from '../store'
 import type { Model } from '../types'
 import MediaHistory from './MediaHistory'
+import PromptSmartFill from './PromptSmartFill'
 
 // ── 出图面板：选模型/尺寸 → 生成 → 服务端自动落盘 生成物/图片/日期 → 资产库刷新 ──
 
@@ -73,12 +74,13 @@ export default function GeneratePanel({ onClose, onGenerated, prompt: promptProp
             </select>
           </div>
           <textarea className="input-pi text-[13px] resize-none min-h-[88px]" rows={3}
-            placeholder="描述想要的画面…"
+            placeholder="描述想要的画面… 写一句也可以，点智能填充再出图"
             value={prompt} onChange={e => setPrompt(e.target.value)} />
           <div className="flex flex-col sm:flex-row sm:items-center gap-2">
             <button className="btn-primary text-xs px-4 min-h-11 w-full sm:w-auto disabled:opacity-60" onClick={gen} disabled={busy || !prompt.trim()}>
               {busy ? '生成中…（图像模型较慢，可能 30-120s）' : '生成'}
             </button>
+            <PromptSmartFill kind="image" idea={prompt} onFilled={({ prompt: next }) => setPrompt(next)} />
             {err && <span className="text-xs text-pi-red truncate">{err}</span>}
           </div>
           {result && (

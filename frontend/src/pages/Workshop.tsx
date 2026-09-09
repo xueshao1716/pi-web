@@ -68,7 +68,7 @@ export default function Workshop() {
           <div className="max-w-3xl space-y-4">
             <GeneratePanel onGenerated={() => {}} prompt={imagePrompt} onPromptChange={setImagePrompt} />
             <div className="panel !p-3">
-              <div className="text-sm font-semibold text-pi-text">万像人物 · 场景模板写提示词</div>
+              <div className="text-sm font-semibold text-pi-text">万像人物 · 构图骨架写提示词</div>
               <p className="text-[11px] text-pi-dim2 mt-1.5 mb-3">生成后会填入上方出图框，也可手动点「填入出图框」。</p>
               <WanXiang onUsePrompt={setImagePrompt} />
             </div>

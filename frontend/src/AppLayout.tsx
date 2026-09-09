@@ -270,7 +270,7 @@ export default function AppLayout() {
       <div id="pi-wallpaper" className="fixed inset-0 z-0 pointer-events-none" />
       {/* 图标导航 rail：实底 Logo，不用渐变 */}
       <nav className="desktop-rail flex-shrink-0 flex flex-col items-center py-4 px-2 gap-1.5 col-sidebar border-r border-pi-border relative z-20" aria-label="主导航">
-        <div className="desktop-brand"><img src="/static/branding/yuanshu-app-icon.png" alt="" width="28" height="28" /><span>元枢</span></div>
+        <div className="desktop-brand"><img src="/static/branding/yuanshu-app-icon.png?v=desk" alt="" width="28" height="28" /><span>元枢</span></div>
         {sidebarCollapsed && (
           <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-colors"
             aria-label="展开会话栏" title="展开会话栏" onClick={toggleSidebar}>

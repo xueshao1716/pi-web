@@ -1,5 +1,5 @@
 // 元枢自己的 VAD 情绪接线：开轮注入、收轮推 SSE。不走 pi SDK 的 nextTurn。
-import { updateEmotion, updateFromOutput, emotionPrompt, recordFeeling, getSnapshot } from "./emotion.mjs";
+import { updateEmotion, updateFromOutput, emotionPrompt, recordFeeling, getSnapshot, flushPersonaAttribution } from "./emotion.mjs";
 
 const recent = new Map();
 
@@ -26,6 +26,7 @@ export function endYuanshuEmotion(sessionId, message, text, writer) {
   const key = sessionKey(sessionId);
   updateFromOutput(key, text);
   recordFeeling(key, message);
+  try { flushPersonaAttribution(key); } catch {}
   const state = getSnapshot(key);
   if (state && writer && typeof writer.push === "function") {
     writer.push("emotion", { state });

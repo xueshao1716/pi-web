@@ -55,6 +55,7 @@ import { initMediaApi, findMediaModel, detectMediaIntents, extractMediaPrompt, m
 import { extractPlayableMedia } from "./engine/media-embed.mjs";
 import { MEDIA_TOOL_SCHEMAS, mediaExtraExecutors, formatSensitiveHint, listHostChannels } from "./engine/media-channels.mjs";
 import { TODO_TOOL_SCHEMAS, todoExtraExecutors } from "./engine/yuanshu-todo.mjs";
+import { PLAN_FILES_SCHEMA, planFilesExtraExecutors, initYuanshuWorkmem } from "./engine/yuanshu-workmem.mjs";
 import { DELEGATE_TASK_TOOL, execDelegateTask } from "./engine/yuanshu-delegate.mjs";
 import { initAsrApi, handleAsr } from "./engine/asr-api.mjs";
 import { gardenMemory, scanMemoryHealth, markReviewed, unmarkReviewed, dedupeLog, reviewedKeys } from "./engine/memory-gardener.mjs";
@@ -81,6 +82,7 @@ import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
 import { createCodeMode } from "./code-mode/code-mode.mjs";
 import { createTimeEngine } from "./engine/time-engine.mjs";
+import { composeTimeTaskMessages, timeTaskReadTools } from "./engine/time-task-run.mjs";
 import { sanitizeSessionFile } from "./engine/session-sanitize.mjs";
 import { createCorsPolicy } from "./engine/cors-policy.mjs";
 import { initSessionDb, handleDbList, handleDbRebuild, handleDbSanitize, handleDbMeta, handleDbStats, handleDbSweep, sweepSessionsNow } from "./engine/session-db.mjs";
@@ -96,6 +98,7 @@ emotion.setMemoryNudgeHook((info) => { try { proposeMemoryNudge(info); } catch {
 const subagent = await import("./engine/subagent.mjs");
 const workshop = await import("./engine/workshop.mjs");
 const { handleWorkshopUiChat } = await import("./engine/workshop-ui-chat.mjs");
+const { handleExpandPrompt } = await import("./engine/workshop-prompt-expand.mjs");
 const gallery = await import("./engine/gallery.mjs");
 const distill = await import("./engine/distill-theme.mjs");
 const { WORKSHOP_PAGES } = workshop;
@@ -231,6 +234,7 @@ try {
 } catch (e) { console.log(`[sdk-providers] 注册失败: ${String(e?.message || e).slice(0, 150)}`); }
 initThemePrefs(path.join(AGENT_DIR, "theme-prefs.json")); // 主题偏好跨端同步
 initEnginePair(path.join(AGENT_DIR, "engine-pair.json")); // 主次引擎对，下一条消息生效
+initYuanshuWorkmem(path.join(AGENT_DIR, "yuanshu-work")); // 每会话 task_plan/findings/progress
 initMediaApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, authPath: AUTH_PATH, getModelList: () => modelList }); // 媒体生成层注入
 initAsrApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, httpJsonFetch }); // 语音转文字（mimo-v2.5-asr 免费通道）
 initDshKeys({ dshWebPort: 3080, readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, ModelRuntime, refreshModelList, setModelList: (l) => { modelList = l; }, getDefaultModel: () => defaultModel, setDefaultModel: (m) => { defaultModel = m; }, setModelRuntime: (r) => { modelRuntime = r; }, getModelRuntime: () => modelRuntime, keepModels: KEEP_MODELS, resetModelHealth }); // dsh/keys/模型管理注入
@@ -454,6 +458,7 @@ const UNIFIED_TOOLS = [
   ...BASE_TOOL_SCHEMAS,
   ...MEDIA_TOOL_SCHEMAS,
   ...TODO_TOOL_SCHEMAS,
+  PLAN_FILES_SCHEMA,
   ACTIVATE_SKILL_TOOL,
   DELEGATE_TASK_TOOL,
 ];
@@ -485,6 +490,7 @@ const executeUnifiedTool = createUnifiedToolExecutorGuarded({
     },
     ...mediaExtraExecutors({ getModelList: () => modelList, generateMediaAsync }),
     ...todoExtraExecutors(),
+    ...planFilesExtraExecutors(),
     delegate_task: execDelegateTask,
   },
 });
@@ -976,6 +982,7 @@ async function handleChat(req, res, body) {
           const esKey = sessionId || findKeyByEntry(entry) || "new";
           emotion.updateFromOutput(esKey, collected); // 曦系⑥：输出侧感知，回复长短也影响唤醒（09-04）
           emotion.recordFeeling(esKey, message); // 曦系二期：真实感受存档（事+感+强度）
+          try { emotion.flushPersonaAttribution(esKey); } catch {}
           const es = emotion.getSnapshot(esKey);
           if (es) { writer.push("emotion", { state: es }); busEmit("emotion", { state: es }); }
         } catch {}
@@ -1496,8 +1503,8 @@ function wsCtx() {
 
 // 情绪指示器：返回当前会话情绪快照（前端展示用）
 function handleEmotion(res, url) {
-  const key = url.searchParams.get("session") || "new";
-  json(res, 200, emotion.getSnapshot(key));
+  const key = url.searchParams.get("session");
+  json(res, 200, key ? emotion.getSnapshot(key) : emotion.getLatestSnapshot());
 }
 
 // 全局执行状态：哪些会话的 agent 正在跑（前端状态灯轮询用，含后台/他端发起的执行）
@@ -1681,6 +1688,7 @@ const API_ROUTES = [
   ["GET", "/api/prompts", (res) => handlePrompts(res)],
   ["GET", "/api/ws/tree", (res, req, url) => handleWsTree(res, url.searchParams.get("path") || "")],
   ["GET", "/api/ws/file", (res, req, url) => handleWsFile(res, req, url)],
+  ["HEAD", "/api/ws/file", (res, req, url) => handleWsFile(res, req, url)],
   ["GET", "/api/ws/read", (res, req, url) => handleWsRead(res, url.searchParams.get("path") || "")],
   ["GET", "/api/ws/artifacts", (res) => handleWsArtifacts(res)],
   ["POST", "/api/ws/write", async (res, req) => handleWsWrite(res, await readBody(req))],
@@ -1903,6 +1911,7 @@ const API_ROUTES = [
   ["POST", "/api/parse-file", async (res, req) => handleParseFile(res, await readBody(req, 12))],
   // ── 专项工作台 ──
   ["POST", "/api/workshop/ppt", async (res, req) => workshop.handleWorkshopPpt({ ...wsCtx(), req }, res, await readBody(req))],
+  ["POST", "/api/workshop/expand-prompt", async (res, req) => handleExpandPrompt({ ...wsCtx(), getDefaultModel: () => defaultModel, directChat }, res, await readBody(req))],
   ["POST", "/api/workshop-ui/v1/chat/completions", async (res, req) => handleWorkshopUiChat({ ...wsCtx(), req, directChat }, res, await readBody(req))],
   // PPT 设计干预：大纲编辑后本地重建 .pptx（2026-09-03）
   ["POST", "/api/workshop/pptx/rebuild", async (res, req) => workshop.rebuildPptx(wsCtx(), res, await readBody(req))],
@@ -2197,14 +2206,20 @@ function startServer() {
         let out = "(无输出)";
         try {
           console.log(`[time-engine] 触发任务 ${task.id}(${task.queueId}): ${String(task.prompt).slice(0, 60)}`);
-          const r = await unifiedChat(defaultModel, [{ role: "user", content: `${task.prompt}（这是定时任务到点自动触发，请直接执行并输出结果，不要反问）` }], { tools: false });
+          try { invalidateSessionCache(); } catch {}
+          const messages = composeTimeTaskMessages(task, {
+            wsRoot: CONFIG.cwd,
+            sessions: getSessionList(),
+            now: new Date(),
+          });
+          const r = await unifiedChat(defaultModel, messages, { tools: timeTaskReadTools(UNIFIED_TOOLS) });
           out = r?.text || r?.content || r?.error || "(无输出)";
           const logDir = path.join(CONFIG.cwd, "文档");
           try { fs.mkdirSync(logDir, { recursive: true }); } catch {}
           const logFile = path.join(logDir, "时间引擎日志.md");
           const entry = `
 ### ${task.firedAt} [${task.id}/${task.queueId}] ${String(task.prompt).slice(0, 40)}
-> ${String(out).slice(0, 600).replace(/\n/g, "\\n> ")}
+${String(out).slice(0, 16000)}
 `;
           try { fs.appendFileSync(logFile, entry); } catch {}
           console.log(`[time-engine] 任务 ${task.id} 完成，已记录到 ${logFile}`);

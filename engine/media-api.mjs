@@ -44,7 +44,9 @@ export function detectMediaIntents(message) {
   const ttsNeg = /(不用|别|不要|无需|不需要).{0,6}(朗读|配音|语音|读出来)/.test(msg);
   if (!ttsNeg && /(配音|朗读|读出来|生成语音|配个音|读一下|配个音)/.test(msg)) intents.push({ type: "tts" });
   const videoNeg = /(不用|别|不要|无需|不需要).{0,6}(视频|片子|短片)/.test(msg);
-  if (!videoNeg && /(做个视频|做视频|生成视频|拍个视频|出个视频|视频生成|做个片子|做个短片)/.test(msg)) {
+  // 有「剧本」时交给 agent 写镜/对白再 generate_video；宿主旁路会把原话当 prompt，叠出废片。
+  const videoNeedsScript = /剧本/.test(msg);
+  if (!videoNeg && !videoNeedsScript && /(做个视频|做视频|生成视频|拍个视频|出个视频|视频生成|做个片子|做个短片)/.test(msg)) {
     intents.push({ type: "video" });
   }
   return intents;

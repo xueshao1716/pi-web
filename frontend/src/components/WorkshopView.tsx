@@ -4,6 +4,7 @@ import useSWR from 'swr'
 import { WorkshopApi, withFileToken, apiUrl } from '../api'
 import PptOutlineEditor, { type OutlineSlide } from './PptOutlineEditor'
 import PptStudio, { type DeckPage } from './PptStudio'
+import PromptSmartFill from './PromptSmartFill'
 import Gallery from './Gallery'
 import WorkshopModelPicker, { useWorkshopModel } from './WorkshopModelPicker'
 
@@ -18,6 +19,7 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
   const [pages, setPages] = useState(10)
   const [style, setStyle] = useState('专业商务')
   const [audience, setAudience] = useState('')
+  const [verb, setVerb] = useState('')
   // 运行态
   const [running, setRunning] = useState(false)
   const [log, setLog] = useState<string[]>([])
@@ -109,7 +111,7 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
   const runHtml = () => {
     if (running || !theme.trim()) return
     setRunning(true); setLog([]); setArtifacts([]); setSteps([]); setDeck(null); setOutline(null)
-    const body = { theme: theme.trim(), pages, themeKey, audience, model: pptModel.value }
+    const body = { theme: theme.trim(), pages, themeKey, audience, verb: verb.trim(), model: pptModel.value }
     abortHtmlRef.current = WorkshopApi.runHtml(body, ev => {
       const d = ev.data || {}
       switch (ev.type) {
@@ -156,6 +158,13 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
       {/* 表单 */}
       <div className="panel !p-3 space-y-3">
           <input className="input-pi text-[13px] min-h-11" placeholder="PPT 主题，如：Q3 产品复盘汇报" value={theme} onChange={e => setTheme(e.target.value)} />
+          {engine === 'html' && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <input className="input-pi text-[13px] min-h-11 w-full sm:w-40" placeholder="动词，如：对照" value={verb} onChange={e => setVerb(e.target.value)} maxLength={8} />
+              <PromptSmartFill kind="html" idea={theme} onFilled={({ fields }) => { if (fields?.verb) setVerb(fields.verb) }} />
+              <span className="text-[11px] text-pi-dim2">整套一个动作。空着会按主题推断。</span>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-2">
             <label className="text-xs text-pi-dim flex flex-col sm:flex-row sm:items-center gap-1.5">页数
               <input type="number" min={3} max={25} className="input-pi min-h-11 !py-2 text-xs w-full sm:w-20" value={pages} onChange={e => setPages(+e.target.value)} />

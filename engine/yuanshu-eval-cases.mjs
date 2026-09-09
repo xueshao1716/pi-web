@@ -99,6 +99,44 @@ export const YUANSHU_EVAL_CASES = [
     const r = coachToolFailure("generate_video", {}, { text: "缺 mode", isError: true });
     ok(/接着|判断|汇报/.test(r.text), "出片失败要给宿主下一步");
   } },
+  { id: "prompt-seams", tag: "protocol", run: async () => {
+    const { PluginRegistry } = await import("./plugin-registry.mjs");
+    const { registerPromptSection, assembleYuanshuSystem } = await import("./yuanshu-seams.mjs");
+    const { assemblePrompt } = await import("./yuanshu-prompt.mjs");
+    const reg = new PluginRegistry();
+    await registerPromptSection(reg, { id: "yuanshu:prompt:time", section: "time", contribute: () => "接缝时间" });
+    const blob = assemblePrompt(assembleYuanshuSystem({ message: "嗯" }, reg, {}));
+    ok(/section:protocol/.test(blob) && /接缝时间/.test(blob), "协议来自宿主，时间来自接缝");
+  } },
+  { id: "workmem-disk", tag: "memory", run: async () => {
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { tmpdir } = await import("node:os");
+    const { initYuanshuWorkmem, writePlanFile, formatPlanPrompt } = await import("./yuanshu-workmem.mjs");
+    const root = mkdtempSync(join(tmpdir(), "ys-eval-wm-"));
+    initYuanshuWorkmem(root);
+    writePlanFile("e1", "task_plan", "- [ ] 阶段一");
+    const blob = formatPlanPrompt("e1", { message: "嗯" });
+    ok(/task_plan/.test(blob) && /阶段一/.test(blob), "有磁盘计划必须开轮注入");
+    ok(formatPlanPrompt("none", { message: "嗯" }) === "", "闲聊无文件不灌");
+    rmSync(root, { recursive: true, force: true });
+  } },
+  { id: "prompt-sections", tag: "protocol", run: async () => {
+    const { assemblePrompt, buildYuanshuSections } = await import("./yuanshu-prompt.mjs");
+    const blob = assemblePrompt(buildYuanshuSections({ message: "嗯", persona: "小语", time: "此刻" }));
+    ok(/section:protocol/.test(blob) && /section:persona/.test(blob), "system 必须按命名区段拼");
+  } },
+  { id: "sandbox-readonly-write", tag: "tools", run: async () => {
+    const { checkSandboxCall, sandboxDeniedTag } = await import("./yuanshu-sandbox.mjs");
+    const r = checkSandboxCall({ mode: "read-only", name: "write", args: { path: "a.md" } });
+    ok(r.ok === false && r.tag === sandboxDeniedTag("read-only"), "read-only 必须拦写");
+  } },
+  { id: "compact-keep-archive", tag: "memory", run: async () => {
+    const { compactViewFromSummary } = await import("./yuanshu-compact.mjs");
+    const hist = [{ role: "user", content: "旧" }, { role: "user", content: "新" }];
+    const r = compactViewFromSummary(hist, "摘要", { keep: 1 });
+    ok(r.archive[0].content === "旧" && /摘要/.test(r.view[0].content), "压缩不能丢原文");
+  } },
   { id: "emotion-roundtrip", tag: "memory", run: async () => {
     const key = "eval-emo-roundtrip";
     clearEmotion(key);
@@ -107,5 +145,26 @@ export const YUANSHU_EVAL_CASES = [
     const ev = [];
     endYuanshuEmotion(key, "我好烦，又坏了", "先改这一处。", { push: (t, d) => ev.push({ t, d }) });
     ok(ev[0]?.t === "emotion" && ev[0]?.d?.state, "收轮必须推 emotion");
+  } },
+  { id: "mem-route-topk", tag: "memory", run: async () => {
+    const { routeMemory, MEMORY_TOP_K } = await import("./yuanshu-memroute.mjs");
+    ok(MEMORY_TOP_K === 5, "预算必须是 5");
+    const picked = routeMemory({
+      query: "下周面试怎么办",
+      entities: ["面试"],
+      candidates: [
+        { source: "log", text: "面试准备了两个月" },
+        { source: "log", text: "去云南旅游买了机票" },
+        { source: "relation", text: "重要场合前容易焦虑" },
+        { source: "correction", text: "面试别说加油打气" },
+        { source: "log", text: "晚饭吃了面" },
+        { source: "log", text: "修了 8787 端口" },
+        { source: "log", text: "面试官姓王" },
+        { source: "log", text: "又一次面试复盘" },
+      ],
+    });
+    ok(picked.length <= 5, "最多灌 5 条");
+    ok(picked.some((t) => /面试/.test(t)), "面试相关必须在");
+    ok(!picked.some((t) => /云南旅游/.test(t)), "无关旅游不得挤进 Top-5");
   } },
 ];

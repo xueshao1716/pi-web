@@ -17,6 +17,7 @@ const engineSource = () => ["pages/Engine.tsx", "components/engine/EnginePairPan
 test("核心底盘插件不能当普通插件卸", () => {
   assert.ok(CORE_PLUGIN_PREFIXES.length >= 4);
   assert.equal(isCorePlugin("model-adapter:http"), true);
+  assert.equal(isCorePlugin("yuanshu:prompt:time"), true);
   assert.equal(isCorePlugin("echo-demo"), false);
 });
 

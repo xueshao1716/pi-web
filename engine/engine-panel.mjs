@@ -4,6 +4,7 @@ export const CORE_PLUGIN_PREFIXES = [
   "tool-registry:",
   "session-store:",
   "agent-loop:",
+  "yuanshu:",
 ];
 
 const PLUGIN_PRESETS = {
@@ -47,7 +48,12 @@ export function defaultCapabilities({ gatewayReady, codeReady } = {}) {
     { id: "code", name: "Code Mode", desc: "程序编排工具绑定", have: !!codeReady, live: true },
     { id: "tools", name: "主聊天工具表", desc: "UNIFIED_TOOLS 实时列出", have: true, live: true },
     { id: "approval", name: "危险操作确认", desc: "approval.mjs 拦截危险工具", have: true, live: true },
-    { id: "hot-swap", name: "底盘热替换接到主聊天", desc: "Gateway 组件还接不进主通道", have: false, live: false },
+    { id: "prompt-sections", name: "上下文分区", desc: "persona/protocol/tools/memory 命名区段", have: true, live: true },
+    { id: "sandbox", name: "沙箱阶梯", desc: "read-only → workspace-write → danger，拒绝词模型可见", have: true, live: true },
+    { id: "compact-archive", name: "非破坏压缩", desc: "模型面摘要，原文进 archive", have: true, live: true },
+    { id: "prompt-seams", name: "区段接缝", desc: "prompt 插件贡献 system 区段；一轮只收一次", have: true, live: true },
+    { id: "workmem", name: "磁盘工作记忆", desc: "每会话 task_plan / findings / progress", have: true, live: true },
+    { id: "hot-swap", name: "底盘热替换接到主聊天", desc: "Gateway 循环还接不进主通道", have: false, live: false },
   ];
 }
 

@@ -110,6 +110,17 @@ test("任务成功且结果够长时触发 onTaskDone", async () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("运行历史保留长结果，不被截成 200 字", async () => {
+  const long = "今日反思：把未完成的事写清楚，再排明天。".repeat(40);
+  assert.ok(long.length > 200);
+  const { te, cleanup } = tmpEngine(async () => long);
+  const r = te.register({ type: "daily", at: "23:59", prompt: "自我反思" });
+  await te.runNow(r.id);
+  const stored = te.find(r.id).history[0].result;
+  assert.equal(stored, long);
+  cleanup();
+});
+
 test("结果过短不触发 onTaskDone", async () => {
   let hit = null;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "piweb-tasks-"));

@@ -1,7 +1,7 @@
 # pi-web 架构状态快照（活文档）
 
 > 模式借鉴 KickSide `.ai/architecture/current-state.md`：每次后端结构改动，**同步更新本文件**。
-> 这是"当前是什么"，不是"设计成什么"。过时即失职。最后更新：2026-09-06 by 小语
+> 这是"当前是什么"，不是"设计成什么"。过时即失职。最后更新：2026-09-07 by 小语
 
 ## 进程拓扑（谁在跑、怎么拉起）
 
@@ -47,10 +47,11 @@
 - `leadNote` 非原生通道写「该通道走自制循环」，不再说「适配器未就绪」
 - 元枢治理层（2026-09-06，对照 Claude/OpenHands/OpenCode）：`todo_write` 清单、`delegate_task` 子代理、OpenHands 式卡住检测、任务匹配技能预点名、循环中段压缩、Auto 走 `routeForAuto`
 - 对话内嵌视频播放器：正文/交付行/工具输出里的 mp4 路径收成 `/api/ws/file`；协议讲能力和汇报，不写死播放方式。pi 首轮就有 `generate_video` 等宿主工具
+- 刷视频修复（2026-09-07）：消息含「剧本」时宿主不旁路出片（避免叠 `generate_video`）；`HEAD /api/ws/file` 回头不灌 body；前端按 path 去重播放器（忽略 sig）
 - 元枢会话连续性（2026-09-06）：用户原话先落盘，打断也留痕；有历史就注明不是新开。创作先判断，搜两轮锁不到就动手
 - 元枢评测绳（2026-09-06）：`runYuanshuEval` 冻结用例出 `passed/total/score`；`GET /api/engine/pair` 带 `eval`；不跑真模型，不证明出片/联网
 - 元枢情绪（2026-09-06）：`beginYuanshuEmotion` / `endYuanshuEmotion` 挂进 `handleUnifiedChat`；同一句 10 秒内不重复加 VAD（pi 兑底再进一次也不叠）
-- 元枢 vs pi 横评（2026-09-06）：同一 `/api/chat` + deepseek-v4-flash；现网 9/10 平手，元枢均时更短；契约绳元枢现 18/18（含情绪开轮收轮）。不够切默认主驾。脚本 `bench/engine-bench.mjs`
+- 元枢 vs pi 横评（2026-09-06）：同一 `/api/chat` + deepseek-v4-flash；现网 9/10 平手，元枢均时更短；契约绳 2026-09-07 为 23/23（含磁盘工作记忆 plan_files）。不够切默认主驾。脚本 `bench/engine-bench.mjs`
 
 ## 模型路由
 
@@ -58,6 +59,10 @@
 - 免费降级链：商汤 flash-lite → 小米 mimo-v2.5 → NVIDIA llama-3.1-8b → 火山 ark-code
 - 429/401/402/403 冷却机制（启动预探测 + 运行时降级）
 - ⚠️ 已知问题（2026-08-26 用户反馈）：小米模型曾丢失工作成果，顺位待调
+- 工坊智能填充（2026-09-07）：`directChat` 关思考（`thinking: { type: "disabled" }`），技能只塞精要（≤1800 字），模型预算 12s，超时走规则扩写。前端 30s 超时是第二道闸，不再当主因
+- 视频规则扩写（2026-09-07）：`workshop-video-fallback.mjs` 必须写出人/衣服/动作/地点/【物理】；对白走过大肩正反打。禁止把用户原句贴进万能四拍（「里最清楚的那一拍」）
+- 镜头卡格子要活（2026-09-07）：`composeVideoShot` / `composeImageShot` 按地点现写光影。点急推不再把山道写成硬顶光；绘图光影/风格可打字，填充不再白名单
+- 视频脚本织入（2026-09-07）：`composeVideoScript` 把时间轴/物理/记忆点按当前动作重写。遁入夜色不再套地铁对镜头、硬顶光、帽檐
 
 ## 待办（后端线，来自 KickSide 对标）
 

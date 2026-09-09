@@ -14,6 +14,7 @@ import { atomicWriteJson } from "./atomic-io.mjs";
 let TASKS_FILE = path.join(os.homedir(), ".pi", "agent", "time-tasks.json");
 const CHECK_MS = 20_000;
 const HISTORY_CAP = 20;
+const RESULT_CAP = 16000; // 反思/长输出要能复盘，200 字会把正文裁没
 
 export function createTimeEngine(runner, opts = {}) {
   if (opts.file) TASKS_FILE = opts.file; // 可注入存储路径（测试用）
@@ -78,7 +79,7 @@ export function createTimeEngine(runner, opts = {}) {
   // ── 执行身份与运行历史 ──
   function recordRun(t, queueId, startedAt, status, result) {
     t.history = t.history || [];
-    t.history.unshift({ queueId, startedAt, durationMs: Date.now() - startedAt, status, result: String(result || "").slice(0, 200) });
+    t.history.unshift({ queueId, startedAt, durationMs: Date.now() - startedAt, status, result: String(result || "").slice(0, RESULT_CAP) });
     if (t.history.length > HISTORY_CAP) t.history.length = HISTORY_CAP;
   }
 

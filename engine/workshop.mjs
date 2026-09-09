@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { validateSlides, findSlidesJson, appendHistory, readHistory } from "./workshop-ppt-core.mjs";
 import { lintDeck, lintPage } from "./slides-lint-core.mjs";
+import { fillHtmlBrief, formatHtmlBriefBlock, lintDeckBrief } from "./workshop-html-brief.mjs";
 import { readThemeCss } from "./ppt-html-paths.mjs";
 import { pickWorkshopModel } from "./workshop-model.mjs";
 import { attachSseAbort } from "./ppt-refine.mjs";
@@ -251,6 +252,7 @@ export async function handleWorkshopPptHtml(ctx, res, body) {
   const pages = Math.min(Math.max(parseInt(body?.pages, 10) || 8, 3), 20);
   const themeKey = ["navy", "magazine", "dark", "riso"].includes(body?.themeKey) ? body.themeKey : "navy";
   const audience = String(body?.audience || "").slice(0, 40);
+  const brief = fillHtmlBrief({ theme, audience, pages, themeKey, verb: body?.verb, fields: body?.brief });
   const picked = pickWorkshopModel(ctx, body) || defaultModel;
   const skillPath = await findSkillPath(ctx, "ppt-html");
   if (!skillPath) return json(res, 500, { error: "未找到 ppt-html 技能" });
@@ -290,11 +292,13 @@ export async function handleWorkshopPptHtml(ctx, res, body) {
 - 页数：${pages} 页左右
 - 主题模板：theme-${themeKey}（务必把 ${path.join(skillDir, "templates", `theme-${themeKey}.css`).split(path.sep).join("/")} 的 CSS 全文放进每页 <style> 开头）
 
+${formatHtmlBriefBlock(brief)}
+
 执行要求：
-1. 先 read 技能规范：${skillPath.split(path.sep).join("/")}，严格按「每页 HTML 硬规矩 + 排版纪律 + 版式骨架」执行
-2. 产物全部写入 ${workDir.split(path.sep).join("/")}：deck.json + pages/page-01.html 起（两位数序号）
-3. 每页都要是"设计过的版面"：一个视觉焦点、字号阶梯、留白充足、accent 克制；图形用 CSS 渐变/几何形，禁止外部图片和 CDN
-4. 写完自检（bash：页数、theme- class、data-page、data-field、文件大小），然后回复一句话总结：页数 + 每页一句话摘要`;
+1. 先 read 技能规范：${skillPath.split(path.sep).join("/")}，严格按「每页 HTML 硬规矩 + 排版纪律 + 版式骨架 + 六项 brief」执行
+2. 产物全部写入 ${workDir.split(path.sep).join("/")}：deck.json + pages/page-01.html 起（两位数序号）。deck.json 顶层必须有 "verb": "${brief.verb}"
+3. 每页都要是"设计过的版面"：一个视觉焦点、字号阶梯、留白充足、accent 克制；图形用 CSS 渐变/几何形，禁止外部图片和 CDN。封面必须让人看出动词「${brief.verb}」，内页不要另起一套动作
+4. 写完自检（bash：页数、theme- class、data-page、data-field、文件大小、deck.json 含 verb），然后回复一句话总结：页数 + 动词 + 每页一句话摘要`;
     let releaseAbort = () => {};
     const finish = async () => {
       if (finished) return;
@@ -310,12 +314,19 @@ export async function handleWorkshopPptHtml(ctx, res, body) {
         let deck = null;
         if (fs.existsSync(deckPath)) {
           deck = JSON.parse(fs.readFileSync(deckPath, "utf8"));
+          if (Array.isArray(deck)) deck = { verb: brief.verb, slides: deck };
+          else if (deck && typeof deck === "object") {
+            if (!String(deck.verb || "").trim()) deck.verb = brief.verb;
+            if (!Array.isArray(deck.slides) && Array.isArray(deck.pages)) deck.slides = deck.pages;
+          }
+          try { fs.writeFileSync(deckPath, JSON.stringify(deck, null, 2), "utf8"); } catch {}
         } else {
           // 兜底：扫 pages 目录
           const pdir = path.join(workDir, "pages");
           if (fs.existsSync(pdir)) {
             deck = fs.readdirSync(pdir).filter(n => n.endsWith(".html")).sort()
               .map(n => ({ file: "pages/" + n, title: n.replace(".html", ""), layout: "" }));
+            deck = { verb: brief.verb, slides: deck };
           }
         }
         if (deck && Array.isArray(deck.slides || deck) && (deck.slides || deck).length) {
@@ -335,6 +346,11 @@ export async function handleWorkshopPptHtml(ctx, res, body) {
             const themeCssPath = path.join(skillDir, "templates", `theme-${themeKey}.css`);
             const themeCss = fs.existsSync(themeCssPath) ? fs.readFileSync(themeCssPath, "utf8") : "";
             const report = lintDeck(deckPages, themeCss);
+            const briefIssues = lintDeckBrief(deck || {});
+            if (briefIssues.length) {
+              report.perPage["deck.json"] = briefIssues;
+              report.total += briefIssues.length;
+            }
             fs.writeFileSync(path.join(workDir, "lint-report.json"), JSON.stringify(report, null, 2));
             write("deck_lint", { dir: relDir, total: report.total, errors: report.errors, ok: report.ok, perPage: report.perPage });
           } catch { /* lint 失败不阳塞交付 */ }

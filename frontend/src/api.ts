@@ -305,8 +305,10 @@ export const WorkshopApi = {
   rebuildPptx: (body: { jsonPath: string; slides: { layout: string; title: string; content: string[] }[] }, opts?: any) =>
     api<{ ok: boolean; file: { name: string; path: string; size: number }; slides: unknown[] }>('/api/workshop/pptx/rebuild', { method: 'POST', body, ...opts }),
   pptHistory: () => api<{ entries: { id: string; ts: string; theme: string; pages: number; style: string; file?: { name: string; path: string; size: number }; json?: string }[] }>('/api/workshop/ppt/history'),
+  expandPrompt: (body: { kind: 'image' | 'video' | 'html'; idea: string; draft?: string; model?: string }) =>
+    api<{ ok?: boolean; prompt?: string; fields?: Record<string, string>; source?: string; error?: string; model?: string; modelName?: string; skills?: string[] }>('/api/workshop/expand-prompt', { method: 'POST', body, timeoutMs: 30000 }),
   // PPT 设计稿模式（HTML 路线，2026-09-03）：SSE 逐页推 HTML，前端 iframe 真渲染
-  runHtml: (body: { theme: string; pages: number; themeKey: string; audience?: string }, onEvent: (ev: { type: string; data: any }) => void) =>
+  runHtml: (body: { theme: string; pages: number; themeKey: string; audience?: string; verb?: string }, onEvent: (ev: { type: string; data: any }) => void) =>
     WorkshopApi.runLike('/api/workshop/ppt/html', body, onEvent),
   refinePage: (body: { dir: string; file: string; instruction: string; model?: string }, onEvent: (ev: { type: string; data: any }) => void) =>
     WorkshopApi.runLike('/api/workshop/ppt-html/refine', body, onEvent),

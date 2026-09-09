@@ -111,20 +111,24 @@ export default function Assets() {
           <>
             <h2 className="text-sm font-semibold text-pi-text mb-2 inline-flex items-center gap-1.5"><Package className="w-4 h-4" /> 成品交付</h2>
             <div className="panel !p-0 overflow-hidden mb-8">
-              {deliveries.map(d => (
+              {deliveries.map(d => {
+                const href = withFileToken(d.url)
+                const canOpen = Boolean(d.openPath || d.type === 'file')
+                return (
                 <button type="button" key={d.wsPath}
-                  className={`flex items-center gap-3 px-4 py-2.5 border-b border-pi-border-soft/50 last:border-0 transition-colors ${d.type === 'file' ? 'hover:bg-pi-bg3/40 cursor-pointer' : 'text-pi-dim2'}`}
-                  title={d.type === 'dir' ? '目录请在工作空间中打开' : undefined}
-                  aria-label={d.type === 'file' ? `打开交付物：${d.name}` : `${d.name}（目录）`}
-                  disabled={d.type !== 'file'}
+                  className={`flex items-center gap-3 px-4 py-2.5 border-b border-pi-border-soft/50 last:border-0 transition-colors w-full text-left ${canOpen ? 'hover:bg-pi-bg3/40 cursor-pointer' : 'text-pi-dim2'}`}
+                  title={canOpen ? `打开 ${d.name}` : '这个文件夹里没有可预览的网页或文档'}
+                  aria-label={canOpen ? `打开交付物：${d.name}` : `${d.name}（空文件夹）`}
+                  disabled={!canOpen}
                   onClick={() => {
-                    if (d.type === 'file') window.open(withFileToken(d.url), '_blank')
+                    if (canOpen) window.open(href, '_blank', 'noopener,noreferrer')
                   }}>
                   <span>{d.type === 'dir' ? <FolderOpen className="w-4 h-4" /> : <FileText className="w-4 h-4" />}</span>
                   <span className="text-[13px] text-pi-text truncate flex-1">{d.name}</span>
                   <span className="text-[10px] text-pi-dim2">{fmtSize(d.size)}</span>
                 </button>
-              ))}
+                )
+              })}
             </div>
           </>
         )}

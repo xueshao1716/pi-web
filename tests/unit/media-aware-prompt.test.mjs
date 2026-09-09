@@ -132,6 +132,12 @@ test("你自己写脚本做个视频 是视频意图，不要视频则不触发"
   assert.ok(!detectMediaIntents("今天天气怎么样").some(i => i.type === "video"));
 });
 
+test("要剧本并生成视频不能旁路出片，否则和 generate_video 叠着刷", () => {
+  const intents = detectMediaIntents("给我做一个二创大话西游的剧本，孙悟空爱上铁扇公主，并生成视频，要有情感对话的");
+  assert.ok(!intents.some(i => i.type === "video"), "有剧本时旁路会用原话当 prompt，叠出废片");
+  assert.ok(detectMediaIntents("做个视频：大漠山道").some(i => i.type === "video"), "短出片指令仍可旁路");
+});
+
 test("视频旁路提示必须告诉模型宿主在出片，不要读密钥", () => {
   const out = mediaAwarePrompt("做个视频，主题爱而不得", []);
   assert.ok(out.includes("做个视频"), "原话必须保留");

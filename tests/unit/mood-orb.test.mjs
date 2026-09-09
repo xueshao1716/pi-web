@@ -74,6 +74,18 @@ test('ChatArea：心情 pill 渲染 MoodOrb，emoji 不再出现在 pill 内', (
   assert.match(chat, /emoTooltip\(/, 'tooltip 文案（情绪+性格）必须保留')
 })
 
+test('对话右上角灵珠和工作台潮汐必须共用同一份情绪快照', () => {
+  const hook = read('lib', 'useXiaoyuEmotion.ts')
+  const chat = read('components', 'ChatArea.tsx')
+  const board = read('pages', 'Board.tsx')
+  assert.match(hook, /export const EMO_LIVE_KEY/, '必须有共享缓存键')
+  assert.match(hook, /EmotionApi\.get\(\)/, '活快照不带 session，才能和工作台对上')
+  assert.ok(chat.includes('useXiaoyuEmotion'), '对话顶栏走共享钩子')
+  assert.ok(board.includes('useXiaoyuEmotion'), '工作台走同一钩子')
+  assert.ok(!/EmotionApi\.get\(\s*currentSessionId\s*\)/.test(chat), '对话不得再按会话另拉一份')
+  assert.ok(chat.includes('publishEmotion'), 'SSE emotion 必须写回共享缓存，工作台才能跟上')
+})
+
 test('GradientField：欢迎页氛围层——懒加载拆块、深色限定、WebGL 预检、纯装饰', () => {
   const src = read('components', 'GradientField.tsx')
   assert.match(src, /lazy\(\(\) => import\('\.\/ShaderGradientInner'\)\)/, 'three 必须经 React.lazy 拆块，不进主包')

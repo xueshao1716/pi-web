@@ -42,6 +42,9 @@ test('出图页把万像提示词填进绘画框', () => {
   assert.ok(wanxiang.includes('onUsePrompt'), '万像必须能交出提示词')
   assert.ok(wanxiang.includes('填入出图框'), '万像必须有填入出图框')
   assert.ok(generate.includes('onPromptChange'), '绘画框必须能受控填入提示词')
+  assert.ok(generate.includes('智能填充') || generate.includes('expandPrompt') || generate.includes('PromptSmartFill'), '绘画框要能智能扩写短句')
+  assert.ok(wanxiang.includes('composeImagePrompt'), '万像必须用成句组词，不能只顿号拼接')
+  assert.ok(wanxiang.includes('PromptSmartFill') || wanxiang.includes('智能填充'), '万像也要能按一句话填表')
 })
 
 test('界面工坊必须挂上官方 M3E Canvas，不能是自绘 v0.1', () => {

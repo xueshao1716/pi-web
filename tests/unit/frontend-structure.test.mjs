@@ -62,8 +62,9 @@ test('结构：React 聊天使用持久化 Run，关闭 SSE 不得等同停止�
 
 test('结构：心情胶囊是服务端情绪镜像，禁止本地点击换脸', () => {
   const chat = read('components', 'ChatArea.tsx')
+  const hook = read('lib', 'useXiaoyuEmotion.ts')
   assert.ok(!chat.includes('setMood'), '不得保留本地 setMood 点击轮换逻辑')
-  assert.ok(chat.includes('emoMeta('), '必须使用服务端 VAD→表情映射（emoMeta）')
+  assert.ok(chat.includes('useXiaoyuEmotion') && hook.includes('emoMeta('), '必须使用服务端 VAD→表情映射（emoMeta）')
   assert.ok(chat.includes("case 'emotion':"), 'SSE emotion 事件必须被消费')
   const pill = chat.match(/<div[^>]*emo-pill[\s\S]*?>/)
   assert.ok(pill, 'emo-pill 元素必须存在')

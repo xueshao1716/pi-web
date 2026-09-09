@@ -24,6 +24,7 @@ test("出片框必须选视频模型，调 /api/media，播得了片子", () => 
   assert.ok(panel.includes("<video"), "结果要用播放器");
   assert.ok(panel.includes("seconds") || panel.includes("时长"), "能选时长");
   assert.ok(panel.includes("min-h-11"), "触控够大");
+  assert.ok(panel.includes("智能填充") || panel.includes("expandPrompt"), "出片框要能智能扩写提示词");
 });
 
 test("视频提示词必须吃进镜头卡生成器，主体运镜还能改", () => {
@@ -31,6 +32,7 @@ test("视频提示词必须吃进镜头卡生成器，主体运镜还能改", ()
   const lib = read("lib", "video-prompt.mjs");
   assert.ok(prompt.includes("buildVideoPrompt"), "提示词组件必须用共享生成器");
   assert.ok(prompt.includes("填入出片框") || prompt.includes("填入"), "能填进出片框");
+  assert.ok(prompt.includes("PromptSmartFill") || prompt.includes("智能填充") || prompt.includes("expandPrompt"), "镜头卡要能按一句话智能填");
   assert.match(prompt, /主体/);
   assert.match(prompt, /运镜/);
   assert.match(lib, /无字幕|无 BGM|无BGM/);

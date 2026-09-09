@@ -7,7 +7,7 @@ function capKeys(m: Model): string[] {
   return Array.isArray(cap) ? cap : Object.entries(cap || {}).filter(([, v]) => v).map(([k]) => k as string)
 }
 
-export function useWorkshopModel(storageKey: string) {
+export function useWorkshopModel(storageKey: string, opts?: { preferFlash?: boolean }) {
   const { models, currentModel } = useApp()
   const textModels = models.filter(m => {
     const keys = capKeys(m)
@@ -17,7 +17,11 @@ export function useWorkshopModel(storageKey: string) {
     try { return localStorage.getItem(storageKey) || '' } catch { return '' }
   })
   const keys = textModels.map(m => `${m.provider}/${m.id}`)
-  const fallback = keys.includes(currentModel) ? currentModel : (keys[0] || '')
+  const flash = textModels.find(m => /flash/i.test(m.id) && !/image|video/i.test(m.id))
+  const flashKey = flash ? `${flash.provider}/${flash.id}` : ''
+  const fallback = opts?.preferFlash && flashKey
+    ? flashKey
+    : (keys.includes(currentModel) ? currentModel : (keys[0] || ''))
   const value = keys.includes(saved) ? saved : fallback
   const set = (next: string) => {
     setSaved(next)
@@ -26,17 +30,18 @@ export function useWorkshopModel(storageKey: string) {
   return { value, set, textModels }
 }
 
-export default function WorkshopModelPicker({ value, onChange, textModels }: {
+export default function WorkshopModelPicker({ value, onChange, textModels, label = '模型' }: {
   value: string
   onChange: (v: string) => void
   textModels: Model[]
+  label?: string
 }) {
   if (!textModels.length) {
     return <span className="text-[11px] text-pi-dim2">没有可用文本模型——先到模型管理添加</span>
   }
   return (
     <label className="text-xs text-pi-dim flex flex-col sm:flex-row sm:items-center gap-1.5 w-full sm:w-auto">
-      模型
+      {label}
       <select className="input-pi min-h-11 !py-2 text-xs w-full sm:max-w-[260px]" value={value} onChange={e => onChange(e.target.value)}>
         {textModels.map(m => (
           <option key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>

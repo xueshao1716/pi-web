@@ -16,6 +16,18 @@ export function initModelClient({ readJsonFile = null, writeJsonFile = null, aut
   if (readEntriesFromFile) _readEntriesFromFile = readEntriesFromFile; if (createSseWriter) _createSseWriter = createSseWriter;
 }
 
+export function buildDirectChatBody({ modelId, messages, maxTokens, thinking } = {}) {
+  const body = {
+    model: modelId,
+    messages,
+    stream: false,
+    max_tokens: maxTokens,
+  };
+  // GLM-5 等推理模型默认开思考；填充/短任务必须显式关掉，否则先想半分钟再写 JSON
+  if (thinking === false) body.thinking = { type: "disabled" };
+  return body;
+}
+
 // 直调模型接口拿文本（绕过 agent，稳定快速）
 export async function directChat(model, message, history = [], opts = {}) {
   // 2026-08-21 支持 systemHint：复读修正等场景注入引导（不切换模型）
@@ -34,13 +46,16 @@ export async function directChat(model, message, history = [], opts = {}) {
     const baseNoV1 = base.endsWith("/v1") ? base.slice(0, -3) : base;
     const messages = systemHint ? [{ role: "system", content: systemHint }, ...history, { role: "user", content: message }] : [...history, { role: "user", content: message }];
     const apiType = mdef?.api || "openai-completions";
+    const tokenCap = Math.min(Number(opts.maxTokens) > 0 ? Number(opts.maxTokens) : (mdef?.maxTokens || 8192), 8192);
+    const reqTimeout = Number(opts.timeout) > 0 ? Number(opts.timeout) : 120000;
     // openai-responses 类型（grok/gpt-5.6-luna 等）：用 /responses 端点，input 数组格式
     if (apiType === "openai-responses") {
       const mkResp = (u) => httpJsonFetch(u, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-        body: JSON.stringify({ model: model.id, input: message, max_output_tokens: Math.min(mdef?.maxTokens || 8192, 8192) }),
-        timeout: 120000,
+        body: JSON.stringify({ model: model.id, input: message, max_output_tokens: tokenCap }),
+        timeout: reqTimeout,
+        signal: opts.signal,
       });
       let rr = await mkResp(`${baseNoV1}/v1/responses`);
       if (rr.status === 404) rr = await mkResp(`${baseNoV1}/responses`);
@@ -64,8 +79,14 @@ export async function directChat(model, message, history = [], opts = {}) {
     const mkReq = (u) => httpJsonFetch(u, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify({ model: model.id, messages, stream: false, max_tokens: Math.min(mdef?.maxTokens || 8192, 8192) }),
-      timeout: 120000,
+      body: JSON.stringify(buildDirectChatBody({
+        modelId: model.id,
+        messages,
+        maxTokens: tokenCap,
+        thinking: opts.thinking,
+      })),
+      timeout: reqTimeout,
+      signal: opts.signal,
     });
     let r = await mkReq(`${baseNoV1}/v1/chat/completions`);
     if (r.status === 404) r = await mkReq(`${baseNoV1}/chat/completions`);

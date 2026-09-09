@@ -73,6 +73,47 @@ export function findWorkspaceFiles({ keyword = "", types = null, max = 8, maxDep
 export function wsSafePath(p) {
   return safeJoin(WS_ROOT, p);
 }
+
+const WS_MIME = {
+  ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml",
+  ".wav": "audio/wav", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".ogg": "audio/ogg",
+  ".mp4": "video/mp4", ".webm": "video/webm",
+  ".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8",
+  ".md": "text/plain; charset=utf-8", ".txt": "text/plain; charset=utf-8", ".css": "text/css; charset=utf-8",
+  ".json": "application/json", ".pdf": "application/pdf",
+};
+
+export function wsFileMime(ext) {
+  return WS_MIME[String(ext || "").toLowerCase()] || "application/octet-stream";
+}
+
+function toWsRel(fp) {
+  return path.relative(WS_ROOT, fp).replace(/\\/g, "/");
+}
+
+export function resolveDeliveryOpen(fp) {
+  try {
+    const st = fs.statSync(fp);
+    if (st.isFile()) return toWsRel(fp);
+    if (!st.isDirectory()) return "";
+    const index = path.join(fp, "index.html");
+    if (fs.existsSync(index) && fs.statSync(index).isFile()) return toWsRel(index);
+    let newest = null;
+    for (const name of fs.readdirSync(fp)) {
+      if (!/\.(html?|md|txt|pdf)$/i.test(name)) continue;
+      const child = path.join(fp, name);
+      try {
+        const cs = fs.statSync(child);
+        if (!cs.isFile()) continue;
+        if (!newest || cs.mtimeMs > newest.mtimeMs) newest = { fp: child, mtimeMs: cs.mtimeMs };
+      } catch {}
+    }
+    return newest ? toWsRel(newest.fp) : "";
+  } catch {
+    return "";
+  }
+}
+
 export function looksLikeImageBytes(buf) {
   if (!buf || buf.length < 8) return false;
   const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
@@ -218,7 +259,7 @@ export async function handleWsFile(res, req, url) {
   try { stat = fs.statSync(safe); } catch { return json(res, 404, { error: "文件不存在" }); }
   if (!stat.isFile()) return json(res, 404, { error: "文件不存在" });
   const ext = path.extname(safe).toLowerCase();
-  const mime = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".wav": "audio/wav", ".mp3": "audio/mpeg", ".mp4": "video/mp4", ".webm": "video/webm", ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8", ".json": "application/json" }[ext] || "application/octet-stream";
+  const mime = wsFileMime(ext);
   const headers = { "Content-Type": mime, "Cache-Control": "no-cache" };
   if (url?.searchParams.get("download") === "1") {
     headers["Content-Disposition"] = `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(safe))}`;
@@ -248,12 +289,21 @@ export async function handleWsFile(res, req, url) {
     headers["Accept-Ranges"] = "bytes";
     headers["Content-Length"] = end - start + 1;
     res.writeHead(206, headers);
+    if (String(req?.method || "GET").toUpperCase() === "HEAD") {
+      res.end();
+      return;
+    }
     pipeFile({ start, end });
     return;
   }
   headers["Accept-Ranges"] = "bytes";
   headers["Content-Length"] = total;
   res.writeHead(200, headers);
+  // 播放器常先 HEAD 探头；只回头、不灌 body，避免 404 触发重试刷。
+  if (String(req?.method || "GET").toUpperCase() === "HEAD") {
+    res.end();
+    return;
+  }
   pipeFile();
 }
 
@@ -380,12 +430,14 @@ export async function handleWsDeliveries(res) {
     for (const it of fs.readdirSync(deliverDir, { withFileTypes: true })) {
       const fp = path.join(deliverDir, it.name);
       const st = fs.statSync(fp);
+      const openPath = resolveDeliveryOpen(fp);
       out.push({
         name: it.name,
         type: it.isDirectory() ? "dir" : "file",
         size: st.size,
         mtime: st.mtime.toISOString(),
-        url: `/api/ws/file?path=${encodeURIComponent(fp)}`,
+        openPath,
+        url: openPath ? `/api/ws/file?path=${encodeURIComponent(openPath)}` : `/api/ws/file?path=${encodeURIComponent(fp)}`,
         wsPath: `交付/${it.name}`,
       });
     }

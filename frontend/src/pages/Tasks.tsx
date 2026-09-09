@@ -47,7 +47,7 @@ function RunHistory({ id }: { id: string }) {
           <div className="flex-1 min-w-0">
             <span className="text-pi-dim">{new Date(h.startedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
             <span className="ml-2 text-pi-dim2">({h.durationMs}ms · {h.status === 'ok' ? '成功' : h.status === 'error' ? '失败' : '停止'})</span>
-            {h.result && <div className="text-pi-dim2 truncate mt-0.5 max-h-20 overflow-hidden">{h.result.slice(0, 200)}</div>}
+            {h.result && <div className="text-[12px] text-pi-text mt-1.5 whitespace-pre-wrap break-words leading-relaxed">{h.result}</div>}
           </div>
         </div>
       ))}

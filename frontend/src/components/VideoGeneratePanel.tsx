@@ -5,6 +5,7 @@ import { MediaApi, withFileToken } from '../api'
 import { useApp } from '../store'
 import type { Model } from '../types'
 import MediaHistory from './MediaHistory'
+import PromptSmartFill from './PromptSmartFill'
 
 const SECONDS = ['5', '8', '10', '12']
 const SIZES = ['720P', '960P']
@@ -103,12 +104,13 @@ export default function VideoGeneratePanel({ onGenerated, prompt: promptProp, on
             </select>
           </div>
           <textarea className="input-pi text-[13px] resize-none min-h-[88px]" rows={4}
-            placeholder="描述想要的镜头：谁、在哪、做什么、怎么拍…"
+            placeholder="描述想要的镜头：谁、在哪、做什么。写一句也可以，点智能填充再出片"
             value={prompt} onChange={e => setPrompt(e.target.value)} />
           <div className="flex flex-col sm:flex-row sm:items-center gap-2">
             <button className="btn-primary text-xs px-4 min-h-11 w-full sm:w-auto disabled:opacity-60" onClick={gen} disabled={busy || !prompt.trim()}>
               {busy ? (phase || '出片中…') : '生成'}
             </button>
+            <PromptSmartFill kind="video" idea={prompt} onFilled={({ prompt: next }) => setPrompt(next)} />
             {err && <span className="text-xs text-pi-red truncate">{err}</span>}
           </div>
           {result && (
