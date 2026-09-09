@@ -6,7 +6,7 @@
 // 对外单一入口：createApprovalInterceptor() → { wrapBeforeToolCall(orig) }
 //   - orig: Agent 原始的 beforeToolCall（默认返回 undefined=放行）
 //   - 返回包装函数：命中危险 → ask() 等人工 → allowed-once 原样返回 / rejected 抛错阻断
-//   - 容错：任何异常都放行（fail-open 到"默认行为"），不因确认逻辑卡死正常工具流
+//   - 安全：确认缺失、超时或异常都拒绝（fail-closed），不让危险操作绕过人工确认
 
 // 危险规则：策略引擎注入（工具名 → 参数正则匹配），命中即需确认
 // 规则项：{ tool, match?: { argName: regex }, reason }

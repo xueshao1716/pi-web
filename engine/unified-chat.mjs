@@ -39,12 +39,13 @@ import {
 } from "./yuanshu-stability.mjs";
 export { toolCallLoopKey };
 
-let _executeUnifiedTool = null, _findKeyByEntry = null, _readJsonFile = null, _getModelList = () => [], _getDefaultModel = () => null, _authPath = "", _modelsPath = "", _cwd = "", _piPackage = "", _unifiedTools = [], _getAgentDir = null;
-export function initUnifiedChat({ executeUnifiedTool = null, findKeyByEntry = null, readJsonFile = null, getModelList = null, getDefaultModel = null, authPath = "", modelsPath = "", cwd = "", piPackage = "", UNIFIED_TOOLS = [], getAgentDir = null } = {}) {
+let _executeUnifiedTool = null, _findKeyByEntry = null, _readJsonFile = null, _getModelList = () => [], _getDefaultModel = () => null, _authPath = "", _modelsPath = "", _cwd = "", _piPackage = "", _unifiedTools = [], _getAgentDir = null, _createSandboxAsk = null;
+export function initUnifiedChat({ executeUnifiedTool = null, findKeyByEntry = null, readJsonFile = null, getModelList = null, getDefaultModel = null, authPath = "", modelsPath = "", cwd = "", piPackage = "", UNIFIED_TOOLS = [], getAgentDir = null, createSandboxAsk = null } = {}) {
   _executeUnifiedTool = executeUnifiedTool; _findKeyByEntry = findKeyByEntry; _readJsonFile = readJsonFile;
   if (getModelList) _getModelList = getModelList; if (getDefaultModel) _getDefaultModel = getDefaultModel;
   _authPath = authPath; _modelsPath = modelsPath; _cwd = cwd; _piPackage = piPackage; _unifiedTools = UNIFIED_TOOLS;
   if (getAgentDir) _getAgentDir = getAgentDir;
+  _createSandboxAsk = createSandboxAsk;
 }
 
 // ══ 工具调用消毒（2026-08-22 修复 400 "`function` is not set"）：
@@ -130,6 +131,14 @@ export function lastPartialAssistantText(history) {
     if (text) return text;
   }
   return "";
+}
+
+// directChat appends the current user message itself. The live unified history
+// already contains that message, so remove only the trailing user turn while
+// preserving system instructions and tool evidence for a meaningful fallback.
+export function fallbackHistoryForDirectChat(history) {
+  if (!Array.isArray(history)) return [];
+  return history.at(-1)?.role === "user" ? history.slice(0, -1) : [...history];
 }
 
 // write/bash 连续画 SVG 或 curl 绘图接口：参数略变也算同一循环。普通 read/write 仍按完整参数签名。
@@ -351,6 +360,8 @@ export async function unifiedChat(model, messages, opts = {}) {
 
 // ══ Gateway 2.0：插件化引擎（dsh 设计沉淀——模型/工具/存储/循环全是可替换插件）══
 let gateway = null;
+let engineInitPromise = null;
+let engineInitError = null;
 let codeRuntime = null;
 let codeMode = null;
 const ENGINE_TOOL_NAMES = ["bash", "read", "write", "edit", "web_search"];
@@ -363,44 +374,58 @@ export function engineCurrentModel() {
 }
 export async function initEngine() {
   if (gateway) return gateway;
-  // CodeRuntime 绑定：直接映射到现有工具执行链（含宪法 deny 红线）
-  codeRuntime = new CodeRuntime({
-    bindings: Object.fromEntries(ENGINE_TOOL_NAMES.map((n) => [n, { description: toolBindingDesc(n), args: toolBindingArgs(n), exec: async (args) => _executeUnifiedTool(n, toolBindingArgsObj(n, args)) }])),
-  });
-  codeMode = createCodeMode({ runtime: codeRuntime });
-  // Gateway：注入宿主能力（httpFetch / auth / 工具执行链 / 模型）
-  gateway = await createGateway({
-    httpFetch: httpJsonFetch,
-    authReader: () => _readJsonFile(_authPath),
-    modelReader: () => _readJsonFile(_modelsPath),
-    resolveAuth: (provider) => resolveAuth(provider),
-    defaultExecutor: (name, args) => _executeUnifiedTool(name, args),
-    getModel: engineCurrentModel,
-    sessionDir: path.join((_getAgentDir ? _getAgentDir() : ""), "engine-sessions"),
-  });
-  // 注册 run_code：Gateway 旁路 + 元枢主工具表（此前只挂在 /api/engine/chat）
-  gateway.tools.register(codeMode.runCodeToolDef());
-  attachYuanshuCodeTool(_unifiedTools, codeMode);
-  await registerPromptSection(gateway.registry, {
-    id: "yuanshu:prompt:time",
-    name: "时间上下文",
-    section: "time",
-    contribute: (ctx) => promptTimeText(ctx?.now),
-  });
-  await registerPromptSection(gateway.registry, {
-    id: "yuanshu:prompt:persona",
-    name: "驱动身份",
-    section: "persona",
-    contribute: (ctx) => promptPersonaText(ctx?.model),
-  });
-  await registerPromptSection(gateway.registry, {
-    id: "yuanshu:prompt:plan",
-    name: "磁盘工作记忆",
-    section: "plan",
-    contribute: (ctx) => formatPlanPrompt(ctx?.sessionId, { message: ctx?.message }),
-  });
-  console.log(`[engine] 元枢就绪：适配器=${gateway.adapter.id} 工具=${gateway.tools.names().join(",")} 存储=${gateway.store.id} 循环=${gateway.loop.id} 接缝=prompt`);
-  return gateway;
+  // Share one in-flight initialization and publish globals only after every
+  // core plugin and prompt seam has mounted successfully.
+  if (engineInitPromise) return engineInitPromise;
+  engineInitPromise = (async () => {
+    const nextCodeRuntime = new CodeRuntime({
+      bindings: Object.fromEntries(ENGINE_TOOL_NAMES.map((n) => [n, { description: toolBindingDesc(n), args: toolBindingArgs(n), exec: async (args) => _executeUnifiedTool(n, toolBindingArgsObj(n, args)) }])),
+    });
+    const nextCodeMode = createCodeMode({ runtime: nextCodeRuntime });
+    const nextGateway = await createGateway({
+      httpFetch: httpJsonFetch,
+      authReader: () => _readJsonFile(_authPath),
+      modelReader: () => _readJsonFile(_modelsPath),
+      resolveAuth: (provider) => resolveAuth(provider),
+      defaultExecutor: (name, args) => _executeUnifiedTool(name, args),
+      getModel: engineCurrentModel,
+      sessionDir: path.join((_getAgentDir ? _getAgentDir() : ""), "engine-sessions"),
+    });
+    nextGateway.tools.register(nextCodeMode.runCodeToolDef());
+    attachYuanshuCodeTool(_unifiedTools, nextCodeMode);
+    await registerPromptSection(nextGateway.registry, {
+      id: "yuanshu:prompt:time",
+      name: "时间上下文",
+      section: "time",
+      contribute: (ctx) => promptTimeText(ctx?.now),
+    });
+    await registerPromptSection(nextGateway.registry, {
+      id: "yuanshu:prompt:persona",
+      name: "驱动身份",
+      section: "persona",
+      contribute: (ctx) => promptPersonaText(ctx?.model),
+    });
+    await registerPromptSection(nextGateway.registry, {
+      id: "yuanshu:prompt:plan",
+      name: "磁盘工作记忆",
+      section: "plan",
+      contribute: (ctx) => formatPlanPrompt(ctx?.sessionId, { message: ctx?.message }),
+    });
+    codeRuntime = nextCodeRuntime;
+    codeMode = nextCodeMode;
+    gateway = nextGateway;
+    engineInitError = null;
+    console.log(`[engine] 元枢就绪：适配器=${gateway.adapter.id} 工具=${gateway.tools.names().join(",")} 存储=${gateway.store.id} 循环=${gateway.loop.id} 接缝=prompt`);
+    return gateway;
+  })();
+  try {
+    return await engineInitPromise;
+  } catch (error) {
+    engineInitError = error;
+    throw error;
+  } finally {
+    engineInitPromise = null;
+  }
 }
 export function toolBindingDesc(name) {
   return { bash: "运行 shell 命令（Windows cmd），如 dir、node、python、git", read: "读取工作空间内文件内容", write: "写入文件（自动创建目录）", edit: "用精确文本替换修改文件（先 read 再 edit）", web_search: "联网搜索（Bing，无需 key）" }[name] || name;
@@ -419,6 +444,18 @@ export function toolBindingArgsObj(name, args) {
     return first;
   }
   return { bash: { command: first }, read: { path: first }, write: { path: args?.[0], content: args?.[1] }, edit: { path: args?.[0], oldText: args?.[1], newText: args?.[2] }, web_search: { query: first } }[name] || {};
+}
+
+// Keep the call-site explicit: unified chat may continue in a degraded mode,
+// while the shared init transaction remains observable and retryable.
+async function ensureEngineInit() {
+  try {
+    await initEngine();
+    engineInitError = null;
+  } catch (error) {
+    engineInitError = error || new Error("engine_init_failed");
+    throw engineInitError;
+  }
 }
 
 // ══ 消息看板：pi 更新 + 能力看板 ══
@@ -489,45 +526,10 @@ except Exception as e:
 
 // SSE 心跳：每 20s 发注释行保持连接活跃（对抗公网隧道/代理的 idle 超时）
 
-// 引擎初始化（可观察可重试，2026-09-09 补 9/7 加固测试缺口）：失败记录 engineInitError，
-// 清空 promise 允许下次重试；不再静默吞掉
-let engineInitPromise = null;
-let engineInitError = null;
-async function ensureEngineInit() {
-  if (!engineInitPromise) {
-    engineInitPromise = initEngine().catch((e) => { engineInitPromise = null; throw e; });
-  }
-  try {
-    await engineInitPromise;
-    engineInitError = null;
-  } catch (e) {
-    engineInitError = e || new Error("engine init failed");
-    throw engineInitError;
-  }
-}
-
-// 兑底直连的历史裁剪（9/7 加固测试）：保留 system/工具上下文，去掉末尾的当前 user 消息
-// （directChat 只发 message 本身，history 再带它会造成重复）；不 mutate 原数组
-export function fallbackHistoryForDirectChat(history) {
-  const h = Array.isArray(history) ? history : [];
-  const last = h[h.length - 1];
-  if (last && last.role === "user") return h.slice(0, -1);
-  return h.slice();
-}
-
 // 统一通道：所有模型走 unifiedChat（对话 + 工具 + 思考 + 媒体 + 压缩 + 重试）
-export async function handleUnifiedChat(res, entry, message, sessionId, params, signal, writer, thinkOn, taskKey, modelOverride = null) {
+export async function handleUnifiedChat(res, entry, message, sessionId, params, signal, writer, thinkOn, taskKey, modelOverride = null, sandboxAskFactory = null) {
   let engineInitError = null;
   try { await ensureEngineInit(); } catch (e) { engineInitError = e || new Error("engine_init_failed"); }
-  if (engineInitError) {
-    try { writer.push("note", { text: `engine_init_failed：引擎初始化失败，本次降级运行（${engineInitError.message}）。` }); } catch {}
-  }
-  // 兑底通道沙箱升级审批（dsh user-approval 接缝语义）：暂无人工确认 UI 接线，
-  // 先 fail-closed 拒绝并记日志（比无应答者更可观察），后续接前端确认卡换真实现
-  const approvalAsk = async (name, args, note) => {
-    console.log(`[sandbox-approval] 兑底通道升级请求拒绝(fail-closed): ${name} ${JSON.stringify(args || {}).slice(0, 120)} ${note || ""}`);
-    return "rejected";
-  };
   const taskId = taskKey || sessionId;
   // 兕底通道用安全模型（opencode-go 429 标记期间避开）；用户显式选中的非原生模型优先（2026-08-29 修复：
   // 之前无论选什么都用 pickFallbackDefault，导致选中 hy4-preview/claude-relay 等被静默换成商汤）
@@ -541,6 +543,18 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     }
   } catch {}
   writer = writer || createSseWriter(res);
+  if (engineInitError) {
+    try { writer.push("note", { code: "engine_init_failed", text: `engine_init_failed：引擎初始化失败，本次降级运行（${engineInitError.message}）。` }); } catch {}
+  }
+  // The server may provide a UI-backed approval seam. Without one, sandbox
+  // escalation remains fail-closed and is explicitly observable.
+  let approvalAsk = sandboxAskFactory
+    ? await sandboxAskFactory({ writer, sessionId, taskId })
+    : (_createSandboxAsk ? await _createSandboxAsk({ writer, sessionId, taskId }) : null);
+  if (typeof approvalAsk !== "function") approvalAsk = async (name, args, note) => {
+    console.log(`[sandbox-approval] 兑底通道升级请求拒绝(fail-closed): ${name} ${JSON.stringify(args || {}).slice(0, 120)} ${note || ""}`);
+    return "rejected";
+  };
   let collected = "";
   const finishEmotion = () => {
     try { endYuanshuEmotion(sessionId || "new", message, collected, writer); } catch {}

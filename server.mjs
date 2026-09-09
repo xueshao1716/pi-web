@@ -496,7 +496,19 @@ const executeUnifiedTool = createUnifiedToolExecutorGuarded({
 });
 
 initSessionManager({ cwd: CONFIG.cwd, sessionsDir: SESSIONS_DIR, tools: CONFIG.tools, piPackage: CONFIG.piPackage, isModelBlocked, createAgentSessionServices, createAgentSessionFromServices, getModelRuntime: () => modelRuntime, loadSessionModelKey, getModelList: () => modelList, getDefaultModel: () => defaultModel, activeSessions, SessionManager, SettingsManager, DefaultResourceLoader, getAgentDir, readJsonFile, writeJsonFile, isExternalThinking, THINK_TOOL, modelCapabilities, bindOutputGuardDeps, extractMessages, createSseWriter, unifiedChat, generateMediaAsync }); // 会话管理注入
-initUnifiedChat({ executeUnifiedTool, findKeyByEntry, readJsonFile, getModelList: () => modelList, getDefaultModel: () => defaultModel, authPath: AUTH_PATH, modelsPath: MODELS_PATH, cwd: CONFIG.cwd, piPackage: CONFIG.piPackage, UNIFIED_TOOLS, getAgentDir }); // 统一对话通道注入
+initUnifiedChat({
+  executeUnifiedTool, findKeyByEntry, readJsonFile,
+  getModelList: () => modelList, getDefaultModel: () => defaultModel,
+  authPath: AUTH_PATH, modelsPath: MODELS_PATH, cwd: CONFIG.cwd,
+  piPackage: CONFIG.piPackage, UNIFIED_TOOLS, getAgentDir,
+  // 元枢沙箱升级与 pi 共用同一人工确认注册表；没有前端应答时由注册表超时并 fail-closed。
+  createSandboxAsk: ({ writer, sessionId, taskId }) => async (toolName, args, reason) => {
+    const sid = sessionId || taskId || "new";
+    const reg = confirmRegistry.register(sid, { toolName, reason, src: "sandbox" });
+    writer.push("confirm", { id: reg.id, toolName, reason, args: args || {}, sessionId: sid });
+    return reg.promise;
+  },
+}); // 统一对话通道注入
 initRefineApi({ cwd: CONFIG.cwd }); // 经验沉淀台注入
 initMcpServer({ modelRouter: (await import("./engine/model-router.mjs")), memoryApi: memoryApi, emotion, getDefaultModel: () => defaultModel, wsRoot: () => CONFIG.cwd, json }); // MCP 认知层注入
 initMcpChat({ handleChat }); // MCP 对话注入
