@@ -1,13 +1,13 @@
 import { useEffect, useRef } from 'react'
 import {
-  Activity, BrainCircuit, Cpu, Database, Factory, FolderKanban, GitCompare,
+  Activity, BrainCircuit, ClipboardCheck, Cpu, Database, Factory, FolderKanban, GitCompare,
   LayoutDashboard, LayoutGrid, LogOut, MonitorCog, PackageCheck, Palette, PanelRight, Sparkles,
   TerminalSquare, X,
 } from 'lucide-react'
 import type { Route } from '../hooks/useHashRoute'
 import { ROUTE_LABELS } from '../nav'
 
-export type UtilityPanelKey = 'workspace' | 'deliveries' | 'terminal' | 'activity' | 'tui'
+export type UtilityPanelKey = 'workspace' | 'deliveries' | 'terminal' | 'activity' | 'tui' | 'inspect'
 
 const MORE_ROUTES: { route: Route; icon: typeof Sparkles; label: string }[] = [
   { route: 'board', icon: LayoutDashboard, label: ROUTE_LABELS.board },
@@ -23,6 +23,7 @@ const MORE_ROUTES: { route: Route; icon: typeof Sparkles; label: string }[] = [
 ]
 
 const PANEL_ACTIONS: { panel: UtilityPanelKey; icon: typeof Sparkles; label: string }[] = [
+  { panel: 'inspect', icon: ClipboardCheck, label: '任务检查' },
   { panel: 'workspace', icon: FolderKanban, label: '工作空间' },
   { panel: 'deliveries', icon: PackageCheck, label: '交付物' },
   { panel: 'terminal', icon: TerminalSquare, label: '终端' },

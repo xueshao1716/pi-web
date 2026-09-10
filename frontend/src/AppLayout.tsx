@@ -39,6 +39,7 @@ const Deliveries = lazy(() => import('./components/Deliveries'))
 const TerminalPanel = lazy(() => import('./components/TerminalPanel'))
 const LazyModelManager = lazy(() => import('./components/ModelManager'))
 const ActivityFeed = lazy(() => import('./components/ActivityFeed'))
+const TaskInspector = lazy(() => import('./components/TaskInspector'))
 
 type PageRoute = {
   route: Exclude<Route, 'chat'>
@@ -95,7 +96,7 @@ function PageBody({ route }: { route: Route }) {
 }
 
 export default function AppLayout() {
-  const { authed, logout } = useApp()
+  const { authed, logout, selectSession } = useApp()
   const themeReady = useThemePreferences(authed)
   // 首启向导（M1）：登录后零密钥 → 引导初始化；?setup=1 强制唤出
   const [needsSetup, setNeedsSetup] = useState(false)
@@ -117,7 +118,7 @@ export default function AppLayout() {
   const [rightPanel, setRightPanel] = useState<'chat' | UtilityPanelKey>(() => {
     try {
       const saved = localStorage.getItem('pi_right_panel')
-      if (saved && ['workspace', 'deliveries', 'terminal', 'activity', 'tui'].includes(saved)) return saved as UtilityPanelKey
+      if (saved && ['inspect', 'workspace', 'deliveries', 'terminal', 'activity', 'tui'].includes(saved)) return saved as UtilityPanelKey
     } catch {}
     return 'chat'
   })
@@ -179,7 +180,11 @@ export default function AppLayout() {
   )
   const panelContents = (
     <Suspense fallback={<PageLoader />}>
-      {rightPanel === 'workspace' ? <WorkSpace />
+      {rightPanel === 'inspect' ? <TaskInspector
+        onOpenSession={sessionId => { selectSession(sessionId); nav('chat') }}
+        onOpenReview={() => { setPanelExpanded(false); setRightPanel('chat'); nav('review') }}
+      />
+        : rightPanel === 'workspace' ? <WorkSpace />
         : rightPanel === 'deliveries' ? <Deliveries />
           : rightPanel === 'activity' ? <ActivityFeed />
             : rightPanel === 'tui' ? <div className="flex-1 min-h-0 flex flex-col"><TuiTerminal /></div>

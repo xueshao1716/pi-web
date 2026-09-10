@@ -1,13 +1,14 @@
 import { useEffect, type ReactNode } from 'react'
-import { Activity, ChevronsLeftRight, FolderKanban, GitCompare, PackageCheck, PanelRightClose, TerminalSquare, X } from 'lucide-react'
+import { Activity, ChevronsLeftRight, ClipboardCheck, FolderKanban, GitCompare, PackageCheck, PanelRightClose, TerminalSquare, X } from 'lucide-react'
 import type { UtilityPanelKey } from './MobileMoreMenu'
 
 const PANEL_TABS: { key: UtilityPanelKey; label: string; description: string; shortcut: string; icon: typeof Activity }[] = [
-  { key: 'workspace', label: '工作区', description: '浏览文件、预览内容并交付', shortcut: 'Alt+1', icon: FolderKanban },
-  { key: 'deliveries', label: '交付物', description: '查看最近生成和交付的文件', shortcut: 'Alt+2', icon: PackageCheck },
-  { key: 'terminal', label: '终端', description: '在当前工作区执行命令', shortcut: 'Alt+3', icon: TerminalSquare },
-  { key: 'activity', label: '活动', description: '查看小语最近的执行轨迹', shortcut: 'Alt+4', icon: Activity },
-  { key: 'tui', label: 'TUI', description: '接管完整的终端界面', shortcut: 'Alt+5', icon: ChevronsLeftRight },
+  { key: 'inspect', label: '检查', description: '查看运行状态、改动和验收', shortcut: 'Alt+1', icon: ClipboardCheck },
+  { key: 'workspace', label: '工作区', description: '浏览文件、预览内容并交付', shortcut: 'Alt+2', icon: FolderKanban },
+  { key: 'deliveries', label: '交付物', description: '查看最近生成和交付的文件', shortcut: 'Alt+3', icon: PackageCheck },
+  { key: 'terminal', label: '终端', description: '在当前工作区执行命令', shortcut: 'Alt+4', icon: TerminalSquare },
+  { key: 'activity', label: '活动', description: '查看小语最近的执行轨迹', shortcut: 'Alt+5', icon: Activity },
+  { key: 'tui', label: 'TUI', description: '接管完整的终端界面', shortcut: 'Alt+6', icon: ChevronsLeftRight },
 ]
 
 export default function UtilityPanel({ active, onChange, onClose, expanded, onToggleExpanded, children }: {
@@ -25,7 +26,7 @@ export default function UtilityPanel({ active, onChange, onClose, expanded, onTo
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
-      if (e.altKey && /^[1-5]$/.test(e.key)) {
+      if (e.altKey && /^[1-6]$/.test(e.key)) {
         e.preventDefault()
         const next = PANEL_TABS[Number(e.key) - 1]
         if (next) onChange(next.key)
