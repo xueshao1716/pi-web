@@ -11,7 +11,7 @@ function git(cwd, args) {
   return execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8' })
 }
 
-function fixture(cwd) {
+function fixture(cwd, gitRunner = null) {
   let response
   const api = createMiscApi({
     json: (_res, status, body) => { response = { status, body } },
@@ -20,6 +20,7 @@ function fixture(cwd) {
     openSession: async () => null, ensureAgent: async () => {}, getDefaultModel: () => null,
     refreshModelList: async () => {}, scanSessionFiles: () => [], extractText: () => '', parseSessionFile: () => ({}),
     cwd, scanExclude: /(^|[\\/])node_modules([\\/]|$)/i,
+    ...(gitRunner ? { gitRunner } : {}),
   })
   return { api, response: () => response }
 }
@@ -58,6 +59,20 @@ test('git review reports a non-repository without pretending verification ran', 
     assert.deepEqual(fx.response().body, {
       isRepo: false, branch: null, files: [], diff: '', diffTruncated: false,
       verification: { state: 'unknown', checks: [] },
+    })
+  } finally { fs.rmSync(cwd, { recursive: true, force: true }) }
+})
+
+test('git review reports oversized command output instead of inventing a changed file', async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'piweb-git-review-large-'))
+  try {
+    const fx = fixture(cwd, async args => args[0] === 'status'
+      ? { ok: false, isRepo: true, output: '', error: 'output_too_large' }
+      : { ok: true, isRepo: true, output: '' })
+    await fx.api.handleGitReview({})
+    assert.deepEqual(fx.response().body, {
+      isRepo: true, branch: null, files: [], diff: '', diffTruncated: false,
+      error: 'output_too_large', verification: { state: 'unknown', checks: [] },
     })
   } finally { fs.rmSync(cwd, { recursive: true, force: true }) }
 })

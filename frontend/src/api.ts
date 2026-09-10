@@ -573,6 +573,7 @@ export interface GitReviewFile {
 }
 export interface GitReview {
   isRepo: boolean
+  error?: string
   branch: string | null
   files: GitReviewFile[]
   diff: string

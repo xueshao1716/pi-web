@@ -57,9 +57,10 @@ export default function ReviewWorkbench() {
 
       {error && <div className="review-alert" role="alert"><CircleAlert className="w-4 h-4" />读取 Git 改动失败，请稍后重试。</div>}
       {isLoading && <div className="review-loading" role="status">正在整理文件改动…</div>}
+      {!isLoading && !error && review?.error && <div className="review-alert" role="alert"><CircleAlert className="w-4 h-4" />仓库改动太多，暂时无法完整读取；请先缩小未跟踪目录或刷新。</div>}
       {!isLoading && !error && review && !review.isRepo && <div className="review-empty"><GitCompare className="w-7 h-7" /><h2>这里还不是 Git 仓库</h2><p>把项目放进 Git 仓库后，元枢会在这里列出文件级改动和验收状态。</p></div>}
 
-      {!isLoading && !error && review?.isRepo && <>
+      {!isLoading && !error && review?.isRepo && !review.error && <>
         <section className="review-summary" aria-label="改动摘要">
           <div><span className="review-summary-label">文件</span><strong>{files.length}</strong></div>
           <div><span className="review-summary-label">新增行</span><strong className="text-pi-success">+{summary.additions}</strong></div>

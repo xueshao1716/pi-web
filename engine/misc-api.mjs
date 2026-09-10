@@ -12,7 +12,7 @@ export function createMiscApi(deps) {
     getAgentDir, authPath, modelsPath,
     openSession, ensureAgent, getDefaultModel,
     refreshModelList, scanSessionFiles, extractText, parseSessionFile,
-    cwd, scanExclude,
+    cwd, scanExclude, gitRunner: injectedGitRunner = null,
   } = deps;
 
   // 产物扫描：只扫关键目录（根目录 + 生成物/ + 收发文件/今天 + 工程/），时间窗内 + 成品类型
@@ -162,12 +162,16 @@ export function createMiscApi(deps) {
 
   // Git 集成
   function runGit(args) {
+    if (typeof injectedGitRunner === "function") return injectedGitRunner(args);
     return new Promise((resolve) => {
       execFile("git", ["-C", cwd, ...args], { encoding: "utf8", timeout: 8000, maxBuffer: 2 * 1024 * 1024 }, (err, stdout) => {
         if (err) {
           const msg = String(err.message || "");
           if (msg.includes("not a git repository") || msg.includes("Not a git repository")) {
             return resolve({ ok: false, isRepo: false, output: "" });
+          }
+          if (err.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" || /maxBuffer length exceeded/i.test(msg)) {
+            return resolve({ ok: false, isRepo: true, output: "", error: "output_too_large" });
           }
           return resolve({ ok: false, isRepo: true, output: msg.split("\n").slice(-5).join("\n") });
         }
@@ -189,10 +193,13 @@ export function createMiscApi(deps) {
   async function handleGitReview(res) {
     const unknownVerification = { state: "unknown", checks: [] };
     const [statusResult, diffResult, numstatResult] = await Promise.all([
-      runGit(["status", "--short", "--branch", "--untracked-files=all"]),
+      runGit(["status", "--short", "--branch", "--untracked-files=normal"]),
       runGit(["diff", "--no-ext-diff", "--unified=3", "HEAD", "--"]),
       runGit(["diff", "--no-ext-diff", "--numstat", "HEAD", "--"]),
     ]);
+    if (statusResult.error) {
+      return json(res, 200, { isRepo: statusResult.isRepo !== false, branch: null, files: [], diff: "", diffTruncated: false, error: statusResult.error, verification: unknownVerification });
+    }
     if (statusResult.isRepo === false) {
       return json(res, 200, { isRepo: false, branch: null, files: [], diff: "", diffTruncated: false, verification: unknownVerification });
     }

@@ -17,6 +17,7 @@ test('review workbench is wired as a route and exposes safe review states', () =
   assert.match(page, /改动与验收/)
   assert.match(page, /verification\.state/)
   assert.match(page, /diffTruncated/)
+  assert.match(page, /review\?\.error/)
   assert.match(page, /diffForFile|selectedDiff/)
   assert.match(page, /已阅|确认已看|acknowledge/i)
   assert.match(page, /useState/)
