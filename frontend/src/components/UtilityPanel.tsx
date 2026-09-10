@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
-import { Activity, ChevronsLeftRight, FolderKanban, PackageCheck, PanelRightClose, TerminalSquare, X } from 'lucide-react'
+import { Activity, ChevronsLeftRight, FolderKanban, GitCompare, PackageCheck, PanelRightClose, TerminalSquare, X } from 'lucide-react'
 import type { UtilityPanelKey } from './MobileMoreMenu'
 
 const PANEL_TABS: { key: UtilityPanelKey; label: string; description: string; shortcut: string; icon: typeof Activity }[] = [
@@ -16,6 +16,7 @@ export default function UtilityPanel({ active, onChange, onClose, expanded, onTo
   onClose: () => void
   expanded: boolean
   onToggleExpanded: () => void
+  onOpenReview?: () => void
   children: ReactNode
 }) {
   const canExpand = active === 'terminal' || active === 'tui'
@@ -48,6 +49,7 @@ export default function UtilityPanel({ active, onChange, onClose, expanded, onTo
             <div className="utility-panel-description truncate">{activeTab.description}</div>
           </div>
           <kbd className="utility-panel-shortcut hidden shrink-0 rounded-pi-sm border border-pi-border-soft bg-pi-bg2 px-1.5 py-1 font-mono text-[10px] text-pi-dim2 lg:inline-flex">{activeTab.shortcut}</kbd>
+          {onOpenReview && <button type="button" className="utility-panel-review btn-tool !h-9 !px-2" title="打开改动审查" onClick={onOpenReview}><GitCompare className="h-3.5 w-3.5" /><span className="hidden xl:inline">审查</span></button>}
           {canExpand && (
             <button
               className="utility-panel-expand btn-tool !h-9 !w-9 !p-0"

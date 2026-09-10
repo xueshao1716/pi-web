@@ -227,6 +227,7 @@ export default function AppLayout() {
                   onClose={() => { setPanelExpanded(false); setRightPanel('chat') }}
                   expanded={panelExpanded}
                   onToggleExpanded={() => setPanelExpanded(value => !value)}
+                  onOpenReview={() => { setPanelExpanded(false); setRightPanel('chat'); nav('review') }}
                 >
                   {panelContents}
                 </UtilityPanel>
@@ -335,6 +336,7 @@ export default function AppLayout() {
           onClose={() => { setPanelExpanded(false); setRightPanel('chat') }}
           expanded={panelExpanded}
           onToggleExpanded={() => setPanelExpanded(value => !value)}
+          onOpenReview={() => { setPanelExpanded(false); setRightPanel('chat'); nav('review') }}
         >
           {panelContents}
         </UtilityPanel>
