@@ -114,7 +114,13 @@ export default function AppLayout() {
     try { localStorage.setItem('pi_sidebar_collapsed', v ? '0' : '1') } catch {}
     return !v
   })
-  const [rightPanel, setRightPanel] = useState<'chat' | UtilityPanelKey>('chat')
+  const [rightPanel, setRightPanel] = useState<'chat' | UtilityPanelKey>(() => {
+    try {
+      const saved = localStorage.getItem('pi_right_panel')
+      if (saved && ['workspace', 'deliveries', 'terminal', 'activity', 'tui'].includes(saved)) return saved as UtilityPanelKey
+    } catch {}
+    return 'chat'
+  })
   const [panelExpanded, setPanelExpanded] = useState(false)
   const [modelOpen, setModelOpen] = useState(false)
   // 移动端：sessions 抽屉与统一“更多”菜单
@@ -129,6 +135,10 @@ export default function AppLayout() {
   const [paletteOpen, setPaletteOpen] = useState(false)
 
   useEffect(() => installVisualViewportHeight(), [])
+
+  useEffect(() => {
+    try { localStorage.setItem('pi_right_panel', rightPanel) } catch {}
+  }, [rightPanel])
 
   // Theme hydration runs before either shell mounts its wallpaper element.
   useEffect(() => {

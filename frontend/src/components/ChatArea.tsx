@@ -40,6 +40,10 @@ interface StreamState {
 
 const emptyStream = (): StreamState => ({ text: '', think: '', thinkDone: false, conclusion: '', tools: [], notes: [], files: [], images: [], audios: [], videos: [] })
 
+const RIGHT_PANEL_LABELS: Record<string, string> = {
+  workspace: '工作区', deliveries: '交付物', terminal: '终端', activity: '活动', tui: 'TUI',
+}
+
 // 10 分钟无新事件才判定为死流；长任务可能在模型思考或工具执行阶段暂时没有增量。
 const IDLE_WARN_MS = 600_000
 
@@ -848,15 +852,16 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         {onRightPanel && (
           <button
             aria-label="切换右栏"
+            aria-pressed={rightPanel !== 'chat'}
             title={rightPanel !== 'chat' ? '收起右栏' : '打开右栏'}
             onClick={() => onRightPanel(rightPanel === 'chat' ? 'workspace' : 'chat')}
             className={`text-[11px] px-2.5 py-1 rounded-pi-sm border flex items-center gap-1 flex-shrink-0 transition-colors duration-150 ${
               rightPanel && rightPanel !== 'chat'
                 ? 'bg-pi-accent text-white border-pi-accent'
                 : 'border-pi-border-soft bg-pi-bg2/60 text-pi-dim hover:text-pi-text glow-hover'}`}
-          >
+            >
             <PanelRight className="w-3 h-3" strokeWidth={2} />
-            右栏
+            {rightPanel !== 'chat' ? RIGHT_PANEL_LABELS[rightPanel || 'workspace'] || '右栏' : '右栏'}
           </button>
         )}
         {/* 心情：服务端真实情绪镜像，只展示不可点改。灵珠连续反映 VAD（2026-09-03，替代 emoji 八桶） */}

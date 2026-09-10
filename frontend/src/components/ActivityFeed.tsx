@@ -1,17 +1,16 @@
-import { Satellite as EmptyActivityIcon } from 'lucide-react'
+import { Activity, Bot, BrainCircuit, CircleAlert, CircleCheck, CircleDot, Moon, Play, Power, Satellite as EmptyActivityIcon, Square, UserRound, Wrench, type LucideIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { Activity } from 'lucide-react'
 import { AgentEventsApi, type AgentEvent } from '../api'
 import EmptyState from './EmptyState'
 
 // 小语活动实时流（2026-08-26，对标 vanilla 活动面板）：2s 轮询 /api/agent/events，
 // 状态条推断当前在干嘛 + 事件时间线（最新在上，最多 40 条）。挂载才轮询，卸载即停。
 
-const ICONS: Record<string, string> = {
-  thinking: '💭', turn_start: '▶', tool_start: '🔧', tool_end: '✔',
-  user_message: '👤', assistant_reply: '🤖', task_completed: '✓',
-  turn_end: '⏹', error: '⚠', session_start: '🟢', session_shutdown: '⚫',
-  agent_settled: '💤',
+const ICONS: Record<string, LucideIcon> = {
+  thinking: BrainCircuit, turn_start: Play, tool_start: Wrench, tool_end: CircleCheck,
+  user_message: UserRound, assistant_reply: Bot, task_completed: CircleCheck,
+  turn_end: Square, error: CircleAlert, session_start: CircleDot, session_shutdown: Power,
+  agent_settled: Moon,
 }
 
 const LABELS: Record<string, string> = {
@@ -87,7 +86,7 @@ export default function ActivityFeed() {
               <span className="font-mono text-[10px] text-pi-dim2 flex-shrink-0 mt-0.5">
                 {new Date(ev.ts).toLocaleTimeString('zh-CN', { hour12: false })}
               </span>
-              <span className="flex-shrink-0">{ICONS[ev.type] || '·'}</span>
+              {(() => { const Icon = ICONS[ev.type] || Activity; return <Icon className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-pi-dim2" strokeWidth={1.8} aria-hidden="true" /> })()}
               <span className="text-pi-dim break-words">{describe(ev)}</span>
             </div>
           ))

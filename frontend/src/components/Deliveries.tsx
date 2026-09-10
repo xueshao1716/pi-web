@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Package } from 'lucide-react'
-import { WsApi } from '../api'
+import { ExternalLink, Package, RefreshCw } from 'lucide-react'
+import { WsApi, withFileToken } from '../api'
 
 interface Delivery { path: string; name?: string; time?: string }
 
@@ -13,14 +13,18 @@ export default function Deliveries() {
     try { const d = await WsApi.deliveries(); setItems(d.deliveries || []) } catch {} finally { setLoading(false) }
   }
   useEffect(() => { load() }, [])
+  const openDelivery = (path: string) => {
+    const url = withFileToken(`/api/ws/file?path=${encodeURIComponent(path)}`)
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="flex items-center px-4 h-11 border-b border-pi-border-soft flex-shrink-0">
         <span className="text-sm font-semibold text-pi-text">交付物</span>
         <span className="ml-auto text-[10px] text-pi-dim2">交付/ 目录</span>
-        <button className="btn-tool !px-2 ml-2" title="刷新" onClick={load}>
-          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        <button className="btn-tool !h-8 !w-8 !p-0 ml-2" title="刷新交付物" aria-label="刷新交付物" onClick={load}>
+          <RefreshCw className="w-3.5 h-3.5" />
         </button>
       </div>
       <div className="flex-1 overflow-y-auto p-3">
@@ -40,6 +44,9 @@ export default function Deliveries() {
                     <div className="text-[13px] text-pi-text truncate">{d.name || d.path}</div>
                     <div className="text-[10px] text-pi-dim2 font-mono truncate">{d.path}{d.time ? ` · ${d.time}` : ''}</div>
                   </div>
+                  <button type="button" className="btn-tool !h-8 !w-8 !p-0 flex-shrink-0" title="打开交付物" aria-label={`打开${d.name || d.path}`} onClick={() => openDelivery(d.path)}>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               ))}
             </div>

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as D from '@radix-ui/react-dialog'
 import { useRestoreFocus } from '../hooks/useRestoreFocus'
-import { MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, FolderClosed, Package, SquareTerminal, Settings2, Plus, CornerDownLeft, LayoutDashboard, Sparkles, Factory, Palette, Database, MonitorCog, Cpu } from 'lucide-react'
+import { MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, FolderClosed, Package, SquareTerminal, Settings2, Plus, CornerDownLeft, LayoutDashboard, Sparkles, Factory, Palette, Database, MonitorCog, Cpu, Activity, ChevronsLeftRight } from 'lucide-react'
 import { useApp } from '../store'
 import { toast } from './Toast'
 import { SessionsApi } from '../api'
 import type { Route } from '../hooks/useHashRoute'
+import type { UtilityPanelKey } from './MobileMoreMenu'
 
 // ── ⌘K 命令面板（08-25 评审 P1：power-user 工作台零快捷键的补课）──
 // 全局 Ctrl/Cmd+K 唤起；页面跳转 / 新建会话 / 右栏切换 / 会话搜索直达
@@ -14,7 +15,7 @@ interface PaletteProps {
   open: boolean
   onClose: () => void
   nav: (r: Route) => void
-  onRightPanel: (p: 'workspace' | 'deliveries' | 'terminal') => void
+  onRightPanel: (p: UtilityPanelKey) => void
   onModelManager: () => void
 }
 
@@ -60,6 +61,8 @@ export default function CommandPalette({ open, onClose, nav, onRightPanel, onMod
       { key: 'rp-workspace', icon: FolderClosed, label: '右栏 · 工作空间', hint: '对话页', run: () => { onRightPanel('workspace'); nav('chat'); onClose() } },
       { key: 'rp-deliveries', icon: Package, label: '右栏 · 交付物', hint: '对话页', run: () => { onRightPanel('deliveries'); nav('chat'); onClose() } },
       { key: 'rp-terminal', icon: SquareTerminal, label: '右栏 · 终端', hint: '对话页', run: () => { onRightPanel('terminal'); nav('chat'); onClose() } },
+      { key: 'rp-activity', icon: Activity, label: '右栏 · 活动', hint: '对话页', run: () => { onRightPanel('activity'); nav('chat'); onClose() } },
+      { key: 'rp-tui', icon: ChevronsLeftRight, label: '右栏 · TUI', hint: '对话页', run: () => { onRightPanel('tui'); nav('chat'); onClose() } },
       { key: 'mm', icon: Settings2, label: '密钥与通道管理', hint: '面板', run: () => { onModelManager(); onClose() } },
     ]
     // 会话直达（按关键词过滤后追加在后面）
