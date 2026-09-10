@@ -86,15 +86,28 @@ export function createRunManager({ store, eventLog, executeChat, instanceId, onS
     if (type === 'reasoning') return { phase: 'thinking', step: 'reasoning' }
     if (type === 'tool' || type === 'tool_start' || type === 'tool_started') return { phase: 'executing', step: name ? `tool:${name}` : 'tool' }
     if (type === 'tool_end' || type === 'tool_finished') return { phase: 'executing', step: name ? `tool:${name}:done` : 'tool:done' }
-    if (type === 'checkpoint') return {
+    if (type === 'checkpoint') {
+      // The SSE payload emitted by the checkpoint writer has a transport
+      // phase (`executing`) as well as the canonical logical kind
+      // (`tool_plan`, `model_request`, ...). Persist the latter so recovery
+      // can select the correct replay path after the event has crossed the
+      // manager boundary.
+      const checkpointKind = typeof data.checkpointKind === 'string' && data.checkpointKind
+        ? data.checkpointKind
+        : data.phase || 'checkpoint'
+      const logicalKind = checkpointKind === 'tool_results' || checkpointKind === 'model_response' || checkpointKind === 'model_request' || checkpointKind === 'tool_plan'
+        ? checkpointKind
+        : null
+      return {
       phase: 'executing',
-      step: data.phase === 'tool_results' ? 'tool-results' : data.phase === 'model_response' ? 'model-response' : data.phase === 'model_request' ? 'model-request' : 'tool-plan',
-      checkpointKind: data.phase || 'checkpoint',
+      step: logicalKind === 'tool_results' ? 'tool-results' : logicalKind === 'model_response' ? 'model-response' : logicalKind === 'model_request' ? 'model-request' : 'tool-plan',
+      checkpointKind,
       ...(Number.isInteger(data.turn) ? { turn: data.turn } : {}),
       ...(Array.isArray(data.toolPlan) ? { toolPlan: data.toolPlan } : {}),
       ...(data.historySnapshot && typeof data.historySnapshot === 'object' ? { historySnapshot: data.historySnapshot } : data.v === 1 && Array.isArray(data.messages) ? { historySnapshot: { v: 1, turn: data.turn, messages: data.messages, digest: data.digest } } : {}),
       ...(data.historyDigest || data.digest ? { historyDigest: String(data.historyDigest || data.digest) } : {}),
       ...(Number.isInteger(data.historyCount) ? { historyCount: data.historyCount } : Array.isArray(data.messages) ? { historyCount: data.messages.length } : {}),
+      }
     }
     if (type === 'handoff') return { phase: 'executing', step: 'handoff' }
     if (type === 'memory_written') return { phase: 'remembering', step: 'memory' }

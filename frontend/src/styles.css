@@ -83,6 +83,69 @@ html, body, #root { height: 100%; }
 .session-db-table tbody tr:nth-child(even) { background: color-mix(in oklab, var(--pi-bg1) 48%, transparent); }
 .session-db-table tbody tr:hover { background: var(--pi-bg-hover); }
 .session-db-footnote { max-width: 76ch; line-height: 1.65; }
+
+/* ── 改动与验收工作台：密集、可扫描、以内容为中心 ── */
+.review-workbench { color: var(--pi-text); }
+.review-meta { display: inline-flex; align-items: center; gap: 6px; color: var(--pi-dim2); font-size: 12px; }
+.review-alert, .review-empty, .review-loading {
+  display: flex; align-items: center; gap: 9px; padding: 14px 16px; border: 1px solid var(--pi-border-soft);
+  background: var(--pi-surface); color: var(--pi-dim); font-size: 13px;
+}
+.review-alert { color: var(--pi-danger); border-color: color-mix(in oklab, var(--pi-danger) 30%, var(--pi-border)); }
+.review-empty { min-height: 180px; flex-direction: column; justify-content: center; text-align: center; }
+.review-empty h2 { color: var(--pi-text); font-size: 15px; font-weight: 650; }
+.review-empty p { max-width: 42ch; color: var(--pi-dim2); font-size: 12px; }
+.review-summary {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-block: 1px solid var(--pi-border-soft);
+  margin-bottom: 14px; background: color-mix(in oklab, var(--pi-surface) 78%, transparent);
+}
+.review-summary > div { min-height: 68px; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 12px 15px; border-right: 1px solid var(--pi-border-soft); }
+.review-summary > div:last-child { border-right: 0; }
+.review-summary-label { color: var(--pi-dim2); font-size: 11px; }
+.review-summary strong { font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.review-summary-verification { gap: 5px !important; }
+.review-verification { display: inline-flex; align-items: center; gap: 6px; width: fit-content; color: var(--pi-dim); font-size: 11px; }
+.review-status-dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+.review-verification-passed { color: var(--pi-success); }
+.review-verification-failed { color: var(--pi-danger); }
+.review-verification-running { color: var(--pi-accent); }
+.review-verification-unknown { color: var(--pi-dim2); }
+.review-workbench-grid { display: grid; grid-template-columns: minmax(230px, .34fr) minmax(0, 1fr); min-height: 390px; border: 1px solid var(--pi-border); background: var(--pi-surface); }
+.review-file-panel { border-right: 1px solid var(--pi-border); min-width: 0; }
+.review-diff-panel { min-width: 0; display: flex; flex-direction: column; }
+.review-section-head { min-height: 43px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--pi-border-soft); color: var(--pi-text); font-size: 12px; font-weight: 650; }
+.review-file-row { width: 100%; min-height: 56px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 8px; align-items: center; padding: 9px 12px; border-bottom: 1px solid var(--pi-border-soft); color: var(--pi-dim); text-align: left; transition: background-color .15s var(--pi-ease), color .15s var(--pi-ease); }
+.review-file-row:hover { background: var(--pi-bg-hover); color: var(--pi-text); }
+.review-file-row.is-selected { background: var(--pi-accent-soft); color: var(--pi-text); }
+.review-file-row > svg { grid-row: 1 / span 2; color: var(--pi-accent); }
+.review-file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px/1.3 var(--pi-font-mono); }
+.review-file-status { width: fit-content; padding: 1px 5px; border-radius: 4px; font-size: 10px; line-height: 1.4; }
+.review-file-status-modified { color: var(--pi-accent); background: var(--pi-accent-soft); }
+.review-file-status-untracked { color: var(--pi-warning); background: color-mix(in oklab, var(--pi-warning) 12%, transparent); }
+.review-file-status-deleted { color: var(--pi-danger); background: color-mix(in oklab, var(--pi-danger) 12%, transparent); }
+.review-file-status-added, .review-file-status-renamed { color: var(--pi-success); background: color-mix(in oklab, var(--pi-success) 12%, transparent); }
+.review-file-count { grid-column: 2 / span 2; color: var(--pi-dim2); font: 10px/1.3 var(--pi-font-mono); }
+.review-panel-empty { padding: 28px 16px; color: var(--pi-dim2); font-size: 12px; line-height: 1.6; }
+.review-diff { flex: 1; overflow: auto; margin: 0; padding: 12px 0; background: color-mix(in oklab, var(--pi-bg) 82%, var(--pi-surface)); color: var(--pi-dim); font: 11px/1.65 var(--pi-font-mono); tab-size: 2; }
+.review-diff-line { display: block; min-height: 1.65em; padding: 0 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.review-diff-add { background: color-mix(in oklab, var(--pi-success) 13%, transparent); color: var(--pi-text); }
+.review-diff-remove { background: color-mix(in oklab, var(--pi-danger) 13%, transparent); color: var(--pi-text); }
+.review-diff-hunk { color: var(--pi-accent); background: color-mix(in oklab, var(--pi-accent) 10%, transparent); }
+.review-diff-file { color: var(--pi-dim2); }
+.review-diff-truncated { color: var(--pi-warning); font-size: 10px; font-weight: 500; }
+.review-verification-panel { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 14px; padding: 14px 15px; border: 1px solid var(--pi-border); background: var(--pi-surface); }
+.review-verification-copy { margin-top: 5px; color: var(--pi-dim2); font-size: 12px; }
+.review-ack-button { flex: 0 0 auto; min-height: 40px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--pi-border); padding-inline: 12px; }
+.review-ack-button.is-acknowledged { color: var(--pi-success); border-color: color-mix(in oklab, var(--pi-success) 35%, var(--pi-border)); }
+@media (max-width: 720px) {
+  .review-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .review-summary > div:nth-child(2) { border-right: 0; }
+  .review-workbench-grid { grid-template-columns: 1fr; }
+  .review-file-panel { border-right: 0; border-bottom: 1px solid var(--pi-border); max-height: 230px; overflow-y: auto; }
+  .review-diff-panel { min-height: 300px; }
+  .review-verification-panel { align-items: flex-start; flex-direction: column; }
+  .review-ack-button { width: 100%; justify-content: center; }
+}
 @media (max-width: 640px) {
   .chat-scroll-region { padding: 8px 14px 16px; }
   .welcome-content { padding-block: 8px 28px; }

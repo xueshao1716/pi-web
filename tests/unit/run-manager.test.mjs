@@ -290,3 +290,37 @@ test('checkpoint 事件持久化工具计划与历史快照，恢复上下文保
     assert.deepEqual(contexts[1].checkpoint.toolPlan, toolPlan)
   } finally { eventLog.close(); fs.rmSync(rootDir, { recursive: true, force: true }) }
 })
+
+test('真实 checkpoint writer 事件不会把 canonical checkpointKind 覆盖成 transport phase', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'piweb-run-checkpoint-kind-'))
+  const store = createRunStore({ rootDir, idFactory: () => 'run-kind' })
+  const eventLog = createRunEventLog({ rootDir })
+  const toolPlan = [{ id: 'call-1', name: 'read', args: { path: 'README.md' }, ordinal: 0, status: 'pending' }]
+  const contexts = []
+  const manager = createRunManager({
+    store, eventLog, instanceId: 'instance-a',
+    executeChat: async (_req, res, body) => {
+      contexts.push(body.__runContext)
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      if (contexts.length === 1) {
+        res.write(`event: checkpoint\ndata: ${JSON.stringify({ phase: 'executing', step: 'tool-plan', checkpointKind: 'tool_plan', turn: 2, toolPlan })}\n\n`)
+      } else {
+        res.write('event: done\ndata: {}\n\n')
+      }
+      res.end()
+    },
+  })
+  try {
+    const run = manager.create({ sessionId: 'session-kind', clientRequestId: 'request-1', message: 'resume plan' })
+    await waitFor(() => manager.get(run.id)?.status === 'completed')
+    assert.equal(manager.get(run.id).checkpoint.checkpointKind, 'tool_plan')
+    assert.deepEqual(manager.get(run.id).checkpoint.toolPlan, toolPlan)
+
+    store.update(run.id, { status: 'interrupted', resumeAvailable: true })
+    manager.resume(run.id)
+    await waitFor(() => contexts.length === 2)
+    assert.equal(contexts[1].resume, true)
+    assert.equal(contexts[1].checkpoint.checkpointKind, 'tool_plan')
+    assert.deepEqual(contexts[1].checkpoint.toolPlan, toolPlan)
+  } finally { eventLog.close(); fs.rmSync(rootDir, { recursive: true, force: true }) }
+})

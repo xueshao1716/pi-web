@@ -184,8 +184,56 @@ export function createMiscApi(deps) {
     json(res, 200, { isRepo: r.isRepo !== false, output: r.output || "" });
   }
 
+  // GET /api/git/review —— review-only repository snapshot for the workbench.
+  // It intentionally reports state and never stages, resets, commits, or runs tests.
+  async function handleGitReview(res) {
+    const unknownVerification = { state: "unknown", checks: [] };
+    const [statusResult, diffResult, numstatResult] = await Promise.all([
+      runGit(["status", "--short", "--branch", "--untracked-files=all"]),
+      runGit(["diff", "--no-ext-diff", "--unified=3", "HEAD", "--"]),
+      runGit(["diff", "--no-ext-diff", "--numstat", "HEAD", "--"]),
+    ]);
+    if (statusResult.isRepo === false) {
+      return json(res, 200, { isRepo: false, branch: null, files: [], diff: "", diffTruncated: false, verification: unknownVerification });
+    }
+
+    const statusLines = String(statusResult.output || "").split(/\r?\n/).filter(Boolean);
+    const branchLine = statusLines.find(line => line.startsWith("##")) || "";
+    const branch = branchLine.slice(2).trim().split("...")[0] || null;
+    const files = new Map();
+    for (const line of statusLines) {
+      if (line.startsWith("##") || line.length < 4) continue;
+      const code = line.slice(0, 2);
+      const filePath = line.slice(3).trim().replace(/^\"|\"$/g, "");
+      if (!filePath) continue;
+      const status = code === "??" ? "untracked" : code.includes("D") ? "deleted" : code.includes("R") ? "renamed" : code.includes("A") ? "added" : "modified";
+      files.set(filePath, { path: filePath, status, code, additions: 0, deletions: 0 });
+    }
+    for (const line of String(numstatResult.output || "").split(/\r?\n/).filter(Boolean)) {
+      const [added, removed, ...parts] = line.split("\t");
+      const filePath = parts.join("\t").trim();
+      if (!filePath) continue;
+      const current = files.get(filePath) || { path: filePath, status: "modified", code: "  ", additions: 0, deletions: 0 };
+      current.additions = /^\d+$/.test(added) ? Number(added) : null;
+      current.deletions = /^\d+$/.test(removed) ? Number(removed) : null;
+      files.set(filePath, current);
+    }
+    const rawDiff = String(diffResult.output || "");
+    const maxDiffChars = 160_000;
+    const diffTruncated = rawDiff.length > maxDiffChars;
+    const diff = diffTruncated ? rawDiff.slice(0, maxDiffChars) : rawDiff;
+    return json(res, 200, {
+      isRepo: true,
+      branch,
+      files: [...files.values()].slice(0, 300),
+      diff,
+      diffTruncated,
+      verification: unknownVerification,
+    });
+  }
+
   return {
     scanRecentArtifacts, handlePrompts, handleSessionTree, handleSessionBranch,
-    handleModelsRemove, handleSearch, runGit, handleGitStatus, handleGitDiff,
+    handleModelsRemove, handleSearch, runGit, handleGitStatus, handleGitDiff, handleGitReview,
   };
 }

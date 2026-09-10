@@ -563,6 +563,26 @@ export const SubagentApi = {
   runs: () => api<{ runs: SubagentRun[] }>('/api/subagent/runs'),
 }
 
+// ── 改动与验收工作台：只读 Git 快照 ──
+export interface GitReviewFile {
+  path: string
+  status: 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked'
+  code: string
+  additions: number | null
+  deletions: number | null
+}
+export interface GitReview {
+  isRepo: boolean
+  branch: string | null
+  files: GitReviewFile[]
+  diff: string
+  diffTruncated: boolean
+  verification: { state: 'unknown' | 'running' | 'passed' | 'failed'; checks: { name?: string; state?: string }[] }
+}
+export const GitReviewApi = {
+  review: () => api<GitReview>('/api/git/review'),
+}
+
 // ── 定时任务（时间引擎）──
 export interface TimeTask { id: string; type: 'daily' | 'weekly' | 'once'; at: string; day?: number | null; date?: string | null; prompt: string; label: string; created: string; lastRun?: string | null; runs?: number; state?: string; running?: boolean; history?: { queueId: string; startedAt: string; durationMs: number; status: string; result: string }[] }
 export const TasksApi = {

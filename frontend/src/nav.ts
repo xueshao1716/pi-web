@@ -1,6 +1,7 @@
 export const ROUTE_LABELS = {
   chat: '对话',
   board: '工作台',
+  review: '改动验收',
   lingxi: '灵感',
   workshop: '创作',
   models: '模型',
@@ -14,6 +15,6 @@ export const ROUTE_LABELS = {
 } as const
 
 // 桌面主栏只放用户每天会找的工作入口；引擎从“更多”提升为一等入口。
-export const RAIL_PRIMARY = ['chat', 'board', 'workshop', 'assets', 'tasks', 'engine'] as const
+export const RAIL_PRIMARY = ['chat', 'board', 'review', 'workshop', 'assets', 'tasks', 'engine'] as const
 
 export const RAIL_MORE = ['lingxi', 'apps', 'sessiondb', 'system'] as const

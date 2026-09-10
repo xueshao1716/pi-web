@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState, type ComponentType, type LazyExoticComponent, type ReactNode } from 'react'
-import { MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, LayoutDashboard, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog, Cpu, Palette, Database, LogOut, Ellipsis } from 'lucide-react'
+import { MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, LayoutDashboard, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog, Cpu, Palette, Database, GitCompare, LogOut, Ellipsis } from 'lucide-react'
 import { useApp } from './store'
 import { useIsMobile } from './hooks/useIsMobile'
 import { useHashRoute, PageErrorBoundary, type Route } from './hooks/useHashRoute'
@@ -28,6 +28,7 @@ const Apps = lazy(() => import('./pages/Apps'))
 const EnginePage = lazy(() => import('./pages/Engine'))
 const LingXiPage = lazy(() => import('./pages/LingXi'))
 const BoardPage = lazy(() => import('./pages/Board'))
+const ReviewWorkbench = lazy(() => import('./pages/ReviewWorkbench'))
 const SystemPage = lazy(() => import('./pages/System'))
 const ThemesPage = lazy(() => import('./pages/Themes'))
 const SessionDbPage = lazy(() => import('./pages/SessionDb'))
@@ -50,6 +51,7 @@ type PageRoute = {
 // 页面注册表是路由、页面渲染和桌面导航的单一来源；移动端导航是刻意不同的信息架构。
 const PAGE_ROUTES: PageRoute[] = [
   { route: 'board', icon: LayoutDashboard, label: ROUTE_LABELS.board, Page: BoardPage },
+  { route: 'review', icon: GitCompare, label: ROUTE_LABELS.review, Page: ReviewWorkbench },
   { route: 'lingxi', icon: Sparkles, label: ROUTE_LABELS.lingxi, Page: LingXiPage },
   { route: 'workshop', icon: Factory, label: ROUTE_LABELS.workshop, Page: WorkshopPage },
   { route: 'models', icon: BrainCircuit, label: ROUTE_LABELS.models, Page: ModelHub, nav: false },

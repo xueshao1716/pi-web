@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import {
-  Activity, BrainCircuit, Cpu, Database, Factory, FolderKanban,
+  Activity, BrainCircuit, Cpu, Database, Factory, FolderKanban, GitCompare,
   LayoutDashboard, LayoutGrid, LogOut, MonitorCog, PackageCheck, Palette, PanelRight, Sparkles,
   TerminalSquare, X,
 } from 'lucide-react'
@@ -11,6 +11,7 @@ export type UtilityPanelKey = 'workspace' | 'deliveries' | 'terminal' | 'activit
 
 const MORE_ROUTES: { route: Route; icon: typeof Sparkles; label: string }[] = [
   { route: 'board', icon: LayoutDashboard, label: ROUTE_LABELS.board },
+  { route: 'review', icon: GitCompare, label: ROUTE_LABELS.review },
   { route: 'lingxi', icon: Sparkles, label: ROUTE_LABELS.lingxi },
   { route: 'workshop', icon: Factory, label: ROUTE_LABELS.workshop },
   { route: 'models', icon: BrainCircuit, label: ROUTE_LABELS.models },

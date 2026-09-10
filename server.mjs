@@ -386,7 +386,7 @@ const CRLF = "\r\n";
 const modelKeysApi = createModelKeys({ readJsonFile, getAgentDir, getModelList: () => modelList });
 const { saveSessionModelKey, loadSessionModelKey, saveLastModel } = modelKeysApi;
 const miscApi = createMiscApi({ json, readJsonFile, writeJsonFile, getAgentDir, authPath: AUTH_PATH, modelsPath: MODELS_PATH, openSession, ensureAgent, getDefaultModel: () => defaultModel, refreshModelList, scanSessionFiles, extractText, parseSessionFile, cwd: CONFIG.cwd, scanExclude: /(^|[\\/])(node_modules|\.git|\.cache|backups?|temp|tmp|\.token)([\\/]|$)/i });
-const { scanRecentArtifacts, handlePrompts, handleSessionTree, handleSessionBranch, handleModelsRemove, handleSearch, runGit, handleGitStatus, handleGitDiff } = miscApi;
+const { scanRecentArtifacts, handlePrompts, handleSessionTree, handleSessionBranch, handleModelsRemove, handleSearch, runGit, handleGitStatus, handleGitDiff, handleGitReview } = miscApi;
 const sessionBusApi = createSessionBus({ json });
 const { busGet, busPush, handleSessionStream } = sessionBusApi;
 const { handleModels, handleSwitchModel } = createModelSessionApi({ json, readJsonFile, resolveAuth, modelCapabilities, modelsPath: MODELS_PATH, getModelList: () => modelList, getDefaultModel: () => defaultModel, getModelRuntime: () => modelRuntime, getConfig: () => CONFIG, activeSessions, createSessionAgent, saveLastModel, saveSessionModelKey });
@@ -1790,6 +1790,7 @@ const API_ROUTES = [
   ["GET", "/api/search", (res, req, url) => handleSearch(res, url.searchParams.get("q") || "")],
   ["GET", "/api/git/status", (res) => handleGitStatus(res)],
   ["GET", "/api/git/diff", (res) => handleGitDiff(res)],
+  ["GET", "/api/git/review", (res) => handleGitReview(res)],
   // ── 浏览器操作（CDP 控制 Chrome）──
   ["POST", "/api/browser/start", async (res, req) => { const b = await import("./engine/browser.mjs"); const r = await b.startChrome(); json(res, r.error ? 500 : 200, r); }],
   ["POST", "/api/browser/stop", async (res) => { const b = await import("./engine/browser.mjs"); json(res, 200, b.stopChrome()); }],
