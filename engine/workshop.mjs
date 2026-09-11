@@ -5,9 +5,10 @@ import path from "node:path";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { validateSlides, findSlidesJson, appendHistory, readHistory } from "./workshop-ppt-core.mjs";
+import { validateSlides, findSlidesJson, appendHistory, readHistory, selectPptArtifact } from "./workshop-ppt-core.mjs";
 import { lintDeck, lintPage } from "./slides-lint-core.mjs";
 import { fillHtmlBrief, formatHtmlBriefBlock, lintDeckBrief } from "./workshop-html-brief.mjs";
+import { loadAndPersistDeck } from "./workshop-html-deck.mjs";
 import { readThemeCss } from "./ppt-html-paths.mjs";
 import { pickWorkshopModel } from "./workshop-model.mjs";
 import { attachSseAbort } from "./ppt-refine.mjs";
@@ -128,22 +129,9 @@ export async function handleWorkshopPpt(ctx, res, body) {
       try { releaseAbort(); } catch {}
       try { unsub(); } catch {}
       try { agent?.abort?.(); } catch {}
-      // 扫描产物：工作空间最近 5 分钟的 .pptx
-      let file = null;
-      try {
-        const arts = scanRecentArtifacts(5 * 60 * 1000, 20);
-        file = arts.find(a => a.path.toLowerCase().endsWith(".pptx")) || null;
-      } catch {}
-      // 兜底：直接查本轮工作目录的 presentation.pptx（scan 可能因目录/时间窗漏扫）
-      if (!file) {
-        try {
-          const direct = path.join(workDir, "presentation.pptx");
-          if (fs.existsSync(direct)) {
-            const st = fs.statSync(direct);
-            file = { name: "presentation.pptx", path: path.relative(WS_ROOT, direct).replace(/\\/g, "/"), size: st.size, mime: "", mtimeMs: st.mtimeMs };
-          }
-        } catch {}
-      }
+      // 先认本轮目录的产物；兼容旧 agent 的全局扫描也必须限制在本轮目录，
+      // 避免并发任务同时完成时把别人的 presentation.pptx 交付出去。
+      const file = selectPptArtifact(workDir, WS_ROOT, scanRecentArtifacts);
       // 产物留在 ascii 工作区 workshop-out（能被 scanRecentArtifacts 扫到），不回迁避免中文编码风险
       if (file) {
         // 不再回迁到中文'工程'目录（易踩 GBK/UTF-8 编码），产物 path 就是 workshop-out 相对路径
@@ -310,27 +298,8 @@ ${formatHtmlBriefBlock(brief)}
       try { agent?.dispose?.(); } catch {}
       // 扫产物：deck.json + pages/*.html，逐页推给前端
       try {
-        const deckPath = path.join(workDir, "deck.json");
-        let deck = null;
-        if (fs.existsSync(deckPath)) {
-          deck = JSON.parse(fs.readFileSync(deckPath, "utf8"));
-          if (Array.isArray(deck)) deck = { verb: brief.verb, slides: deck };
-          else if (deck && typeof deck === "object") {
-            if (!String(deck.verb || "").trim()) deck.verb = brief.verb;
-            if (!Array.isArray(deck.slides) && Array.isArray(deck.pages)) deck.slides = deck.pages;
-          }
-          try { fs.writeFileSync(deckPath, JSON.stringify(deck, null, 2), "utf8"); } catch {}
-        } else {
-          // 兜底：扫 pages 目录
-          const pdir = path.join(workDir, "pages");
-          if (fs.existsSync(pdir)) {
-            deck = fs.readdirSync(pdir).filter(n => n.endsWith(".html")).sort()
-              .map(n => ({ file: "pages/" + n, title: n.replace(".html", ""), layout: "" }));
-            deck = { verb: brief.verb, slides: deck };
-          }
-        }
+        const { deck, list, deckPath } = loadAndPersistDeck(workDir, { verb: brief.verb });
         if (deck && Array.isArray(deck.slides || deck) && (deck.slides || deck).length) {
-          const list = deck.slides || deck;
           const relDir = path.relative(WS_ROOT, workDir).split(path.sep).join("/");
           write("deck_meta", { dir: relDir, count: list.length, themeKey });
           const deckPages = [];

@@ -47,6 +47,6 @@ test('Android 首屏必须打开公网工作台，禁止探活 http://tauri.loca
 test('元枢壳版本号必须高于 0.1.0，覆盖安装才会换原生代码', () => {
   const conf = JSON.parse(read('app', 'src-tauri', 'tauri.conf.json'))
   const cargo = read('app', 'src-tauri', 'Cargo.toml')
-  assert.equal(conf.version, '0.2.2')
-  assert.match(cargo, /^version = "0\.2\.2"/m)
+  assert.equal(conf.version, '0.2.3')
+  assert.match(cargo, /^version = "0\.2\.3"/m)
 })

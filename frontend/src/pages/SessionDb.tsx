@@ -12,6 +12,7 @@ import { api, SessionsApi, RecallApi } from '../api'
 type Row = {
   id: string; name: string; cwd: string; sizeBytes: number
   health: 'ok' | 'large' | 'oversized'; messageCount: number | null
+  createdAt?: string | null; updatedAt?: string | null
   mtime: string | null; seq: number | null; pinned: boolean; tags: string[]
 }
 type Stats = { total: number; totalMB: number; health: Record<string, number>; lastRebuild: string | null }
@@ -25,7 +26,31 @@ const HEALTH: Record<string, { label: string; cls: string }> = {
 function fmtSize(b: number) { return !b ? '—' : b < 1048576 ? `${(b / 1024).toFixed(0)}KB` : `${(b / 1048576).toFixed(1)}MB` }
 function fmtTime(t: string | null) {
   if (!t) return '—'
-  try { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` } catch { return '—' }
+  try {
+    const d = new Date(t)
+    if (!Number.isFinite(d.getTime())) return '—'
+    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  } catch { return '—' }
+}
+
+function rowTime(r: Row) {
+  for (const value of [r.updatedAt, r.mtime, r.createdAt]) {
+    if (!value) continue
+    const ms = Date.parse(value)
+    if (Number.isFinite(ms)) return ms
+  }
+  return -Infinity
+}
+
+function compareRows(a: Row, b: Row) {
+  const pinned = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)
+  if (pinned) return pinned
+  const byTime = rowTime(b) - rowTime(a)
+  if (byTime) return byTime
+  // 时间完全相同时才用稳定编号；编号不再决定新旧排序。
+  const bySeq = (b.seq || 0) - (a.seq || 0)
+  if (bySeq) return bySeq
+  return a.id.localeCompare(b.id)
 }
 
 export default function SessionDb() {
@@ -111,7 +136,7 @@ export default function SessionDb() {
 
   const visible = useMemo(() => rows
     .filter(r => (!filter || r.health === filter) && (!q || r.name.toLowerCase().includes(q.toLowerCase()) || String(r.seq || '').includes(q)))
-    .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.seq || 0) - (a.seq || 0)),
+    .sort(compareRows),
     [rows, q, filter])
 
   const hcls = (h: string) => HEALTH[h]?.cls || HEALTH.ok.cls

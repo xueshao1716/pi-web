@@ -6,18 +6,20 @@ import path from "node:path";
 import { invalidateSessionCache, getSessionList } from "./session-files.mjs";
 import { appendSessionGroup } from "./session-groups.mjs";
 import { appendArchiveJsonl, archivePathFor } from "./yuanshu-compact.mjs";
+import { execActivateSkill } from "./context-loader.mjs";
 
 let _cwd = "", _sessionsDir = "", _tools = [], _getModelList = () => [], _getDefaultModel = () => null, _activeSessions = null, _createAgentSessionServices = null, _createAgentSessionFromServices = null, _getModelRuntime = () => null,
     _SessionManager = null, _SettingsManager = null, _DefaultResourceLoader = null, _getAgentDir = () => "", _readJsonFile = null, _writeJsonFile = null, _piPackage = "", _isModelBlocked = () => false,
     _initSearchTool = async () => null, _initShareTool = async () => null, _initDshTool = async () => null, _isExternalThinking = () => false, _THINK_TOOL = null,
     _generateMediaAsync = null,
-    _modelCapabilities = null, _bindOutputGuardDeps = null, _extractMessages = null, _createSseWriter = null, _unifiedChat = null, _loadSessionModelKey = null;
-export function initSessionManager({ cwd = "", sessionsDir = "", tools = [], piPackage = "", isModelBlocked = null, getModelList = null, getDefaultModel = null, activeSessions = null, SessionManager = null, SettingsManager = null, DefaultResourceLoader = null, getAgentDir = null, readJsonFile = null, writeJsonFile = null, initSearchTool = null, initShareTool = null, initDshTool = null, isExternalThinking = null, THINK_TOOL = null, modelCapabilities = null, bindOutputGuardDeps = null, extractMessages = null, createSseWriter = null, unifiedChat = null, createAgentSessionServices = null, createAgentSessionFromServices = null, getModelRuntime = null, loadSessionModelKey = null, generateMediaAsync = null } = {}) {
+    _modelCapabilities = null, _bindOutputGuardDeps = null, _extractMessages = null, _createSseWriter = null, _unifiedChat = null, _loadSessionModelKey = null, _onSessionCreated = null;
+export function initSessionManager({ cwd = "", sessionsDir = "", tools = [], piPackage = "", isModelBlocked = null, getModelList = null, getDefaultModel = null, activeSessions = null, SessionManager = null, SettingsManager = null, DefaultResourceLoader = null, getAgentDir = null, readJsonFile = null, writeJsonFile = null, initSearchTool = null, initShareTool = null, initDshTool = null, isExternalThinking = null, THINK_TOOL = null, modelCapabilities = null, bindOutputGuardDeps = null, extractMessages = null, createSseWriter = null, unifiedChat = null, createAgentSessionServices = null, createAgentSessionFromServices = null, getModelRuntime = null, loadSessionModelKey = null, generateMediaAsync = null, onSessionCreated = null } = {}) {
   _cwd = cwd; _sessionsDir = sessionsDir; _tools = tools; _piPackage = piPackage; if (isModelBlocked) _isModelBlocked = isModelBlocked; _activeSessions = activeSessions; _SessionManager = SessionManager; _SettingsManager = SettingsManager; _DefaultResourceLoader = DefaultResourceLoader; _readJsonFile = readJsonFile; _writeJsonFile = writeJsonFile;
   if (createAgentSessionServices) _createAgentSessionServices = createAgentSessionServices; if (createAgentSessionFromServices) _createAgentSessionFromServices = createAgentSessionFromServices; if (getModelRuntime) _getModelRuntime = getModelRuntime; if (loadSessionModelKey) _loadSessionModelKey = loadSessionModelKey;
   if (getModelList) _getModelList = getModelList; if (getDefaultModel) _getDefaultModel = getDefaultModel; if (getAgentDir) _getAgentDir = getAgentDir;
   if (initSearchTool) _initSearchTool = initSearchTool; if (initShareTool) _initShareTool = initShareTool; if (initDshTool) _initDshTool = initDshTool; if (isExternalThinking) _isExternalThinking = isExternalThinking; if (THINK_TOOL) _THINK_TOOL = THINK_TOOL;
   if (generateMediaAsync) _generateMediaAsync = generateMediaAsync;
+  if (typeof onSessionCreated === "function") _onSessionCreated = onSessionCreated;
   if (modelCapabilities) _modelCapabilities = modelCapabilities; if (bindOutputGuardDeps) _bindOutputGuardDeps = bindOutputGuardDeps; if (extractMessages) _extractMessages = extractMessages; if (createSseWriter) _createSseWriter = createSseWriter; if (unifiedChat) _unifiedChat = unifiedChat;
 }
 
@@ -36,6 +38,8 @@ export async function createSession(name, { group } = {}) {
   invalidateSessionCache(); // 新增会话 → 列表缓存失效
   if (name) { try { sm.appendSessionInfo(name); } catch {} }
   try { appendSessionGroup(file, g, name); } catch {}
+  // 会话数据库编号在创建时立即落盘，避免必须手动点击“重建索引”才出现编号。
+  try { await _onSessionCreated?.({ id, file, name: name || "新会话", group: g }); } catch {}
   return id;
 }
 
@@ -312,6 +316,67 @@ export async function initSearchTool() {
   return searchToolDef;
 }
 
+// 技能渐进式披露工具：统一引擎已有 activate_skill，Pi SDK 会话也必须注册同一能力。
+// 之前只把技能摘要写进 system prompt，却没有把工具传给 AgentSession，模型于是把
+// <tool_call> 当普通文本吐出，PPT 等需要技能正文的任务会停在计划阶段。
+let activateSkillToolDef = null;
+export async function initActivateSkillTool() {
+  if (activateSkillToolDef) return activateSkillToolDef;
+  try {
+    const { createRequire } = await import("node:module");
+    const req2 = createRequire(_piPackage);
+    const { Type } = req2("typebox");
+    activateSkillToolDef = {
+      name: "activate_skill",
+      label: "加载技能",
+      description: "加载技能全文和资源清单。用户任务匹配技能库摘要时调用；参数优先传 name，也兼容旧格式 skill。",
+      promptSnippet: "匹配到技能时先调用 activate_skill 加载全文，再按技能执行",
+      promptGuidelines: [
+        "When a task matches a skill in the skill catalog, call activate_skill with its exact name before doing the work.",
+        "For PPT requests, load ppt-generator or ppt-html, then execute the complete generation workflow and deliver the actual file.",
+      ],
+      parameters: Type.Object({
+        name: Type.Optional(Type.String({ description: "技能名称，如 ppt-generator 或 ppt-html" })),
+        skill: Type.Optional(Type.String({ description: "兼容旧调用：技能名称" })),
+      }),
+      async execute(toolCallId, params) {
+        const name = String(params?.name || params?.skill || "").trim();
+        if (!name) return { content: [{ type: "text", text: "缺少技能名称（请传 name）" }], isError: true };
+        const result = execActivateSkill(name);
+        return { content: [{ type: "text", text: result.text }], isError: !!result.isError };
+      },
+    };
+  } catch (e) {
+    console.log(`[元枢] activate_skill 工具初始化失败: ${String(e?.message || e).slice(0, 100)}`);
+  }
+  return activateSkillToolDef;
+}
+
+// 外部思考调试工具的 SDK 形态。server 里的 THINK_TOOL 是 OpenAI schema，不能直接
+// 放进 Pi SDK customTools；转换后只在开启调试开关时注册，避免定义格式不匹配导致 agent 启动崩溃。
+let piThinkToolDef = null;
+async function initPiThinkTool() {
+  if (piThinkToolDef) return piThinkToolDef;
+  try {
+    const { createRequire } = await import("node:module");
+    const req2 = createRequire(_piPackage);
+    const { Type } = req2("typebox");
+    piThinkToolDef = {
+      name: "think",
+      label: "思考草稿",
+      description: "调试用草稿工具，把动手前的分析写进 content；不会展示给用户或写入会话文件。",
+      promptSnippet: "需要调试推理时调用 think 写下分析草稿",
+      parameters: Type.Object({ content: Type.String({ description: "推理草稿" }) }),
+      async execute(toolCallId, params) {
+        return { content: [{ type: "text", text: "思考草稿已记录（仅调试，不展示给用户）" }], details: { thinking: String(params?.content || "") } };
+      },
+    };
+  } catch (e) {
+    console.log(`[元枢] think 工具初始化失败: ${String(e?.message || e).slice(0, 100)}`);
+  }
+  return piThinkToolDef;
+}
+
 // 外网分享工具：模型只需传项目路径，本地系统复制到外网分享目录并返回链接
 // 模型永远不需要碰 cloudflared/隧道/端口——分享是自动的
 let shareToolDef = null;
@@ -401,15 +466,20 @@ export async function createSessionAgent(sm, model) {
   if (sh) customTools.push(sh);
   const mediaTools = await initPiMediaTools();
   if (Array.isArray(mediaTools)) customTools.push(...mediaTools);
+  const skillTool = await initActivateSkillTool();
+  if (skillTool) customTools.push(skillTool);
   // 双引擎：dsh（DeepSeek Harness）作为执行臂——pi 主引擎派单，dsh 干代码/沙箱活，pi 验收
   const dt = await _initDshTool();
   if (dt) customTools.push(dt);
   // 外部思考调试开关（externalThinking）：注入 think 工具让模型把推理写进工具参数
-  if (_isExternalThinking()) customTools.push(_THINK_TOOL);
+  if (_isExternalThinking()) {
+    const thinkTool = await initPiThinkTool();
+    if (thinkTool) customTools.push(thinkTool);
+  }
   // 两阶段引导：首轮给文件核心 + 出片/查找/分享，避免只会 bash 考古。
   // 首个文本/工具事件后 promote 恢复完整集。PI_TWO_PHASE=0 关闭。
   const MIN_BOOTSTRAP = ["read", "write", "edit", "bash"].filter(t => _tools.includes(t));
-  const FIRST_TURN_EXTRA = ["search_files", "list_channels", "generate_video", "generate_image", "generate_tts", "share_project"];
+  const FIRST_TURN_EXTRA = ["search_files", "list_channels", "generate_video", "generate_image", "generate_tts", "share_project", "activate_skill"];
   const bootstrap = isFirstTurn(sm) && MIN_BOOTSTRAP.length >= 2 && process.env.PI_TWO_PHASE !== "0";
   const allowedTools = bootstrap
     ? [...new Set([...MIN_BOOTSTRAP, ...customTools.map(t => t.name).filter(n => MIN_BOOTSTRAP.includes(n) || FIRST_TURN_EXTRA.includes(n))])]
@@ -421,7 +491,6 @@ export async function createSessionAgent(sm, model) {
     agentDir: _getAgentDir(),
     settingsManager,
     modelRuntime: _getModelRuntime(),
-    customTools,
   });
   // 完整 model（runtime 定义，含 compat——简版 {provider,id} 会导致工具不触发）
   // ⚠️ 若目标模型不是 SDK 认识的 provider（自定义 token-plan 中转如 sensenova/volces），SDK 会报
@@ -454,6 +523,7 @@ export async function createSessionAgent(sm, model) {
     model: fullModel,
     thinkingLevel: process.env.PI_REASONING_LEVEL || "high",
     tools: allowedTools,
+    customTools,
   });
   return created.session;
 }

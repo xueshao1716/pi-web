@@ -1,7 +1,10 @@
 // PPT 工作室核心逻辑单测：slides 校验 / slides JSON 探测 / 历史记录（fs 内存桩）
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateSlides, findSlidesJson, appendHistory, PPT_LAYOUTS } from "../../engine/workshop-ppt-core.mjs";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { validateSlides, findSlidesJson, appendHistory, PPT_LAYOUTS, selectPptArtifact } from "../../engine/workshop-ppt-core.mjs";
 
 function normPath(p) { return String(p).replace(/\\/g, "/"); }
 function memFs() {
@@ -69,4 +72,27 @@ test("appendHistory：追加 + 最新在前 + 裁剪到 50 条", () => {
   assert.equal(d.entries.length, 50);
   assert.equal(d.entries[0].id, "n54", "最新在前");
   assert.equal(d.version, 1);
+});
+
+test("selectPptArtifact：优先本轮目录，兜底扫描也要做路径边界过滤", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-web-ppt-artifact-"));
+  const workDir = path.join(root, "workshop-out", "ppt-abc");
+  fs.mkdirSync(workDir, { recursive: true });
+  const direct = path.join(workDir, "presentation.pptx");
+  fs.writeFileSync(direct, "ppt");
+  try {
+    const pickedDirect = selectPptArtifact(workDir, root, () => [
+      { name: "presentation.pptx", path: "workshop-out/ppt-other/presentation.pptx", size: 3, mtimeMs: 99 },
+    ]);
+    assert.equal(pickedDirect.path, "workshop-out/ppt-abc/presentation.pptx");
+
+    fs.rmSync(direct);
+    const pickedScoped = selectPptArtifact(workDir, root, () => [
+      { name: "presentation.pptx", path: "workshop-out/ppt-abcd/presentation.pptx", size: 3, mtimeMs: 99 },
+      { name: "presentation.pptx", path: "workshop-out/ppt-abc/presentation.pptx", size: 3, mtimeMs: 1 },
+    ]);
+    assert.equal(pickedScoped.path, "workshop-out/ppt-abc/presentation.pptx");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

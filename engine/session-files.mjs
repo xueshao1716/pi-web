@@ -11,6 +11,49 @@ import { classifySessionGroup } from "./session-groups.mjs";
 let _sessionsDir = "";
 let _workspaceCwd = "";
 
+// 将 JSONL 中可能出现的 ISO、数字秒/毫秒和本地时间统一转换为可比较的毫秒。
+// 无效时间返回 null；调用方可再用文件 mtime 作为最终兜底。
+export function timestampMs(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value < 1e12 ? value * 1000 : value;
+  }
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  if (/^\d+(?:\.\d+)?$/.test(text)) {
+    const n = Number(text);
+    if (Number.isFinite(n)) return n < 1e12 ? n * 1000 : n;
+  }
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+// 会话排序规则：最后更新时间优先，其次文件 mtime、创建时间，最后用 id 保证确定性。
+// 返回值遵循 Array#sort：负数表示 a 应排在 b 前面（默认最新在前）。
+export function compareSessionTimes(a = {}, b = {}) {
+  const au = timestampMs(a.updatedAt);
+  const bu = timestampMs(b.updatedAt);
+  if (au !== null || bu !== null) {
+    if (au === null) return 1;
+    if (bu === null) return -1;
+    if (au !== bu) return bu - au;
+  }
+  const am = timestampMs(a.fileMtimeMs ?? a.mtime);
+  const bm = timestampMs(b.fileMtimeMs ?? b.mtime);
+  if (am !== null || bm !== null) {
+    if (am === null) return 1;
+    if (bm === null) return -1;
+    if (am !== bm) return bm - am;
+  }
+  const ac = timestampMs(a.createdAt);
+  const bc = timestampMs(b.createdAt);
+  if (ac !== null || bc !== null) {
+    if (ac === null) return 1;
+    if (bc === null) return -1;
+    if (ac !== bc) return bc - ac;
+  }
+  return String(a.id || a.file || "").localeCompare(String(b.id || b.file || ""));
+}
+
 export function initSessionFiles({ sessionsDir = "", workspaceCwd = "" } = {}) {
   _sessionsDir = sessionsDir;
   _workspaceCwd = workspaceCwd;
@@ -38,6 +81,7 @@ export function scanSessionFiles() {
 
 export function parseSessionFile(file) {
   const info = { id: null, createdAt: null, updatedAt: null, name: null, preview: "", messageCount: 0, file, cwd: null, group: null };
+  let latestTimestampMs = null;
   try {
     const lines = fs.readFileSync(file, "utf8").split("\n").filter(Boolean);
     for (const line of lines) {
@@ -45,9 +89,19 @@ export function parseSessionFile(file) {
       if (!e || typeof e !== "object") continue;
       if (!info.id && e.type === "session") {
         info.id = e.id; info.createdAt = e.timestamp; info.updatedAt = e.timestamp; info.cwd = e.cwd;
+        latestTimestampMs = timestampMs(e.timestamp);
         continue;
       }
-      if (e.timestamp && (!info.updatedAt || e.timestamp > info.updatedAt)) info.updatedAt = e.timestamp;
+      if (e.timestamp) {
+        const nextTimestampMs = timestampMs(e.timestamp);
+        if (nextTimestampMs !== null && (latestTimestampMs === null || nextTimestampMs >= latestTimestampMs)) {
+          info.updatedAt = e.timestamp;
+          latestTimestampMs = nextTimestampMs;
+        } else if (nextTimestampMs === null && latestTimestampMs === null) {
+          // 全部时间都不可解析时，保留 JSONL 中最后一个时间字段，随后由文件 mtime 兜底排序。
+          info.updatedAt = e.timestamp;
+        }
+      }
       if (e.type === "session_info") {
         if (e.name) info.name = e.name;
         if (e.group) info.group = e.group;
@@ -95,7 +149,10 @@ function listSessions() {
   const files = scanSessionFiles();
   return files.map(parseSessionFileCached)
     .filter(s => s.id)
-    .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))
+    .map(s => {
+      try { return { ...s, fileMtimeMs: fs.statSync(s.file).mtimeMs }; } catch { return s; }
+    })
+    .sort(compareSessionTimes)
     .map(s => ({
       id: s.id,
       name: s.name || (s.preview ? s.preview.slice(0, 20) : "新会话"),

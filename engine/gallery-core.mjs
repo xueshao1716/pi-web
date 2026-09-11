@@ -6,7 +6,7 @@
 // 全部注入 fsMod 便于单测（与 workshop-ppt-core.mjs 同风格）
 // ══════════════════════════════════════════════════════════
 import * as fs from "node:fs";
-import { join, basename } from "node:path";
+import { join, basename, sep } from "node:path";
 
 /** 从 HTML 里提取标题：deck.json title > <h1>/<h2> 首行 > 文件名 */
 function pickTitle(html, fallback) {
@@ -114,7 +114,9 @@ export function readDeck(outRoot, relDir, fsMod = fs) {
     if (!name.endsWith(".html")) continue;
     let f = join(absDir, item.file || name);
     if (!fsMod.existsSync(f)) f = join(absDir, "pages", name); // 兜底：按 pages/ 下的文件名找
-    if (!f.startsWith(absDir) || !fsMod.existsSync(f)) continue;
+    // Prefix checks alone let `ppthtml-a` reach sibling `ppthtml-abuse`.
+    // Require a real path separator after the deck directory boundary.
+    if ((f !== absDir && !f.startsWith(absDir + sep)) || !fsMod.existsSync(f)) continue;
     pages.push({
       file: `pages/${name}`,
       title: String(item.title || ""),

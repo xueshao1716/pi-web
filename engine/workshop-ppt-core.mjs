@@ -6,7 +6,7 @@
 //   appendHistory    —— 生成历史（workshop-out/ppt-history.json，最新在前，上限 50 条）
 // ══════════════════════════════════════════════════════════
 import * as fs from "node:fs";
-import { join } from "node:path";
+import { join, relative, extname, sep } from "node:path";
 
 // 与 generate_pptx.py LAYOUT_MAP 保持一致
 export const PPT_LAYOUTS = new Set([
@@ -60,6 +60,36 @@ export function appendHistory(historyPath, entry, fsMod = fs) {
   entries.unshift({ ts: new Date().toISOString(), ...entry });
   fsMod.writeFileSync(historyPath, JSON.stringify({ version: 1, entries: entries.slice(0, 50) }, null, 2));
   return entries.length;
+}
+
+/**
+ * Pick the PPT produced by one run. The run directory is authoritative; a
+ * broad artifact scan is only a compatibility fallback and must stay inside
+ * that directory to avoid cross-run delivery when two jobs finish together.
+ */
+export function selectPptArtifact(workDir, wsRoot, scanRecentArtifacts, fsMod = fs) {
+  const direct = join(workDir, "presentation.pptx");
+  try {
+    if (fsMod.existsSync(direct)) {
+      const st = fsMod.statSync(direct);
+      if ((typeof st.isFile !== "function" || st.isFile()) && Number(st.size) > 0) {
+        return {
+          name: "presentation.pptx",
+          path: relative(wsRoot, direct).split(sep).join("/"),
+          size: st.size,
+          mime: "",
+          mtimeMs: st.mtimeMs,
+        };
+      }
+    }
+  } catch {}
+  let arts = [];
+  try { arts = typeof scanRecentArtifacts === "function" ? scanRecentArtifacts(5 * 60 * 1000, 20) : []; } catch {}
+  const prefix = relative(wsRoot, workDir).split(sep).join("/").replace(/\/$/, "");
+  return (Array.isArray(arts) ? arts : []).find((a) => {
+    const p = String(a?.path || "").replace(/\\/g, "/");
+    return extname(String(a?.name || p)).toLowerCase() === ".pptx" && (p === prefix || p.startsWith(prefix + "/"));
+  }) || null;
 }
 
 /** 读历史 */

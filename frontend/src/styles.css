@@ -2205,3 +2205,12 @@ html[data-theme="liquid-glass"] { color-scheme: light; }
   [data-theme="liquid-glass"] .col-sidebar,
   [data-theme="liquid-glass"] .col-right { background: #f6f9fd; backdrop-filter: none; -webkit-backdrop-filter: none; }
 }
+
+/* 壁纸层级收口：主画布是 z-10，必须退透明才能看到 z-0 壁纸；欢迎页保持完整透出。 */
+body.has-wallpaper .chat-canvas,
+body.has-wallpaper .mobile-chat-root {
+  background: transparent;
+}
+body.has-wallpaper .chat-welcome {
+  background: transparent;
+}

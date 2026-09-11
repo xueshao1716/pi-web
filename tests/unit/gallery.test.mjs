@@ -69,3 +69,13 @@ test("readDeck 宽容解析：deck.json 的 file 不带 pages/ 前缀也能找�
   assert.equal(r.pages[0].file, "pages/page-01.html");
   assert.ok(r.pages[0].html.includes("real"));
 });
+
+test("readDeck 路径边界：拒绝前缀相似的兄弟目录", () => {
+  const out = "ws/workshop-out";
+  const f = memFs({
+    [`${out}/ppthtml-a/deck.json`]: JSON.stringify({ slides: [{ file: "../ppthtml-abuse/pages/secret.html" }] }),
+    [`${out}/ppthtml-abuse/pages/secret.html`]: "<body>secret</body>",
+  });
+  const r = readDeck(out, "workshop-out/ppthtml-a", f);
+  assert.equal(r, null, "不能借路径前缀读到兄弟目录的页面");
+});

@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { json } from "./http-utils.mjs";
 import { sanitizeSessionFile } from "./session-sanitize.mjs";
-import { getSessionList, invalidateSessionCache } from "./session-files.mjs";
+import { getSessionList, invalidateSessionCache, compareSessionTimes } from "./session-files.mjs";
 import { runSessionSweep } from "./session-groups.mjs";
 
 let _agentDir = "", _cwd = "";
@@ -21,7 +21,55 @@ function loadDb() {
 }
 function saveDb() { try { fs.writeFileSync(dbFile(), JSON.stringify(_db, null, 1)); } catch {} }
 
-function nextSeq() { return Math.max(0, ...Object.values(loadDb().seqMap)) + 1; }
+function nextSeq(db = loadDb()) {
+  const values = Object.values(db.seqMap || {}).map(value => Number(value)).filter(value => Number.isInteger(value) && value > 0);
+  return (values.length ? Math.max(...values) : 0) + 1;
+}
+
+function validSeq(value) {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+// 为新会话和历史上未建索引的会话自动补发稳定编号。已有编号永不因排序变化而重写；
+// 首次补号按创建时间从旧到新，保证历史会话编号可读且新会话继续单调递增。
+export function ensureSessionSequences(sessions = getSessionList()) {
+  const db = loadDb();
+  let changed = false;
+  // 旧版本偶尔把编号以字符串写入 JSON，加载时统一成数字，避免前端排序发生隐式类型转换。
+  for (const [id, value] of Object.entries(db.seqMap || {})) {
+    const normalized = validSeq(value);
+    if (normalized === null) continue;
+    if (value !== normalized) { db.seqMap[id] = normalized; changed = true; }
+  }
+  const missing = (sessions || [])
+    .filter(session => validSeq(db.seqMap[session.id]) === null)
+    .sort((a, b) => compareSessionTimes({ ...a, updatedAt: a.createdAt }, { ...b, updatedAt: b.createdAt }));
+  // compareSessionTimes 默认最新在前；补号需要旧的先拿到更小编号。
+  missing.reverse();
+  for (const session of missing) {
+    db.seqMap[session.id] = nextSeq(db);
+    changed = true;
+  }
+  if (changed) saveDb();
+  return db;
+}
+
+// 创建会话后立即分配编号；列表读取时仍会调用 ensureSessionSequences 做一次兜底补号。
+export function ensureSessionSequence(sessionOrId) {
+  const id = typeof sessionOrId === "string" ? sessionOrId : sessionOrId?.id;
+  if (!id) return null;
+  const db = loadDb();
+  const current = validSeq(db.seqMap[id]);
+  if (current !== null) {
+    if (db.seqMap[id] !== current) { db.seqMap[id] = current; saveDb(); }
+    return current;
+  }
+  const seq = nextSeq(db);
+  db.seqMap[id] = seq;
+  saveDb();
+  return seq;
+}
 
 function healthOf(bytes) { return bytes > 5 * 1024 * 1024 ? "oversized" : bytes > 1024 * 1024 ? "large" : "ok"; }
 
@@ -43,12 +91,16 @@ export function initSessionDb({ agentDir = "", cwd = "", deleteSession = null } 
 // GET /api/sessions/db/list —— 全量（索引优先，实时状态合并）
 export function handleDbList(res) {
   const db = loadDb();
+  const sessions = getSessionList();
+  // 读取列表即自动补号，避免用户必须先点击“重建索引”。
+  ensureSessionSequences(sessions);
   const rows = [];
-  for (const s of getSessionList()) {
+  for (const s of sessions) {
     let size = 0, mtimeIso = null;
     try { const st = fs.statSync(s.file); size = st.size; mtimeIso = new Date(st.mtimeMs).toISOString(); } catch {}
     rows.push({
       id: s.id, name: s.name || "(未命名)", cwd: s.cwd || "",
+      createdAt: s.createdAt || null, updatedAt: s.updatedAt || null,
       sizeBytes: size, health: healthOf(size),
       messageCount: db.messageCount[s.id] ?? null, // rebuild 时算并持久化，这里读缓存（2026-09-04 修“永远—”）
       mtime: mtimeIso, // statSync 同次顺手取（此前遗漏永远 —）
@@ -57,7 +109,7 @@ export function handleDbList(res) {
       group: s.group || "workspace",
     });
   }
-  rows.sort((a, b) => (b.seq || 0) - (a.seq || 0)); // 新的在前
+  rows.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || compareSessionTimes(a, b)); // 置顶优先，其余严格按更新时间
   json(res, 200, { sessions: rows });
 }
 
@@ -66,9 +118,12 @@ export function handleDbRebuild(res) {
   const db = loadDb();
   const live = new Set();
   let added = 0;
-  for (const s of getSessionList()) {
+  const sessions = getSessionList();
+  const before = new Set(Object.keys(db.seqMap || {}).filter(id => validSeq(db.seqMap[id]) !== null));
+  ensureSessionSequences(sessions);
+  for (const s of sessions) {
     live.add(s.id);
-    if (!db.seqMap[s.id]) { db.seqMap[s.id] = nextSeq(); added++; }
+    if (!before.has(s.id)) added++;
     let size = 0;
     try { const st = fs.statSync(s.file); size = st.size; } catch {}
     s.sizeBytes = size; s.health = healthOf(size); s.messageCount = countLines(s.file);
@@ -77,7 +132,7 @@ export function handleDbRebuild(res) {
   for (const id of Object.keys(db.seqMap)) if (!live.has(id)) delete db.seqMap[id];
   db.lastRebuild = new Date().toISOString();
   saveDb();
-  const rows = getSessionList().map(s => ({ id: s.id, seq: db.seqMap[s.id], sizeBytes: s.sizeBytes, health: s.health, messageCount: s.messageCount }));
+  const rows = sessions.map(s => ({ id: s.id, seq: db.seqMap[s.id], sizeBytes: s.sizeBytes, health: s.health, messageCount: s.messageCount }));
   const health = { ok: 0, large: 0, oversized: 0 };
   for (const r of rows) health[r.health] = (health[r.health] || 0) + 1;
   const totalBytes = rows.reduce((a, r) => a + (r.sizeBytes || 0), 0);

@@ -162,7 +162,8 @@ export function createUnifiedToolExecutor(deps = {}) {
         } catch (e) { return { text: "time_task 异常: " + String(e?.message || e).slice(0, 100), isError: true }; }
       }
       if (name === "activate_skill") {
-        return activateSkill(args?.skill);
+        // SDK 与统一引擎统一使用 name；兼容早期模型输出的 skill 字段，避免技能调用被静默吞掉。
+        return activateSkill(args?.name || args?.skill);
       }
       if (name === "bash") {
         const cmd = String(args?.command || "").trim();

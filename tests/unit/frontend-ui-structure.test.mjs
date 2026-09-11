@@ -40,6 +40,17 @@ test('对话欢迎页提供高频工作入口，长会话阅读区有稳定的�
   assert.ok(turns.includes('chat-history-head'), '长会话折叠历史必须有明确阅读分隔')
 })
 
+test('壁纸模式下主画布与新建对话首页保持透明', () => {
+  const chat = read('components', 'ChatArea.tsx')
+  const layout = read('AppLayout.tsx')
+  const styles = read('styles.css')
+  assert.ok(chat.includes('className="chat-welcome chat-workstart"'), '欢迎页必须使用工作入口布局')
+  assert.match(layout, /route === 'chat' \? 'mobile-chat-root' : ''/, '移动端仅聊天壳需要透出壁纸')
+  assert.match(layout, /route === 'chat' \? 'chat-canvas' : ''/, '桌面端仅聊天画布需要透出壁纸')
+  assert.match(styles, /body\.has-wallpaper \.chat-canvas,\s*body\.has-wallpaper \.mobile-chat-root\s*\{\s*background:\s*transparent;/s, '壁纸开启时聊天画布与移动聊天壳必须透明')
+  assert.match(styles, /body\.has-wallpaper \.chat-welcome\s*\{\s*background:\s*transparent;/s, '壁纸开启时新建对话欢迎页必须透明')
+})
+
 test('侧栏三个主分组：工作会话、小语真测、小语终端，工作会话在前', () => {
   const sidebar = read('components', 'Sidebar.tsx')
   assert.ok(sidebar.includes("workspace: '工作会话'"), '工作分组文案必须是工作会话')
@@ -362,6 +373,13 @@ test('会话库使用公共页头，并为桌面表格和移动卡片提供等�
   assert.match(sessionDb, /className={`[^`]*min-h-11 min-w-11[^`]*`}[^>]*aria-label={`\$\{r\.pinned/, '移动置顶按钮触控目标不得小于 44px')
   assert.doesNotMatch(sessionDb, /(?:emerald|amber|red)-/, '会话健康与置顶必须使用语义 token')
   assert.doesNotMatch(sessionDb, /📌/, '置顶不得使用 emoji')
+})
+
+test('会话库客户端排序以更新时间为主，编号只做最终稳定兜底', () => {
+  const sessionDb = read('pages', 'SessionDb.tsx')
+  assert.match(sessionDb, /updatedAt/, '会话库行数据必须保留更新时间')
+  assert.ok(sessionDb.includes('function rowTime') && sessionDb.includes('.sort(compareRows)'), '会话库必须按更新时间排序')
+  assert.doesNotMatch(sessionDb, /\.sort\(\(a, b\) => \(b\.pinned \? 1 : 0\) - \(a\.pinned \? 1 : 0\) \|\| \(b\.seq/, '会话库不得再按编号主导排序')
 })
 
 test('工作台看板挂在桌面导航，并读现有 API 做一屏总览', () => {

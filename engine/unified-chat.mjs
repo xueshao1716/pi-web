@@ -645,7 +645,7 @@ async function ensureEngineInit() {
 }
 
 // ══ 消息看板：pi 更新 + 能力看板 ══
-const APP_VERSION = "2.6.0"; // pi-web 正式版本（每次发版 bump + 记入 CHANGELOG.md）
+const APP_VERSION = "2.7.0"; // pi-web 正式版本（每次发版 bump + 记入 CHANGELOG.md）
 const CAPABILITIES = [
   { icon: "💬", name: "多模型对话", desc: "deepseek / 小米 mimo / Agnes，思考 + 工具调用" },
   { icon: "🛠", name: "编程工具", desc: "读文件 / 写文件 / 编辑 / 跑命令（与 TUI 同一引擎）" },

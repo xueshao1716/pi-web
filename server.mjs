@@ -86,7 +86,7 @@ import { createTimeEngine } from "./engine/time-engine.mjs";
 import { composeTimeTaskMessages, timeTaskReadTools } from "./engine/time-task-run.mjs";
 import { sanitizeSessionFile } from "./engine/session-sanitize.mjs";
 import { createCorsPolicy } from "./engine/cors-policy.mjs";
-import { initSessionDb, handleDbList, handleDbRebuild, handleDbSanitize, handleDbMeta, handleDbStats, handleDbSweep, sweepSessionsNow } from "./engine/session-db.mjs";
+import { initSessionDb, handleDbList, handleDbRebuild, handleDbSanitize, handleDbMeta, handleDbStats, handleDbSweep, sweepSessionsNow, ensureSessionSequence } from "./engine/session-db.mjs";
 import { isListedGroup } from "./engine/session-groups.mjs";
 import { initRecallApi, rebuildIndex, handleRecall, handleRecallAsk, handleSummaries, buildSummaries, recallStats } from "./engine/recall-api.mjs";
 const memoryApi = await import("./engine/memory.mjs");
@@ -496,7 +496,7 @@ const executeUnifiedTool = createUnifiedToolExecutorGuarded({
   },
 });
 
-initSessionManager({ cwd: CONFIG.cwd, sessionsDir: SESSIONS_DIR, tools: CONFIG.tools, piPackage: CONFIG.piPackage, isModelBlocked, createAgentSessionServices, createAgentSessionFromServices, getModelRuntime: () => modelRuntime, loadSessionModelKey, getModelList: () => modelList, getDefaultModel: () => defaultModel, activeSessions, SessionManager, SettingsManager, DefaultResourceLoader, getAgentDir, readJsonFile, writeJsonFile, isExternalThinking, THINK_TOOL, modelCapabilities, bindOutputGuardDeps, extractMessages, createSseWriter, unifiedChat, generateMediaAsync }); // 会话管理注入
+initSessionManager({ cwd: CONFIG.cwd, sessionsDir: SESSIONS_DIR, tools: CONFIG.tools, piPackage: CONFIG.piPackage, isModelBlocked, createAgentSessionServices, createAgentSessionFromServices, getModelRuntime: () => modelRuntime, loadSessionModelKey, getModelList: () => modelList, getDefaultModel: () => defaultModel, activeSessions, SessionManager, SettingsManager, DefaultResourceLoader, getAgentDir, readJsonFile, writeJsonFile, isExternalThinking, THINK_TOOL, modelCapabilities, bindOutputGuardDeps, extractMessages, createSseWriter, unifiedChat, generateMediaAsync, onSessionCreated: ensureSessionSequence }); // 会话管理注入
 initUnifiedChat({
   executeUnifiedTool, findKeyByEntry, readJsonFile,
   getModelList: () => modelList, getDefaultModel: () => defaultModel,
@@ -1082,6 +1082,16 @@ async function handleChat(req, res, body) {
         { deliverAs: "nextTurn" }
       );
     } catch {}
+    // PPT 任务专用执行护栏：交付类请求不能停在“我会做/大纲已列”或伪造文件。
+    // 通过 nextTurn 注入，不改人格文件，也不污染会话历史；真正的工具由 Pi SDK customTools 提供。
+    if (/\b(?:pptx?|powerpoint)\b|幻灯片|演示文稿|宣传ppt/i.test(message)) {
+      try {
+        await entry.agent?.sendCustomMessage?.(
+          { customType: "context", content: [{ type: "text", text: "【PPT 任务执行约束】这是直接交付任务。先调用 activate_skill 加载匹配的 ppt-generator 或 ppt-html 技能全文，再立刻用 read/write/bash/edit 完成内容与构建；不要只输出计划、伪造 <tool_call> 文本或声称文件已生成。必须实际检查 .pptx/设计稿文件存在且大小有效，回复末尾写出真实相对路径并使用“📎 交付: <路径>”。工具参数过长请分段执行。" }] },
+          { deliverAs: "nextTurn" }
+        );
+      } catch {}
+    }
     // 条件注入全量记忆（任务型消息才带）：人格保底用常驻索引（agent 创建时已注入），干活时全量
     if (shouldInjectFullMemory(message)) {
       setLastUserQuery(message);
