@@ -6,8 +6,9 @@ $healthUrl = "http://127.0.0.1:$port/api/health"
 $server = Join-Path $root 'server.mjs'
 
 # 8787 通常由开机任务以管理员权限托管；双击或普通终端调用时自动提权一次。
-$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = if ($identity) { New-Object Security.Principal.WindowsPrincipal($identity) } else { $null }
+if ($principal -and -not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
   $args = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
   $elevated = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $args -Wait -PassThru
   exit $elevated.ExitCode
