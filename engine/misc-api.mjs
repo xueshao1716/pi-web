@@ -193,9 +193,9 @@ export function createMiscApi(deps) {
   async function handleGitReview(res) {
     const unknownVerification = { state: "unknown", checks: [] };
     const [statusResult, diffResult, numstatResult] = await Promise.all([
-      runGit(["status", "--short", "--branch", "--untracked-files=normal"]),
+      runGit(["status", "--porcelain=v1", "-z", "--branch", "--untracked-files=normal"]),
       runGit(["diff", "--no-ext-diff", "--unified=3", "HEAD", "--"]),
-      runGit(["diff", "--no-ext-diff", "--numstat", "HEAD", "--"]),
+      runGit(["diff", "--no-ext-diff", "--numstat", "-z", "HEAD", "--"]),
     ]);
     if (statusResult.error) {
       return json(res, 200, { isRepo: statusResult.isRepo !== false, branch: null, files: [], diff: "", diffTruncated: false, error: statusResult.error, verification: unknownVerification });
@@ -204,21 +204,32 @@ export function createMiscApi(deps) {
       return json(res, 200, { isRepo: false, branch: null, files: [], diff: "", diffTruncated: false, verification: unknownVerification });
     }
 
-    const statusLines = String(statusResult.output || "").split(/\r?\n/).filter(Boolean);
-    const branchLine = statusLines.find(line => line.startsWith("##")) || "";
-    const branch = branchLine.slice(2).trim().split("...")[0] || null;
+    const records = String(statusResult.output || "").split("\0");
+    const branchLine = records.find(record => record.startsWith("## ")) || "";
+    const branch = branchLine.slice(3).split("...")[0] || null;
     const files = new Map();
-    for (const line of statusLines) {
-      if (line.startsWith("##") || line.length < 4) continue;
-      const code = line.slice(0, 2);
-      const filePath = line.slice(3).trim().replace(/^\"|\"$/g, "");
+    for (let i = 0; i < records.length; i++) {
+      const record = records[i];
+      if (!record || record.startsWith("## ") || record.length < 4 || record[2] !== " ") continue;
+      const code = record.slice(0, 2);
+      const filePath = record.slice(3);
+      // Porcelain -z emits destination NUL original for a rename/copy.
+      if (/[RC]/.test(code) && !records[++i]) continue;
       if (!filePath) continue;
       const status = code === "??" ? "untracked" : code.includes("D") ? "deleted" : code.includes("R") ? "renamed" : code.includes("A") ? "added" : "modified";
       files.set(filePath, { path: filePath, status, code, additions: 0, deletions: 0 });
     }
-    for (const line of String(numstatResult.output || "").split(/\r?\n/).filter(Boolean)) {
-      const [added, removed, ...parts] = line.split("\t");
-      const filePath = parts.join("\t").trim();
+    const stats = String(numstatResult.output || "").split("\0");
+    for (let i = 0; i < stats.length; i++) {
+      const record = stats[i];
+      const firstTab = record.indexOf("\t");
+      const secondTab = record.indexOf("\t", firstTab + 1);
+      if (firstTab < 0 || secondTab < 0) continue;
+      const added = record.slice(0, firstTab);
+      const removed = record.slice(firstTab + 1, secondTab);
+      let filePath = record.slice(secondTab + 1);
+      // Numstat -z emits counts TAB NUL original NUL destination.
+      if (!filePath) { i++; filePath = stats[++i]; }
       if (!filePath) continue;
       const current = files.get(filePath) || { path: filePath, status: "modified", code: "  ", additions: 0, deletions: 0 };
       current.additions = /^\d+$/.test(added) ? Number(added) : null;

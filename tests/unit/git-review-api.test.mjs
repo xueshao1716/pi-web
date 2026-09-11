@@ -76,3 +76,37 @@ test('git review reports oversized command output instead of inventing a changed
     })
   } finally { fs.rmSync(cwd, { recursive: true, force: true }) }
 })
+
+test('git review preserves Chinese and valid filenames that resemble shell fragments', async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'piweb-git-review-noise-'))
+  try {
+    const fx = fixture(cwd, async args => {
+      if (args[0] === 'status') return { ok: true, isRepo: true, output: ['## main', ' M 中文.md', '?? src/NaN.ts', '?? src/undefined.ts', '?? -p', '?? $null', ' M build/config.ts', '?? spaced name.txt', ''].join('\0') }
+      if (args[0] === 'diff' && args.includes('--numstat')) return { ok: true, isRepo: true, output: '2\t1\t中文.md\0' }
+      return { ok: true, isRepo: true, output: '' }
+    })
+    await fx.api.handleGitReview({})
+    assert.deepEqual(fx.response().body.files.map(file => file.path), ['中文.md', 'src/NaN.ts', 'src/undefined.ts', '-p', '$null', 'build/config.ts', 'spaced name.txt'])
+    assert.equal(fx.response().body.files[0].additions, 2)
+  } finally { fs.rmSync(cwd, { recursive: true, force: true }) }
+})
+
+test('git review parses NUL-delimited renames and unusual path characters without losing records', async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'piweb-git-review-shell-noise-'))
+  try {
+    const fx = fixture(cwd, async args => {
+      if (args[0] === 'status') return {
+        ok: true, isRepo: true,
+        output: ['## main', 'R  新文件.md', '旧文件.md', ' M name\twith\nlines.txt', ' M after.ts', ''].join('\0'),
+      }
+      if (args[0] === 'diff' && args.includes('--numstat')) return { ok: true, isRepo: true, output: ['3\t2\t', '旧文件.md', '新文件.md', '1\t0\tname\twith\nlines.txt', '4\t0\tafter.ts', ''].join('\0') }
+      return { ok: true, isRepo: true, output: '' }
+    })
+    await fx.api.handleGitReview({})
+    assert.deepEqual(fx.response().body.files, [
+      { path: '新文件.md', status: 'renamed', code: 'R ', additions: 3, deletions: 2 },
+      { path: 'name\twith\nlines.txt', status: 'modified', code: ' M', additions: 1, deletions: 0 },
+      { path: 'after.ts', status: 'modified', code: ' M', additions: 4, deletions: 0 },
+    ])
+  } finally { fs.rmSync(cwd, { recursive: true, force: true }) }
+})
