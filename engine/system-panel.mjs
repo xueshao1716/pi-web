@@ -70,7 +70,7 @@ export function systemInfo(wsRoot, agentDir, fsMod = fs) {
     }
   } catch {}
   return {
-    name: "pi-web 小语工作台",
+    name: "元枢个人智能系统",
     version,
     node: process.version,
     platform: `${os.type()} ${os.arch()}`,

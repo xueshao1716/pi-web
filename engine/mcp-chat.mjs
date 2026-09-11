@@ -1,5 +1,5 @@
 // engine/mcp-chat.mjs —— MCP 对话 SSE 收集（2026-08-20）
-// 调 pi-web 内部 /api/chat 逻辑收集完整回复（不经 HTTP，进程内调用）
+// 调元枢内部 /api/chat 逻辑收集完整回复（不经 HTTP，进程内调用）
 import { createSseWriter } from "./sse.mjs";
 
 // 依赖注入：handleChat 引用（server.mjs 注入，避免循环依赖）

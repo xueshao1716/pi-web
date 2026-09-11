@@ -38,7 +38,7 @@ export async function findSkillPath(ctx, name) {
     const s = (skills || []).find(x => x.name === name);
     if (s?.filePath) return s.filePath;
   } catch {}
-  // 回退：多目录搜索（pi 引擎扫描范围外的地方装技能）——技能仓库可能新增，候选逐个探测
+  // 回退：多目录搜索（兼容适配器扫描范围外的地方装技能）——技能仓库可能新增，候选逐个探测
   const here = path.dirname(fileURLToPath(import.meta.url));
   const os = await import("node:os");
   const fallbackDirs = [

@@ -3,12 +3,12 @@ $ErrorActionPreference = 'Stop'
 $user = "$env:USERDOMAIN\$env:USERNAME"
 
 Write-Host ''
-Write-Host 'pi-web 开机自启配置' -ForegroundColor Cyan
+Write-Host '元枢开机自启配置' -ForegroundColor Cyan
 
 # 1. pi-web + watchdog
 $piWeb = @{
   TaskName = 'piweb-server'
-  Action   = (New-ScheduledTaskAction -Execute 'C:\Program Files\nodejs\node.exe' -Argument 'watchdog.mjs' -WorkingDirectory 'D:\pi-web')
+  Action   = (New-ScheduledTaskAction -Execute 'C:\Program Files\nodejs\node.exe' -Argument 'watchdog.cjs' -WorkingDirectory 'D:\pi-web')
   Trigger  = (New-ScheduledTaskTrigger -AtStartup)
   Settings = (New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 0))
   Principal = (New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Highest)

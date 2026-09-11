@@ -1,4 +1,4 @@
-// ══ SDK Provider 注册器（2026-08-27）：把 pi-web 自定义通道接入 pi 引擎 agent 体系 ══
+// ══ SDK Provider 注册器（2026-08-27）：把元枢自定义通道接入兼容适配器 agent 体系 ══
 // 背景：聊天走 unifiedChat 直发 HTTP（任意 OpenAI 兼容通道都行）；但真 agent 会话（专项工作台/
 //       TUI/终端）由 pi SDK 驱动，只认 SDK 原生 provider 表——自定义中转（sensenova/volces/agnes/
 //       whatstoken/bigmodel/aliyun 等）不在表内，agent 一律报「No API key found」，只能靠 deepseek
@@ -63,6 +63,6 @@ export function registerStoreProviders(modelRuntime, { storePath, authPath }) {
       console.log(`[sdk-providers] ${provider} 注册失败: ${String(e?.message || e).slice(0, 120)}`);
     }
   }
-  if (registered.length) console.log(`[pi-web] agent 通道扩展注册: ${registered.join(", ")}`);
+  if (registered.length) console.log(`[元枢] agent 通道扩展注册: ${registered.join(", ")}`);
   return registered;
 }

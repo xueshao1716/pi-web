@@ -1,5 +1,5 @@
 ﻿# ============================================================
-#  pi-web 安装界面 · 模拟演示（不装任何东西）
+#  元枢安装界面 · 模拟演示（不装任何东西）
 #  复用 install.ps1 / install-all.ps1 同一套 UI 函数，
 #  模拟完整安装流程让你预览美化效果（含颜色）。
 #  跑法：powershell -ExecutionPolicy Bypass -File install-demo.ps1
@@ -14,7 +14,7 @@ function Banner {
   H '' ''
   $bar = '═' * ($UI_W + 4)
   H ('  ╔' + $bar + '╗') $UI.C
-  H ('  ║  ' + (PadTo 'pi-web · 小语 AI 工作台' $UI_W) + '  ║') $UI.T
+  H ('  ║  ' + (PadTo '元枢 · 小语 AI 工作台' $UI_W) + '  ║') $UI.T
   H ('  ║  ' + (PadTo '一键安装 · 全自动（pi + dsh 双引擎一次就位）' $UI_W) + '  ║') $UI.H
   H ('  ╚' + $bar + '╝') $UI.C
   H '' ''
@@ -41,12 +41,12 @@ Warn '这里展示一条警示：某软件仍未装，但会走兜底方案继�
 Step 2 5 '运行时 · Node.js'
 Ok 'Node 已就绪  (v22.22.3)'
 
-Step 3 5 '获取 pi-web 源码'
+Step 3 5 '获取元枢源码'
 Info '用 git clone（Gitee 国内源）...'
 Ok '源码就绪'
 
-Step 4 5 'pi 引擎 · 初始化'
-Ok 'pi 引擎安装完成'
+Step 4 5 '兼容适配器 · 初始化'
+Ok '兼容适配器安装完成'
 H '     ─ dsh 引擎（DeepSeek Harness）' $UI.Info
 Ok 'dsh 安装完成  (0.9.2)'
 
@@ -56,7 +56,7 @@ Err '这里展示一条失败：某步骤报错（红色，会附指引）'
 
 H '' ''
 H ('  ╔' + ('═' * ($UI_W + 4)) + '╗') $UI.C
-H ('  ║  ' + (PadTo '安装完成 ✅  pi-web 已就位' $UI_W) + '  ║') $UI.Ok
+H ('  ║  ' + (PadTo '安装完成 ✅  元枢已就位' $UI_W) + '  ║') $UI.Ok
 H ('  ╚' + ('═' * ($UI_W + 4)) + '╝') $UI.C
 H '' ''
 KeyVal '访问地址' 'http://127.0.0.1:8787'

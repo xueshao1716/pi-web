@@ -333,7 +333,20 @@ export async function unifiedChat(model, messages, opts = {}) {
   const stuckEvents = [];
   let lastCompactTurn = 0;
   let emptyTries = 0;
+  // 上游偶发只吐出半截工具 JSON。允许在保留已完成工具结果的前提下
+  // 让模型重新组织这一轮，避免一个坏调用把整项长任务直接判死。
+  let truncatedToolRetries = 0;
+  const MAX_TRUNCATED_TOOL_RETRIES = 2;
   const resumeSandboxAsk = opts.sandboxAsk;
+  const maybeCompactMidLoop = async () => {
+    if (!needsMidLoopCompact(history, { turn, lastCompactTurn })) return;
+    const packed = await compactKeepArchive(history, (h) => maybeCompactHistory(h, model, "", { minMessages: 10, minChars: 20000 }));
+    if (packed.compacted) {
+      history.length = 0;
+      history.push(...packed.view);
+      lastCompactTurn = turn;
+    }
+  };
 
   // If the process stopped after the provider emitted tool calls but before
   // the round finished, replay only those calls. The effects ledger decides
@@ -416,7 +429,45 @@ export async function unifiedChat(model, messages, opts = {}) {
     if (parsed.error) return { error: parsed.error };
     const msg = parsed.message || {};
     const inspected = inspectToolCalls(msg.tool_calls);
-    if (inspected.truncated) return { error: TRUNCATED_TOOL_ERROR };
+    if (inspected.truncated) {
+      // 只丢弃无法解析的调用；同一响应里已经完整的调用仍然执行。
+      // 没有完整调用时也不要把半截 JSON 写回 history，否则下一轮请求会再次 400。
+      if (!toolDefs || truncatedToolRetries >= MAX_TRUNCATED_TOOL_RETRIES) {
+        return { error: TRUNCATED_TOOL_ERROR, history, text: lastPartialAssistantText(history), streamed };
+      }
+      truncatedToolRetries += 1;
+      const validCalls = inspected.calls || [];
+      if (validCalls.length) {
+        if (!roundStreamed) {
+          const streamedRound = emitRoundStream(opts, msg);
+          if (streamedRound.think || streamedRound.text) streamed = true;
+        }
+        history.push({ role: "assistant", content: msg.content || null, tool_calls: validCalls });
+        try { opts.onCheckpoint?.({ phase: "tool_plan", turn, toolPlan: toolPlanFor(validCalls), ...createRunHistorySnapshot(history, { turn }) }); } catch {}
+        const recovered = await runYuanshuToolRound({
+          toolCalls: validCalls, history, execute: _executeUnifiedTool, signal: opts.signal,
+          onTool: opts.onTool, onToolEnd: opts.onToolEnd, seenCalls, jitInjected, spill: spillIfHuge,
+          stuckEvents, sandboxMode: opts.sandboxMode, sandboxWsRoot: opts.sandboxWsRoot || _cwd,
+          sandboxAsk: resumeSandboxAsk, effects: opts.effects,
+          executionContext: { ...(opts.executionContext || {}), turn },
+        });
+        try { opts.onCheckpoint?.({ phase: "tool_results", turn, toolPlan: toolPlanFor(validCalls, recovered.toolPlan), ...createRunHistorySnapshot(history, { turn }) }); } catch {}
+        if (recovered.stop) return recovered.stop;
+      } else {
+        const { think, text } = splitAssistantPayload(msg);
+        if (!roundStreamed && (think || text)) {
+          const streamedRound = emitRoundStream(opts, msg);
+          if (streamedRound.think || streamedRound.text) streamed = true;
+        }
+        if (text) history.push({ role: "assistant", content: text });
+      }
+      history.push({
+        role: "system",
+        content: "上一轮工具调用参数不完整，系统已丢弃半截调用。请继续当前任务，并把每次 write/edit/bash 的参数保持简短；大文件分段写入，禁止把超长脚本塞进一次工具调用。",
+      });
+      continue;
+    }
+    truncatedToolRetries = 0;
     const tcs = inspected.calls;
     if (tcs && tcs.length && toolDefs) {
       if (!roundStreamed) {
@@ -435,14 +486,7 @@ export async function unifiedChat(model, messages, opts = {}) {
       });
       try { opts.onCheckpoint?.({ phase: "tool_results", turn, toolPlan: toolPlanFor(tcs, official.toolPlan), ...createRunHistorySnapshot(history, { turn }) }); } catch {}
       if (official.stop) return official.stop;
-      if (needsMidLoopCompact(history, { turn, lastCompactTurn })) {
-        const packed = await compactKeepArchive(history, (h) => maybeCompactHistory(h, model, "", { minMessages: 10, minChars: 20000 }));
-        if (packed.compacted) {
-          history.length = 0;
-          history.push(...packed.view);
-          lastCompactTurn = turn;
-        }
-      }
+      await maybeCompactMidLoop();
       continue;
     }
     // ══ P2 scavenge（Reasonix 借鉴，2026-08-19）：无 tool_calls 但思考里捞到合法工具调用 → 执行（带策略拦截）
@@ -465,14 +509,7 @@ export async function unifiedChat(model, messages, opts = {}) {
       });
       try { opts.onCheckpoint?.({ phase: "tool_results", turn, toolPlan: toolPlanFor(scavCalls, scavengedRound.toolPlan), ...createRunHistorySnapshot(history, { turn }) }); } catch {}
       if (scavengedRound.stop) return scavengedRound.stop;
-      if (needsMidLoopCompact(history, { turn, lastCompactTurn })) {
-        const packed = await compactKeepArchive(history, (h) => maybeCompactHistory(h, model, "", { minMessages: 10, minChars: 20000 }));
-        if (packed.compacted) {
-          history.length = 0;
-          history.push(...packed.view);
-          lastCompactTurn = turn;
-        }
-      }
+      await maybeCompactMidLoop();
       continue;
     }
     const content = String(msg.content || "").trim();
@@ -649,14 +686,14 @@ except Exception as e:
     print("ERR:" + str(e))`;
       const out = await new Promise((resolve, reject) => execFile("python", ["-c", py], { timeout: 30000, windowsHide: true, encoding: "utf8" }, (err, stdout) => err ? reject(err) : resolve(stdout)));
       for (const line of out.trim().split("\n").filter(Boolean)) {
-        if (line.startsWith("ERR:")) { console.log("[pi-web] GitHub 拉取失败:", line.slice(4).slice(0, 60)); continue; }
+        if (line.startsWith("ERR:")) { console.log("[元枢] GitHub 拉取失败:", line.slice(4).slice(0, 60)); continue; }
         try { releases.push(JSON.parse(line)); } catch {}
       }
     } catch {}
     // 失败也缓存（空列表），限流期不反复打 GitHub
     noticesCache = releases;
     noticesCacheAt = now;
-    console.log(`[pi-web] 更新看板缓存刷新（${releases.length} 条 release，缓存 ${NOTICES_TTL/3600000}h）`);
+    console.log(`[元枢] 更新看板缓存刷新（${releases.length} 条 release，缓存 ${NOTICES_TTL/3600000}h）`);
   }
   let piVersion = "?";
   try {
@@ -921,6 +958,17 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
       result = { ...result, error: EMPTY_TURN_ERROR };
     }
   }
+  // 截断恢复仍耗尽时，把已经写入的工具历史交给备用模型续跑一次。
+  // 这样单个模型的输出边界不会让长任务停在“已完成一半”的状态。
+  if (result?.error === TRUNCATED_TOOL_ERROR) {
+    const fbModel = pickFallbackExcluding(chatModel);
+    if (fbModel && Array.isArray(result.history)) {
+      writer.push("note", { text: `⚠️ ${TRUNCATED_TOOL_ERROR}，正在切换 ${fbModel.provider}/${fbModel.id} 接续已完成步骤…` });
+      const fb = await unifiedChat(fbModel, result.history, { ...chatOpts, resumeSnapshot: null, resumeCheckpointKind: null, resumeToolPlan: null });
+      if (fb?.text && !fb.error) result = fb;
+      else if (fb?.history) result = { ...result, history: fb.history };
+    }
+  }
   if (!result || result.error) {
     await deliverUnifiedMedia();
     if (mediaItems.length) {
@@ -967,7 +1015,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
         if (!NEEDS_PRO_RE.test(proTxt)) {
           text = proTxt;
           result.think = proResult.think || result.think;
-          console.log(`[pi-web] NEEDS_PRO 升级成功: ${proModel.provider}/${proModel.id}`);
+          console.log(`[元枢] NEEDS_PRO 升级成功: ${proModel.provider}/${proModel.id}`);
         }
       }
     }
@@ -980,7 +1028,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
   //    重复/空文本落盘，下次被当历史喂回模型 → 复读死循环。标记异常未解决，跳过 assistant 落盘。
   let anomalyUnresolved = false;
   if (anomaly.type !== "none") {
-    console.log(`[pi-web] 输出守卫(${anomaly.type}): ${chatModel.provider}/${chatModel.id} ${anomaly.reason} → 自动切换重试`);
+    console.log(`[元枢] 输出守卫(${anomaly.type}): ${chatModel.provider}/${chatModel.id} ${anomaly.reason} → 自动切换重试`);
     const fbModel = pickFallbackExcluding(chatModel);
     if (fbModel) {
       writer.push("note", { text: `⚠️ ${anomaly.reason}，自动切换 ${fbModel.provider}/${fbModel.id} 重试…` });
@@ -1012,7 +1060,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
   collected = text;
   clearTask(taskId, "done");
   finishEmotion();
-  console.log(`[pi-web] 统一通道: ${(result.usedModel || chatModel).provider}/${(result.usedModel || chatModel).id}`);
+  console.log(`[元枢] 统一通道: ${(result.usedModel || chatModel).provider}/${(result.usedModel || chatModel).id}`);
 }
 
 // ============================================================

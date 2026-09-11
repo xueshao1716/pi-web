@@ -8,9 +8,8 @@ import path from "node:path";
 import { execFile, execFileSync } from "node:child_process";
 import { execFileAbortable } from "./yuanshu-stability.mjs";
 
-// dsh 认证环境：DEEPSEEK_API_KEY 三级解析（进程 env → 用户注册表 → pi 的 auth.json）。
-// 背景：UI 里 setx 写的 key 只对新进程生效，pi-web 长驻进程的 env 里可能没有——
-// 显式注入保证 dsh 派单时密钥链路确定可用，不依赖 dsh 内部解析。
+// dsh 认证环境：DEEPSEEK_API_KEY 只从当前进程环境或本机 auth.json 解析。
+// 凭证留在本机，元枢不会替用户登录外部平台，也不会把密钥写进仓库。
 export function resolveDshEnv() {
   const env = { ...process.env };
   // Windows 的 process.env 大小写不敏感，但展开成普通对象后会变成大小写敏感。
@@ -23,12 +22,6 @@ export function resolveDshEnv() {
     }
   }
   if (env.DEEPSEEK_API_KEY) return env;
-  try {
-    const out = execFileSync("reg", ["query", "HKCU\\Environment", "/v", "DEEPSEEK_API_KEY"],
-      { encoding: "utf8", windowsHide: true, timeout: 5000 });
-    const m = out.match(/DEEPSEEK_API_KEY\s+REG_SZ\s+(.+)/);
-    if (m?.[1]?.trim()) { env.DEEPSEEK_API_KEY = m[1].trim(); return env; }
-  } catch {}
   try {
     const auth = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".pi", "agent", "auth.json"), "utf8"));
     if (auth?.deepseek?.key) env.DEEPSEEK_API_KEY = auth.deepseek.key;
@@ -91,7 +84,7 @@ export function friendlyDshError(rawErr, rawStderr) {
   const raw = String(rawStderr || rawErr || "");
   if (/heap limit|Last few GCs|FATAL ERROR|OOM|JavaScript heap/i.test(raw)) return "dsh 进程内存溢出（OOM）：多为冷启动期偶发，稍等重试即可；反复出现时调低 PI_DSH_MAX 并发上限";
   if (/QUOTA|Insufficient Balance|402/i.test(raw)) return "dsh 引擎（DeepSeek）余额不足：请到 platform.deepseek.com 充值，或改用 pi 自带工具/其他模型通道完成本任务";
-  if (/401|Unauthorized|invalid.{0,12}key|API.?Key/i.test(raw)) return "dsh 引擎认证失败：DEEPSEEK_API_KEY 无效或未配置（可在 pi-web 模型管理勾选「同步到 dsh」重配）";
+  if (/401|Unauthorized|invalid.{0,12}key|API.?Key/i.test(raw)) return "dsh 引擎认证失败：DEEPSEEK_API_KEY 无效或未配置（可在元枢模型管理勾选「同步到 dsh」重配）";
   if (/not found|ENOENT|Cannot find module/i.test(raw)) return "dsh 引擎未安装或路径失效：请运行 npm i -g @deepseek-ai/dsh 后重试";
   if (/timeout|TIMEDOUT/i.test(raw)) return "dsh 执行超时（180s）：任务可能过大，建议拆分子任务";
   return String(rawStderr || rawErr || "").slice(0, 200) || "未知错误";
@@ -111,7 +104,7 @@ export function createDshTool({ cwd, piPackage, loadSkillIndex, skillsDir, onLog
       const list = loadSkillIndex();
       if (!list?.length) return "";
       const dir = String(skillsDir).replace(/\\/g, "/");
-      return `\n\n【pi-web 技能库（${list.length} 个）】对得上就 read 技能全文再做，对不上按你的判断做。\n${list.map((s) => `- ${s.name}：${String(s.desc).slice(0, 120)}`).join("\n")}\n技能文件位置：${dir}/<技能名>/SKILL.md`;
+      return `\n\n【元枢技能库（${list.length} 个）】对得上就 read 技能全文再做，对不上按你的判断做。\n${list.map((s) => `- ${s.name}：${String(s.desc).slice(0, 120)}`).join("\n")}\n技能文件位置：${dir}/<技能名>/SKILL.md`;
     } catch { return ""; }
   }
 

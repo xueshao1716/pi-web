@@ -1,4 +1,4 @@
-// pi-web 配置加载模块
+// 元枢配置加载模块（保留旧环境变量名，便于平滑升级）
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -24,7 +24,7 @@ function loadToken() {
   return t;
 }
 
-// pi 全局包路径：env 优先，其次本地/全局 node_modules 推导（跨平台，不硬编码）
+// 外置兼容适配器路径：env 优先，其次本地/全局 node_modules 推导（跨平台，不硬编码）
 function resolvePiPackage() {
   if (process.env.PI_PACKAGE) return process.env.PI_PACKAGE;
   try {
@@ -78,6 +78,6 @@ export const CONFIG = {
   model: process.env.PI_WEB_MODEL || "zhipu-paid/glm-5.3-flash", // 2026-08-31 默认主力切智谱付费 glm-5.3-flash（env PI_WEB_MODEL 可覆盖）
   // 外部思考调试开关（externalThinking）：给模型挂 think 工具导出推理草稿（默认关）
   externalThinking: process.env.PI_WEB_EXTERNAL_THINKING === "1",
-  // pi 包路径（跨平台推导）
+  // 兼容适配器包路径（跨平台推导）
   piPackage: resolvePiPackage(),
 };

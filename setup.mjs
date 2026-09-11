@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// pi-web 自动安装/部署脚本（跨平台：Windows / macOS / Linux）
+// 元枢自动安装/部署脚本（跨平台：Windows / macOS / Linux）
 // 用法：node setup.mjs            # 检测 + 引导安装
 //       node setup.mjs --install  # 自动安装缺失依赖
 //       node setup.mjs --start    # 安装检查后启动服务
@@ -28,7 +28,7 @@ function sh(cmd) {
 }
 
 console.log("\n╭──────────────────────────────────────╮");
-console.log("│  小语 · AI 工作台 安装向导          │");
+console.log("│  元枢 · 个人智能系统安装向导        │");
 console.log("╰──────────────────────────────────────╯\n");
 
 // 1. Node 版本
@@ -38,8 +38,8 @@ const major = parseInt(nodeV.replace(/^v/, "").split(".")[0], 10);
 if (major >= 20) ok(`Node ${nodeV}`);
 else { fail(`需要 Node ≥ 20，当前 ${nodeV}`); process.exit(1); }
 
-// 2. pi 引擎依赖
-console.log("[2/5] 检查 pi 引擎");
+// 2. 外置兼容适配器依赖
+console.log("[2/5] 检查兼容适配器");
 let piPkg = "";
 try { piPkg = require("module").createRequire(import.meta.url).resolve("@earendil-works/pi-coding-agent/dist/index.js"); } catch {}
 if (!piPkg) {
@@ -51,7 +51,7 @@ if (!piPkg) {
 }
 if (piPkg) ok(`已找到: ${piPkg}`);
 else {
-  fail("未安装 pi 引擎");
+  fail("未安装兼容适配器");
   if (process.argv.includes("--install")) {
     console.log("  正在安装 @earendil-works/pi-coding-agent ...");
     try {

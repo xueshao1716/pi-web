@@ -1,7 +1,7 @@
-// pi-web MCP Server —— 把小语（pi-web）的能力暴露给 NomiFun 等 MCP 客户端（2026-08-20）
+// 元枢 MCP Server —— 把小语（元枢）的能力暴露给 NomiFun 等 MCP 客户端（2026-08-20）
 // 工具：pi_chat（对话）/ pi_read_file / pi_write_file / pi_generate_image / pi_list_sessions / pi_workspace_tree / pi_deliver
 // 传输：stdio（NomiFun /mcp 添加 stdio server 即可）
-// 环境变量：PI_WEB_URL（默认 http://127.0.0.1:8787）、PI_WEB_TOKEN（必填，pi-web 的 .token）
+// 环境变量：PI_WEB_URL（默认 http://127.0.0.1:8787）、PI_WEB_TOKEN（必填，元枢的 .token）
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -10,12 +10,12 @@ const PI_WEB = process.env.PI_WEB_URL || "http://127.0.0.1:8787";
 const TOKEN = process.env.PI_WEB_TOKEN || "";
 
 if (!TOKEN) {
-  console.error("[pi-mcp] 缺少 PI_WEB_TOKEN 环境变量（pi-web 的 .token）");
+  console.error("[pi-mcp] 缺少 PI_WEB_TOKEN 环境变量（元枢的 .token）");
   process.exit(1);
 }
 
 const server = new McpServer({
-  name: "pi-web (小语)",
+  name: "yuanshu (元枢)",
   version: "0.1.0",
 });
 
@@ -31,7 +31,7 @@ async function api(path, opts = {}) {
   });
   if (!r.ok) {
     const body = await r.text().catch(() => "");
-    throw new Error(`pi-web HTTP ${r.status}: ${body.slice(0, 200)}`);
+    throw new Error(`元枢 HTTP ${r.status}: ${body.slice(0, 200)}`);
   }
   return r;
 }
@@ -58,7 +58,7 @@ async function chatCollect(body) {
 // 1. 对话（给小语发消息）
 server.tool(
   "pi_chat",
-  "给小语（pi-web）发一条消息，返回她的回复。用于让小语分析/执行任务。",
+  "给小语（元枢）发一条消息，返回她的回复。用于让小语分析/执行任务。",
   { message: z.string().describe("发给小语的消息"), sessionId: z.string().optional().describe("会话 ID（可选，留空自动新建）") },
   async ({ message, sessionId }) => {
     const body = { message, model: "auto" };
@@ -78,7 +78,7 @@ server.tool(
 // 2. 读文件
 server.tool(
   "pi_read_file",
-  "读 pi-web 工作空间里的文件",
+  "读元枢工作空间里的文件",
   { path: z.string().describe("文件路径（相对工作空间 D:\\pi-workspace）") },
   async ({ path }) => {
     const r = await api("/api/ws/read?path=" + encodeURIComponent(path));
@@ -90,7 +90,7 @@ server.tool(
 // 3. 写文件
 server.tool(
   "pi_write_file",
-  "写文件到 pi-web 工作空间",
+  "写文件到元枢工作空间",
   { path: z.string(), content: z.string() },
   async ({ path, content }) => {
     const r = await api("/api/ws/write", { method: "POST", body: JSON.stringify({ path, content }) });
@@ -102,7 +102,7 @@ server.tool(
 // 4. 出图
 server.tool(
   "pi_generate_image",
-  "让 pi-web 生成图片（保存到工作空间 生成物/ 目录）",
+  "让元枢生成图片（保存到工作空间 生成物/ 目录）",
   { prompt: z.string().describe("图片描述"), provider: z.string().optional(), modelId: z.string().optional(), size: z.string().optional() },
   async ({ prompt, provider, modelId, size }) => {
     const body = { prompt, size: size || "1024x1024" };
@@ -117,7 +117,7 @@ server.tool(
 // 5. 会话列表
 server.tool(
   "pi_list_sessions",
-  "列出 pi-web 的会话",
+  "列出元枢的会话",
   {},
   async () => {
     const r = await api("/api/sessions");
@@ -130,7 +130,7 @@ server.tool(
 // 6. 工作空间浏览
 server.tool(
   "pi_workspace_tree",
-  "浏览 pi-web 工作空间目录",
+  "浏览元枢工作空间目录",
   { path: z.string().optional().describe("目录路径（默认根）") },
   async ({ path }) => {
     const r = await api("/api/ws/tree?path=" + encodeURIComponent(path || ""));
@@ -155,4 +155,4 @@ server.tool(
 // ── 启动（stdio）──
 const transport = new StdioServerTransport();
 await server.connect(transport);
-console.error("[pi-mcp] pi-web MCP server 已启动（stdio）");
+console.error("[pi-mcp] 元枢 MCP server 已启动（stdio）");

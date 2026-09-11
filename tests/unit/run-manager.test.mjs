@@ -44,6 +44,21 @@ test('聊天记录提交后才发布 session_updated，且事件账本保留顺�
     assert.ok(sessionUpdated < completed)
   } finally { fx.cleanup() }
 })
+
+test('可恢复的工具截断失败保留继续任务入口', async () => {
+  const fx = fixture(async (_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    res.write('event: checkpoint\ndata: {"phase":"tool_results","turn":2,"historySnapshot":{"v":1,"turn":2,"messages":[{"role":"user","content":"生成 PPT"}]}}\n\n')
+    res.write('event: error\ndata: {"message":"工具调用被截断（多半是输出超长）"}\n\n')
+    res.end()
+  })
+  try {
+    const run = fx.manager.create({ sessionId: 'session-recover', clientRequestId: 'request-1', message: '生成 PPT' })
+    await waitFor(() => fx.manager.get(run.id)?.status === 'failed')
+    assert.equal(fx.manager.get(run.id).resumeAvailable, true)
+  } finally { fx.cleanup() }
+})
+
 test('create 立即返回，后台执行完成且全部事件可重放', async () => {
   let release
   const gate = new Promise(resolve => { release = resolve })

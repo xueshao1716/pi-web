@@ -208,7 +208,7 @@ export async function handleDirectChat(res, entry, message, sessionId, writer) {
     writer.push("media", mr);
   }
   writer.push("done", { sessionId });
-  console.log(`[pi-web] 直调通道: ${_getDefaultModel().provider}/${_getDefaultModel().id}`);
+  console.log(`[元枢] 直调通道: ${_getDefaultModel().provider}/${_getDefaultModel().id}`);
 }
 
 // 上下文压缩 v2（借鉴 Claude Code 摘要式压缩）：历史超限时用模型生成"结构化摘要"替换旧消息

@@ -1,7 +1,7 @@
 ﻿# ============================================================
-#  pi-web 一键安装（极简版，双引擎）
+#  元枢一键安装（极简版，双引擎）
 #  只需要 Node 一个软件，其余全自动：
-#  下载源码 → 装 pi 引擎 → 装 dsh 引擎 → 模型模板 → 令牌 → 后台启动
+#  下载源码 → 装兼容适配器 → 装 dsh 引擎 → 模型模板 → 令牌 → 后台启动
 #  用法（任意 Windows PowerShell，一条命令，先下载再执行，零报错）：
 #    irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install.ps1 -OutFile $env:TEMP\piw.ps1; & $env:TEMP\piw.ps1
 #  指定目录：& $env:TEMP\piw.ps1 -InstallDir D:\pi-web
@@ -28,7 +28,7 @@ function Banner {
   H '' ''
   $bar = '═' * ($UI_W + 4)
   H ('  ╔' + $bar + '╗') $UI.C
-  H ('  ║  ' + (PadTo 'pi-web · 小语 AI 工作台' $UI_W) + '  ║') $UI.T
+  H ('  ║  ' + (PadTo '元枢 · 小语 AI 工作台' $UI_W) + '  ║') $UI.T
   H ('  ║  ' + (PadTo '一键安装 · 极简版（pi + dsh 双引擎一次就位）' $UI_W) + '  ║') $UI.H
   H ('  ╚' + $bar + '╝') $UI.C
   H '' ''
@@ -77,7 +77,7 @@ if (Get-Command node -ErrorAction SilentlyContinue) {
 }
 
 # 2. 下载 pi-web 源码（zip 方式，不需要 Git；GitHub 直连失败自动切镜像）
-Step 2 3 '获取 pi-web 源码'
+Step 2 3 '获取元枢源码'
 if (Test-Path "$DEST\server.mjs") {
   Ok ("已存在安装目录 $DEST")
 } else {
@@ -141,7 +141,7 @@ Pop-Location
 # ── 完成 ──
 H '' ''
 H ('  ╔' + ('═' * ($UI_W + 4)) + '╗') $UI.C
-H ('  ║  ' + (PadTo '安装完成 ✅  pi-web 已就位' $UI_W) + '  ║') $UI.Ok
+H ('  ║  ' + (PadTo '安装完成 ✅  元枢已就位' $UI_W) + '  ║') $UI.Ok
 H ('  ╚' + ('═' * ($UI_W + 4)) + '╝') $UI.C
 H '' ''
 KeyVal '访问地址' "http://127.0.0.1:8787"
@@ -156,7 +156,7 @@ H '       { "deepseek": { "type": "api_key", "key": "sk-你的密钥" } }' $UI.D
 Info ('3) 重启服务: taskkill /F /IM node.exe ，然后 cd ' + $DEST + ' && node server.mjs')
 Info '4) 刷新 http://127.0.0.1:8787 即可对话（默认模型 deepseek-v4-flash 官方直连兜底）'
 Info 'dsh 工作台: 运行 dsh web 打开（默认 http://127.0.0.1:3080，首次启动弹窗引导填 key）'
-Dim '        装完打开 pi-web 引导弹窗勾选「同时配置到 dsh」可一次配好两个引擎'
+Dim '        装完打开元枢引导弹窗勾选「同时配置到 dsh」可一次配好两个引擎'
 Dim '更多模型商（小米/阿里/火山等）: 模型清单见 ~/.pi/agent/models-store.json'
 Dim '停止服务: taskkill /F /IM node.exe'
 H '' ''

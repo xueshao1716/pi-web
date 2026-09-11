@@ -1,4 +1,4 @@
-// pi-web 文件盒：文件服务（查找/元数据/传输/交付）
+// 元枢文件盒：文件服务（查找/元数据/传输/交付）
 // 架构：pi 只理解意图并下指令（search_files/deliver），本地系统执行查找与传输
 import crypto from "node:crypto";
 import path from "node:path";

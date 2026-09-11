@@ -154,6 +154,7 @@ export function summarizeRun(run, events = []) {
     memoryCount,
     memoryPreview: memoryPreview ? String(memoryPreview).slice(0, 160) : null,
     error: error ? String(error).slice(0, 240) : null,
+    resumeAvailable: run?.resumeAvailable === true,
     durationMs: observability.durationMs,
     eventCounts: observability.eventCounts,
     lastModel: observability.lastModel,

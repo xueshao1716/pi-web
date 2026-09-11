@@ -1,4 +1,4 @@
-// pi-web 浏览器操作模块（借鉴 badlogic/pi-skills browser-tools：CDP 控制 Chrome）
+// 元枢浏览器操作模块（借鉴 badlogic/pi-skills browser-tools：CDP 控制 Chrome）
 // 提供：启动 Chrome（远程调试）、导航、截图、取页面文本
 import { spawn, execFile } from "node:child_process";
 import http from "node:http";

@@ -1,6 +1,6 @@
 ﻿# ============================================================
-#  pi-web 全自动安装（一条命令搞定 pi + dsh + pi-web）
-#  自动检查/安装：git → Node.js → pi 引擎 → dsh 引擎 → 源码 → 令牌 → 启动
+#  元枢全自动安装（一条命令完成兼容适配器 + dsh + 元枢）
+#  自动检查/安装：git → Node.js → 兼容适配器 → dsh 引擎 → 源码 → 令牌 → 启动
 #  用法（任意 Windows PowerShell，一条命令，先下载再执行，零报错）：
 #    irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-all.ps1 -OutFile $env:TEMP\piw.ps1; & $env:TEMP\piw.ps1
 #  指定目录：& $env:TEMP\piw.ps1 -InstallDir D:\pi-web
@@ -27,7 +27,7 @@ function Banner {
   H '' ''
   $bar = '═' * ($UI_W + 4)
   H ('  ╔' + $bar + '╗') $UI.C
-  H ('  ║  ' + (PadTo 'pi-web · 小语 AI 工作台' $UI_W) + '  ║') $UI.T
+  H ('  ║  ' + (PadTo '元枢 · 小语 AI 工作台' $UI_W) + '  ║') $UI.T
   H ('  ║  ' + (PadTo '一键安装 · 全自动（pi + dsh 双引擎一次就位）' $UI_W) + '  ║') $UI.H
   H ('  ╚' + $bar + '╝') $UI.C
   H '' ''
@@ -110,7 +110,7 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue) -or $env:NODE_SKIP) {
 }
 
 # ── 步骤 3/5：获取 pi-web 源码（git 优先，失败切 zip）──
-Step 3 5 '获取 pi-web 源码'
+Step 3 5 '获取元枢源码'
 if (Test-Path (Join-Path $DEST 'server.mjs')) {
   Ok ('已存在安装目录 ' + $DEST)
 } else {
@@ -135,8 +135,8 @@ if (Test-Path (Join-Path $DEST 'server.mjs')) {
   else { Err '源码获取失败，请检查网络'; exit 1 }
 }
 
-# ── 步骤 4/5：pi 引擎 + dsh 引擎 + 令牌 + 模型清单（setup.mjs --install）──
-Step 4 5 'pi 引擎 · 初始化'
+# ── 步骤 4/5：兼容适配器 + dsh 引擎 + 令牌 + 模型清单（setup.mjs --install）──
+Step 4 5 '兼容适配器 · 初始化'
 
 # ── 可选：pi/dsh 引擎的 npm 全局包也装到其他盘（默认 C 盘）──
 Dim 'pi/dsh 引擎全局包装到哪里？（回车=默认 C 盘，或输入如 D:\npm-global）'
@@ -185,7 +185,7 @@ try {
 # ── 完成 ──
 H '' ''
 H ('  ╔' + ('═' * ($UI_W + 4)) + '╗') $UI.C
-H ('  ║  ' + (PadTo '安装完成 ✅  pi-web 已就位' $UI_W) + '  ║') $UI.Ok
+H ('  ║  ' + (PadTo '安装完成 ✅  元枢已就位' $UI_W) + '  ║') $UI.Ok
 H ('  ╚' + ('═' * ($UI_W + 4)) + '╝') $UI.C
 H '' ''
 KeyVal '访问地址' ("http://127.0.0.1:$port")
@@ -201,7 +201,7 @@ H '       { "deepseek": { "type": "api_key", "key": "sk-你的密钥" } }' $UI.D
 Info ('3) 重启服务: taskkill /F /IM node.exe ，然后 cd ' + $DEST + ' && node server.mjs')
 Info '4) 刷新 http://127.0.0.1:8787 即可对话（默认模型 deepseek-v4-flash 官方直连兜底）'
 Info 'dsh 工作台: 运行 dsh web 打开（默认 http://127.0.0.1:3080，首次启动弹窗引导填 key）'
-Dim '        装完打开 pi-web 引导弹窗勾选「同时配置到 dsh」可一次配好两个引擎'
+Dim '        装完打开元枢引导弹窗勾选「同时配置到 dsh」可一次配好两个引擎'
 Dim '更多模型商（小米/阿里/火山等）: 模型清单见 ~/.pi/agent/models-store.json'
 Dim '停止服务: taskkill /F /IM node.exe'
 H '' ''

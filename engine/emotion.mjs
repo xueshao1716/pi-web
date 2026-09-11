@@ -1,4 +1,4 @@
-// pi-web 小语情绪引擎（VAD 三维模型，曦系移植版）
+// 元枢小语情绪引擎（VAD 三维模型，曦系移植版）
 // 核心：情绪不是输出装饰，而是驱动行为的信号（反向情绪激发）
 // valence 愉悦度 / arousal 唤醒度 / dominance 支配度
 // 2026-08-19 拆模块：人格基因 → engine/gene.mjs，技能基因 → engine/skill-gene.mjs

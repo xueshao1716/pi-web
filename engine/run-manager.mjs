@@ -199,11 +199,16 @@ export function createRunManager({ store, eventLog, executeChat, instanceId, onS
   const finish = (runId, status, data = {}) => {
     const current = store.get(runId)
     if (!current || TERMINAL.has(current.status)) return current
+    const failureText = String(data.message || data.error || current.error || '')
+    const resumableFailure = status === 'failed'
+      && !!current.checkpoint?.historySnapshot
+      && /截断|超长|timeout|timed out|超时|fetch failed|连接|网络/i.test(failureText)
     const updated = store.update(runId, {
       status,
       ...(status === 'completed' ? { completedAt: new Date().toISOString() } : {}),
       ...(status === 'failed' ? { failedAt: new Date().toISOString(), error: data.message || 'run_failed' } : {}),
       ...(status === 'stopped' ? { stoppedAt: new Date().toISOString() } : {}),
+      ...(status === 'failed' ? { resumeAvailable: current.resumeAvailable === true || resumableFailure } : {}),
     })
     append(updated, status, data)
     const observability = deriveRunObservability(updated, eventLog.readAfter(runId, 0))

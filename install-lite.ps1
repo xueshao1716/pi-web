@@ -1,4 +1,4 @@
-# pi-web one-line installer (ASCII only)
+# 元枢 one-line installer (ASCII only)
 # Downloads the full installer then runs it as a file (BOM+param safe).
 # Usage: irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-lite.ps1 | iex
 $ErrorActionPreference = "Stop"

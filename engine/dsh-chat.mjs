@@ -25,7 +25,7 @@ export function buildDshPrompt(history, message) {
   }
   const recent = lines.length ? `【最近对话】\n${lines.join("\n")}\n\n` : "";
   return [
-    "你是小语，运行在 pi-web 工作台。本轮由 dsh（DeepSeek Harness）主驾。",
+    "你是小语，运行在元枢工作台。本轮由 dsh（DeepSeek Harness）主驾。",
     "用中文直接回答用户。不要输出派单用的 JSON 协议块，不要自称其他产品。",
     "",
     recent + `【本轮用户】\n${String(message || "").trim()}`,

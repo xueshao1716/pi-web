@@ -125,6 +125,19 @@ export interface SessionMessages {
   total?: number
 }
 
+/** 技能库摘要：来源和用途由服务端根据安装位置及说明推导，前端只负责展示与筛选。 */
+export interface SkillSummary {
+  name: string
+  description: string
+  location: string
+  path?: string
+  source?: 'local' | 'online' | 'builtin'
+  sourceLabel?: string
+  category?: string
+  categoryLabel?: string
+  tags?: string[]
+}
+
 // SSE 事件（/api/sessions/:id/stream）
 export interface SseEvent {
   type: string

@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { FlaskConical, Puzzle, StickyNote, TrendingUp, Sprout, Dna, Check, ChevronDown, ChevronRight, Loader2, HeartPulse, Archive as ArchiveIcon } from 'lucide-react'
+import { FlaskConical, Puzzle, StickyNote, TrendingUp, Sprout, Dna, Check, ChevronDown, ChevronRight, Loader2, HeartPulse, Archive as ArchiveIcon, Search, Laptop, Globe2, Package, SlidersHorizontal } from 'lucide-react'
 import EmptyState from '../components/EmptyState'
 import PageHeader from '../components/PageHeader'
 import SectionHeader from '../components/SectionHeader'
 import type { LucideIcon } from 'lucide-react'
+import type { SkillSummary } from '../types'
 import useSWR from 'swr'
 import { RefineApi, SkillsApi, PromptsApi, ImprovementsApi, EvolutionApi, SkillNudgeApi, MemoryNudgeApi, MemCompressApi } from '../api'
 import GardenerView from '../components/GardenerView'
@@ -93,18 +94,101 @@ function RefineView() {
 
 function SkillsView() {
   const [kw, setKw] = useState('')
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'local' | 'online' | 'builtin'>('all')
+  const [categoryFilter, setCategoryFilter] = useState('all')
   const { data } = useSWR('skills', () => SkillsApi.list())
-  const skills = (data?.skills || []).filter(s => !kw.trim() || (s.name + s.description).toLowerCase().includes(kw.toLowerCase()))
+  const allSkills = data?.skills || []
+  const fallbackCategory = (skill: SkillSummary) => {
+    if (skill.category) return skill.category
+    const text = `${skill.name} ${skill.description}`.toLowerCase()
+    const rules: Array<[string, string[]]> = [
+      ['presentation', ['ppt', 'powerpoint', 'slide', 'presentation', '幻灯', '演示文稿']],
+      ['video', ['video', 'animation', 'motion', '视频', '动效', '动画']],
+      ['image', ['image', 'photo', 'portrait', '图片', '图像', '摄影', '人像', '出图']],
+      ['document', ['document', 'word', 'pdf', 'markdown', '文档', '法条', '办公']],
+      ['research', ['research', 'search', 'browser', 'paper', '分析', '检索', '搜索', '论文']],
+      ['engineering', ['code', 'debug', 'test', 'frontend', 'backend', 'sdk', 'api', '开发', '调试', '测试']],
+      ['commerce', ['commerce', 'ecommerce', 'marketing', 'wechat', 'shopping', '电商', '营销', '公众号', '小红书', '带货']],
+      ['data', ['spreadsheet', 'excel', 'stock', 'chart', 'data', '股票', '数据', '图表', '表格']],
+      ['creative', ['design', 'creative', 'illustrat', 'poster', 'zine', 'scene', '设计', '插画', '海报', '场景', '视觉']],
+      ['automation', ['automat', 'agent', 'workflow', 'plugin', 'skill', 'system', '自动', '工作流', '智能体', '系统']],
+    ]
+    return rules.find(([, keywords]) => keywords.some(keyword => text.includes(keyword)))?.[0] || 'general'
+  }
+  const categoryLabelFor = (skill: SkillSummary) => skill.categoryLabel || ({
+    creative: '创作设计', image: '图像视觉', video: '视频与动效', presentation: '演示文稿', document: '文档与办公',
+    research: '研究与搜索', engineering: '开发与工程', automation: '自动化与系统', commerce: '内容营销', data: '数据分析', general: '通用助手',
+  } as Record<string, string>)[fallbackCategory(skill)] || '通用助手'
+  const sourceMeta = {
+    local: { label: '自建 · 本地', icon: Laptop, tone: 'text-pi-accent bg-pi-accent-soft border-pi-accent/25' },
+    online: { label: '线上 · 已安装', icon: Globe2, tone: 'text-pi-info bg-pi-info/10 border-pi-info/25' },
+    builtin: { label: '内置 · 只读', icon: Package, tone: 'text-pi-dim bg-pi-bg3 border-pi-border-soft' },
+  } as const
+  const sourceCounts = data?.sources || allSkills.reduce<Record<string, number>>((result, skill) => {
+    const source = skill.source || (skill.location === 'user' ? 'online' : skill.location === 'project' ? 'local' : 'builtin')
+    result[source] = (result[source] || 0) + 1
+    return result
+  }, {})
+  const categoryCounts = data?.categories || allSkills.reduce<Record<string, number>>((result, skill) => {
+    const category = fallbackCategory(skill)
+    result[category] = (result[category] || 0) + 1
+    return result
+  }, {})
+  const categoryLabels = allSkills.reduce<Record<string, string>>((result, skill) => {
+    const category = fallbackCategory(skill)
+    result[category] = categoryLabelFor(skill)
+    return result
+  }, {})
+  const categories = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1])
+  const query = kw.trim().toLowerCase()
+  const skills = allSkills.filter(skill => {
+    const source = skill.source || (skill.location === 'user' ? 'online' : skill.location === 'project' ? 'local' : 'builtin')
+    const category = fallbackCategory(skill)
+    const searchable = [skill.name, skill.description, ...(skill.tags || []), skill.sourceLabel, skill.categoryLabel].filter(Boolean).join(' ').toLowerCase()
+    return (!query || searchable.includes(query)) && (sourceFilter === 'all' || source === sourceFilter) && (categoryFilter === 'all' || category === categoryFilter)
+  })
   return (
-    <div>
-      <input className="input-pi !py-1.5 text-[13px] w-full sm:w-64 mb-3" placeholder={`搜索 ${data?.skills?.length || 0} 个技能…`} value={kw} onChange={e => setKw(e.target.value)} />
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2.5">
-        {skills.map(s => (
-          <div key={s.name} className="panel !p-3" title={s.location}>
-            <div className="font-mono text-[13px] text-pi-accent">{s.name}</div>
-            <div className="text-[12px] text-pi-dim mt-1 line-clamp-3">{s.description}</div>
+    <div className="space-y-3.5">
+      <div className="panel !p-3.5">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-pi-md bg-pi-accent-soft text-pi-accent flex items-center justify-center flex-shrink-0"><Puzzle className="w-4 h-4" aria-hidden="true" /></div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap"><span className="text-[15px] font-semibold text-pi-text">技能目录</span><span className="text-[11px] text-pi-dim2">{allSkills.length} 项能力，按来源和用途整理</span></div>
+            <div className="text-[12px] text-pi-dim2 mt-0.5">自建技能用于沉淀你的方法，线上技能来自已安装的能力包，内置技能保持开箱即用。</div>
           </div>
-        ))}
+        </div>
+        <div className="mt-3 flex flex-col gap-2.5">
+          <label className="relative block w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-pi-dim2" aria-hidden="true" />
+            <input className="input-pi !py-2 !pl-9 text-[13px] w-full" placeholder={`搜索技能名称、用途或标签（${allSkills.length}）`} value={kw} onChange={e => setKw(e.target.value)} />
+          </label>
+          <div className="flex items-center gap-2 flex-wrap" aria-label="按来源筛选">
+            <span className="inline-flex items-center gap-1 text-[11px] text-pi-dim2 mr-0.5"><SlidersHorizontal className="w-3.5 h-3.5" aria-hidden="true" />来源</span>
+            <button type="button" aria-pressed={sourceFilter === 'all'} onClick={() => setSourceFilter('all')} className={`min-h-9 px-2.5 rounded-pi-pill border text-[12px] transition-colors ${sourceFilter === 'all' ? 'bg-pi-text text-pi-bg border-pi-text' : 'text-pi-dim border-pi-border-soft hover:text-pi-text hover:border-pi-border'}`}>全部 <span className="tabular-nums opacity-70">{allSkills.length}</span></button>
+            {(Object.keys(sourceMeta) as Array<keyof typeof sourceMeta>).map(source => {
+              const meta = sourceMeta[source]; const Icon = meta.icon
+              return <button key={source} type="button" aria-pressed={sourceFilter === source} onClick={() => setSourceFilter(source)} className={`min-h-9 px-2.5 rounded-pi-pill border inline-flex items-center gap-1.5 text-[12px] transition-colors ${sourceFilter === source ? meta.tone : 'text-pi-dim border-pi-border-soft hover:text-pi-text hover:border-pi-border'}`}><Icon className="w-3.5 h-3.5" aria-hidden="true" />{meta.label} <span className="tabular-nums opacity-70">{sourceCounts[source] || 0}</span></button>
+            })}
+          </div>
+          {categories.length > 0 && <div className="flex items-center gap-2 flex-wrap" aria-label="按用途筛选">
+            <span className="text-[11px] text-pi-dim2 mr-0.5">用途</span>
+            <button type="button" aria-pressed={categoryFilter === 'all'} onClick={() => setCategoryFilter('all')} className={`min-h-9 px-2.5 rounded-pi-pill border text-[12px] transition-colors ${categoryFilter === 'all' ? 'bg-pi-accent text-white border-pi-accent' : 'text-pi-dim border-pi-border-soft hover:text-pi-text hover:border-pi-border'}`}>全部</button>
+            {categories.map(([category, count]) => <button key={category} type="button" aria-pressed={categoryFilter === category} onClick={() => setCategoryFilter(category)} className={`min-h-9 px-2.5 rounded-pi-pill border text-[12px] transition-colors ${categoryFilter === category ? 'bg-pi-accent-soft text-pi-accent border-pi-accent/30' : 'text-pi-dim border-pi-border-soft hover:text-pi-text hover:border-pi-border'}`}>{categoryLabels[category]} <span className="tabular-nums opacity-70">{count}</span></button>)}
+          </div>}
+        </div>
+      </div>
+      <div className="flex items-center gap-2 px-0.5 text-[12px] text-pi-dim2"><span>显示 <b className="text-pi-text tabular-nums">{skills.length}</b> 项</span>{(sourceFilter !== 'all' || categoryFilter !== 'all' || query) && <button type="button" className="text-pi-accent hover:underline" onClick={() => { setKw(''); setSourceFilter('all'); setCategoryFilter('all') }}>清除筛选</button>}</div>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2.5">
+        {skills.map((s: SkillSummary) => {
+          const source = s.source || (s.location === 'user' ? 'online' : s.location === 'project' ? 'local' : 'builtin')
+          const meta = sourceMeta[source]
+          const categoryLabel = categoryLabelFor(s) || categoryLabels[fallbackCategory(s)] || '通用助手'
+          return <div key={`${s.name}:${s.path || s.location || source}`} className="panel !p-3.5 flex flex-col min-h-[142px]" title={s.path || s.location}>
+            <div className="flex items-start gap-2"><div className="font-mono text-[13px] text-pi-accent break-all flex-1">{s.name}</div><span className={`inline-flex items-center gap-1 shrink-0 text-[10px] px-1.5 py-0.5 rounded-pi-pill border ${meta.tone}`}><meta.icon className="w-3 h-3" aria-hidden="true" />{s.sourceLabel || meta.label}</span></div>
+            <div className="flex items-center gap-1.5 mt-2"><span className="text-[11px] px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3 text-pi-dim border border-pi-border-soft">{categoryLabel}</span>{(s.tags || []).filter(tag => tag !== categoryLabel).slice(0, 2).map(tag => <span key={tag} className="text-[11px] text-pi-dim2 truncate">#{tag}</span>)}</div>
+            <div className="text-[12px] text-pi-dim mt-2 line-clamp-3 leading-relaxed">{s.description || '暂无用途说明'}</div>
+          </div>
+        })}
       </div>
       {!skills.length && (
         <EmptyState icon={Puzzle} title="没有匹配的技能" />

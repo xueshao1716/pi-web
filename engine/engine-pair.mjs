@@ -11,17 +11,17 @@ export const ENGINE_CATALOG = {
     canLead: true,
     desc: "自制对话循环，最终要长成的引擎",
     intro: "自制对话循环。记忆、出图、规划、空回合重试和工具中止都挂在这条上，最终要自己当家。",
-    can: ["任意 OpenAI 兼容通道，含非 SDK 原生", "工具调度：只读可并行、写互斥", "上下文命名区段 + 沙箱阶梯 + 压缩留底", "prompt 区段接缝（插件贡献，一轮只收一次）", "磁盘工作记忆 task_plan/findings/progress", "空回复重试后再兑底；断连杀掉 bash / dsh", "独立评测绳出分数（空回合/截断/卡住/记忆，不跑真模型）", "VAD 情绪自己开轮注入、收轮推 SSE，不靠 pi"],
-    cannot: ["还不是默认主驾，炸了仍靠次席或 pi 兑底", "任务跟 HTTP 绑死，刷新会掐掉这一轮", "评测绳不证明出片和联网，Gateway 插件循环仍是旁路"],
+    can: ["任意 OpenAI 兼容通道，含非 SDK 原生", "工具调度：只读可并行、写互斥", "上下文命名区段 + 沙箱阶梯 + 压缩留底", "prompt 区段接缝（插件贡献，一轮只收一次）", "磁盘工作记忆 task_plan/findings/progress", "空回复重试后再兑底；断连杀掉 bash / dsh", "独立评测绳出分数（空回合/截断/卡住/记忆，不跑真模型）", "VAD 情绪自己开轮注入、收轮推 SSE，不靠外置适配器"],
+    cannot: ["还不是默认主驾，异常时仍靠次席或兼容适配器兜底", "任务跟 HTTP 绑死，刷新会掐掉这一轮", "评测绳不证明出片和联网，Gateway 插件循环仍是旁路"],
   },
   pi: {
     id: "pi",
-    label: "pi",
+    label: "兼容适配器",
     canLead: true,
-    desc: "pi SDK 官方 agent 管线",
-    intro: "pi SDK 官方 agent 管线，现默认主驾。会话 JSONL 也是它的格式，人还是小语。",
-    can: ["SDK 原生通道上的完整 agent 生命周期", "现网默认主驾，会话文件与官方工具链", "失败时兑底到次引擎（默认元枢）"],
-    cannot: ["非原生通道会兑底元枢，不能硬开智谱/商汤", "记忆、出图、规划不在这条循环里长", "厂商适配器，可卸，不是永久双核"],
+    desc: "外置 Agent 兼容管线",
+    intro: "外置 Agent 兼容管线，负责成熟的会话与工具生命周期；元枢保留它作为可替换的安全后备。",
+    can: ["原生通道上的完整 Agent 生命周期", "会话文件与成熟工具链", "失败时兑底到次引擎（默认元枢）"],
+    cannot: ["非原生通道会兑底元枢，不能硬开不兼容通道", "记忆、出图、规划不在这条循环里长", "外置适配器，可卸，不是元枢本体"],
   },
   dsh: {
     id: "dsh",
@@ -79,7 +79,7 @@ export function resolveLead(pair, ctx = {}) {
   if (ctx.forceYuanshu) {
     return { lead: "yuanshu", wanted: p.primary, deferred: p.primary === "yuanshu" ? null : p.primary, reason: "force" };
   }
-  // 非 SDK 原生通道只逼 pi agent 兑底；dsh / 元枢有自己的通道，不受模型下拉绑架
+  // 非 SDK 原生通道只让兼容适配器兜底；dsh / 元枢有自己的通道，不受模型下拉绑架
   if (ctx.nativeChannel === false && p.primary === "pi") {
     return { lead: "yuanshu", wanted: p.primary, deferred: "pi", reason: "non-native" };
   }
@@ -91,7 +91,7 @@ export function resolveLead(pair, ctx = {}) {
 }
 
 export function leadNote(decision) {
-  const names = { yuanshu: "元枢", pi: "pi", dsh: "dsh" };
+  const names = { yuanshu: "元枢", pi: "兼容适配器", dsh: "dsh" };
   const lead = names[decision?.lead] || decision?.lead || "元枢";
   if (decision?.reason === "non-native") return `本轮主引擎 · ${lead}（该通道走自制循环）`;
   if (decision?.deferred) {

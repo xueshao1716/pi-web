@@ -1,4 +1,4 @@
-// pi-web 记忆服务：三层记忆统一管理（固定记忆 + 记忆日志 + 自动沉淀）
+// 元枢记忆服务：三层记忆统一管理（固定记忆 + 记忆日志 + 自动沉淀）
 // 借鉴 xi-system 记忆理念：重要信息自动写入、跨会话长期有效
 import fs from "node:fs";
 import { atomicWriteText } from "./atomic-io.mjs";

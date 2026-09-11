@@ -50,7 +50,7 @@ export function evictInactiveSessions() {
     if (_activeSessions.size <= MAX_ACTIVE_SESSIONS) break;
     try { e.agent?.dispose?.(); } catch {}
     _activeSessions.delete(id);
-    console.log(`[pi-web] LRU 淘汰闲置会话 ${id}`);
+    console.log(`[元枢] LRU 淘汰闲置会话 ${id}`);
   }
 }
 
@@ -89,10 +89,10 @@ export async function slimSessionImages(file) {
     }
     if (replaced) {
       fs.writeFileSync(file, lines.join("\n"), "utf8");
-      console.log(`[pi-web] 会话瘦身: ${file.split(/[\\/]/).pop()} 替换 ${replaced} 条图片数据，释放 ${(totalSlimmed / 1024 / 1024).toFixed(1)}MB`);
+      console.log(`[元枢] 会话瘦身: ${file.split(/[\\/]/).pop()} 替换 ${replaced} 条图片数据，释放 ${(totalSlimmed / 1024 / 1024).toFixed(1)}MB`);
     }
   } catch (e) {
-    console.log(`[pi-web] 会话瘦身失败: ${String(e?.message || e).slice(0, 80)}`);
+    console.log(`[元枢] 会话瘦身失败: ${String(e?.message || e).slice(0, 80)}`);
   }
 }
 
@@ -183,7 +183,7 @@ ${inputText}`;
       if (_rr.ok) {
         const _dd = await _rr.json();
         summary = String((_dd?.choices?.[0]?.message?.content) || (_dd?.choices?.[0]?.message?.reasoning_content) || "").trim().slice(0, 3000);
-        if (!summary) console.log("[pi-web] compact 摘要响应异常: " + JSON.stringify(_dd).slice(0, 500));
+        if (!summary) console.log("[元枢] compact 摘要响应异常: " + JSON.stringify(_dd).slice(0, 500));
       } else {
         dcErr = "HTTP " + _rr.status + ": " + String(await _rr.text()).slice(0, 200);
       }
@@ -229,10 +229,10 @@ ${inputText}`;
     try { fs.copyFileSync(file, file + ".bak"); } catch {}
     sm.fileEntries = newEntries;
     sm._rewriteFile();
-    console.log(`[pi-web] 分层记忆: ${file.split(/[\\/]/).pop()} ${(estTok / 1000).toFixed(0)}K→摘要(${summary.length}字), 保留 ${retained.length} 条消息`);
+    console.log(`[元枢] 分层记忆: ${file.split(/[\\/]/).pop()} ${(estTok / 1000).toFixed(0)}K→摘要(${summary.length}字), 保留 ${retained.length} 条消息`);
     return { summary, retained: retained.length, before: estTok };
   } catch (e) {
-    console.log(`[pi-web] 分层记忆跳过: ${String(e?.message || e).slice(0, 120)}`);
+    console.log(`[元枢] 分层记忆跳过: ${String(e?.message || e).slice(0, 120)}`);
     return { skip: true, reason: "异常: " + String((e && (e.stack || e.message)) || e).slice(0, 500) };
   } finally {
     compactingSessions.delete(file);
@@ -307,7 +307,7 @@ export async function initSearchTool() {
       },
     };
   } catch (e) {
-    console.log(`[pi-web] search_files 工具初始化失败: ${String(e?.message || e).slice(0, 80)}`);
+    console.log(`[元枢] search_files 工具初始化失败: ${String(e?.message || e).slice(0, 80)}`);
   }
   return searchToolDef;
 }
@@ -366,7 +366,7 @@ export async function initShareTool() {
       },
     };
   } catch (e) {
-    console.log(`[pi-web] share_project 工具初始化失败: ${String(e?.message || e).slice(0, 80)}`);
+    console.log(`[元枢] share_project 工具初始化失败: ${String(e?.message || e).slice(0, 80)}`);
   }
   return shareToolDef;
 }
@@ -385,7 +385,7 @@ export async function initPiMediaTools() {
       getModelList: _getModelList,
     });
   } catch (e) {
-    console.log(`[pi-web] 宿主媒体工具初始化失败: ${String(e?.message || e).slice(0, 80)}`);
+    console.log(`[元枢] 宿主媒体工具初始化失败: ${String(e?.message || e).slice(0, 80)}`);
     piMediaTools = [];
   }
   return piMediaTools;
@@ -467,7 +467,7 @@ export async function ensureAgent(entry, model) {
   const agent = await createSessionAgent(entry.sm, effModel);
   entry.agent = agent;
   entry.agentModel = effModel ? { provider: effModel.provider, id: effModel.id } : null;
-  console.log(`[pi-web] agent 重建（模型 ${effModel?.provider}/${effModel?.id}）`);
+  console.log(`[元枢] agent 重建（模型 ${effModel?.provider}/${effModel?.id}）`);
   return agent;
 }
 

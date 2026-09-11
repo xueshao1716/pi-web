@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { handleWsFile, handleWsDeliveries, initWorkspaceApi, localDayStamp, artifactBaseName, looksLikeImageBytes } from "../../engine/workspace-api.mjs";
+import { handleWsFile, handleWsDeliveries, handleWsRename, handleWsDelete, initWorkspaceApi, localDayStamp, artifactBaseName, looksLikeImageBytes, writeArtifactSidecar } from "../../engine/workspace-api.mjs";
 import { readFileSync } from "node:fs";
 
 function mockRes() {
@@ -136,10 +136,81 @@ test("looksLikeImageBytes 认 PNG 头，拒 HTML 错误页冒充图片", () => {
   assert.equal(looksLikeImageBytes(Buffer.from("not an image")), false);
 });
 
-test("资产页成品交付：目录也能点开，不能 disabled 掉", () => {
+test("资产页交付目录：有入口可打开，空目录保持禁用", () => {
   const src = readFileSync(new URL("../../frontend/src/pages/Assets.tsx", import.meta.url), "utf8");
-  assert.ok(src.includes("成品交付"), "资产页要有成品交付分区");
-  assert.ok(!src.includes("disabled={d.type !== 'file'}"), "有入口的目录不能整行 disabled");
-  assert.ok(!src.includes("目录请在工作空间中打开"), "不能把成品文件夹推去工作空间");
-  assert.ok(src.includes("openPath") || src.includes("d.url"), "点击必须打开交付入口");
+  const details = readFileSync(new URL("../../frontend/src/components/assets/AssetDetails.tsx", import.meta.url), "utf8");
+  const deliveries = readFileSync(new URL("../../frontend/src/components/Deliveries.tsx", import.meta.url), "utf8");
+  assert.ok(src.includes("<AssetDetails"), "资产页要挂载资产详情操作区");
+  assert.ok(details.includes("item.openPath"), "有入口的目录必须保留打开动作");
+  assert.ok(deliveries.includes("d.openPath || d.type === 'file'"), "交付面板应区分空目录和可打开条目");
+});
+
+test("普通工作区文件的同名 JSON 不是产物旁路，重命名和删除不能误动", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-web-sidecar-scope-"));
+  try {
+    const file = path.join(root, "报告.md");
+    const sidecar = path.join(root, "报告.json");
+    fs.writeFileSync(file, "正文");
+    fs.writeFileSync(sidecar, JSON.stringify({ prompt: "用户自己的配置", type: "custom" }));
+    initWorkspaceApi({ wsRoot: root });
+
+    const renameRes = mockRes();
+    await handleWsRename(renameRes, { oldPath: "报告.md", newName: "报告-归档.md" });
+    assert.equal(renameRes.status, 200);
+    assert.equal(fs.existsSync(path.join(root, "报告-归档.json")), false);
+    assert.equal(fs.readFileSync(sidecar, "utf8"), JSON.stringify({ prompt: "用户自己的配置", type: "custom" }));
+
+    const deleteRes = mockRes();
+    await handleWsDelete(deleteRes, { path: "报告-归档.md", confirmed: true });
+    assert.equal(deleteRes.status, 200);
+    assert.equal(fs.existsSync(sidecar), true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("生成物旁路提示词随生成文件一起重命名和删除", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-web-sidecar-artifact-"));
+  try {
+    const dir = path.join(root, "生成物", "图片", "2026-09-11");
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, "海报_120000-001.png");
+    fs.writeFileSync(file, Buffer.from("png"));
+    writeArtifactSidecar(file, { prompt: "青衣洗白了", type: "image" });
+    initWorkspaceApi({ wsRoot: root });
+
+    const renameRes = mockRes();
+    await handleWsRename(renameRes, { oldPath: "生成物/图片/2026-09-11/海报_120000-001.png", newName: "海报-归档.png" });
+    assert.equal(renameRes.status, 200);
+    assert.equal(fs.existsSync(path.join(dir, "海报_120000-001.json")), false);
+    assert.equal(fs.existsSync(path.join(dir, "海报-归档.json")), true);
+
+    const deleteRes = mockRes();
+    await handleWsDelete(deleteRes, { path: "生成物/图片/2026-09-11/海报-归档.png", confirmed: true });
+    assert.equal(deleteRes.status, 200);
+    assert.equal(fs.existsSync(path.join(dir, "海报-归档.json")), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("生成物改成普通扩展名时不把旁路提示词挂到非媒体文件", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-web-sidecar-ext-"));
+  try {
+    const dir = path.join(root, "生成物", "图片", "2026-09-11");
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, "海报_120000-002.png");
+    const oldSidecar = path.join(dir, "海报_120000-002.json");
+    fs.writeFileSync(file, Buffer.from("png"));
+    writeArtifactSidecar(file, { prompt: "青衣洗白了", type: "image" });
+    initWorkspaceApi({ wsRoot: root });
+
+    const renameRes = mockRes();
+    await handleWsRename(renameRes, { oldPath: "生成物/图片/2026-09-11/海报_120000-002.png", newName: "海报-说明.md" });
+    assert.equal(renameRes.status, 200);
+    assert.equal(fs.existsSync(path.join(dir, "海报-说明.json")), false);
+    assert.equal(fs.existsSync(oldSidecar), true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

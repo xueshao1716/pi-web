@@ -23,8 +23,8 @@ export function startShare(dir) {
       });
       shareProcess = child;
       sharePath = dir;
-      child.on("error", (e) => { console.log(`[pi-web] 分享启动失败: ${e.message}`); });
-      child.on("exit", (code) => { if (shareProcess === child) { shareProcess = null; sharePath = null; console.log(`[pi-web] 分享已停止 (code ${code})`); } });
+      child.on("error", (e) => { console.log(`[元枢] 分享启动失败: ${e.message}`); });
+      child.on("exit", (code) => { if (shareProcess === child) { shareProcess = null; sharePath = null; console.log(`[元枢] 分享已停止 (code ${code})`); } });
       // 等端口就绪
       const t = Date.now();
       const check = setInterval(() => {

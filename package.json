@@ -1,8 +1,8 @@
 {
   "name": "yuanshu",
-  "version": "1.0.0",
+  "version": "0.2.2",
   "private": true,
-  "description": "pi coding agent web interface (SSE chat over pi SDK)",
+  "description": "元枢个人智能系统 · Web 工作台（SSE 对话与自建引擎）",
   "type": "module",
   "dependencies": {
     "@capacitor/android": "8.5.1",
@@ -20,10 +20,14 @@
     "build:mobile:web": "npm run build:frontend && npm run sync:frontend"
   },
   "bin": {
-    "pi-web": "bin/pi-web.mjs"
+    "yuanshu": "bin/pi-web.mjs",
+    "yuanshu-agent": "bin/pi-agent.mjs",
+    "pi-web": "bin/pi-web.mjs",
+    "pi-agent": "bin/pi-agent.mjs"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.1",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "playwright": "^1.62.1"
   }
 }

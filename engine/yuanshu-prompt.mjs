@@ -66,6 +66,9 @@ export function buildYuanshuSections({
   const matched = matchSkillsForTask(message, skills);
   if (matched.length) {
     skillParts.push(`本轮任务可能匹配技能：${matched.map((s) => s.name).join("、")}。对得上就 activate_skill，对不上按你的判断继续。`);
+    if (/ppt|幻灯片|演示|汇报/i.test(String(message || "")) && matched.some((s) => /ppt|presentation|幻灯片|演示/i.test(s.name))) {
+      skillParts.push("PPT 交付指令：这是直接交付任务，采用技能的快速生成流程，跳过可选的大纲确认，继续填充内容并生成可下载的 .pptx；生成失败要分段修复后重试并汇报实际错误。");
+    }
   }
   if (skillParts.length) sections.skills = skillParts.join("\n");
   if (shouldInjectFullMemory(message)) {

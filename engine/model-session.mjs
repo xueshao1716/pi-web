@@ -86,7 +86,7 @@ export function createModelSessionApi(deps) {
           if (switched) { try { await syncContextAfterSwitch(entry2, m); } catch {} }
         } catch {}
       } else if (entry2.agent && entry2.busy) {
-        console.log(`[pi-web] 会话 busy，模型切换延迟到下次消息生效 → ${m.provider}/${m.id}`);
+        console.log(`[元枢] 会话 busy，模型切换延迟到下次消息生效 → ${m.provider}/${m.id}`);
       }
       json(res, 200, { ok: true, model: { provider: m.provider, id: m.id }, sessionScoped: true });
       return;
@@ -105,7 +105,7 @@ export function createModelSessionApi(deps) {
           { deliverAs: "nextTurn" }
         );
       } catch {}
-      console.log(`[pi-web] 模型切换为 ${mName}，已注入上下文提示（context 注入，不污染历史）`);
+      console.log(`[元枢] 模型切换为 ${mName}，已注入上下文提示（context 注入，不污染历史）`);
     } catch {}
   }
 

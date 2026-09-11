@@ -2,6 +2,7 @@
 // 依赖：json(http-utils)、scanSessionFiles/parseSessionFile/getSessionList/readEntriesFromFile/invalidateSessionCache(session-files)、extractMessages(session-utils)
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { json } from "./http-utils.mjs";
 import { scanSessionFiles, parseSessionFile, getSessionList, readEntriesFromFile, invalidateSessionCache } from "./session-files.mjs";
 import { extractMessages } from "./session-utils.mjs";
@@ -229,8 +230,119 @@ export async function handleCompact(res, id) {
   }
 }
 
-// GET /api/skills —— 技能列表（pi 引擎资源 + pi-web 内置技能）
+// GET /api/skills —— 技能列表（兼容适配器资源 + 元枢内置技能）
 const BUILTIN_SKILLS_DIR = path.join(import.meta.dirname, "..", "skills");
+
+// 技能分类只依赖名称和简介，避免要求每个技能都维护额外的 frontmatter。
+// 有 category/tags 字段时优先使用显式值，没有时按这些稳定的关键词推导。
+export const SKILL_CATEGORIES = Object.freeze([
+  { id: "creative", label: "创作设计", keywords: ["design", "creative", "illustrat", "poster", "zine", "scene", "celestial", "设计", "插画", "海报", "场景", "视觉"] },
+  { id: "image", label: "图像视觉", keywords: ["image", "photo", "portrait", "draw", "paint", "图片", "图像", "摄影", "人像", "出图"] },
+  { id: "video", label: "视频与动效", keywords: ["video", "animation", "motion", "remotion", "短视频", "视频", "动效", "动画", "分镜"] },
+  { id: "presentation", label: "演示文稿", keywords: ["ppt", "powerpoint", "slide", "presentation", "路演", "幻灯", "演示文稿"] },
+  { id: "document", label: "文档与办公", keywords: ["document", "word", "pdf", "markdown", "合同", "文档", "法条", "表格", "办公"] },
+  { id: "research", label: "研究与搜索", keywords: ["research", "search", "browser", "paper", "claim", "分析", "检索", "搜索", "论文", "核查"] },
+  { id: "engineering", label: "开发与工程", keywords: ["code", "debug", "test", "frontend", "backend", "sdk", "api", "工程", "开发", "调试", "测试"] },
+  { id: "automation", label: "自动化与系统", keywords: ["automat", "agent", "workflow", "plugin", "skill", "system", "自动", "工作流", "智能体", "系统"] },
+  { id: "commerce", label: "内容营销", keywords: ["commerce", "ecommerce", "marketing", "wechat", "xiaohongshu", "shopping", "带货", "电商", "营销", "公众号", "小红书"] },
+  { id: "data", label: "数据分析", keywords: ["spreadsheet", "excel", "stock", "chart", "data", "股票", "数据", "图表", "表格"] },
+  { id: "general", label: "通用助手", keywords: [] },
+]);
+
+const skillCategoryById = new Map(SKILL_CATEGORIES.map(c => [c.id, c]));
+const normaliseSkillText = value => String(value || "").toLowerCase().replace(/[\s_/-]+/g, " ");
+
+/** 纯函数：给定技能名和简介，返回稳定的用途分类。 */
+export function inferSkillCategory(name = "", description = "", explicit = "") {
+  const requested = normaliseSkillText(explicit);
+  const direct = SKILL_CATEGORIES.find(c => c.id === requested || c.label.toLowerCase() === requested);
+  if (direct) return direct.id;
+  const text = normaliseSkillText(`${name} ${description}`);
+  let best = { id: "general", score: 0 };
+  for (const category of SKILL_CATEGORIES) {
+    if (!category.keywords.length) continue;
+    const score = category.keywords.reduce((sum, keyword) => sum + (text.includes(normaliseSkillText(keyword)) ? 1 : 0), 0);
+    if (score > best.score) best = { id: category.id, score };
+  }
+  return best.id;
+}
+
+/** 从 frontmatter 或简介提取最多 6 个可读标签，供界面做轻量筛选。 */
+export function inferSkillTags(name = "", description = "", explicit = []) {
+  const tags = Array.isArray(explicit)
+    ? explicit
+    : String(explicit || "").split(/[,，、|]/);
+  const result = [];
+  for (const tag of tags) {
+    const value = String(tag || "").trim().replace(/^['\"]|['\"]$/g, "");
+    if (value && !result.includes(value)) result.push(value);
+  }
+  const text = normaliseSkillText(`${name} ${description}`);
+  for (const category of SKILL_CATEGORIES) {
+    if (result.length >= 6) break;
+    if (category.keywords.some(keyword => text.includes(normaliseSkillText(keyword))) && !result.includes(category.label)) result.push(category.label);
+  }
+  return result.slice(0, 6);
+}
+
+function pathInside(filePath, root) {
+  if (!filePath || !root) return false;
+  const file = path.resolve(filePath);
+  const base = path.resolve(root);
+  return file === base || file.startsWith(base + path.sep);
+}
+
+/** 把适配器的 location 转成用户能理解的来源分组。 */
+export function classifySkillSource(filePath = "", declaredLocation = "") {
+  const fp = String(filePath || "");
+  const localRoots = [
+    BUILTIN_SKILLS_DIR,
+    _cwd ? path.join(_cwd, "skills") : "",
+    path.join(process.cwd(), "skills"),
+  ];
+  if (localRoots.some(root => pathInside(fp, root))) return "local";
+  const onlineRoots = [
+    path.join(os.homedir(), ".agents", "skills"),
+    path.join(os.homedir(), ".pi", "agent", "skills"),
+    _getAgentDir() ? path.join(_getAgentDir(), "skills") : "",
+  ];
+  // 适配器把 node_modules 和用户技能目录都视为已安装资源；仓库内
+  // skills/ 已在上面的 localRoots 中优先命中，避免把项目自建技能误判成线上包。
+  if (onlineRoots.some(root => pathInside(fp, root)) || declaredLocation === "user" || /node_modules[\\/]/i.test(fp)) return "online";
+  if (declaredLocation === "project") return "local";
+  return "builtin";
+}
+
+const SKILL_SOURCE_LABELS = Object.freeze({ local: "自建 · 本地", online: "线上 · 已安装", builtin: "内置 · 只读" });
+
+function readSkillFrontmatter(filePath) {
+  if (!filePath) return {};
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    const fm = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (!fm) return {};
+    const block = fm[1];
+    const get = key => block.match(new RegExp(`^${key}:\\s*(.+)$`, "mi"))?.[1]?.trim() || "";
+    let tags = get("tags");
+    if (/^\[.*\]$/.test(tags)) tags = tags.slice(1, -1).split(/[,，]/);
+    return { category: get("category") || get("领域"), tags };
+  } catch { return {}; }
+}
+
+function enrichSkill(skill) {
+  const metadata = readSkillFrontmatter(skill.path);
+  const source = classifySkillSource(skill.path, skill.location);
+  const category = inferSkillCategory(skill.name, skill.description, metadata.category);
+  const categoryLabel = skillCategoryById.get(category)?.label || "通用助手";
+  return {
+    ...skill,
+    source,
+    sourceLabel: SKILL_SOURCE_LABELS[source],
+    category,
+    categoryLabel,
+    tags: inferSkillTags(skill.name, skill.description, metadata.tags),
+  };
+}
 export function listBuiltinSkills() {
   try {
     const root = BUILTIN_SKILLS_DIR;
@@ -270,9 +382,17 @@ export async function handleSkills(res) {
         return "project";
       })(),
       path: s.filePath || "",
-    })), ...listBuiltinSkills()];
+    })), ...listBuiltinSkills()].map(enrichSkill);
+    const sources = { local: 0, online: 0, builtin: 0 };
+    const categories = {};
+    for (const skill of merged) {
+      sources[skill.source] = (sources[skill.source] || 0) + 1;
+      categories[skill.category] = (categories[skill.category] || 0) + 1;
+    }
     json(res, 200, {
       skills: merged,
+      sources,
+      categories,
       diagnostics: diagnostics || [],
     });
   } catch (e) {

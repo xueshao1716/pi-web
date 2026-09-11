@@ -1,9 +1,9 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 /**
- * pi-web 移动端 Capacitor 配置（2026-08-20）
+ * 元枢移动端 Capacitor 配置（2026-08-20）
  *
- * 包 pi-web React 前端构建产物（frontend/dist/）。
+ * 包元枢 React 前端构建产物（frontend/dist/）。
  * frontend/ 是唯一前端源码和构建入口，避免 Capacitor 与 Tauri 使用不同版本。
  *
  * CapacitorHttp 开启：WKWebView/Android WebView 的 origin 是
@@ -15,7 +15,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
  */
 const config: CapacitorConfig = {
   appId: 'com.pixinyu.app',
-  appName: '小语工作台',
+  appName: '元枢',
   webDir: 'frontend/dist',
   ios: {
     contentInset: 'never',

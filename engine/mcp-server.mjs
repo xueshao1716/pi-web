@@ -1,12 +1,12 @@
-// engine/mcp-server.mjs —— pi-web MCP HTTP 端点（2026-08-20）
-// 把 pi-web 的"认知层"能力暴露给 NomiFun 等 MCP 客户端：
+// engine/mcp-server.mjs —— 元枢 MCP HTTP 端点（2026-08-20）
+// 把元枢的“认知层”能力暴露给 NomiFun 等 MCP 客户端：
 //   pi_model_route  → Auto 路由（模型选择/降级建议）
 //   pi_memory_recall → 记忆召回（经验/记忆日志）
 //   pi_emotion_state → 情绪引擎快照
 //   pi_chat          → 对话（SSE 收集）
 //   pi_read_file / pi_write_file / pi_workspace_tree / pi_deliver
 // 传输：HTTP POST /mcp（JSON-RPC 2.0：initialize / tools/list / tools/call）
-// 认证：与 pi-web 相同（Bearer token）
+// 认证：与元枢相同（Bearer token）
 import { extractMessages, extractText } from "./session-utils.mjs";
 
 // 依赖注入（server.mjs 启动时注入）
@@ -30,37 +30,37 @@ export function initMcpServer({ modelRouter, memoryApi, emotion, getDefaultModel
 const TOOLS = [
   {
     name: "pi_model_route",
-    description: "调用 pi-web 的 Auto 路由：根据任务文本给出建议模型（flash/pro + 原因）。NomiFun 选模型时可参考。",
+    description: "调用元枢的 Auto 路由：根据任务文本给出建议模型（flash/pro + 原因）。NomiFun 选模型时可参考。",
     inputSchema: { type: "object", properties: { task: { type: "string", description: "任务描述" } } },
   },
   {
     name: "pi_memory_recall",
-    description: "召回 pi-web 的记忆（经验库/记忆日志，关键词匹配）。",
+    description: "召回元枢的记忆（经验库/记忆日志，关键词匹配）。",
     inputSchema: { type: "object", properties: { query: { type: "string", description: "检索关键词" }, max: { type: "number" } } },
   },
   {
     name: "pi_emotion_state",
-    description: "获取 pi-web 情绪引擎当前快照（VAD/情绪标签）。",
+    description: "获取元枢情绪引擎当前快照（VAD/情绪标签）。",
     inputSchema: { type: "object", properties: { session: { type: "string", description: "会话标识（可选）" } } },
   },
   {
     name: "pi_chat",
-    description: "给小语（pi-web）发消息并返回完整回复。",
+    description: "给小语（元枢）发消息并返回完整回复。",
     inputSchema: { type: "object", properties: { message: { type: "string" }, sessionId: { type: "string" } }, required: ["message"] },
   },
   {
     name: "pi_read_file",
-    description: "读 pi-web 工作空间文件",
+    description: "读元枢工作空间文件",
     inputSchema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
   },
   {
     name: "pi_write_file",
-    description: "写文件到 pi-web 工作空间",
+    description: "写文件到元枢工作空间",
     inputSchema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] },
   },
   {
     name: "pi_workspace_tree",
-    description: "浏览 pi-web 工作空间目录",
+    description: "浏览元枢工作空间目录",
     inputSchema: { type: "object", properties: { path: { type: "string" } } },
   },
   {
@@ -161,7 +161,7 @@ export async function handleMcp(req, res, ctx) {
           result: {
             protocolVersion: rpc.params?.protocolVersion || "2024-11-05",
             capabilities: { tools: { listChanged: false } },
-            serverInfo: { name: "pi-web (小语)", version: "0.2.0" },
+            serverInfo: { name: "yuanshu (元枢)", version: "0.2.0" },
           },
         });
       case "notifications/initialized":

@@ -1,4 +1,4 @@
-// pi-web 敏感信息脱敏模块（借鉴 badlogic/pi-share-hf 思路）
+// 元枢敏感信息脱敏模块（借鉴 badlogic/pi-share-hf 思路）
 // 分享/导出前自动擦除：API Key、访问令牌、token、密码等
 import path from "node:path";
 import os from "node:os";

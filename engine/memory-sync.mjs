@@ -1,5 +1,5 @@
-// pi-web ↔ TUI 记忆同步脚本
-// 作用：把 pi-web 的记忆文件（记忆.md/记忆日志/经验库）同步到 TUI 项目级 APPEND_SYSTEM.md
+// 元枢 ↔ TUI 记忆同步脚本
+// 作用：把元枢的记忆文件（记忆.md/记忆日志/经验库）同步到 TUI 项目级 APPEND_SYSTEM.md
 // 这样 TUI 在 D:\pi-workspace 下运行时，加载同一份记忆，两端记忆相通
 import fs from "node:fs";
 import { atomicWriteText } from "./atomic-io.mjs";
@@ -108,9 +108,9 @@ export function syncMemoryToTui() {
 
     const constitution = renderConstitution();
 
-    const content = `# 小语 · 工作空间记忆（TUI 与 pi-web 共享）
+    const content = `# 小语 · 工作空间记忆（TUI 与元枢共享）
 
-> 本文件由记忆同步脚本自动生成，与 pi-web 共享同一份记忆。
+> 本文件由记忆同步脚本自动生成，与元枢共享同一份记忆。
 > 修改请改源文件（记忆.md / 记忆日志.md / 经验库 / 宪法.json），勿直接编辑本文件。
 
 ${constitution ? `${constitution}\n\n---\n\n` : ""}## 固定记忆（记忆.md）

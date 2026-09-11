@@ -12,7 +12,7 @@ export function promptTimeText(now = new Date()) {
 
 export function promptPersonaText(model) {
   if (!model?.id) return "";
-  return `本轮由 ${model.provider} 通道的 ${model.id} 模型驱动，运行在 pi-web 工作台（助手角色：小语）。用户问及你的模型/版本/能力时，以此如实回答；不要自称其他产品名。`;
+  return `本轮由 ${model.provider} 通道的 ${model.id} 模型驱动，运行在元枢工作台（助手角色：小语）。用户问及你的模型/版本/能力时，以此如实回答；不要自称其他产品名。`;
 }
 
 export function mergeContributedSections(base = {}, contribs = []) {

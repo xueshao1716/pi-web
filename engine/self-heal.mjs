@@ -148,7 +148,7 @@ export async function handleRepair(res, body) {
     write("delta", { text: "🧠 正在分析代码并修复…\n" });
     const root = repoRoot();
     const repairPrompt = [
-      `你是 pi-web（${root}）的修复工程师。用户报告了问题：`,
+      `你是元枢（${root}）的修复工程师。用户报告了问题：`,
       issue,
       "",
       "请：",
@@ -166,7 +166,7 @@ export async function handleRepair(res, body) {
     write("delta", { text: `\n✅ 修复完成，重启服务中…（页面会自动恢复）\n🛡 回滚方式：${cp.error ? "检查点创建失败，请用 git 恢复" : `复制 ${cp.dir} 内文件回 ${root}`}` });
     write("done", { repair: true });
     setTimeout(() => {
-      console.log("[pi-web] 自愈重启…");
+      console.log("[元枢] 自愈重启…");
       try { spawn(process.execPath, [process.argv[1]], { detached: true, stdio: "ignore" }); } catch {}
       setTimeout(() => { try { process.exit(0); } catch {} }, 900);
     }, 1500);

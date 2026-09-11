@@ -91,7 +91,7 @@ export async function refreshModelList() {
   if (curDefault && !list.find(m => m.provider === curDefault.provider && m.id === curDefault.id)) {
     _setDefaultModel(list[0] || undefined);
   }
-  console.log(`[pi-web] 模型刷新: ${list.length} 个（含 ${Object.keys(store).join(", ")}）`);
+  console.log(`[元枢] 模型刷新: ${list.length} 个（含 ${Object.keys(store).join(", ")}）`);
 }
 
 // GET /api/models/manage —— 只显示真正配置了 Key 的 provider
@@ -136,7 +136,7 @@ export async function handleModelsAdd(res, body) {
       checkedAt: new Date().toISOString(),
     };
     _writeJsonFile(_modelsPath, store);
-    console.log(`[pi-web] 模型添加成功: ${provider} 1 个（手动注册）`);
+    console.log(`[元枢] 模型添加成功: ${provider} 1 个（手动注册）`);
     await _refreshModelList();
     return json(res, 200, { ok: true, provider, models: store[provider].models, manual: true });
   }
@@ -176,7 +176,7 @@ export async function handleModelsAdd(res, body) {
     const store = _readJsonFile(_modelsPath);
     store[provider] = { models, checkedAt: new Date().toISOString() };
     _writeJsonFile(_modelsPath, store);
-    console.log(`[pi-web] 模型添加成功: ${provider} ${models.length} 个`);
+    console.log(`[元枢] 模型添加成功: ${provider} ${models.length} 个`);
     await _refreshModelList();
     // dsh 同步（可选）：写用户级环境变量 DEEPSEEK_API_KEY（新终端/进程生效）
     let dsh = false, dshNote = "";
@@ -189,7 +189,7 @@ export async function handleModelsAdd(res, body) {
     json(res, 200, { ok: true, modelCount: models.length, models: models.map(m => m.id), dsh, dshNote });
   } catch (e) {
     const a2 = _readJsonFile(_authPath); delete a2[provider]; _writeJsonFile(_authPath, a2);
-    console.log(`[pi-web] 模型添加失败: ${provider} → ${String(e?.message || e).slice(0, 100)}`);
+    console.log(`[元枢] 模型添加失败: ${provider} → ${String(e?.message || e).slice(0, 100)}`);
     json(res, 500, { error: String(e?.message || e).slice(0, 200) });
   }
 }
@@ -213,14 +213,8 @@ export async function handleDshStatus(res) {
     const r = await fetch(`http://127.0.0.1:${_port}/`, { signal: AbortSignal.timeout(1500) });
     webUp = r.status < 500;
   } catch {}
-  // 密钥：进程 env → 注册表（与 dsh-tool 的 resolveDshEnv 同链路）
+  // 密钥：只检查当前进程环境与本机 auth.json，不读取系统注册表或外部服务。
   let keyOk = !!process.env.DEEPSEEK_API_KEY;
-  if (!keyOk) {
-    try {
-      const out = execFileSync("reg", ["query", "HKCU\\Environment", "/v", "DEEPSEEK_API_KEY"], { encoding: "utf8", windowsHide: true, timeout: 5000 });
-      keyOk = /DEEPSEEK_API_KEY\s+REG_SZ\s+.+/.test(out);
-    } catch {}
-  }
   if (!keyOk) { const a = _readJsonFile(_authPath); keyOk = !!a?.deepseek?.key; }
   json(res, 200, { installed: !!bin, bin, webUp, webPort: _port, keyOk });
 }
@@ -231,7 +225,7 @@ export async function handleDshWebStart(res) {
     const probe = await fetch(`http://127.0.0.1:${_port}/`, { signal: AbortSignal.timeout(1500) });
     if (probe.status < 500) return json(res, 200, { ok: true, already: true, url: `http://127.0.0.1:${_port}` });
   } catch {}
-  // detached 拉起：独立于 pi-web 生命周期，日志落 dsh-web.log 便于排查
+  // detached 拉起：独立于元枢生命周期，日志落 dsh-web.log 便于排查
   try {
     const { resolveDshEnv } = await import("./engine/dsh-tool.mjs");
     const logFd = fs.openSync(path.join(os.tmpdir(), "dsh-web.log"), "a");
@@ -258,14 +252,8 @@ export async function handleDshWebStart(res) {
 export function handleKeysStatus(res) {
   const auth = _readJsonFile(_authPath);
   const piProviders = Object.keys(auth).filter(k => auth[k]?.key);
-  let dshKey = process.env.DEEPSEEK_API_KEY || "";
-  if (!dshKey) {
-    try {
-      const out = execFileSync("reg", ["query", "HKCU\\Environment", "/v", "DEEPSEEK_API_KEY"], { encoding: "utf8", windowsHide: true, timeout: 5000 });
-      const m = out.match(/DEEPSEEK_API_KEY\s+REG_SZ\s+(.+)/);
-      if (m) dshKey = m[1].trim();
-    } catch {}
-  }
+  // 状态判断与执行链路保持一致：进程 env → 本机 auth.json。
+  const dshKey = process.env.DEEPSEEK_API_KEY || auth?.deepseek?.key || "";
   json(res, 200, { pi: piProviders, dsh: !!dshKey });
 }
 
@@ -359,7 +347,7 @@ export async function handleKeysApply(res, body) {
         }
       }
     } catch (e) {
-      console.log(`[pi-web] keys/apply 探测失败: ${provider} → ${String(e?.message || e).slice(0, 120)}`);
+      console.log(`[元枢] keys/apply 探测失败: ${provider} → ${String(e?.message || e).slice(0, 120)}`);
       return json(res, 500, { error: `探测异常：${String(e?.message || e).slice(0, 120)}` });
     }
   } else {

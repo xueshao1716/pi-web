@@ -3,7 +3,7 @@
 //   任何实现（HTTP / SDK / 本地模型）都注册成插件，AgentLoop 只认接口不认厂商。
 // 内置：HttpModelAdapter —— OpenAI 兼容 /chat/completions 适配器（deepseek/openai/… 通用）。
 //   自动适配：baseUrl 带不带 /v1、reasoning_effort 降级重试、5xx 重试、流式关闭。
-// 依赖注入：httpFetch 由宿主注入（pi-web 注入 httpJsonFetch 以复用系统代理栈），
+// 依赖注入：httpFetch 由宿主注入（元枢注入 httpJsonFetch 以复用系统代理栈），
 //   不注入则用 Node 原生 fetch（Node 25+）。
 
 // ── ModelAdapter 接口契约 ──

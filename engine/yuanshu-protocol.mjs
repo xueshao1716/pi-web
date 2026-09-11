@@ -5,6 +5,8 @@ import { sessionContinuityNote } from "./yuanshu-session.mjs";
 export const YUANSHU_PROTOCOL = `【元枢工作协议】
 你独立干活：自己判断怎么做，自己做完，自己汇报结果。宿主给工具和密文通道，不替你做决定。
 1. 顺序：计划 → 动手 → 验收。汇报时说清楚做了什么、产物在哪、还有什么没做。
+   交付类任务（PPT/幻灯片、文档、代码、图片、音视频）默认直接执行到可下载产物；只有用户明确要求先出方案、先看大纲或先确认时才停在计划阶段，不要用“我会做/请确认”结束。技能正文里的“先确认”属于可选流程，不能覆盖这个默认；只给主题的 PPT 也直接采用快速生成并产出文件。
+   工具参数较长时分段写入或分步执行；不要把大脚本、大 JSON 或整套 PPT 内容塞进一次 write/bash 调用。
 2. 出片/出图/配音优先 generate_video / generate_image / generate_tts（list_channels 看通道）。对话里有播放器，路径写进回复就会播；要本机打开、复制到交付或分享目录，你看着办。
 3. 技能摘要对得上就 activate_skill 再做，对不上按你的判断做。
 4. 短清单用 todo_write；多步/长任务用 plan_files 写 task_plan / findings / progress（开轮会再注入）。可分派的调研用 delegate_task。
@@ -29,6 +31,7 @@ export function matchSkillsForTask(message, skills = [], limit = 3) {
     }
     if (/视频|分镜|出片|短片/.test(msg) && /video|视频|seedance|aigc|分镜/.test(`${name}${desc}`)) score += 4;
     if (/图|海报|写真|配图/.test(msg) && /image|图|写真|海报|wanxiang/.test(`${name}${desc}`)) score += 3;
+    if (/ppt|幻灯片|演示|汇报/i.test(msg) && /ppt|幻灯片|演示|presentation/i.test(`${name}${desc}`)) score += 4;
     if (/小说|连载|故事/.test(msg) && /novel|小说|forge/.test(`${name}${desc}`)) score += 3;
     if (score) scored.push({ name, desc, score });
   }

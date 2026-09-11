@@ -154,32 +154,32 @@ export async function generateMediaAsync(intent, prompt) {
   try {
     if (intent.type === "image") {
       const m = findMediaModel("image");
-      if (!m) { console.log(`[pi-web] 媒体: 无 image 模型`); return null; }
+      if (!m) { console.log(`[元枢] 媒体: 无 image 模型`); return null; }
       const drawnPrompt = varyImagePrompt(prompt);
       const url = await generateImage(m.provider, m.id, drawnPrompt);
-      console.log(`[pi-web] 媒体 image: ${url ? "成功" : "失败"} prompt=${String(drawnPrompt).slice(0,30)}`);
+      console.log(`[元枢] 媒体 image: ${url ? "成功" : "失败"} prompt=${String(drawnPrompt).slice(0,30)}`);
       return url ? { type: "image", url, model: `${m.provider}/${m.id}`, prompt: drawnPrompt } : { type: "image", error: "图像模型未返回图片" };
     }
     if (intent.type === "tts") {
       const url = await generateTTS(prompt);
-      console.log(`[pi-web] 媒体 tts: ${url ? "成功" : "失败"}`);
+      console.log(`[元枢] 媒体 tts: ${url ? "成功" : "失败"}`);
       return url ? { type: "audio", url, model: "xiaomi-token-plan-cn/mimo-v2.5-tts" } : null;
     }
     if (intent.type === "video") {
       const m = findMediaModel("video");
-      if (!m) { console.log(`[pi-web] 媒体: 无 video 模型`); return { type: "video", error: "无 video 模型" }; }
+      if (!m) { console.log(`[元枢] 媒体: 无 video 模型`); return { type: "video", error: "无 video 模型" }; }
       const r = await generateVideo(m.provider, m.id, prompt, intent);
       if (r?.video) {
-        console.log(`[pi-web] 媒体 video: 成功`);
+        console.log(`[元枢] 媒体 video: 成功`);
         return { type: "video", url: r.video, model: `${m.provider}/${m.id}`, prompt };
       }
       const error = r?.error || "视频模型未返回片子";
-      console.log(`[pi-web] 媒体 video: 失败 ${error}`);
+      console.log(`[元枢] 媒体 video: 失败 ${error}`);
       return { type: "video", error };
     }
   } catch (e) {
     const error = explainMediaError(e);
-    console.log(`[pi-web] 媒体异常: ${error}`);
+    console.log(`[元枢] 媒体异常: ${error}`);
     return { type: intent?.type === "tts" ? "audio" : intent?.type === "video" ? "video" : "image", error };
   }
   return null;

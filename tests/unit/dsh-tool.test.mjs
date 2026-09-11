@@ -1,6 +1,7 @@
 // ===== dsh-tool.test.mjs —— dsh 执行臂适配层单测（错误翻译 / 结构化解析 / 密钥链）=====
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { extractStructuredOut, friendlyDshError, resolveDshEnv } from "../../engine/dsh-tool.mjs";
 
 test("extractStructuredOut：协议解析", (t) => {
@@ -44,9 +45,14 @@ test("friendlyDshError：失败原因翻译（stderr 真相优先于 err.message
   });
 });
 
-test("resolveDshEnv：密钥三级链路（env → 注册表 → auth.json），不丢原环境", () => {
+test("resolveDshEnv：密钥只读本机环境与 auth.json，不丢原环境", () => {
   const env = resolveDshEnv();
   assert.equal(env.PATH, process.env.PATH, "原环境变量必须保留");
   // 有无 key 都不应抛错（机器相关，只验证结构与 PATH 继承）
   assert.equal(typeof env, "object");
+});
+
+test("dsh 状态接口不读取 Windows 注册表凭证", () => {
+  const src = readFileSync(new URL("../../engine/dsh-keys.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /HKCU\\\\Environment|execFileSync\(\s*["']reg["']/i);
 });

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// ===== pi-agent.mjs —— 无头 Agent 入口（大脑可移植的验收 + 未来接入外部平台的桥）=====
-// 不启动 HTTP 服务、不依赖 pi SDK：engine/ 模块 + engine/tools/ + ~/.pi/agent/{auth,models-store}.json
+// ===== yuanshu-agent —— 元枢无头 Agent 入口（大脑可移植的验收 + 外部平台桥）=====
+// 不启动 HTTP 服务、不依赖外部 Web 服务：engine/ 模块 + engine/tools/ + 本机模型配置
 // 直接跑完整 Agent 轮次（模型对话 + 工具调用循环）。
 //
 // 用法：
@@ -30,7 +30,7 @@ for (let i = 0; i < argv.length; i++) {
   else flags.message = (flags.message ? flags.message + " " : "") + argv[i];
 }
 if (flags.help) {
-  console.log(`pi-agent —— pi-web 无头 Agent（engine 直驱，无 HTTP 服务）
+  console.log(`yuanshu-agent —— 元枢无头 Agent（engine 直驱，无 HTTP 服务）
 
 用法: node bin/pi-agent.mjs [选项] "问题"
   --list              列出可用模型（已配 key 的）
@@ -106,16 +106,16 @@ if (!chosen) {
   console.error(`模型不可用: ${flags.model || "（无已配 key 的模型）"}。node bin/pi-agent.mjs --list 查看可用模型。`);
   process.exit(1);
 }
-console.error(`[pi-agent] 模型: ${chosen.full} · 工具: ${gw.tools.names().join(", ")} · 目录: ${cwd}`);
+console.error(`[元枢 Agent] 模型: ${chosen.full} · 工具: ${gw.tools.names().join(", ")} · 目录: ${cwd}`);
 
 // ── 跑一轮 Agent（工具调用循环，进度走 stderr）──
 const r = await gw.chat(message, {
   model: { id: chosen.id, provider: chosen.provider },
-  system: "你是 pi-web 的无头 Agent，用工具完成任务，回答简洁准确。" + (flags.system ? "\n" + flags.system : ""),
+  system: "你是元枢的无头 Agent，用工具完成任务，回答简洁准确。" + (flags.system ? "\n" + flags.system : ""),
   onTool: (id, name, args) => console.error(`[tool] ${name} ${JSON.stringify(args || {}).slice(0, 120)}`),
   onToolEnd: (id, name, args, out) => console.error(`[tool✓] ${name}${out?.isError ? " (错误)" : ""}`),
 });
 
-if (r.error) { console.error(`[pi-agent] 失败: ${r.error}`); process.exit(1); }
+if (r.error) { console.error(`[元枢 Agent] 失败: ${r.error}`); process.exit(1); }
 if (r.think) console.error(`[think] ${String(r.think).slice(0, 500)}`);
 console.log(r.text || "(无输出)");

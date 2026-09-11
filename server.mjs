@@ -1,4 +1,4 @@
-// pi-web —— 基于 pi SDK 的 Web 聊天服务（Codex 风格多会话）
+// 元枢 —— 个人智能系统 Web 服务（Codex 风格多会话）
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
@@ -112,12 +112,12 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 // 时间引擎实例（启动时初始化；未初始化时相关 API 返回友好错误）
 let timeEngine = null;
 
-// ── 加载 pi SDK ────────────────────────────────────────────────────
+// ── 加载兼容适配器 SDK ─────────────────────────────────────────────
 const { createAgentSession, createAgentSessionServices, createAgentSessionFromServices, SettingsManager, ModelRuntime, SessionManager, DefaultResourceLoader, getAgentDir } = await import(
   pathToFileURL(CONFIG.piPackage).href
 );
 
-// ── 会话目录：直接使用 pi 终端的会话文件（~/.pi/agent/sessions/<encoded-cwd>/）──
+// ── 会话目录：复用本机 Agent 会话文件（~/.pi/agent/sessions/<encoded-cwd>/）──
 function encodeCwdDir(cwd) {
   const r = path.resolve(cwd);
   const safe = r.replace(/^[\\/]/, "").replace(/[\\/:]/g, "-");
@@ -127,9 +127,9 @@ const SESSIONS_DIR = path.join(getAgentDir(), "sessions", encodeCwdDir(CONFIG.cw
 initSessionFiles({ sessionsDir: SESSIONS_DIR, workspaceCwd: CONFIG.cwd }); // 会话文件层外部依赖注入
 initWorkspaceApi({ wsRoot: path.resolve(CONFIG.cwd) }); // 工作空间根注入
 initContextLoader({ cwd: CONFIG.cwd, DefaultResourceLoader }); // 上下文加载层注入
-console.log(`[pi-web] 会话目录: ${SESSIONS_DIR}`);
+console.log(`[元枢] 会话目录: ${SESSIONS_DIR}`);
 
-console.log("[pi-web] 正在初始化模型运行时…");
+console.log("[元枢] 正在初始化模型运行时…");
 // OpenCode Go：pi runtime 从环境变量 OPENCODE_API_KEY 读 key——必须在 ModelRuntime.create() 前注入
 // （auth.json 在 AGENT_DIR 下，从文件读，不依赖启动 shell 环境）
 try {
@@ -144,12 +144,12 @@ try {
   }
 } catch {}
 let modelRuntime = await ModelRuntime.create();
-console.log(`[pi-web] 模型运行时加载完成`);
+console.log(`[元枢] 模型运行时加载完成`);
 // agent 通道扩展入口在 AUTH_PATH/MODELS_PATH 就绪后注册（见下），注册逻辑：engine/sdk-providers.mjs
 // 诊断：确认 opencode-go provider 是否被 pi runtime 识别
 try {
   const ogCount = modelRuntime.getModels().filter(m => m.provider === "opencode-go").length;
-  console.log(`[pi-web] opencode-go 模型数: ${ogCount}`);
+  console.log(`[元枢] opencode-go 模型数: ${ogCount}`);
 } catch {}
 
 // ── 模型列表（从 models-store.json 构建：白名单精选 + 用户后添加的 provider 全部显示）──
@@ -195,7 +195,7 @@ const KEEP_MODELS = new Set([
   "openrouter/nvidia/nemotron-3-super-120b-a12b",
 ]);
 
-// pi SDK 原生 provider 表（agent 官方管线能直接跑通的通道）。外部中转/自定义通道
+// 兼容适配器原生 provider 表（agent 官方管线能直接跑通的通道）。外部中转/自定义通道
 // （bigmodel/claude-relay/sensenova/volces-ark/whatstoken 等）不在表内，agent 路径会静默兑底，
 // 必须走 unifiedChat 直连。此集合用于 /api/chat 通道策略判定（见 useAgent）。
 const NATIVE_PROVIDERS = new Set([
@@ -226,7 +226,7 @@ const AGENT_DIR = getAgentDir();
 const AUTH_PATH = path.join(AGENT_DIR, "auth.json");
 const MODELS_PATH = path.join(AGENT_DIR, "models-store.json");
 // 启用 agent 通道扩展注册（2026-08-27 补 compat/thinkingLevelMap 后启用）：把 store 里
-// 「已配 key + SDK 不认识」的自定义通道（bigmodel/商汤/新雷等）注册进 pi 引擎，
+// 「已配 key + SDK 不认识」的自定义通道（bigmodel/商汤/新雷等）注册进兼容适配器，
 // 使 agent 会话（专项工作台/终端/TUI）与聊天同通道同凭据可用。
 try {
   const { registerStoreProviders } = await import("./engine/sdk-providers.mjs");
@@ -285,8 +285,8 @@ if (!defaultModel) {
     || modelList.find(m => m.provider === "deepseek" && /v4-flash/i.test(m.id))
     || modelList[0];
 }
-console.log(`[pi-web] 默认模型: ${defaultModel?.provider}/${defaultModel?.id}`);
-console.log(`[pi-web] 可用模型: ${modelList.length} 个（含 ${Object.keys(readJsonFile(MODELS_PATH)).join(", ")}）`);
+console.log(`[元枢] 默认模型: ${defaultModel?.provider}/${defaultModel?.id}`);
+console.log(`[元枢] 可用模型: ${modelList.length} 个（含 ${Object.keys(readJsonFile(MODELS_PATH)).join(", ")}）`);
 
 // 模型路由层依赖注入（engine/model-router.mjs）：getter 动态读取，避免值拷贝 stale
 initModelRouter({ getModelList: () => modelList, getDefaultModel: () => defaultModel, configModel: CONFIG.model });
@@ -351,7 +351,7 @@ ${corrected.text}`;
     recordReply(sessionKey, corrected.text);
     // #229 修复：修正文本此前不落盘，会话历史里仍是旧异常回复，下轮模型看着旧回复继续复读
     try { entry?.sm?.appendMessage({ role: "assistant", content: [{ type: "text", text: corrected.text }] }); } catch {}
-    console.log(`[pi-web] 复读引导修正成功（同模型 ${currentModel?.provider}/${currentModel?.id}）`);
+    console.log(`[元枢] 复读引导修正成功（同模型 ${currentModel?.provider}/${currentModel?.id}）`);
     return corrected.text;
   }
   // 同模型修正失败 → 才切可用模型（真正的异常才换）
@@ -404,7 +404,7 @@ try {
       || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
       || defaultModel,
   });
-} catch (e) { console.log("[pi-web] subagent 初始化失败: " + String(e?.message || e).slice(0, 80)); }
+} catch (e) { console.log("[元枢] subagent 初始化失败: " + String(e?.message || e).slice(0, 80)); }
 // P3 资产路由：技能库摘要索引注入（任务→技能自动匹配）
 try { emotion.bindSkillIndex(() => loadSkillIndex()); } catch {}
 
@@ -412,8 +412,8 @@ try { emotion.bindSkillIndex(() => loadSkillIndex()); } catch {}
 // 找到已配置的媒体能力模型（查档案，不靠正则猜）
 
 // POST /api/models/remove {provider}
-// 内置 provider（走 pi agent）；其余自定义 provider 走直调通道
-// GET /api/prompts —— 提示词模板列表（~/.pi/agent/prompts/*.md）
+// 内置 provider（走兼容 agent）；其余自定义 provider 走直调通道
+// GET /api/prompts —— 提示词模板列表（本机 Agent prompts 目录）
 // ── 鉴权 ───────────────────────────────────────────────────────────
 function checkAuth(req) {
   const h = req.headers.authorization || "";
@@ -633,7 +633,7 @@ async function handleChat(req, res, body) {
       try { curAgent.dispose(); } catch {}
       entry.busy = false;
       for (const [id, e] of activeSessions) if (e === entry) activeSessions.delete(id);
-      console.log(`[pi-web] 会话 ${sessionId || "new"} 打断失败，已销毁卡住 agent 并重建`);
+      console.log(`[元枢] 会话 ${sessionId || "new"} 打断失败，已销毁卡住 agent 并重建`);
       if (sessionId) {
         entry = await openSession(sessionId);
         if (!entry) return json(res, 404, { error: "会话不存在" });
@@ -662,10 +662,10 @@ async function handleChat(req, res, body) {
       entry.busy = false;
       const r = await compactSession(sf, defaultModel, true, compactFocus);
       if (!r || r.skip) return json(res, 200, { compact: "skip", reason: r?.reason || "没有可压缩的内容（消息过少或摘要生成失败）" });
-      console.log(`[pi-web] 手动 /compact 完成: focus=${compactFocus || "-"} retained=${r.retained}`);
+      console.log(`[元枢] 手动 /compact 完成: focus=${compactFocus || "-"} retained=${r.retained}`);
       return json(res, 200, { compact: "done", focus: compactFocus, retained: r.retained, summary: String(r.summary || "").slice(0, 500) });
     } catch (e) {
-      console.log(`[pi-web] 手动 /compact 失败: ${String(e?.message || e).slice(0, 120)}`);
+      console.log(`[元枢] 手动 /compact 失败: ${String(e?.message || e).slice(0, 120)}`);
       return json(res, 500, { error: "压缩失败：" + String(e?.message || e).slice(0, 120) });
     } finally {
       entry.busy = false;
@@ -751,16 +751,16 @@ async function handleChat(req, res, body) {
           if (bp !== "deepseek" && bp !== "nvidia") {
             entry.modelKey = { provider: bp, id: bm };
             if (sessionId) saveSessionModelKey(sessionId, entry.modelKey);
-            console.log(`[pi-web] 前端同步模型 → ${bp}/${bm}`);
+            console.log(`[元枢] 前端同步模型 → ${bp}/${bm}`);
           } else {
-            console.log(`[pi-web] 忽略前端 ${bp} 同步（残留显示值防呆）→ ${bp}/${bm}`);
+            console.log(`[元枢] 忽略前端 ${bp} 同步（残留显示值防呆）→ ${bp}/${bm}`);
           }
         }
       }
     } catch {}
   }
   // 通道策略：主次引擎对（engine-pair）决定本轮主驾。默认仍是 pi 主驾、元枢兑底。
-  // PI_USE_AGENT=0 → 强制元枢。非 SDK 原生通道只逼 pi agent 兑底（dsh 有自己的通道）。
+  // PI_USE_AGENT=0 → 强制元枢。非 SDK 原生通道只让兼容 agent 兑底（dsh 有自己的通道）。
   const reqProv = (typeof body.model === "string" && body.model.includes("/"))
     ? body.model.split("/")[0]
     : null;
@@ -807,11 +807,11 @@ async function handleChat(req, res, body) {
     if (entry.modelKey) {
       const picked = modelList.find(m => m.provider === entry.modelKey.provider && m.id === entry.modelKey.id) || defaultModel;
       // 主动避让：用户显式选中的模型已在冷却中(之前撞过 401/402/403/429/529) → 不进 SDK 重试循环，直接换备选
-      // （上游错误文本常是中文（如智谱/opencode-go 的额度提醒），pi SDK 内部可重试判定用英文关键词正则匹配不上不可重试模式，
+      // （上游错误文本常是中文（如智谱/opencode-go 的额度提醒），兼容 SDK 内部可重试判定用英文关键词正则匹配不上不可重试模式，
       // 会把额度耗尽误判成可重试，平白多等 3 次退避（共 ~14s）才降级）
       if (isModelBlocked(picked)) {
         const alt = pickFallbackExcluding(picked);
-        console.log(`[pi-web] 主动避让冷却模型: ${picked?.provider}/${picked?.id} 已冷却 → 换 ${alt?.provider}/${alt?.id}`);
+        console.log(`[元枢] 主动避让冷却模型: ${picked?.provider}/${picked?.id} 已冷却 → 换 ${alt?.provider}/${alt?.id}`);
         return alt || picked;
       }
       return picked;
@@ -829,7 +829,7 @@ async function handleChat(req, res, body) {
       (!entry.agentModel || entry.agentModel.provider !== effModel.provider || entry.agentModel.id !== effModel.id)) {
     try { entry.agent.dispose(); } catch {}
     entry.agent = null;
-    console.log(`[pi-web] 生效模型变化，重建 agent → ${effModel.provider}/${effModel.id}`);
+    console.log(`[元枢] 生效模型变化，重建 agent → ${effModel.provider}/${effModel.id}`);
   }
   const agent = await ensureAgent(entry, effModel);
   // Plan 模式工具级限制：agent 就绪后统一应用一次（覆盖新会话首条 /plan / 模型切换重建后的 agent）
@@ -1032,7 +1032,7 @@ async function handleChat(req, res, body) {
           entry.busy = false;
           try { agent.dispose(); } catch {}
           for (const [id, e] of activeSessions) if (e === entry) activeSessions.delete(id);
-          console.log(`[pi-web] 会话 ${sessionId || "new"} 连接断开，已销毁卡住 agent`);
+          console.log(`[元枢] 会话 ${sessionId || "new"} 连接断开，已销毁卡住 agent`);
         }
       }, 2500);
     }
@@ -1057,7 +1057,7 @@ async function handleChat(req, res, body) {
       const providerName = m?.provider ? `（${m.provider}）` : "";
       // 2026-08-24 修复：不再替换 promptMsg（模型看不到原始问题），改 context 注入
       try {
-        const identityAnswer = `（自我认知指令）用户问了身份类问题。请按固定格式回答。硬性要求：①完整输出下面这段格式后立即结束，不要追加任何内容；②禁止调用任何工具/搜索/读文件；③不要输出过程性文字（如"我去查"）。格式如下：\n"我叫小语，你的 AI 工作伙伴。我能干：写代码、做设计、整理文档、分析数据，并直接操作工作空间完成交付。由 pi 引擎驱动。当前使用模型是：${modelName}${providerName}。模型特色：${featText}。"\n回答完直接等用户下一步指令。`;
+        const identityAnswer = `（自我认知指令）用户问了身份类问题。请按固定格式回答。硬性要求：①完整输出下面这段格式后立即结束，不要追加任何内容；②禁止调用任何工具/搜索/读文件；③不要输出过程性文字（如"我去查"）。格式如下：\n"我叫小语，你的 AI 工作伙伴。我能干：写代码、做设计、整理文档、分析数据，并直接操作工作空间完成交付。由元枢工作台驱动。当前使用模型是：${modelName}${providerName}。模型特色：${featText}。"\n回答完直接等用户下一步指令。`;
         await entry.agent?.sendCustomMessage?.(
           { customType: "context", content: [{ type: "text", text: identityAnswer }] },
           { deliverAs: "nextTurn" }
@@ -1134,9 +1134,9 @@ async function handleChat(req, res, body) {
             entry.agentModel = { provider: visionModel.provider, id: visionModel.id };
             await ensureAgent(entry, visionModel);
             visionSwitched = true;
-            console.log(`[pi-web] 图像兜底：${curM?.provider}/${curM?.id} → ${visionModel.provider}/${visionModel.id}`);
+            console.log(`[元枢] 图像兜底：${curM?.provider}/${curM?.id} → ${visionModel.provider}/${visionModel.id}`);
           } catch (e) {
-            console.log(`[pi-web] 图像兜底切换失败: ${String(e?.message || e).slice(0, 80)}`);
+            console.log(`[元枢] 图像兜底切换失败: ${String(e?.message || e).slice(0, 80)}`);
           }
         }
       }
@@ -1159,8 +1159,8 @@ async function handleChat(req, res, body) {
           if (entry.agent) { try { entry.agent.dispose(); } catch {} entry.agent = null; }
           entry.agentModel = origAgentModel;
           await ensureAgent(entry, modelList.find(m => m.provider === origAgentModel.provider && m.id === origAgentModel.id) || origAgentModel);
-          console.log(`[pi-web] 图像兜底已恢复: ${origAgentModel.provider}/${origAgentModel.id}`);
-        } catch (e) { console.log(`[pi-web] 图像兜底恢复失败: ${String(e?.message || e).slice(0, 80)}`); }
+          console.log(`[元枢] 图像兜底已恢复: ${origAgentModel.provider}/${origAgentModel.id}`);
+        } catch (e) { console.log(`[元枢] 图像兜底恢复失败: ${String(e?.message || e).slice(0, 80)}`); }
       }
     }
     // 空回复兜底：agent 完成但无任何文本输出（部分推理模型偶发把回答全放 <think>）→ 直调模型接口补一次
@@ -1171,9 +1171,9 @@ async function handleChat(req, res, body) {
       const fallback = fbModel ? await directChat(fbModel, message) : null;
       if (fallback?.text) {
         writer.push("delta", { text: fallback.text });
-        console.log(`[pi-web] 空回复兜底成功: ${fbModel.provider}/${fbModel.id}`);
+        console.log(`[元枢] 空回复兜底成功: ${fbModel.provider}/${fbModel.id}`);
       } else {
-        console.log(`[pi-web] 空回复兜底失败: ${fbModel?.provider}/${fbModel?.id}`);
+        console.log(`[元枢] 空回复兜底失败: ${fbModel?.provider}/${fbModel?.id}`);
         // 明确提示：报用户选定的模型（兜底链模型只是替死鬼，报它会让用户莫名其妙）
         try { writer.push("error", { message: `模型 ${effModel?.provider}/${effModel?.id} 无回复（已自动尝试备用通道 ${fbModel?.provider}/${fbModel?.id} 也失败）——可能是 API Key 失效/额度不足/网络代理问题，请到模型管理检查配置` }); } catch {}
       }
@@ -1187,19 +1187,19 @@ async function handleChat(req, res, body) {
         // undefined 污染：直接清理后接受（内容大部分正常，只清占位符，不打断）
         const clean = sanitizeUndefined(collected);
         if (clean && clean !== collected) {
-          console.log(`[pi-web] 清理 undefined 污染: ${collected.length} → ${clean.length} 字符`);
+          console.log(`[元枢] 清理 undefined 污染: ${collected.length} → ${clean.length} 字符`);
           collected = clean;
           try { writer.push("text", { text: clean }); } catch {}
         }
         recordReply(rk, collected);
       } else if (anom.type === "repeat" || anom.type === "marker" || anom.type === "amnesia") {
         // 2026-08-21 AI 检测员复核：规则判异常后，检测员语义级确认 + 给针对性修正建议
-        console.log(`[pi-web] 输出守卫(${anom.type}): ${effModel?.provider}/${effModel?.id} ${anom.reason} → 检测员复核`);
+        console.log(`[元枢] 输出守卫(${anom.type}): ${effModel?.provider}/${effModel?.id} ${anom.reason} → 检测员复核`);
         const insp = await inspectOutput({ userMessage: message, output: collected, history: recentHistory(entry) }).catch(() => null);
         if (insp && insp.verdict === "ok") {
           // 检测员判定正常（规则误报）→ 接受原输出
           recordReply(rk, collected);
-          console.log(`[pi-web] 检测员判定 ok（规则误报），接受原输出`);
+          console.log(`[元枢] 检测员判定 ok（规则误报），接受原输出`);
         } else {
           // 确认异常：用检测员的修正建议（或默认）引导同模型修正
           await retryRepeatWithFallback(message, rk, writer, busEmit, effModel, insp?.suggestion, recentHistory(entry), entry);
@@ -1399,7 +1399,7 @@ async function handleChat(req, res, body) {
       const healthy = await pickHealthyModel(cands).catch(() => null);
       if (healthy) {
         try { writer.push("note", { text: `✅ 探测到可用模型 ${healthy.provider}/${healthy.id}，已切换` }); } catch {}
-        console.log(`[pi-web] 通断探测 → 好模型顶上: ${healthy.provider}/${healthy.id}`);
+        console.log(`[元枢] 通断探测 → 好模型顶上: ${healthy.provider}/${healthy.id}`);
       }
     } else if (effModel) {
       // ⚙️ 2026-08-28 修复：原正则只识 "HTTP 429"/"status 429" 格式，漏掉上游直接抛 "429: {...}" 的情况
@@ -1415,11 +1415,11 @@ async function handleChat(req, res, body) {
         const healthy = await pickHealthyModel(cands).catch(() => null);
         if (healthy) {
           try { writer.push("note", { text: `✅ 探测到可用模型 ${healthy.provider}/${healthy.id}，已切换` }); } catch {}
-          console.log(`[pi-web] 通断探测 → 好模型顶上: ${healthy.provider}/${healthy.id}`);
+          console.log(`[元枢] 通断探测 → 好模型顶上: ${healthy.provider}/${healthy.id}`);
         }
       }
     }
-    console.log(`[pi-web] agent 通道异常，降级 unifiedChat: ${agentErr.slice(0, 120)}`);
+    console.log(`[元枢] agent 通道异常，降级 unifiedChat: ${agentErr.slice(0, 120)}`);
     try { unsubscribe(); } catch {}
     try {
       // 降级前先释放 busy（unifiedChat 会重新接管），并用同代次避免竞态
@@ -1498,11 +1498,11 @@ async function handleAppendMessage(res, id, body) {
 // ── HTTP 服务器 ────────────────────────────────────────────────────
 // 全局错误兜底：未捕获的异步异常不静默退出进程（watchdog 之外的保命层）
 process.on("unhandledRejection", (reason) => {
-  console.error("[pi-web] unhandledRejection:", String(reason?.stack || reason || "").slice(0, 500));
+  console.error("[元枢] unhandledRejection:", String(reason?.stack || reason || "").slice(0, 500));
 });
 process.on("uncaughtException", (err) => {
   try { fs.appendFileSync(path.join(WEB_DIR, "crash.log"), `[${new Date().toLocaleString("zh-CN")}] uncaughtException: ${String(err?.stack || err)}\n`); } catch {}
-  console.error("[pi-web] uncaughtException:", String(err?.stack || err || "").slice(0, 500));
+  console.error("[元枢] uncaughtException:", String(err?.stack || err || "").slice(0, 500));
   // P1 graceful shutdown：异常后不再接新请求，2s 后退出（watchdog 会拉起）
   try { server?.close?.(); } catch {}
   setTimeout(() => process.exit(1), 2000).unref();
@@ -1777,7 +1777,7 @@ const API_ROUTES = [
       if (entry) {
         try {
           await entry.sm.appendMessage({ role: "user", content: [{ type: "file", name, path: rel, size: buf.length, mime: body.mime || "" }] });
-          // 触发落盘：pi 引擎在出现 assistant 消息前不写文件，追加一条空 assistant 强制 flush（空消息渲染时被过滤，不影响显示）
+          // 触发落盘：兼容适配器在出现 assistant 消息前不写文件，追加一条空 assistant 强制 flush（空消息渲染时被过滤，不影响显示）
           await entry.sm.appendMessage({ role: "assistant", content: [] });
         } catch {}
       }
@@ -2167,7 +2167,7 @@ try {
   if (!fs.existsSync(bkServer)) {
     fs.copyFileSync(__filename, bkServer);
     fs.copyFileSync(path.join(__dirname, "config.mjs"), bkConfig);
-    console.log(`[pi-web] 配置已备份: ${bkDir}`);
+    console.log(`[元枢] 配置已备份: ${bkDir}`);
   }
 } catch {}
 
@@ -2177,10 +2177,10 @@ let listenAttempt = 0;
 server.on("error", (err) => {
   if (err.code === "EADDRINUSE" && listenAttempt < 30) {
     listenAttempt++;
-    console.log(`[pi-web] 端口 ${CONFIG.port} 占用，等待释放 (${listenAttempt}/30)…`);
+    console.log(`[元枢] 端口 ${CONFIG.port} 占用，等待释放 (${listenAttempt}/30)…`);
     setTimeout(() => { try { server.close(); } catch {} startServer(); }, 2000);
   } else {
-    console.error("[pi-web] 启动失败:", err.message);
+    console.error("[元枢] 启动失败:", err.message);
     process.exit(1);
   }
 });
@@ -2190,7 +2190,7 @@ function startServer() {
     try { initTuiBridge(server, { token: CONFIG.token, cwd: WS_ROOT }); console.log("  TUI 桥接: ws://…/ws/tui 已就绪"); } catch {}
     console.log("");
     console.log("╭──────────────────────────────────────────────╮");
-    console.log("│              pi-web 已启动                    │");
+    console.log("│                元枢已启动                    │");
     console.log("╰──────────────────────────────────────────────╯");
     console.log(`  本地地址: http://${CONFIG.host}:${CONFIG.port}`);
     console.log(`  访问令牌: ${CONFIG.token}`);
@@ -2252,14 +2252,16 @@ ${String(out).slice(0, 16000)}
       timeEngine.start();
     } catch (e) { console.log("[time-engine] 启动失败:", String(e?.message || e).slice(0, 100)); }
     console.log(`  会话目录: ${SESSIONS_DIR}`);
-    // 发现文件：写 pi 引擎 agent 目录，任何 pi 会话都能发现 pi-web（替代社区 pi-web-ui）
+    // 发现文件：写入运行时目录，让本机 Agent 会话能发现元枢入口
     try {
       const discoverDir = path.join(getAgentDir());
       fs.mkdirSync(discoverDir, { recursive: true });
-      const disc = `# pi-web（小语 AI 工作台）
-\n这是本机已安装的 pi Web 前端。\n\n- 访问地址: http://${CONFIG.host}:${CONFIG.port}\n- 访问令牌: ${CONFIG.token}\n- 工作目录: ${CONFIG.cwd}\n- 一键打开: 运行 \`pi-web\` 命令\n- 目录: ${__dirname}\n\n> 如果用户问 pi 的网页界面/前端/工作台在哪，告诉用户运行 \`pi-web\` 或访问上面的地址。\n`;
+      const disc = `# 元枢（个人智能系统）
+\n这是本机已安装的元枢 Web 工作台。\n\n- 访问地址: http://${CONFIG.host}:${CONFIG.port}\n- 访问令牌: 见服务器 .token 文件\n- 工作目录: ${CONFIG.cwd}\n- 一键打开: 运行 \`yuanshu\` 命令（兼容 \`pi-web\`）\n- 目录: ${__dirname}\n`;
+      fs.writeFileSync(path.join(discoverDir, "元枢.md"), disc, "utf8");
+      // 旧文件名继续保留兼容，但内容和品牌统一为元枢。
       fs.writeFileSync(path.join(discoverDir, "pi-web.md"), disc, "utf8");
-      console.log(`  📍 已写入发现文件: ${path.join(discoverDir, "pi-web.md")}`);
+      console.log(`  📍 已写入发现文件: ${path.join(discoverDir, "元枢.md")}`);
     } catch (e) {
       console.log(`  ⚠️ 发现文件写入失败: ${String(e?.message || e).slice(0, 60)}`);
     }

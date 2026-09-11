@@ -1,5 +1,5 @@
 // improve-api.mjs —— 自我改进提案（2026-08-21）
-// 与曦 improvement_proposal.rs 对称：pi-web 工作数据 → 分析优缺点 → 主动提案改进。
+// 与曦 improvement_proposal.rs 对称：元枢工作数据 → 分析优缺点 → 主动提案改进。
 // 数据源（本地零成本）：
 //   - model-router 冷却计数（鉴权/额度错误 → 稳定性提案）
 //   - stats-api 会话用量（token 烧钱 → 省钱提案）

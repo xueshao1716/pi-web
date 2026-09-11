@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// pi-web 全局命令：一键启动 + 打开浏览器 + 显示地址
-// 别人电脑装完 pi-web 后，运行 `pi-web` 就能打开前端
+// 元枢全局命令：一键启动 + 打开浏览器 + 显示地址
+// 兼容旧命令 pi-web；新安装优先使用 `yuanshu`
 import { spawn, spawnSync } from "node:child_process";
 import http from "node:http";
 import fs from "node:fs";
@@ -8,7 +8,7 @@ import path from "node:path";
 import os from "node:os";
 import { createRequire } from "node:module";
 
-// 定位 pi-web 目录：优先环境变量，其次 npm 全局包，最后默认路径
+// 定位元枢目录：优先环境变量，其次 npm 全局包，最后默认路径
 function findPiWebDir() {
   const candidates = [
     process.env.PI_WEB_DIR,
@@ -28,7 +28,7 @@ function findPiWebDir() {
 
 const dir = findPiWebDir();
 if (!dir) {
-  console.error("❌ 未找到 pi-web（server.mjs）。请先安装 pi-web。");
+  console.error("❌ 未找到元枢（server.mjs）。请先安装元枢。");
   process.exit(1);
 }
 
@@ -45,7 +45,7 @@ function needInit() {
   return false;
 }
 if (needInit()) {
-  console.log("🛠  首次运行：自动初始化（安装 pi + dsh 引擎、生成令牌、模型清单）…");
+  console.log("🛠  首次运行：自动初始化（安装元枢兼容引擎 + dsh、生成令牌、模型清单）…");
   const r = spawnSync(process.execPath, ["setup.mjs", "--install"], { cwd: dir, stdio: "inherit" });
   if (r.status !== 0) {
     console.error("❌ 初始化失败，请手动运行：cd " + dir + " && node setup.mjs --install");
@@ -67,7 +67,7 @@ function isRunning() {
 
 const isRunningNow = await isRunning();
 if (!isRunningNow) {
-  console.log(`📦 启动 pi-web（${dir}）…`);
+  console.log(`📦 启动元枢（${dir}）…`);
   const cwd = process.env.PI_WEB_CWD || path.join(os.homedir(), "pi-workspace");
   try { fs.mkdirSync(cwd, { recursive: true }); } catch {}
   const child = spawn(process.execPath, ["server.mjs"], {
@@ -94,7 +94,7 @@ try {
 
 console.log("");
 console.log("╭──────────────────────────────────────╮");
-console.log("│           pi-web 已启动              │");
+console.log("│             元枢已启动              │");
 console.log("╰──────────────────────────────────────╯");
 console.log(`  访问地址: ${url}`);
 try {

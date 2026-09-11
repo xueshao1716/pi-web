@@ -1,7 +1,7 @@
 // ===== tool-registry.mjs —— Gateway 2.0 工具注册表（dsh ToolRegistry 思想沉淀）=====
 // 设计：工具 = { name, description, parameters, handler(args) → {text, isError?} }
 //   handler 可同步可异步；注册后可动态增删；AgentLoop 只通过 execute() 调用。
-//   宿主可注入"默认执行器"（pi-web 注入 executeUnifiedTool 复用宪法红线等全部逻辑）。
+//   宿主可注入"默认执行器"（元枢注入 executeUnifiedTool 复用宪法红线等全部逻辑）。
 
 export class ToolRegistry {
   constructor(options = {}) {

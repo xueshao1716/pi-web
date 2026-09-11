@@ -8,6 +8,7 @@ import {
   formatSkillIndexPrompt,
   buildYuanshuContext,
   coachToolFailure,
+  matchSkillsForTask,
 } from "../../engine/yuanshu-protocol.mjs";
 import { loadSkillIndex } from "../../engine/context-loader.mjs";
 import { repairVideoRequest } from "../../engine/video-request.mjs";
@@ -24,8 +25,16 @@ test("元枢工作协议必须点名宿主工具，禁止翻密钥和猜 API", (
   assert.match(YUANSHU_PROTOCOL, /activate_skill/);
   assert.match(YUANSHU_PROTOCOL, /todo_write|plan_files/);
   assert.match(YUANSHU_PROTOCOL, /plan_files/);
+  assert.match(YUANSHU_PROTOCOL, /PPT|幻灯片/);
+  assert.match(YUANSHU_PROTOCOL, /分段/);
   assert.doesNotMatch(YUANSHU_PROTOCOL, /适配器未就绪/);
   assert.doesNotMatch(YUANSHU_PROTOCOL, /禁止.*播放器|禁止 start/);
+});
+
+test("PPT 请求命中 ppt 技能，并按交付任务继续执行", () => {
+  const skills = [{ name: "ppt-generator", desc: "智能 PPT 幻灯片生成" }];
+  assert.ok(matchSkillsForTask("做一个关于定西洋芋的宣传ppt", skills).some(s => s.name === "ppt-generator"));
+  assert.match(YUANSHU_PROTOCOL, /默认直接执行到可下载产物/);
 });
 
 test("buildYuanshuContext 每轮都带协议和技能目录，任务句才带经验/记忆", () => {
@@ -71,7 +80,7 @@ test("leadNote 非原生通道不当成适配器坏了", () => {
   assert.match(n, /元枢/);
   assert.match(n, /自制循环/);
   assert.doesNotMatch(n, /未就绪/);
-  assert.equal(leadNote({ lead: "pi", deferred: null, reason: "primary" }), "本轮主引擎 · pi");
+  assert.equal(leadNote({ lead: "pi", deferred: null, reason: "primary" }), "本轮主引擎 · 兼容适配器");
 });
 
 test("runYuanshuToolRound 失败结果要经过纠偏教练", async () => {

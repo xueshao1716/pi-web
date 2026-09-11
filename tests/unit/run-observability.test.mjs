@@ -19,13 +19,21 @@ test('summarizeRun includes current phase and safe error preview', () => {
 
   assert.deepEqual(summary, {
     id: 'r1', sessionId: 's1', status: 'failed', phase: 'failed',
-    messagePreview: '做个总结', toolCount: 1, memoryCount: 0, memoryPreview: null, error: '模型失败',
+    messagePreview: '做个总结', toolCount: 1, memoryCount: 0, memoryPreview: null, error: '模型失败', resumeAvailable: false,
     durationMs: null,
     eventCounts: { failed: 1, run_started: 1, tool_started: 1 },
     lastModel: null,
     lastTool: { name: 'read', status: 'started' },
     failureCategory: 'model',
   })
+})
+
+test('summarizeRun exposes a recoverable failed run', () => {
+  const summary = summarizeRun(
+    { id: 'r-recover', status: 'failed', resumeAvailable: true, sessionId: 's-recover', input: { messagePreview: '生成 PPT' }, error: '工具调用被截断' },
+    [{ type: 'error', data: { message: '工具调用被截断' } }, { type: 'failed', data: { message: '工具调用被截断' } }],
+  )
+  assert.equal(summary.resumeAvailable, true)
 })
 
 test('summarizeRun counts memory writes and keeps a safe context preview', () => {

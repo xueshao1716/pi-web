@@ -73,3 +73,13 @@ test("buildYuanshuSections：协议常驻，闲聊不背经验", () => {
   });
   assert.match(assemblePrompt(task), /【经验】/);
 });
+
+test("buildYuanshuSections：PPT 主题默认走快速生成并交付文件", () => {
+  const sections = buildYuanshuSections({
+    message: "做一个关于定西洋芋的宣传ppt",
+    skills: [{ name: "ppt-generator", desc: "智能 PPT 幻灯片生成" }],
+  });
+  assert.match(assemblePrompt(sections), /快速生成/);
+  assert.match(assemblePrompt(sections), /可下载的 \.pptx/);
+  assert.match(assemblePrompt(sections), /跳过可选的大纲确认/);
+});

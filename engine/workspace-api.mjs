@@ -149,6 +149,35 @@ export function artifactSidecarPath(filePath) {
   return String(filePath || "").replace(/\.[^.\\/]+$/, "") + ".json";
 }
 
+const ARTIFACT_EXTENSIONS = new Set([
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg",
+  ".wav", ".mp3", ".m4a", ".ogg",
+  ".mp4", ".webm",
+]);
+
+// 只有生成物目录里的媒体文件，且旁路内容符合本系统写入格式，才允许随主文件变更。
+// 工作区其它文件旁边的同名 JSON 可能是用户自己的数据，必须保持原样。
+function isGeneratedArtifactPath(filePath) {
+  if (!WS_ROOT || !filePath || !ARTIFACT_EXTENSIONS.has(path.extname(filePath).toLowerCase())) return false;
+  const rel = path.relative(WS_ROOT, filePath);
+  if (!rel || rel.startsWith(".." + path.sep) || path.isAbsolute(rel)) return false;
+  const parts = rel.split(path.sep);
+  return parts[0] === "生成物" && parts.length >= 3;
+}
+
+function artifactSidecarForMutation(filePath) {
+  if (!isGeneratedArtifactPath(filePath)) return "";
+  const sidecar = artifactSidecarPath(filePath);
+  try {
+    const meta = JSON.parse(fs.readFileSync(sidecar, "utf8"));
+    if (!meta || typeof meta.prompt !== "string" || !meta.prompt.trim()) return "";
+    if (!["image", "audio", "video"].includes(String(meta.type || ""))) return "";
+    return sidecar;
+  } catch {
+    return "";
+  }
+}
+
 export function writeArtifactSidecar(filePath, { prompt = "", type = "" } = {}) {
   const text = String(prompt || "").trim();
   if (!text || !filePath) return;
@@ -208,7 +237,7 @@ export async function saveArtifact(artifact) {
       return artifact.url;
     }
     writeArtifactSidecar(file, { prompt: artifact.prompt, type: artifact.type });
-    console.log(`[pi-web] 产物已落盘: ${file}`);
+    console.log(`[元枢] 产物已落盘: ${file}`);
     // 用签名 URL（免鉴权，24h 有效）——img 标签可直接加载，无需带 token
     try {
       const fb = await import("./filebox.mjs");
@@ -218,7 +247,7 @@ export async function saveArtifact(artifact) {
       return `/api/ws/file?path=${encodeURIComponent(file)}`;
     }
   } catch (e) {
-    console.log(`[pi-web] 落盘失败: ${String(e?.message || e).slice(0, 60)}`);
+    console.log(`[元枢] 落盘失败: ${String(e?.message || e).slice(0, 60)}`);
     return artifact.url;
   }
 }
@@ -435,6 +464,8 @@ export async function handleWsDeliveries(res) {
         name: it.name,
         type: it.isDirectory() ? "dir" : "file",
         size: st.size,
+        date: st.mtime.toISOString(),
+        mtimeMs: st.mtimeMs,
         mtime: st.mtime.toISOString(),
         openPath,
         url: openPath ? `/api/ws/file?path=${encodeURIComponent(openPath)}` : `/api/ws/file?path=${encodeURIComponent(fp)}`,
@@ -454,7 +485,14 @@ export async function handleWsRename(res, body) {
   if (!safeOld || !safeNew || !fs.existsSync(safeOld)) return json(res, 404, { error: "源不存在" });
   if (!newName || /[\/:*?"<>|]/.test(newName)) return json(res, 400, { error: "非法名称" });
   try {
+    const isFile = fs.statSync(safeOld).isFile();
+    const oldSidecar = isFile ? artifactSidecarForMutation(safeOld) : "";
+    const newSidecar = oldSidecar && isGeneratedArtifactPath(safeNew) ? artifactSidecarPath(safeNew) : "";
     fs.renameSync(safeOld, safeNew);
+    // 产物的提示词 sidecar 与文件同名，重命名时一并迁移，避免资产详情丢失生成上下文。
+    if (oldSidecar && fs.existsSync(oldSidecar) && !fs.existsSync(newSidecar)) {
+      try { fs.renameSync(oldSidecar, newSidecar); } catch {}
+    }
     json(res, 200, { ok: true, path: path.relative(WS_ROOT, safeNew).replace(/\\/g, "/") });
   } catch (e) { json(res, 500, { error: String(e?.message || e).slice(0, 100) }); }
 }
@@ -475,7 +513,12 @@ export async function handleWsDelete(res, body) {
     }
   } catch { return json(res, 400, { error: "路径解析失败" }); }
   try {
+    const isFile = fs.statSync(safe).isFile();
+    const sidecar = isFile ? artifactSidecarForMutation(safe) : "";
     fs.rmSync(safe, { recursive: true, force: true });
+    if (sidecar && fs.existsSync(sidecar)) {
+      try { fs.rmSync(sidecar, { force: true }); } catch {}
+    }
     json(res, 200, { ok: true });
   } catch (e) { json(res, 500, { error: String(e?.message || e).slice(0, 100) }); }
 }

@@ -1,4 +1,4 @@
-// ===== pi-web 自动守护（watchdog）v2：每 30s 检查，挂掉自动拉起，带锁文件防重复 + 重启限频 =====
+// ===== 元枢自动守护（watchdog）v2：每 30s 检查，挂掉自动拉起，带锁文件防重复 + 重启限频 =====
 const { spawn, execSync, execFileSync } = require("child_process");
 const net = require("net");
 const path = require("path");
@@ -166,7 +166,7 @@ async function startServer() {
     log("检测到已有 watchdog 实例（锁文件存在），本实例退出");
     process.exit(0);
   }
-  log("═══ pi-web 守护 v2.1 启动（分级检查：启动期 5s 快查 ×12 轮 → 稳态 30s）═══");
+  log("═══ 元枢守护 v2.1 启动（分级检查：启动期 5s 快查 ×12 轮 → 稳态 30s）═══");
   if (await portOpen()) {
     log("当前 server 正常，进入监控");
   } else {

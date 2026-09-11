@@ -1,4 +1,4 @@
-import type { Model, Session, ChatMessage, SessionMessages, Artifact, AssetDelivery } from './types'
+import type { Model, Session, ChatMessage, SessionMessages, Artifact, AssetDelivery, SkillSummary } from './types'
 import { parseSseBlocks, type RunEvent, type RunStatus } from './lib/run-events'
 
 // ── 本地鉴权 ──
@@ -497,7 +497,7 @@ export const RefineApi = {
   reject: (id: string) => api<any>('/api/refine/reject', { method: 'POST', body: { id } }),
 }
 export const SkillsApi = {
-  list: () => api<{ skills: { name: string; description: string; location: string }[] }>('/api/skills'),
+  list: () => api<{ skills: SkillSummary[]; sources?: Record<string, number>; categories?: Record<string, number>; diagnostics?: string[] }>('/api/skills'),
 }
 export const PromptsApi = {
   list: () => api<{ prompts: { name: string; description: string; content: string }[] }>('/api/prompts'),

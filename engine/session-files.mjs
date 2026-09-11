@@ -17,7 +17,7 @@ export function initSessionFiles({ sessionsDir = "", workspaceCwd = "" } = {}) {
 }
 
 // ── 会话文件扫描（pi 会话格式 jsonl，跨所有 cwd 目录）──────────────
-// 2026-08-20 恢复全目录扫描 + 前端按 group 分组：工作区会话一组，pi 终端会话（小语）单独一组
+// 2026-08-20 恢复全目录扫描 + 前端按 group 分组：工作区会话一组，兼容终端会话（小语）单独一组
 export function scanSessionFiles() {
   const out = [];
   try {
