@@ -45,7 +45,9 @@ function formatDuration(durationMs?: number | null) {
   return `${minutes} 分 ${seconds % 60} 秒`
 }
 
-function statusTone(run: RunSummary) {
+type RunTone = 'error' | 'warning' | 'success' | 'active'
+
+function statusTone(run: RunSummary): RunTone {
   if (['failed', 'stopped'].includes(run.phase) || run.status === 'failed') return 'error'
   if (run.phase === 'interrupted') return 'warning'
   if (run.phase === 'completed') return 'success'
@@ -100,7 +102,7 @@ function RunCard({ run, active, onOpenSession, mutate }: { run: RunSummary; acti
   const stop = async () => {
     if (busy) return
     setBusy(true)
-    try { await RunsApi.stop(run.id); toast('任务已停止', 'success'); await mutate() }
+    try { await RunsApi.stop(run.id); toast('任务已停止', 'ok'); await mutate() }
     catch (error: any) { toast(`停止失败：${error?.message || '请重试'}`, 'error') }
     finally { setBusy(false) }
   }
@@ -109,7 +111,7 @@ function RunCard({ run, active, onOpenSession, mutate }: { run: RunSummary; acti
     setBusy(true)
     try {
       await RunsApi.resume(run.id)
-      toast('任务已继续', 'success')
+      toast('任务已继续', 'ok')
       onOpenSession?.(run.sessionId)
       await mutate()
     } catch (error: any) { toast(`继续失败：${error?.message || '请重试'}`, 'error') }

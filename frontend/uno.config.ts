@@ -17,6 +17,7 @@ export default defineConfig({
       'pi-dim': 'var(--pi-dim)',
       'pi-dim2': 'var(--pi-dim2)',
       'pi-accent': 'var(--pi-accent)',
+      'pi-on-accent': 'var(--pi-on-accent)',
       'pi-accent2': 'var(--pi-accent2)',
       'pi-accent-deep': 'var(--pi-accent-deep)',
       'pi-green': 'var(--pi-green)',
@@ -41,15 +42,19 @@ export default defineConfig({
     },
   },
   shortcuts: {
-    'btn': 'press inline-flex items-center justify-center gap-1.5 rounded-pi-md px-2.5 py-1 text-sm font-medium cursor-pointer select-none disabled:opacity-50 disabled:pointer-events-none',
-    'btn-primary': 'btn btn-grad text-white hover:brightness-110 active:scale-[.98]',
+    'btn': 'inline-flex items-center justify-center gap-1.5 rounded-pi-md px-2.5 py-1 text-sm font-medium cursor-pointer select-none transition-colors disabled:opacity-50 disabled:pointer-events-none',
+    'btn-primary': 'btn bg-pi-accent text-pi-on-accent active:scale-[.98]',
     'btn-ghost': 'btn text-pi-dim hover:text-pi-text hover:bg-pi-bg3',
     'btn-tool': 'btn min-h-7 min-w-7 h-7 w-auto px-2 whitespace-nowrap text-pi-dim hover:text-pi-text hover:bg-pi-bg-hover active:bg-pi-bg-active rounded-pi-sm',
     'card': 'rounded-pi-lg border border-pi-border-soft bg-pi-bg1',
     'panel': 'rounded-pi-lg bg-pi-bg1 border border-pi-border-soft',
-    'input-pi': 'w-full px-3 py-2 rounded-pi-md bg-pi-field border border-pi-field-border text-pi-text text-sm outline-none focus:border-pi-accent focus:ring-1 focus:ring-pi-accent/40 placeholder:text-pi-dim2 transition-colors',
+    'input-pi': 'w-full px-3 py-2 rounded-pi-md bg-pi-field border border-solid border-pi-field-border text-pi-text text-sm outline-none focus:border-pi-accent focus:ring-1 focus:ring-pi-accent/40 placeholder:text-pi-dim2 transition-colors',
   },
   rules: [
+    // Preset opacity cannot resolve a hex CSS variable into RGB channels.
+    [/^(bg|text|border)-(pi-[a-z0-9-]+)\/(\d+(?:\.\d+)?)$/, ([, kind, token, alpha]) => ({
+      [{ bg: 'background-color', text: 'color', border: 'border-color' }[kind]!]: `color-mix(in srgb, var(--${token}) ${Math.min(100, Number(alpha))}%, transparent)`,
+    })],
     ['rounded-pi-sm', { 'border-radius': 'var(--pi-r-sm)' }],
     ['rounded-pi-md', { 'border-radius': 'var(--pi-r-md)' }],
     ['rounded-pi-lg', { 'border-radius': 'var(--pi-r-lg)' }],

@@ -50,7 +50,7 @@ const DEFAULT_THEME = 'mist'
 
 export function currentTheme(): { theme: string; accent: string } {
   try {
-    let theme = localStorage.getItem('pi_theme')
+    const theme = localStorage.getItem('pi_theme')
     const accent = localStorage.getItem('pi_accent') || ''
     if (theme == null) return { theme: DEFAULT_THEME, accent }
     if (theme === 'deep' && !localStorage.getItem('pi_theme_migrated')) {

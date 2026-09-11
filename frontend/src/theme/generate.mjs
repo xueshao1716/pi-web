@@ -96,8 +96,8 @@ export const SEEDS = {
             overrides: { '--pi-accent-glow': 'rgba(120,120,160,0.22)', '--pi-glow-purple': 'rgba(120,120,160,0.12)', '--pi-glow-cyan': 'rgba(100,140,180,0.06)' } },
   violet: { bg: '#0a0818', text: '#f0eaff', accent: '#8b7cf6', step: 0.045,
             overrides: { '--pi-accent-glow': 'rgba(139,92,246,0.32)', '--pi-accent2': '#a78bfa', '--pi-accent-deep': '#6d5bd0', '--pi-glow-purple': 'rgba(139,92,246,0.22)', '--pi-glow-cyan': 'rgba(120,100,200,0.08)' } },
-  mist:   { bg: '#f3f5fa', text: '#1c2333', accent: '#4a58fa', light: true, step: 0.036,
-            overrides: { '--pi-green': '#16a34a', '--pi-red': '#dc4b45', '--pi-yellow': '#d97706', '--pi-accent-glow': 'rgba(74,88,250,0.12)', '--pi-glow-purple': 'rgba(100,80,200,0.06)', '--pi-glow-cyan': 'rgba(56,189,248,0.04)' } },
+  mist:   { bg: '#fdfdfd', text: '#23252a', accent: '#4356b8', light: true, step: 0.012,
+            overrides: { '--pi-dim': '#62656b', '--pi-dim2': '#696c72', '--pi-green': '#21834c', '--pi-red': '#c4413b', '--pi-yellow': '#a36513', '--pi-accent-glow': 'rgba(67,86,184,0.10)', '--pi-glow-purple': 'transparent', '--pi-glow-cyan': 'transparent' } },
   kraft:  { bg: '#e5d4aa', text: '#3b2c14', accent: '#b45309', light: true, step: 0.035,
             overrides: {
               '--pi-green': '#158039', '--pi-red': '#bb2c27', '--pi-yellow': '#a16207',
@@ -221,6 +221,7 @@ export function generateTheme(seed) {
 
   // 强调色族：accent2/accent-deep 是 accent 的亮度位移（换主色后交互态永远协调）
   v['--pi-accent'] = seed.accent
+  v['--pi-on-accent'] = contrast('#ffffff', seed.accent) >= contrast('#000000', seed.accent) ? '#ffffff' : '#000000'
   v['--pi-accent2'] = seed.overrides?.['--pi-accent2'] || shiftL(seed.accent, 0.09)
   v['--pi-accent-deep'] = seed.overrides?.['--pi-accent-deep'] || shiftL(seed.accent, -0.09)
   v['--pi-accent-glow'] = seed.overrides?.['--pi-accent-glow'] || mixAlpha(seed.accent, 0.35)

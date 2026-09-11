@@ -79,7 +79,7 @@ function PageLoader() {
 // 元枢壳框架：顶部自绘标题栏（浏览器里渲染为 null 不占位）+ 内容区占满剩余高度
 function ShellFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="h-screen flex flex-col relative overflow-hidden">
+    <div className="min-h-[100dvh] h-full flex flex-col relative overflow-hidden">
       <TitleBar />
       <div className="flex-1 flex min-h-0">{children}</div>
     </div>
@@ -123,6 +123,14 @@ export default function AppLayout() {
     return 'chat'
   })
   const [panelExpanded, setPanelExpanded] = useState(false)
+  const [compactDesktop, setCompactDesktop] = useState(() => window.matchMedia('(max-width: 1320px)').matches)
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 1320px)')
+    const update = () => setCompactDesktop(query.matches)
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+  const sidebarAutoHidden = compactDesktop && rightPanel !== 'chat'
   const [modelOpen, setModelOpen] = useState(false)
   // 移动端：sessions 抽屉与统一“更多”菜单
   const [mobileDrawer, setMobileDrawer] = useState<'none' | 'sessions'>('none')
@@ -289,9 +297,9 @@ export default function AppLayout() {
       {/* 图标导航 rail：实底 Logo，不用渐变 */}
       <nav className="desktop-rail flex-shrink-0 flex flex-col items-center py-4 px-2 gap-1.5 col-sidebar border-r border-pi-border relative z-20" aria-label="主导航">
         <div className="desktop-brand"><img src="/static/branding/yuanshu-app-icon.png?v=desk" alt="" width="28" height="28" /><span>元枢</span></div>
-        {sidebarCollapsed && (
+        {(sidebarCollapsed || sidebarAutoHidden) && (
           <button className="w-9 h-9 rounded-pi-md flex items-center justify-center text-pi-dim2 hover:text-pi-text hover:bg-pi-bg3 transition-colors"
-            aria-label="展开会话栏" title="展开会话栏" onClick={toggleSidebar}>
+            aria-label="展开会话栏" title="展开会话栏" onClick={() => { if (sidebarAutoHidden) setRightPanel('chat'); if (sidebarCollapsed) toggleSidebar() }}>
             <PanelLeftOpen className="w-[18px] h-[18px]" strokeWidth={1.8} />
           </button>
         )}
@@ -323,7 +331,7 @@ export default function AppLayout() {
       </nav>
 
       {/* 会话列表：仅对话路由显示 */}
-      {route === 'chat' && !sidebarCollapsed && <Sidebar onCollapse={toggleSidebar} />}
+      {route === 'chat' && !sidebarCollapsed && !sidebarAutoHidden && <Sidebar onCollapse={toggleSidebar} />}
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0 relative z-10 col-canvas">
         {route === 'chat' ? (

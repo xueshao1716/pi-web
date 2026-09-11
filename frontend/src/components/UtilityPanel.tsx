@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { Activity, ChevronsLeftRight, ClipboardCheck, FolderKanban, GitCompare, PackageCheck, PanelRightClose, TerminalSquare, X } from 'lucide-react'
 import type { UtilityPanelKey } from './MobileMoreMenu'
 
@@ -11,7 +11,7 @@ const PANEL_TABS: { key: UtilityPanelKey; label: string; description: string; sh
   { key: 'tui', label: 'TUI', description: '接管完整的终端界面', shortcut: 'Alt+6', icon: ChevronsLeftRight },
 ]
 
-export default function UtilityPanel({ active, onChange, onClose, expanded, onToggleExpanded, children }: {
+export default function UtilityPanel({ active, onChange, onClose, expanded, onToggleExpanded, onOpenReview, children }: {
   active: UtilityPanelKey
   onChange: (active: UtilityPanelKey) => void
   onClose: () => void
@@ -22,6 +22,7 @@ export default function UtilityPanel({ active, onChange, onClose, expanded, onTo
 }) {
   const canExpand = active === 'terminal' || active === 'tui'
   const activeTab = PANEL_TABS.find(tab => tab.key === active) || PANEL_TABS[0]
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -43,14 +44,9 @@ export default function UtilityPanel({ active, onChange, onClose, expanded, onTo
   return (
     <aside className={`utility-panel col-right flex min-h-0 flex-col ${expanded ? 'utility-panel-expanded' : ''}`} data-panel={active} aria-label="辅助工具面板">
       <header className="utility-panel-header flex flex-shrink-0 flex-col border-b border-pi-border-soft">
-        <div className="utility-panel-heading flex min-h-12 items-center gap-3 px-3">
-          <div className="utility-panel-heading-copy min-w-0 flex-1">
-            <div className="utility-panel-kicker">辅助面板</div>
-            <div className="utility-panel-title truncate">{activeTab.label}</div>
-            <div className="utility-panel-description truncate">{activeTab.description}</div>
-          </div>
-          <kbd className="utility-panel-shortcut hidden shrink-0 rounded-pi-sm border border-pi-border-soft bg-pi-bg2 px-1.5 py-1 font-mono text-[10px] text-pi-dim2 lg:inline-flex">{activeTab.shortcut}</kbd>
-          {onOpenReview && <button type="button" className="utility-panel-review btn-tool !h-9 !px-2" title="打开改动审查" onClick={onOpenReview}><GitCompare className="h-3.5 w-3.5" /><span className="hidden xl:inline">审查</span></button>}
+        <div className="utility-panel-heading flex items-center gap-2 px-3">
+          <h2 className="utility-panel-title truncate flex-1" title={activeTab.description}>{activeTab.label}</h2>
+          {onOpenReview && <button type="button" className="utility-panel-review btn-tool !h-9 !px-2" title="打开改动审查" aria-label="打开改动审查" onClick={onOpenReview}><GitCompare className="h-4 w-4" /></button>}
           {canExpand && (
             <button
               className="utility-panel-expand btn-tool !h-9 !w-9 !p-0"
@@ -66,24 +62,35 @@ export default function UtilityPanel({ active, onChange, onClose, expanded, onTo
             {expanded ? <PanelRightClose className="h-4 w-4" /> : <X className="h-4 w-4" />}
           </button>
         </div>
-        <nav className="utility-panel-tabs flex min-w-0 items-center gap-1 overflow-x-auto px-2 pb-2" role="tablist" aria-label="辅助面板类型">
-          {PANEL_TABS.map(tab => (
+        <nav className="utility-panel-tabs flex min-w-0 items-center gap-1 px-2" role="tablist" aria-label="辅助面板类型">
+          {PANEL_TABS.map((tab, index) => (
             <button
               key={tab.key}
+              ref={element => { tabRefs.current[index] = element }}
+              id={`utility-tab-${tab.key}`}
               role="tab"
+              aria-label={tab.label}
               aria-selected={active === tab.key}
               aria-controls={`utility-panel-${tab.key}`}
+              tabIndex={active === tab.key ? 0 : -1}
               title={`${tab.label}（${tab.shortcut}）`}
-              className={`utility-panel-tab flex min-h-9 flex-shrink-0 items-center justify-center gap-1.5 rounded-pi-md border border-transparent px-2 text-xs transition-colors ${active === tab.key ? 'bg-pi-accent/15 text-pi-accent font-medium' : 'text-pi-dim hover:bg-pi-bg3 hover:text-pi-text'}`}
+              className="utility-panel-tab"
               onClick={() => onChange(tab.key)}
+              onKeyDown={event => {
+                const count = PANEL_TABS.length
+                const next = event.key === 'ArrowRight' ? (index + 1) % count : event.key === 'ArrowLeft' ? (index + count - 1) % count : event.key === 'Home' ? 0 : event.key === 'End' ? count - 1 : -1
+                if (next < 0) return
+                event.preventDefault()
+                onChange(PANEL_TABS[next].key)
+                tabRefs.current[next]?.focus()
+              }}
             >
               <tab.icon className="h-4 w-4" strokeWidth={1.8} />
-              <span className="utility-panel-tab-label">{tab.label}</span>
             </button>
           ))}
         </nav>
       </header>
-      <div id={`utility-panel-${active}`} className="flex min-h-0 flex-1 flex-col" role="tabpanel" aria-label={activeTab.label}>{children}</div>
+      <div id={`utility-panel-${active}`} className="flex min-h-0 min-w-0 flex-1 flex-col" role="tabpanel" aria-labelledby={`utility-tab-${active}`}>{children}</div>
     </aside>
   )
 }

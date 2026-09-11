@@ -5,6 +5,7 @@ import useSWR from 'swr'
 import { WsApi, withFileToken } from '../api'
 import GeneratePanel from '../components/GeneratePanel'
 import Gallery from '../components/Gallery'
+import PageHeader from '../components/PageHeader'
 import type { Artifact } from '../types'
 
 // ── 资产库：生成物 + 交付物统一浏览（Phase 3）──
@@ -13,18 +14,35 @@ import type { Artifact } from '../types'
 const IMG_RE = /\.(png|jpe?g|gif|webp|svg)$/i
 const VID_RE = /\.(mp4|webm|mov)$/i
 const AUD_RE = /\.(mp3|wav|ogg|m4a)$/i
+type ArtifactKind = 'image' | 'video' | 'audio' | 'file'
+const KIND_LABEL: Record<ArtifactKind, string> = { image: '图片', video: '视频', audio: '音频', file: '文件' }
+const artifactKind = (a: Artifact): ArtifactKind => {
+  if (IMG_RE.test(a.name)) return 'image'
+  if (VID_RE.test(a.name)) return 'video'
+  if (AUD_RE.test(a.name)) return 'audio'
+  // A known file extension wins over the legacy directory label. Older
+  // workspaces marked every entry under “视频” as video, including scripts
+  // and markdown files.
+  if (/\.[a-z0-9]{1,8}$/i.test(a.name)) return 'file'
+  const raw = String(a.type || '').toLowerCase()
+  if (raw.includes('image') || raw.includes('图片')) return 'image'
+  if (raw.includes('video') || raw.includes('视频')) return 'video'
+  if (raw.includes('audio') || raw.includes('音频')) return 'audio'
+  return 'file'
+}
 
 const fmtSize = (n: number) => n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : n >= 1e3 ? (n / 1e3).toFixed(0) + ' KB' : n + ' B'
 const fmtDate = (d: string) => (d || '').slice(5).replace('-', '/')
 
 function ArtifactTile({ a, onOpen }: { a: Artifact; onOpen: () => void }) {
-  const isImg = IMG_RE.test(a.name)
+  const kind = artifactKind(a)
+  const isImg = kind === 'image'
   return (
     <button type="button" aria-label={`${isImg ? '预览' : '打开'}资产：${a.name}`} className="group panel !p-2 cursor-pointer overflow-hidden flex flex-col gap-1.5 card-hover text-left w-full" onClick={onOpen}>
       <div className="relative rounded-pi-md bg-pi-bg3/60 aspect-[4/3] overflow-hidden flex items-center justify-center">
         {isImg
           ? <img src={withFileToken(a.url)} alt={a.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-[1.06] transition-transform duration-300" />
-          : (() => { const F = VID_RE.test(a.name) ? Film : AUD_RE.test(a.name) ? Music : FileText; return <F className="w-8 h-8 opacity-50" strokeWidth={1.5} /> })()}
+          : (() => { const F = kind === 'video' ? Film : kind === 'audio' ? Music : FileText; return <F className="w-8 h-8 opacity-50" strokeWidth={1.5} /> })()}
         {/* 悬浮遮罩：预览提示 */}
         <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center"
           style={{ background: 'linear-gradient(to top, rgba(5,8,18,.72), rgba(5,8,18,.15))' }}>
@@ -33,7 +51,7 @@ function ArtifactTile({ a, onOpen }: { a: Artifact; onOpen: () => void }) {
       </div>
       <div className="text-[12px] text-pi-text truncate" title={a.name}>{a.name}</div>
       <div className="flex items-center justify-between text-[10px] text-pi-dim2">
-        <span className="truncate px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3">{a.type}</span>
+        <span className="truncate px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3">{KIND_LABEL[kind]}</span>
         <span className="flex-shrink-0 ml-2">{fmtSize(a.size)} · {fmtDate(a.date)}</span>
       </div>
     </button>
@@ -43,6 +61,7 @@ function ArtifactTile({ a, onOpen }: { a: Artifact; onOpen: () => void }) {
 export default function Assets() {
   const [typeFilter, setTypeFilter] = useState('全部')
   const [kw, setKw] = useState('')
+  const [showAll, setShowAll] = useState(false)
   const [viewer, setViewer] = useState<Artifact | null>(null)
   useEffect(() => {
     if (!viewer) return
@@ -55,40 +74,47 @@ export default function Assets() {
   const { data: delData } = useSWR('deliveries', () => WsApi.deliveries(), { dedupingInterval: 60000 })
 
   const types = useMemo(() => {
-    const set = new Set<string>()
-    for (const a of artData?.artifacts || []) set.add(a.type)
-    return ['全部', ...[...set].sort()]
+    const set = new Set<ArtifactKind>()
+    for (const a of artData?.artifacts || []) set.add(artifactKind(a))
+    return ['全部', ...(['image', 'video', 'audio', 'file'] as ArtifactKind[]).filter(kind => set.has(kind)).map(kind => KIND_LABEL[kind])]
   }, [artData])
 
   const list = useMemo(() => {
     let arr = artData?.artifacts || []
-    if (typeFilter !== '全部') arr = arr.filter(a => a.type === typeFilter)
+    if (typeFilter !== '全部') arr = arr.filter(a => KIND_LABEL[artifactKind(a)] === typeFilter)
     const k = kw.trim().toLowerCase()
     if (k) arr = arr.filter(a => a.name.toLowerCase().includes(k))
     return arr.slice(0, 200)
   }, [artData, typeFilter, kw])
+  const visibleList = useMemo(() => {
+    if (showAll || kw.trim() || typeFilter !== '全部') return list
+    return list.slice(0, 48)
+  }, [list, showAll, kw, typeFilter])
 
   const deliveries = delData?.deliveries || []
 
   return (
     <div className="flex-1 overflow-y-auto relative z-10">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
-        <div className="mb-4">
-          <h1 className="page-title">资产库</h1>
-          <p className="text-xs text-pi-dim2 mt-1.5">工作空间「生成物」{artData?.artifacts?.length || 0} 个 · 「交付」{deliveries.length} 个</p>
-        </div>
+        <PageHeader title="资产库" meta={
+          <div className="assets-overview-stats" aria-label="资产概览">
+            <span><strong>{artData?.artifacts?.length || 0}</strong> 生成物</span>
+            <span><strong>{deliveries.length}</strong> 交付物</span>
+            <span><strong>{artData?.artifacts?.filter(a => artifactKind(a) === 'image').length || 0}</strong> 图片</span>
+          </div>
+        } />
 
         {/* 作品集：成套产出（设计稿 deck 等），扫描 workshop-out 自动收录 */}
         <Gallery />
-        <div className="flex items-center gap-2 mb-4">
+        <div className="assets-toolbar flex items-center gap-2 mb-4">
           <input className="input-pi !py-1.5 text-xs w-48 sm:w-56 rounded-full" placeholder="搜索资产名…" value={kw} onChange={e => setKw(e.target.value)} />
         </div>
 
         {/* 类型筛选 */}
         <div className="flex gap-1.5 mb-4 flex-wrap">
           {types.map(t => (
-            <button key={t} onClick={() => setTypeFilter(t)}
-              className={`text-xs px-3 py-1.5 rounded-pi-md transition-colors ${typeFilter === t ? 'bg-pi-accent/15 text-pi-accent font-medium' : 'text-pi-dim hover:text-pi-text hover:bg-pi-bg3'}`}>
+            <button key={t} aria-pressed={typeFilter === t} onClick={() => setTypeFilter(t)}
+              className={`text-xs px-3 py-1.5 rounded-pi-md transition-colors ${typeFilter === t ? 'bg-pi-accent/15 text-pi-text font-medium' : 'text-pi-dim hover:text-pi-text hover:bg-pi-bg3'}`}>
               {t}
             </button>
           ))}
@@ -97,11 +123,12 @@ export default function Assets() {
 
         {/* 网格 */}
         <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-3 mb-8">
-          {list.map(a => <ArtifactTile key={a.path} a={a} onOpen={() => {
+          {visibleList.map(a => <ArtifactTile key={a.path} a={a} onOpen={() => {
             if (IMG_RE.test(a.name)) setViewer(a)
             else window.open(withFileToken(a.url), '_blank')
           }} />)}
         </div>
+        {list.length > visibleList.length && <button type="button" className="assets-load-more" onClick={() => setShowAll(true)}>查看全部 {list.length} 个资产</button>}
         {!list.length && !isLoading && (
           <EmptyState icon={ImagesIcon} title="这个筛选下没有资产" hint="换个类型筛选；生成新图请到「专项工作台 · AI 绘画」" className="py-14 mb-8" />
         )}

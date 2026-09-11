@@ -58,13 +58,14 @@ export default function Engine() {
   const pairUnavailable = !!(pairError || refreshFailed.pair)
   const primary = pairUnavailable ? '暂不可用' : label(pair?.primary)
   const secondary = pairUnavailable ? '暂不可用' : label(pair?.secondary)
+  const health = statusUnavailable ? { label: '状态受限', tone: 'warning' } : runUnavailable ? { label: '观测受限', tone: 'warning' } : failedCount > 0 ? { label: '需要关注', tone: 'danger' } : activeCount > 0 ? { label: '运行中', tone: 'success' } : { label: '系统就绪', tone: 'success' }
   const observation = runUnavailable ? <span className="text-sm text-pi-danger">观测暂不可用</span>
     : !runData ? <span role="status" className="text-sm text-pi-dim">加载中</span>
     : <span className="inline-flex items-center gap-2 text-sm text-pi-text">{runData.active.length ? <LoaderCircle className="w-4 h-4 text-pi-accent animate-spin" /> : <CheckCircle2 className="w-4 h-4 text-pi-success" />}{runData.active.length ? `${runData.active.length} 个任务运行中` : '当前无活动任务'}</span>
 
   return <div className="flex-1 overflow-y-auto relative z-10 bg-pi-bg">
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
-      <PageHeader title="引擎控制台" meta={observation} actions={
+      <PageHeader title="引擎控制台" meta={<div className="flex flex-wrap items-center gap-4">{observation}<span className={`engine-health engine-health-${health.tone}`}><span className="engine-health-dot" />{health.label}</span></div>} actions={
         <button type="button" className="btn-ghost min-h-11" disabled={refreshing} onClick={() => void probe()}><RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />刷新状态</button>
       } />
       {refreshError && <p role="alert" className="text-sm text-pi-danger mb-3">{refreshError}</p>}

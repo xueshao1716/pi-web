@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import * as D from '@radix-ui/react-dialog'
 import * as AL from '@radix-ui/react-alert-dialog'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useApp } from '../store'
 import { SessionsApi } from '../api'
 import type { Session } from '../types'
 import { useRestoreFocus } from '../hooks/useRestoreFocus'
-import { PanelLeftClose } from 'lucide-react'
+import { ChevronRight, Ellipsis, MessageSquare, PanelLeftClose, PencilLine, Plus, Trash2 } from 'lucide-react'
 
 const GROUP_LABEL: Record<string, string> = {
   workspace: '工作会话',
@@ -60,7 +61,7 @@ export default function Sidebar({ onNavigated, onCollapse }: { onNavigated?: () 
   })
 
   return (
-    <aside className="w-full md:w-64 flex-shrink-0 flex flex-col col-sidebar md:border-r border-pi-border/50 min-h-0 h-full relative z-10">
+    <aside className="session-sidebar w-full md:w-64 flex-shrink-0 flex flex-col col-sidebar md:border-r border-pi-border/50 min-h-0 h-full relative z-10">
       {/* 品牌头 */}
       <div className="flex items-center gap-2.5 px-4 h-14 border-b border-pi-border-soft/50 flex-shrink-0">
         <img
@@ -81,13 +82,14 @@ export default function Sidebar({ onNavigated, onCollapse }: { onNavigated?: () 
 
       {/* 新建 */}
       <div className="p-3 pb-2 flex-shrink-0">
-        <button className="btn-primary w-full py-2.5 rounded-xl" onClick={handleNew}>
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <button className="btn-primary w-full min-h-10" onClick={handleNew}>
+          <Plus className="w-4 h-4" />
           新建会话
         </button>
         <input
           className="input-pi mt-2 !py-1.5 text-xs"
           placeholder="搜索会话…"
+          aria-label="搜索会话"
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
@@ -106,36 +108,30 @@ export default function Sidebar({ onNavigated, onCollapse }: { onNavigated?: () 
                 try { localStorage.setItem('pi_groups_collapsed', JSON.stringify([...n])) } catch {}
                 return n
               })}>
-              <svg className={`w-3 h-3 text-pi-dim2 transition-transform duration-fast ${collapsed.has(g) ? '' : 'rotate-90'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
-              <span className="text-[11px] text-pi-dim font-semibold tracking-wider">{GROUP_LABEL[g] || g}</span>
-              <span className="ml-auto text-[10px] font-mono text-pi-dim2 bg-pi-bg3 px-1.5 py-px rounded-pi-pill">{groups[g].length}</span>
+              <ChevronRight className={`w-3 h-3 text-pi-dim2 transition-transform duration-fast ${collapsed.has(g) ? '' : 'rotate-90'}`} />
+              <span className="text-[11px] text-pi-dim font-medium">{GROUP_LABEL[g] || g}</span>
+              <span className="ml-auto text-[11px] text-pi-dim2">{groups[g].length}</span>
             </button>
             {!collapsed.has(g) && groups[g].map(s => (
-              <div key={s.id}
-                className={`group flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer mb-1 transition-[background-color,color,border-color,box-shadow,transform] duration-200 ${
-                  s.id === currentSessionId ? 'bg-pi-accent/12 border border-pi-accent/20' : 'hover:bg-pi-bg-hover border border-transparent'
-                }`}
-                onClick={() => { selectSession(s.id); onNavigated?.() }}>
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 transition-[background-color,color,border-color,box-shadow,transform] duration-200 ${s.id === currentSessionId ? 'bg-pi-accent text-white shadow-[0_0_12px_rgba(84,104,255,0.3)]' : 'bg-pi-bg3/80 text-pi-dim'}`}>
-                  {s.name?.charAt(0) || '会'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13px] truncate text-pi-text">{s.name || '新会话'}</div>
-                  <div className="text-[11px] text-pi-dim2 truncate">{s.preview || ''}</div>
-                </div>
-                {/* 08-25 评审 P1：hover 门控 → 触屏常显（hov-reveal）；touch-hit 扩命中区到 ≥40px */}
-                <div className="hov-reveal flex gap-1 flex-shrink-0">
-                  <button className="touch-hit p-1.5 text-pi-dim2 hover:text-pi-text" aria-label={`重命名会话 ${s.name || '新会话'}`} onClick={(e) => { e.stopPropagation(); setRenaming({ sid: s.id, name: s.name }) }}>
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
-                  </button>
-                  <button className="touch-hit p-1.5 text-pi-dim2 hover:text-pi-red" aria-label={`删除会话 ${s.name || '新会话'}`} onClick={(e) => { e.stopPropagation(); setConfirming(s) }}>
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                  </button>
-                </div>
+              <div key={s.id} className="session-row" data-active={s.id === currentSessionId}>
+                <button type="button" className="session-select" aria-current={s.id === currentSessionId ? 'page' : undefined} title={s.name || '新会话'} onClick={() => { selectSession(s.id); onNavigated?.() }}>
+                  <MessageSquare className="w-4 h-4 shrink-0 text-pi-dim2" strokeWidth={1.6} />
+                  <span className="min-w-0 flex-1"><span className="block text-[13px] truncate text-pi-text">{s.name || '新会话'}</span><span className="block text-[11px] text-pi-dim2 truncate mt-0.5">{s.preview || ''}</span></span>
+                </button>
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger asChild><button type="button" className="session-menu-trigger" aria-label={`会话操作 ${s.name || '新会话'}`} title="会话操作"><Ellipsis className="w-4 h-4" /></button></DropdownMenu.Trigger>
+                  <DropdownMenu.Portal>
+                    <DropdownMenu.Content align="end" sideOffset={4} collisionPadding={8} className="session-menu" onCloseAutoFocus={event => { if (renaming || confirming) event.preventDefault() }}>
+                      <DropdownMenu.Item className="session-menu-item" onSelect={() => setRenaming({ sid: s.id, name: s.name || '' })}><PencilLine className="w-4 h-4" />重命名</DropdownMenu.Item>
+                      <DropdownMenu.Item className="session-menu-item text-pi-danger" onSelect={() => setConfirming(s)}><Trash2 className="w-4 h-4" />删除会话</DropdownMenu.Item>
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Portal>
+                </DropdownMenu.Root>
               </div>
             ))}
           </div>
         ))}
+        {!groupKeys.length && <p className="px-2 py-8 text-xs text-center text-pi-dim2">{kw ? '没有匹配的会话' : '新建会话，开始工作'}</p>}
       </div>
 
       {/* 删除确认（Radix AlertDialog：焦点陷阱 + 归还 + Esc 内置）*/}
