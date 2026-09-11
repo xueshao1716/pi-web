@@ -1,188 +1,81 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Film, Music, FileText, ImagePlus, FolderOpen, Images as ImagesIcon, Package } from 'lucide-react'
-import EmptyState from '../components/EmptyState'
+import { useMemo, useState } from 'react'
 import useSWR from 'swr'
-import { WsApi, withFileToken } from '../api'
-import GeneratePanel from '../components/GeneratePanel'
-import Gallery from '../components/Gallery'
 import PageHeader from '../components/PageHeader'
-import type { Artifact } from '../types'
-
-// ── 资产库：生成物 + 交付物统一浏览（Phase 3）──
-// 类型筛选 + 图片网格灯箱预览；文件/视频/音频走新窗口打开
-
-const IMG_RE = /\.(png|jpe?g|gif|webp|svg)$/i
-const VID_RE = /\.(mp4|webm|mov)$/i
-const AUD_RE = /\.(mp3|wav|ogg|m4a)$/i
-type ArtifactKind = 'image' | 'video' | 'audio' | 'file'
-const KIND_LABEL: Record<ArtifactKind, string> = { image: '图片', video: '视频', audio: '音频', file: '文件' }
-const artifactKind = (a: Artifact): ArtifactKind => {
-  if (IMG_RE.test(a.name)) return 'image'
-  if (VID_RE.test(a.name)) return 'video'
-  if (AUD_RE.test(a.name)) return 'audio'
-  // A known file extension wins over the legacy directory label. Older
-  // workspaces marked every entry under “视频” as video, including scripts
-  // and markdown files.
-  if (/\.[a-z0-9]{1,8}$/i.test(a.name)) return 'file'
-  const raw = String(a.type || '').toLowerCase()
-  if (raw.includes('image') || raw.includes('图片')) return 'image'
-  if (raw.includes('video') || raw.includes('视频')) return 'video'
-  if (raw.includes('audio') || raw.includes('音频')) return 'audio'
-  return 'file'
-}
-
-const fmtSize = (n: number) => n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : n >= 1e3 ? (n / 1e3).toFixed(0) + ' KB' : n + ' B'
-const fmtDate = (d: string) => (d || '').slice(5).replace('-', '/')
-
-function ArtifactTile({ a, onOpen }: { a: Artifact; onOpen: () => void }) {
-  const kind = artifactKind(a)
-  const isImg = kind === 'image'
-  return (
-    <button type="button" aria-label={`${isImg ? '预览' : '打开'}资产：${a.name}`} className="group panel !p-2 cursor-pointer overflow-hidden flex flex-col gap-1.5 card-hover text-left w-full" onClick={onOpen}>
-      <div className="relative rounded-pi-md bg-pi-bg3/60 aspect-[4/3] overflow-hidden flex items-center justify-center">
-        {isImg
-          ? <img src={withFileToken(a.url)} alt={a.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-[1.06] transition-transform duration-300" />
-          : (() => { const F = kind === 'video' ? Film : kind === 'audio' ? Music : FileText; return <F className="w-8 h-8 opacity-50" strokeWidth={1.5} /> })()}
-        {/* 悬浮遮罩：预览提示 */}
-        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center"
-          style={{ background: 'linear-gradient(to top, rgba(5,8,18,.72), rgba(5,8,18,.15))' }}>
-          <span className="text-[11px] text-white/90 px-2.5 py-1 rounded-pi-pill bg-white/20 border border-white/15">{isImg ? '预览' : '打开'}</span>
-        </div>
-      </div>
-      <div className="text-[12px] text-pi-text truncate" title={a.name}>{a.name}</div>
-      <div className="flex items-center justify-between text-[10px] text-pi-dim2">
-        <span className="truncate px-1.5 py-0.5 rounded-pi-pill bg-pi-bg3">{KIND_LABEL[kind]}</span>
-        <span className="flex-shrink-0 ml-2">{fmtSize(a.size)} · {fmtDate(a.date)}</span>
-      </div>
-    </button>
-  )
-}
+import Gallery from '../components/Gallery'
+import { WsApi, withFileToken, downloadApiFile } from '../api'
+import { filterAssets, mergeAssets, sortAssets } from '../lib/assets'
+import type { AssetFilterQuery, AssetItem, AssetKind, AssetTimeRange } from '../types'
+import AssetToolbar from '../components/assets/AssetToolbar'
+import AssetCollection from '../components/assets/AssetCollection'
+import AssetPreview from '../components/assets/AssetPreview'
+import AssetDetails from '../components/assets/AssetDetails'
 
 export default function Assets() {
-  const [typeFilter, setTypeFilter] = useState('全部')
-  const [kw, setKw] = useState('')
-  const [showAll, setShowAll] = useState(false)
-  const [viewer, setViewer] = useState<Artifact | null>(null)
-  useEffect(() => {
-    if (!viewer) return
-    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') setViewer(null) }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [viewer])
-  // swr：资产清单缓存 + 聚焦重验证（生成新图后切回来自动出现）
-  const { data: artData, isLoading, mutate: mutateArtifacts } = useSWR('artifacts', () => WsApi.artifacts(), { revalidateOnFocus: true, dedupingInterval: 10000 })
-  const { data: delData } = useSWR('deliveries', () => WsApi.deliveries(), { dedupingInterval: 60000 })
+  const { data: artData, error: artifactsError, isLoading: artifactsLoading, mutate: mutateArtifacts } = useSWR('artifacts', () => WsApi.artifacts(), { revalidateOnFocus: false, dedupingInterval: 10000 })
+  const { data: delData, error: deliveriesError, isLoading: deliveriesLoading, mutate: mutateDeliveries } = useSWR('deliveries', () => WsApi.deliveries(), { revalidateOnFocus: false, dedupingInterval: 60000 })
+  const [selectedAsset, setSelectedAsset] = useState<AssetItem | null>(null)
+  const [previewAsset, setPreviewAsset] = useState<AssetItem | null>(null)
+  const [kind, setKind] = useState<AssetKind | 'all'>('all')
+  const [timeRange, setTimeRange] = useState<AssetTimeRange>('all')
+  const [project, setProject] = useState('all')
+  const [search, setSearch] = useState('')
+  const [order, setOrder] = useState<'newest' | 'oldest'>('newest')
+  const [feedback, setFeedback] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
 
-  const types = useMemo(() => {
-    const set = new Set<ArtifactKind>()
-    for (const a of artData?.artifacts || []) set.add(artifactKind(a))
-    return ['全部', ...(['image', 'video', 'audio', 'file'] as ArtifactKind[]).filter(kind => set.has(kind)).map(kind => KIND_LABEL[kind])]
-  }, [artData])
+  const allAssets = useMemo(() => mergeAssets(artData?.artifacts || [], delData?.deliveries || []), [artData, delData])
+  const projects = useMemo<string[]>(() => Array.from(new Set<string>(allAssets.map(item => item.project).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN')), [allAssets])
+  const query = useMemo<AssetFilterQuery>(() => ({ kind, timeRange, project, search }), [kind, timeRange, project, search])
+  const filteredAssets = useMemo(() => sortAssets(filterAssets(allAssets, query), order), [allAssets, query, order])
+  const isLoading = artifactsLoading || deliveriesLoading
+  const hasError = Boolean(artifactsError || deliveriesError)
+  const hasFilters = kind !== 'all' || timeRange !== 'all' || project !== 'all' || Boolean(search)
 
-  const list = useMemo(() => {
-    let arr = artData?.artifacts || []
-    if (typeFilter !== '全部') arr = arr.filter(a => KIND_LABEL[artifactKind(a)] === typeFilter)
-    const k = kw.trim().toLowerCase()
-    if (k) arr = arr.filter(a => a.name.toLowerCase().includes(k))
-    return arr.slice(0, 200)
-  }, [artData, typeFilter, kw])
-  const visibleList = useMemo(() => {
-    if (showAll || kw.trim() || typeFilter !== '全部') return list
-    return list.slice(0, 48)
-  }, [list, showAll, kw, typeFilter])
-
-  const deliveries = delData?.deliveries || []
+  const selectAsset = (item: AssetItem) => {
+    setSelectedAsset(item)
+    setPreviewAsset(item.isDirectory ? null : item)
+  }
+  const clearFilters = () => { setKind('all'); setTimeRange('all'); setProject('all'); setSearch('') }
+  const showFeedback = (tone: 'ok' | 'error', text: string) => { setFeedback({ tone, text }); window.setTimeout(() => setFeedback(null), 3500) }
+  const refreshAssets = async () => { await Promise.all([mutateArtifacts(), mutateDeliveries()]) }
+  const openAsset = (item: AssetItem) => {
+    if (item.url && (!item.isDirectory || item.openPath)) window.open(withFileToken(item.url), '_blank', 'noopener,noreferrer')
+  }
+  const downloadAsset = async (item: AssetItem) => {
+    if (item.isDirectory || !item.url) return
+    const downloadUrl = item.url + (item.url.includes('?') ? '&' : '?') + 'download=1'
+    try {
+      await downloadApiFile(downloadUrl, item.name)
+      showFeedback('ok', '下载已开始')
+    } catch (error: any) {
+      showFeedback('error', '下载失败：' + (error?.message || '请稍后重试'))
+    }
+  }
+  const renameAsset = async (item: AssetItem, newName: string) => {
+    try { await WsApi.rename(item.path, newName); await refreshAssets(); setSelectedAsset(null); setPreviewAsset(null); showFeedback('ok', '资产已重命名') }
+    catch (error: any) { showFeedback('error', `操作失败：${error?.message || '重命名失败'}`) }
+  }
+  const deleteAsset = async (item: AssetItem) => {
+    if (!window.confirm(`确定删除“${item.name}”吗？`)) return
+    try { await WsApi.delete(item.path); await refreshAssets(); setSelectedAsset(null); setPreviewAsset(null); showFeedback('ok', '资产已删除') }
+    catch (error: any) { showFeedback('error', `操作失败：${error?.message || '删除失败'}`) }
+  }
 
   return (
-    <div className="flex-1 overflow-y-auto relative z-10">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
-        <PageHeader title="资产库" meta={
-          <div className="assets-overview-stats" aria-label="资产概览">
-            <span><strong>{artData?.artifacts?.length || 0}</strong> 生成物</span>
-            <span><strong>{deliveries.length}</strong> 交付物</span>
-            <span><strong>{artData?.artifacts?.filter(a => artifactKind(a) === 'image').length || 0}</strong> 图片</span>
-          </div>
-        } />
-
-        {/* 作品集：成套产出（设计稿 deck 等），扫描 workshop-out 自动收录 */}
+    <div className="assets-page flex-1 overflow-y-auto relative z-10">
+      <div className="assets-page__inner max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
+        <PageHeader title="资产库" description="生成物与交付物集中浏览，按项目、类型和时间快速定位" meta={<span>{allAssets.length} 项资产{selectedAsset ? ` · 已选 ${selectedAsset.name}` : ''}</span>} />
         <Gallery />
-        <div className="assets-toolbar flex items-center gap-2 mb-4">
-          <input className="input-pi !py-1.5 text-xs w-48 sm:w-56 rounded-full" placeholder="搜索资产名…" value={kw} onChange={e => setKw(e.target.value)} />
+        <AssetToolbar counts={{ total: allAssets.length, visible: filteredAssets.length, selected: selectedAsset ? 1 : 0 }} filters={{ kind, timeRange, project, search, order }} projects={projects} onKindChange={setKind} onTimeChange={setTimeRange} onProjectChange={setProject} onSearchChange={setSearch} onOrderChange={setOrder} onClear={clearFilters} />
+        {feedback && <div className={`asset-feedback asset-feedback--${feedback.tone}`} role="status">{feedback.text}</div>}
+        {hasError && <div className="asset-feedback asset-feedback--error" role="alert">资产服务暂时不可用，请重试。<button type="button" className="asset-retry-button" onClick={() => refreshAssets()}>重试</button></div>}
+        <div className="assets-page__layout">
+          <main className="assets-page__main">
+            <AssetCollection items={filteredAssets} selectedId={selectedAsset?.id || null} onSelect={selectAsset} loading={isLoading} hasFilters={hasFilters} onClearFilters={clearFilters} />
+          </main>
+          <AssetDetails item={selectedAsset} onRename={renameAsset} onDelete={deleteAsset} onDownload={downloadAsset} onOpen={openAsset} onPreview={setPreviewAsset} />
         </div>
-
-        {/* 类型筛选 */}
-        <div className="flex gap-1.5 mb-4 flex-wrap">
-          {types.map(t => (
-            <button key={t} aria-pressed={typeFilter === t} onClick={() => setTypeFilter(t)}
-              className={`text-xs px-3 py-1.5 rounded-pi-md transition-colors ${typeFilter === t ? 'bg-pi-accent/15 text-pi-text font-medium' : 'text-pi-dim hover:text-pi-text hover:bg-pi-bg3'}`}>
-              {t}
-            </button>
-          ))}
-          {isLoading && <span className="text-[11px] text-pi-dim2 self-center animate-pulse">加载中…</span>}
-        </div>
-
-        {/* 网格 */}
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-3 mb-8">
-          {visibleList.map(a => <ArtifactTile key={a.path} a={a} onOpen={() => {
-            if (IMG_RE.test(a.name)) setViewer(a)
-            else window.open(withFileToken(a.url), '_blank')
-          }} />)}
-        </div>
-        {list.length > visibleList.length && <button type="button" className="assets-load-more" onClick={() => setShowAll(true)}>查看全部 {list.length} 个资产</button>}
-        {!list.length && !isLoading && (
-          <EmptyState icon={ImagesIcon} title="这个筛选下没有资产" hint="换个类型筛选；生成新图请到「专项工作台 · AI 绘画」" className="py-14 mb-8" />
-        )}
-
-        {/* 交付物列表 */}
-        {deliveries.length > 0 && (
-          <>
-            <h2 className="text-sm font-semibold text-pi-text mb-2 inline-flex items-center gap-1.5"><Package className="w-4 h-4" /> 成品交付</h2>
-            <div className="panel !p-0 overflow-hidden mb-8">
-              {deliveries.map(d => {
-                const href = withFileToken(d.url)
-                const canOpen = Boolean(d.openPath || d.type === 'file')
-                return (
-                <button type="button" key={d.wsPath}
-                  className={`flex items-center gap-3 px-4 py-2.5 border-b border-pi-border-soft/50 last:border-0 transition-colors w-full text-left ${canOpen ? 'hover:bg-pi-bg3/40 cursor-pointer' : 'text-pi-dim2'}`}
-                  title={canOpen ? `打开 ${d.name}` : '这个文件夹里没有可预览的网页或文档'}
-                  aria-label={canOpen ? `打开交付物：${d.name}` : `${d.name}（空文件夹）`}
-                  disabled={!canOpen}
-                  onClick={() => {
-                    if (canOpen) window.open(href, '_blank', 'noopener,noreferrer')
-                  }}>
-                  <span>{d.type === 'dir' ? <FolderOpen className="w-4 h-4" /> : <FileText className="w-4 h-4" />}</span>
-                  <span className="text-[13px] text-pi-text truncate flex-1">{d.name}</span>
-                  <span className="text-[10px] text-pi-dim2">{fmtSize(d.size)}</span>
-                </button>
-                )
-              })}
-            </div>
-          </>
-        )}
       </div>
-
-      {/* 图片灯箱 */}
-      {viewer && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={`预览资产：${viewer.name}`}
-          className="fixed inset-0 z-[var(--pi-z-viewer)] bg-black/85 flex items-center justify-center p-8"
-          onClick={() => setViewer(null)}
-          onKeyDown={e => { if (e.key === 'Escape') setViewer(null) }}
-          tabIndex={-1}
-        >
-          <div className="max-w-[90vw] max-h-[88vh] flex flex-col gap-2" onClick={e => e.stopPropagation()}>
-            <img src={withFileToken(viewer.url)} alt={viewer.name} className="max-w-full max-h-[78vh] object-contain rounded-pi-lg border border-pi-border" />
-            <div className="flex items-center gap-3 text-xs text-pi-dim">
-              <span className="truncate flex-1">{viewer.name}</span>
-              <span>{fmtSize(viewer.size)}</span>
-              <button type="button" className="btn-tool !py-1" onClick={() => window.open(withFileToken(viewer.url), '_blank', 'noopener,noreferrer')}>新窗口打开</button>
-              <button type="button" className="btn-tool !py-1" aria-label="关闭预览" onClick={() => setViewer(null)}>✕</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AssetPreview item={previewAsset} onClose={() => setPreviewAsset(null)} onAction={action => previewAsset && (action === 'open' ? openAsset(previewAsset) : downloadAsset(previewAsset))} />
     </div>
   )
 }

@@ -84,7 +84,7 @@ export default function System() {
             <StatusTile
               label="服务状态"
               value={serviceReady ? '运行中' : '加载中'}
-              detail={info.name || 'pi-web 小语工作台'}
+              detail={info.name || '元枢个人智能系统'}
               icon={Server}
               tone={serviceReady ? 'success' : 'neutral'}
             />

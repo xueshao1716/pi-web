@@ -20,7 +20,7 @@ const FILTERS: { key: Filter; label: string }[] = [
 const TARGET_LABEL: Record<string, string> = { skill: '技能', capability: '能力', project: '项目', memory: '记忆' }
 const TARGETS: { key: 'skill' | 'capability' | 'project' | 'memory'; label: string; hint: string }[] = [
   { key: 'skill', label: '技能', hint: '落地为 .agents/skills 技能' },
-  { key: 'capability', label: '能力', hint: '改造 pi-web 功能/组件' },
+  { key: 'capability', label: '能力', hint: '改造元枢功能/组件' },
   { key: 'project', label: '项目', hint: '工程/ 下立项定向' },
   { key: 'memory', label: '记忆', hint: '确属长期约定才进记忆' },
 ]

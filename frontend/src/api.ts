@@ -1,17 +1,32 @@
-import type { Model, Session, ChatMessage, SessionMessages, Artifact } from './types'
+import type { Model, Session, ChatMessage, SessionMessages, Artifact, AssetDelivery } from './types'
 import { parseSseBlocks, type RunEvent, type RunStatus } from './lib/run-events'
 
-// ── 鉴权 ──
-let _token = (() => {
-  try { return localStorage.getItem('pi_web_token') || '' } catch { return '' }
-})()
-let _apiBase = (() => {
-  try { return localStorage.getItem('pi_api_base') || '' } catch { return '' }
-})()
+// ── 本地鉴权 ──
+// 元枢只把访问令牌留在当前设备的浏览器存储中；旧 key 只用于一次性迁移，避免升级后掉线。
+const LOCAL_TOKEN_KEY = 'yuanshu_access_token'
+const LOCAL_API_BASE_KEY = 'yuanshu_api_base'
+const LEGACY_TOKEN_KEY = 'pi_web_token'
+const LEGACY_API_BASE_KEY = 'pi_api_base'
 
-export function setToken(t: string) { _token = t; try { localStorage.setItem('pi_web_token', t) } catch {} }
+function readLocal(key: string, legacyKey?: string) {
+  try {
+    const current = localStorage.getItem(key) || ''
+    if (current || !legacyKey) return current
+    const legacy = localStorage.getItem(legacyKey) || ''
+    if (legacy) {
+      localStorage.setItem(key, legacy)
+      localStorage.removeItem(legacyKey)
+    }
+    return legacy
+  } catch { return '' }
+}
+
+let _token = readLocal(LOCAL_TOKEN_KEY, LEGACY_TOKEN_KEY)
+let _apiBase = readLocal(LOCAL_API_BASE_KEY, LEGACY_API_BASE_KEY)
+
+export function setToken(t: string) { _token = t; try { localStorage.setItem(LOCAL_TOKEN_KEY, t); localStorage.removeItem(LEGACY_TOKEN_KEY) } catch {} }
 export function getToken() { return _token }
-export function setApiBase(b: string) { _apiBase = b.replace(/\/+$/, ''); try { localStorage.setItem('pi_api_base', _apiBase) } catch {} }
+export function setApiBase(b: string) { _apiBase = b.replace(/\/+$/, ''); try { localStorage.setItem(LOCAL_API_BASE_KEY, _apiBase); localStorage.removeItem(LEGACY_API_BASE_KEY) } catch {} }
 export function getApiBase() { return _apiBase.replace(/\/+$/, '') }
 
 export function apiUrl(path: string): string {
@@ -38,6 +53,29 @@ export function withFileToken(url: string): string {
   if (!url || !url.includes('/api/ws/file') || url.includes('sig=') || url.includes('token=')) return url
   const sep = url.includes('?') ? '&' : '?'
   return `${apiUrl(url)}${sep}token=${encodeURIComponent(_token)}`
+}
+
+/** Download a non-JSON API/file response with the current local token. */
+export async function downloadApiFile(path: string, filename?: string): Promise<void> {
+  const response = await fetch(apiUrl(path), { headers: { Authorization: `Bearer ${_token}` } })
+  if (!response.ok) {
+    if (response.status === 401) { try { window.dispatchEvent(new Event('pi-unauthorized')) } catch {} }
+    throw new Error(`HTTP ${response.status}`)
+  }
+  const blob = await response.blob()
+  const disposition = response.headers.get('content-disposition') || ''
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+  const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1]
+  const resolvedName = filename || (encoded ? decodeURIComponent(encoded) : plain) || 'download'
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = resolvedName
+  link.style.display = 'none'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 const TIMEOUT = 30000
@@ -89,7 +127,7 @@ export const SessionsApi = {
   rename: (sid: string, name: string) => api<{ ok: boolean }>(`/api/sessions/${encodeURIComponent(sid)}/rename`, { method: 'POST', body: { name } }),
   remove: (sid: string) => api<{ ok: boolean }>(`/api/sessions/${encodeURIComponent(sid)}`, { method: 'DELETE' }),
   stats: (sid: string) => api<any>(`/api/sessions/${encodeURIComponent(sid)}/stats`),
-  export: (sid: string, format = 'html') => api<any>(`/api/sessions/${encodeURIComponent(sid)}/export?format=${format}`),
+  export: (sid: string, format = 'html') => `/api/sessions/${encodeURIComponent(sid)}/export?format=${encodeURIComponent(format)}`,
 }
 export const MessagesApi = {
   add: (sid: string, text: string) => api<{ ok: boolean; id: string }>(`/api/sessions/${encodeURIComponent(sid)}/messages`, { method: 'POST', body: { text } }),
@@ -606,9 +644,11 @@ export const WsApi = {
   write: (path: string, content: string) => api<{ ok: boolean }>('/api/ws/write', { method: 'POST', body: { path, content } }),
   search: (q: string) => api<{ results?: any[] }>(`/api/ws/search?q=${encodeURIComponent(q)}`),
   artifacts: () => api<{ artifacts: Artifact[] }>('/api/ws/artifacts'),
-  deliveries: () => api<{ deliveries?: any[] }>('/api/ws/deliveries'),
+  deliveries: () => api<{ deliveries?: AssetDelivery[] }>('/api/ws/deliveries'),
   // 交付：把工作空间文件复制到 交付/ 目录（版本化）
   deliver: (sourcePath: string, name?: string) => api<{ ok: boolean; path: string; version: number }>('/api/ws/deliver', { method: 'POST', body: { sourcePath, name } }),
+  rename: (oldPath: string, newName: string) => api<{ ok: boolean; path: string }>('/api/ws/rename', { method: 'POST', body: { oldPath, newName } }),
+  delete: (path: string) => api<{ ok: boolean }>('/api/ws/delete', { method: 'POST', body: { path, confirmed: true } }),
   // 上传：base64 写入工作空间并推送到会话（sessionId 可空）
   upload: (name: string, data: string, sessionId?: string) => api<{ ok?: boolean; path?: string }>('/api/files/upload', { method: 'POST', body: { name, data, sessionId: sessionId || '' }, timeoutMs: 120000 }),
 }

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Trash2, Play, Pause, RotateCcw, Archive, ChevronDown, ChevronRight, Loader2, Square, CalendarClock, Clock3, AlertTriangle, Plus } from 'lucide-react'
+import { Trash2, Play, Pause, RotateCcw, Archive, ChevronDown, ChevronRight, Loader2, Square, CalendarClock, Clock3, AlertTriangle, Plus, CheckCircle2, CircleX, Timer, ChevronUp } from 'lucide-react'
 import useSWR from 'swr'
 import { TasksApi } from '../api'
 import type { TimeTask } from '../api'
@@ -34,23 +34,139 @@ function StateBadge({ state }: { state: string }) {
   )
 }
 
+type TaskRun = NonNullable<TimeTask['history']>[number]
+
+const RUN_STATUS: Record<string, { label: string; tone: string; icon: typeof CheckCircle2 }> = {
+  ok: { label: '成功', tone: 'text-pi-success bg-pi-success/10 border-pi-success/25', icon: CheckCircle2 },
+  error: { label: '失败', tone: 'text-pi-danger bg-pi-danger/10 border-pi-danger/25', icon: CircleX },
+  stopped: { label: '已停止', tone: 'text-pi-warning bg-pi-warning/10 border-pi-warning/25', icon: Square },
+  stop_requested: { label: '停止中', tone: 'text-pi-warning bg-pi-warning/10 border-pi-warning/25', icon: Square },
+}
+
+function runStatus(status: string) {
+  return RUN_STATUS[status] || { label: status || '未知', tone: 'text-pi-dim2 bg-pi-bg3 border-pi-border-soft', icon: Timer }
+}
+
+function formatRunDuration(durationMs: number) {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return '不到 1 秒'
+  if (durationMs < 1000) return `${durationMs} ms`
+  const seconds = durationMs / 1000
+  if (seconds < 60) return `${seconds.toFixed(seconds >= 10 ? 0 : 1)} 秒`
+  const minutes = Math.floor(seconds / 60)
+  const rest = Math.round(seconds % 60)
+  return rest ? `${minutes} 分 ${rest} 秒` : `${minutes} 分钟`
+}
+
+function runDateKey(startedAt: string) {
+  const date = new Date(startedAt)
+  if (Number.isNaN(date.getTime())) return 'unknown'
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function runDateLabel(key: string) {
+  if (key === 'unknown') return '时间未知'
+  const date = new Date(`${key}T00:00:00`)
+  return date.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' })
+}
+
+function formatRunTime(startedAt: string) {
+  const date = new Date(startedAt)
+  if (Number.isNaN(date.getTime())) return '时间未知'
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
 function RunHistory({ id }: { id: string }) {
   const { data, isLoading } = useSWR(`task-history-${id}`, () => TasksApi.history(id), { dedupingInterval: 5000 })
+  const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set())
   if (isLoading) return <div className="text-[11px] text-pi-dim2 py-2">加载历史…</div>
   const hist = data?.history || []
   if (!hist.length) return <div className="text-[11px] text-pi-dim2 py-2">暂无运行记录</div>
+
+  // 历史最多展示最近 10 条，先按自然日分组，让长记录变成可扫描的时间轴。
+  const visibleHistory = hist.slice(0, 10)
+  const groups = visibleHistory.reduce<{ key: string; label: string; items: TaskRun[] }[]>((all, run) => {
+    const key = runDateKey(run.startedAt)
+    const group = all.find(item => item.key === key)
+    if (group) group.items.push(run)
+    else all.push({ key, label: runDateLabel(key), items: [run] })
+    return all
+  }, [])
+  const successCount = visibleHistory.filter(run => run.status === 'ok').length
+  const failureCount = visibleHistory.filter(run => run.status === 'error').length
+  const averageDuration = formatRunDuration(visibleHistory.reduce((total, run) => total + (Number(run.durationMs) || 0), 0) / visibleHistory.length)
+  const toggleResult = (queueId: string) => setExpandedResults(prev => {
+    const next = new Set(prev)
+    next.has(queueId) ? next.delete(queueId) : next.add(queueId)
+    return next
+  })
+
   return (
-    <div className="space-y-1.5 pt-2">
-      {hist.slice(0, 10).map(h => (
-        <div key={h.queueId} className="flex items-start gap-2 text-[11px]">
-          <span className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${h.status === 'ok' ? 'bg-pi-success' : h.status === 'error' ? 'bg-pi-danger' : 'bg-pi-warning'}`} />
-          <div className="flex-1 min-w-0">
-            <span className="text-pi-dim">{new Date(h.startedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
-            <span className="ml-2 text-pi-dim2">({h.durationMs}ms · {h.status === 'ok' ? '成功' : h.status === 'error' ? '失败' : '停止'})</span>
-            {h.result && <div className="text-[12px] text-pi-text mt-1.5 whitespace-pre-wrap break-words leading-relaxed">{h.result}</div>}
+    <div className="task-history mt-3 pt-3 border-t border-pi-border-soft" data-slot="task-history">
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] font-semibold text-pi-text">最近运行</span>
+            <span className="text-[10px] text-pi-dim2">按日期分组</span>
           </div>
+          <div className="mt-0.5 text-[11px] text-pi-dim2">最近 {visibleHistory.length} 次执行记录</div>
         </div>
-      ))}
+        <div className="flex items-center gap-1.5 text-[10px] tabular-nums">
+          <span className="inline-flex items-center gap-1 rounded-pi-pill border border-pi-success/25 bg-pi-success/10 px-1.5 py-0.5 text-pi-success"><CheckCircle2 className="h-3 w-3" />{successCount} 成功</span>
+          {failureCount > 0 && <span className="inline-flex items-center gap-1 rounded-pi-pill border border-pi-danger/25 bg-pi-danger/10 px-1.5 py-0.5 text-pi-danger"><CircleX className="h-3 w-3" />{failureCount} 失败</span>}
+          <span className="hidden items-center gap-1 rounded-pi-pill border border-pi-border-soft bg-pi-bg3 px-1.5 py-0.5 text-pi-dim2 sm:inline-flex"><Timer className="h-3 w-3" />平均耗时 {averageDuration}</span>
+        </div>
+      </div>
+
+      <div className="mt-3 space-y-4">
+        {groups.map(group => (
+          <section key={group.key} aria-label={`${group.label}运行记录`}>
+            <div className="mb-1.5 flex items-center gap-2 px-0.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-pi-accent" aria-hidden="true" />
+              <span className="text-[11px] font-medium text-pi-dim">{group.label}</span>
+              <span className="text-[10px] text-pi-dim2">{group.items.length} 次</span>
+              <span className="h-px flex-1 bg-pi-border-soft" aria-hidden="true" />
+            </div>
+            <div className="space-y-2">
+              {group.items.map(h => {
+                const status = runStatus(h.status)
+                const StatusIcon = status.icon
+                const isResultExpanded = expandedResults.has(h.queueId)
+                const result = String(h.result || '').trim()
+                // The card keeps the complete source field ({h.result}); CSS only controls the collapsed preview.
+                const hasLongResult = result.length > 180 || result.includes('\n')
+                return (
+                  <article key={h.queueId} className="rounded-pi-md border border-pi-border-soft bg-pi-bg2/45 px-3 py-2.5 transition-colors hover:border-pi-border-hi hover:bg-pi-bg2/70">
+                    <div className="flex items-start gap-2.5">
+                      <div className={`mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-pi-sm border ${status.tone}`}>
+                        <StatusIcon className="h-3.5 w-3.5" strokeWidth={1.9} aria-hidden="true" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-flex items-center rounded-pi-pill border px-1.5 py-0.5 text-[10px] font-medium ${status.tone}`}>{status.label}</span>
+                          <time className="text-[11px] font-medium tabular-nums text-pi-text" dateTime={h.startedAt}>{formatRunTime(h.startedAt)}</time>
+                          <span className="ml-auto inline-flex items-center gap-1 text-[10px] text-pi-dim2"><Timer className="h-3 w-3" />{formatRunDuration(h.durationMs)}</span>
+                        </div>
+                        <div className="mt-1.5 flex items-start gap-2">
+                          <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-pi-dim2">任务结果</span>
+                          {result ? (
+                            <p className={`min-w-0 flex-1 whitespace-pre-wrap break-words text-[12px] leading-relaxed text-pi-text/90 ${!isResultExpanded && hasLongResult ? 'line-clamp-2' : ''}`}>{result}</p>
+                          ) : <p className="text-[11px] text-pi-dim2">没有返回内容</p>}
+                        </div>
+                        {result && hasLongResult && (
+                          <button type="button" className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-pi-accent hover:text-pi-accent2" aria-expanded={isResultExpanded} onClick={() => toggleResult(h.queueId)}>
+                            {isResultExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                            {isResultExpanded ? '收起结果' : '查看完整结果'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
     </div>
   )
 }

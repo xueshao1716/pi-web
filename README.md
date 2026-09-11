@@ -18,7 +18,7 @@
 
 > 🧠 **记忆系统** · ❤️ **情绪引擎** · 🧬 **进化系统** · 📦 **智能文件交付** · 📡 **一键外网分享**
 
-基于 [pi 引擎](https://github.com/earendil-works/pi-coding-agent) 的个人智能系统中枢——把终端里的 AI agent 变成完整的全平台工作伙伴：会话、工具调用、媒体生成、工作空间管理，Windows / Linux / Android / Web / 手机页面全端覆盖。
+元枢以自建对话循环为核心，并兼容成熟的外置 Agent 管线，把终端里的 AI 能力变成完整的全平台工作伙伴：会话、工具调用、媒体生成、工作空间管理，Windows / Linux / Android / Web / 手机页面全端覆盖。
 
 > **品牌层级**：元枢 = 整个系统 · 小语 = 伙伴人格（与你对话的那个她）· 架构详见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
@@ -28,7 +28,7 @@
 
 | 层 | 内容 |
 |---|---|
-| 🧩 **双引擎** | **pi 引擎**（主工作台：对话/工具/记忆/出图）+ **dsh 引擎**（DeepSeek Harness：独立执行臂，可派单并行干活），一次安装全到位 |
+| 🧩 **双引擎** | **元枢自建引擎**（对话/工具/记忆/出图）+ **dsh 引擎**（DeepSeek Harness：独立执行臂，可派单并行干活），外置兼容适配器可按需启用 |
 | 🧠 **记忆系统** | 固定记忆 + 记忆日志自动沉淀 + 经验库，跨会话长期记得你的偏好，越用越懂你 |
 | ❤️ **情绪引擎** | VAD 三维情绪感知，对话自适应语气与节奏 |
 | 🧬 **进化系统** | 任务完成自动归纳经验，提案制沉淀，可回滚 |
@@ -50,7 +50,7 @@ irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-all.ps1 | iex
 irm https://raw.githubusercontent.com/xueshao1716/pi-web/main/install-all.ps1 | iex
 ```
 
-> 安装中会询问两件事，全部回车即可用默认：① 安装目录（不想装 C 盘可输 `D:\pi-web`）② pi/dsh 引擎全局包装哪个盘（输 `D:\npm-global` 可装 D 盘）。
+> 安装中会询问两件事，全部回车即可用默认：① 安装目录（不想装 C 盘可输 `D:\pi-web`）② 元枢兼容适配器/dsh 引擎全局包装哪个盘（输 `D:\npm-global` 可装 D 盘）。
 > 装完自动：生成访问令牌 → 启动服务 → 打开浏览器；首次打开弹窗选一家模型商填 API Key 就能开始对话。
 
 > **需要指定安装目录？**（免交互，跳过询问直接装）
@@ -63,10 +63,10 @@ irm https://raw.githubusercontent.com/xueshao1716/pi-web/main/install-all.ps1 | 
 
 ```powershell
 npm i -g git+https://gitee.com/linxinyu520xue/pi-web.git
-pi-web
+yuanshu
 ```
 
-首次运行 `pi-web` 自动完成：安装 **pi + dsh 双引擎** → 生成令牌 → 模型清单 → 启动服务并打开浏览器。
+首次运行 `yuanshu` 自动完成：安装 **元枢兼容适配器 + dsh** → 生成令牌 → 模型清单 → 启动服务并打开浏览器。旧命令 `pi-web` 仍可用。
 
 ### 🔑 最后一步：配置 API 密钥（必做）
 
@@ -79,12 +79,12 @@ pi-web
    { "deepseek": { "type": "api_key", "key": "sk-你的密钥" } }
    ```
 
-3. **重启服务**：`taskkill /F /IM node.exe` 后重新 `pi-web`（或 `cd ~/pi-web && node server.mjs`），刷新 http://127.0.0.1:8787 即可对话
+3. **重启服务**：`taskkill /F /IM node.exe` 后重新 `yuanshu`（或 `cd ~/pi-web && node server.mjs`），刷新 http://127.0.0.1:8787 即可对话
 
 > 当前默认模型为 `zhipu-paid/glm-5.3-flash`（可用 `PI_WEB_MODEL` 覆盖）；具体可用模型取决于本机 `models-store.json` 和 provider 配置。
 > 更多模型商（小米/阿里/火山等）逐个加进 auth.json 即可，模型清单见 `~/.pi/agent/models-store.json`。
 >
-> **dsh 引擎的 key**：不写 auth.json，首次启动 `dsh web` 会弹窗引导填写（存为 `DEEPSEEK_API_KEY`），与 pi 共用同一把 DeepSeek key 即可。
+> **dsh 引擎的 key**：凭证只留在本机进程环境或 `~/.pi/agent/auth.json`，元枢不会替用户登录外部平台，也不会自动执行 `git push`。与元枢共用同一把 DeepSeek key 即可。
 
 ## ✨ 为什么与众不同
 
@@ -191,7 +191,7 @@ node setup.mjs --install
 ## 环境要求
 
 - Node.js ≥ 20
-- pi 引擎全局安装：`npm i -g @earendil-works/pi-coding-agent`
+- 元枢兼容适配器全局安装：`npm i -g @earendil-works/pi-coding-agent`
 
 ## 快速开始
 
@@ -205,7 +205,7 @@ node setup.mjs --install  # 自动安装缺失依赖
 node setup.mjs --start    # 启动服务
 
 # 方式二：手动
-# 1. 安装依赖（pi 引擎）
+# 1. 安装元枢兼容适配器依赖
 npm i -g @earendil-works/pi-coding-agent
 # 2. 配置 API 密钥
 #    编辑 ~/.pi/agent/auth.json（见下文“配置模型与密钥”）
@@ -280,6 +280,7 @@ cp models.example.json ~/.pi/agent/models-store.json
 
 - `provider` 字段（models-store.json）与 auth.json 的**顶层 key 必须同名**，服务才能找到对应密钥
 - 会话记录同样在 `~/.pi/agent/sessions/`（仓库外，不提交）
+- 服务器后台只做本地文件与当前进程的凭证检查；代码更新接口只在用户主动操作时执行 `git fetch/pull`，不会自动登录或推送代码。
 
 ### 添加新 provider 三步
 
@@ -303,6 +304,8 @@ npm run build:mobile:web
 ```
 
 Tauri Android 构建使用 `app/src-tauri` 的 Gradle/Tauri 工程，Capacitor Android 构建使用 Capacitor 工程；构建前先执行上面的前端命令。APK 交付文件名必须标明 ABI：单架构使用 `arm64`、`armeabi-v7a`、`x86` 或 `x86_64`，四 ABI 合包才使用 `universal`，不能把单架构包称为通用包。
+
+Windows 发布脚本默认把 Cargo、Gradle、npm 和临时文件放到 `D:\pi-workspace\.build-cache`，正式安装包写入 `D:\pi-workspace\交付`；手动构建时也应设置 `CARGO_HOME`、`CARGO_TARGET_DIR`、`GRADLE_USER_HOME`、`npm_config_cache`、`TEMP` 和 `TMP`，避免系统盘缓存膨胀。桌面/Android 壳版本统一维护在 `app/src-tauri/tauri.conf.json` 与 `app/src-tauri/Cargo.toml`，当前为 `0.2.2`。
 
 默认服务只监听 `127.0.0.1`，因此现有反向代理/域名指向本机端口的方式不变。需要手机直接访问电脑局域网 IP 时，显式设置 `PI_WEB_LAN=1`，并配合 Windows 防火墙和访问令牌。
 

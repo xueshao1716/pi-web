@@ -1,4 +1,4 @@
-// 共享类型：pi-web API 契约（与 server.mjs 对齐）
+// 共享类型：元枢 API 契约（与 server.mjs 对齐）
 export interface Model {
   provider: string
   id: string
@@ -62,6 +62,46 @@ export interface Artifact {
   url: string
   prompt?: string
   mtimeMs?: number
+}
+
+// 交付物（/api/ws/deliveries）条目
+export interface AssetDelivery {
+  name: string
+  type: 'file' | 'dir'
+  size: number
+  url: string
+  wsPath: string
+  date?: string
+  mtime?: string
+  mtimeMs?: number
+  openPath?: string
+}
+
+export type AssetKind = 'image' | 'video' | 'audio' | 'text' | 'other'
+export type AssetTimeRange = 'all' | 'today' | '7d' | '30d'
+
+export interface AssetItem {
+  id: string
+  name: string
+  path: string
+  url: string
+  size: number
+  date: string
+  mtimeMs: number
+  kind: AssetKind
+  source: 'artifact' | 'delivery'
+  project: string
+  isDirectory?: boolean
+  openPath?: string
+}
+
+export interface AssetFilterQuery {
+  kind?: AssetKind | 'all'
+  source?: AssetItem['source'] | 'all'
+  project?: string | 'all'
+  timeRange?: AssetTimeRange
+  search?: string
+  now?: number
 }
 
 // 工具调用 5 态归一（AionUi normalizeToolCall 路线）——前端统一状态，不直接消费上游原始态

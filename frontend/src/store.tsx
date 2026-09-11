@@ -86,7 +86,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (tk: string, apiBase?: string) => {
     const origin = typeof location !== 'undefined' ? location.origin : ''
-    const base = (apiBase || (() => { try { return localStorage.getItem('pi_api_base') || '' } catch { return '' } })()).replace(/\/+$/, '')
+    const base = (apiBase || getApiBase()).replace(/\/+$/, '')
     const addressErr = mobileApiBaseError(base, origin)
     if (addressErr) { const e: any = new Error(addressErr); e.status = 0; throw e }
     // 先服务端真验证再放行（修「输错 token 也进主界面」的幽灵登录态）；用原生 fetch 不走 api()，避免触发全局 401 踢出
@@ -108,6 +108,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.removeItem('pi_web_token')
       localStorage.removeItem('pi_api_base')
+      localStorage.removeItem('yuanshu_access_token')
+      localStorage.removeItem('yuanshu_api_base')
     } catch {}
     setT(''); setAuthed(false); setCurSid(null)
     globalMutate('sessions', undefined, { revalidate: false })

@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════
-// pi-web Token 生成器（Ant Design 路线：主题是纯函数，不是表）
+// 元枢 Token 生成器（Ant Design 路线：主题是纯函数，不是表）
 // seed(设计意图) → 派生算法 → 全量 CSS 变量
 // 跑法：node scripts/generate-theme.mjs（写回 styles.css 标记区块）
 // 校验：node --test tests/design-contract.test.mjs（派生不变量）
@@ -159,6 +159,22 @@ export const SEEDS = {
               '--pi-shadow-lg': '0 8px 20px rgba(50,30,10,.22), inset 0 1px 0 rgba(255,246,228,.35)',
               '--pi-font-display': '"Palatino Linotype","Songti SC","STSong","SimSun",serif',
             } },
+  // 液态玻璃（09-11）：Apple 风格的浅色半透明界面，冷蓝紫光晕与高光边缘。
+  // 实底 token 保证阅读性，透明质感由 styles.css 的组件特化层统一叠加。
+  'liquid-glass': { bg: '#EEF4FB', text: '#1B2433', accent: '#4778D6', light: true, step: 0.018,
+                    overrides: {
+                      '--pi-accent2': '#6E9AF0', '--pi-accent-deep': '#315EBA',
+                      '--pi-green': '#2F9B73', '--pi-red': '#C85C70', '--pi-yellow': '#B9822D',
+                      '--pi-accent-glow': 'rgba(71,120,214,0.18)',
+                      '--pi-glow-purple': 'rgba(126,107,224,0.13)', '--pi-glow-cyan': 'rgba(73,174,220,0.16)',
+                      '--pi-border-hi': 'rgba(255,255,255,0.72)',
+                      '--pi-shadow-sm': '0 1px 2px rgba(37,62,103,.08), 0 3px 10px rgba(37,62,103,.06)',
+                      '--pi-shadow-md': '0 5px 18px rgba(37,62,103,.11), 0 1px 3px rgba(37,62,103,.06)',
+                      '--pi-shadow-lg': '0 18px 45px rgba(37,62,103,.16), 0 3px 12px rgba(37,62,103,.08)',
+                      '--pi-glass-bg': 'rgba(255,255,255,0.58)',
+                      '--pi-glass-border': 'rgba(255,255,255,0.70)',
+                      '--pi-font-display': '"SF Pro Display","Inter","Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif',
+                    } },
 }
 
 const SEMANTIC = { green: '#3ecf8e', red: '#f47067', yellow: '#f5b759' }
@@ -325,7 +341,7 @@ export function emitCss() {
   const block = (sel, vars) => `${sel} {\n${fmtVars(vars)}\n}`
   return {
     root: block(':root', deep),
-    themes: ['ink', 'violet', 'mist', 'kraft', 'shuimo', 'bamboo', 'wood'].map(name =>
+    themes: ['ink', 'violet', 'mist', 'kraft', 'shuimo', 'bamboo', 'wood', 'liquid-glass'].map(name =>
       block(`[data-theme="${name}"]`, generateTheme(SEEDS[name]))).join('\n'),
   }
 }

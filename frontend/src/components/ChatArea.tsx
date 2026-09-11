@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { useApp } from '../store'
-import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, Command, ChevronDown, ChevronRight, PanelRight, ShieldAlert, ImagePlus, Presentation, Clock4, Database } from 'lucide-react'
+import { MessagesSquare, BrainCircuit, Wrench, FolderClosed, Plus, SquareTerminal, Command, ChevronDown, ChevronRight, PanelRight, ShieldAlert, ImagePlus, Presentation, Clock4, Database, Download, FileText, Code2 } from 'lucide-react'
 import { RefreshCw } from 'lucide-react'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
-import { RunsApi, SessionsApi, AsrApi, AgentStatusApi, streamSession, LingXiApi, ConfirmApi, type RunSummary } from '../api'
+import { RunsApi, SessionsApi, AsrApi, AgentStatusApi, streamSession, LingXiApi, ConfirmApi, downloadApiFile, type RunSummary } from '../api'
 import Message from './Message'
 import SendBox from './SendBox'
 import TurnList from './TurnList'
@@ -94,11 +94,23 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   rightPanel?: string
   onRightPanel?: (p: any) => void
 } = {}) {
-  const { currentSessionId, currentModel, refreshSessions, selectSession } = useApp()
+  const { currentSessionId, currentModel, sessions, refreshSessions, selectSession } = useApp()
   const sessionIdRef = useRef(currentSessionId)
   sessionIdRef.current = currentSessionId
   const [stream, setStream] = useState<StreamState | null>(null)
   const [confirm, setConfirm] = useState<any>(null) // 危险操作待确认：{ id, toolName, reason, args, sessionId }
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exportingFormat, setExportingFormat] = useState<'html' | 'jsonl' | null>(null)
+  useEffect(() => {
+    if (!exportOpen) return
+    const close = (event: MouseEvent | KeyboardEvent) => {
+      if (event instanceof KeyboardEvent && event.key === 'Escape') setExportOpen(false)
+      if (event instanceof MouseEvent && !(event.target as HTMLElement)?.closest('.chat-export-wrap')) setExportOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', close)
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', close) }
+  }, [exportOpen])
   const [idleSeconds, setIdleSeconds] = useState(0)
   const streamCloseRef = useRef<(() => void) | null>(null)
   const activeRunRef = useRef<ActiveRunRecord | null>(null)
@@ -637,7 +649,7 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
         .catch(() => toast('灵犀记录失败', 'error'))
       return
     }
-    // 用户消息防丢：引擎 agent.prompt 会自动把用户消息写入会话 JSONL（pi 引擎 message_end 时 appendMessage），
+    // 用户消息防丢：引擎 agent.prompt 会自动把用户消息写入会话 JSONL（消息完成时 appendMessage），
     // 这里绝不能再手动预写一份到 JSONL——否则同一条 user 被写两份、parentId 相同，正是「重复+套旧答案」的根因。
     // 但前端自己的 IndexedDB 与服务端 JSONL 完全独立，写本地不会与引擎冲突，因此用 appendMessage 同时存本地。
     let userMsgId = 'u' + Date.now();
@@ -817,6 +829,21 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     try { (window as any).YuanshuBridge?.setStatus?.(agentStatus) } catch {}
   }, [agentStatus])
   const busyFromBackground = !stream && remoteBusy === 'other'
+  const currentSessionName = sessions.find(session => session.id === currentSessionId)?.name || '元枢会话'
+  const exportSession = async (format: 'html' | 'jsonl') => {
+    if (!currentSessionId || exportingFormat) return
+    setExportOpen(false)
+    setExportingFormat(format)
+    try {
+      const safeName = currentSessionName.replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 64) || '元枢会话'
+      await downloadApiFile(SessionsApi.export(currentSessionId, format), safeName + '.' + format)
+      toast('会话已导出为 ' + format.toUpperCase(), 'ok')
+    } catch (error: any) {
+      toast('导出失败：' + (error?.message || '请稍后重试'), 'error')
+    } finally {
+      setExportingFormat(null)
+    }
+  }
   // 四色语义：绿=就绪 红=本页执行 橙=后台执行 品红闪=异常（看颜色一眼明白）
   const dotCls = agentStatus === 'busy' ? (busyFromBackground ? 'status-dot-bg' : 'status-dot-busy') : `status-dot-${agentStatus}`
   const liveCls = agentStatus === 'busy' ? (busyFromBackground ? 'status-pill-live-bg' : 'status-pill-live-busy') : agentStatus === 'error' ? 'status-pill-live-error' : ''
@@ -864,6 +891,32 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
             {rightPanel !== 'chat' ? RIGHT_PANEL_LABELS[rightPanel || 'workspace'] || '右栏' : '右栏'}
           </button>
         )}
+        <div className="chat-export-wrap">
+          <button
+            type="button"
+            className="chat-export-trigger"
+            aria-haspopup="menu"
+            aria-expanded={exportOpen}
+            aria-label="导出会话"
+            title={currentSessionId ? '导出当前会话' : '请先选择会话'}
+            disabled={!currentSessionId || !!exportingFormat}
+            onClick={() => setExportOpen(open => !open)}
+          >
+            <Download className="w-3.5 h-3.5" strokeWidth={1.8} />
+            <span className="hidden sm:inline">{exportingFormat ? '导出中…' : '导出'}</span>
+            <ChevronDown className={'hidden sm:block w-3 h-3 transition-transform ' + (exportOpen ? 'rotate-180' : '')} />
+          </button>
+          {exportOpen && currentSessionId && (
+            <div className="chat-export-menu" role="menu" aria-label="导出格式">
+              <button type="button" role="menuitem" onClick={() => exportSession('html')} disabled={!!exportingFormat}>
+                <FileText className="w-3.5 h-3.5" />网页归档 <span>.html</span>
+              </button>
+              <button type="button" role="menuitem" onClick={() => exportSession('jsonl')} disabled={!!exportingFormat}>
+                <Code2 className="w-3.5 h-3.5" />原始记录 <span>.jsonl</span>
+              </button>
+            </div>
+          )}
+        </div>
         {/* 心情：服务端真实情绪镜像，只展示不可点改。灵珠连续反映 VAD（2026-09-03，替代 emoji 八桶） */}
         <div className={`emo-pill w-[30px] h-[30px] rounded-full flex items-center justify-center cursor-default transition-colors hover:bg-pi-bg2/40`}
           title={emoTooltip(emoState, emoMetaLive)}>

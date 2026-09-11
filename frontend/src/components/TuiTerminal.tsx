@@ -1,14 +1,14 @@
 import { useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
-import { webSocketUrl } from '../api'
+import { webSocketUrl, getToken } from '../api'
 
 // ── 后端 TUI 终端（08-26）：xterm.js 直连 /ws/tui PTY 桥，操作后端 pi TUI ──
 
 export default function TuiTerminal() {
   const hostRef = useRef<HTMLDivElement | null>(null)
-  // token 从 localStorage 直读，避免依赖 store 初始化时序
-  const token = (() => { try { return localStorage.getItem('pi_web_token') || '' } catch { return '' } })()
+  // 令牌由 api 模块从本机存储读取，避免各组件各自维护一套 key。
+  const token = getToken()
 
   useEffect(() => {
     if (!hostRef.current) return

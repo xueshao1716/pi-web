@@ -134,7 +134,7 @@ function PromptsView() {
         </div>
       ))}
       {!prompts.length && (
-        <EmptyState icon={StickyNote} title="提示词库为空" hint="在 ~/.pi/agent/prompts/ 放入 .md 文件即可" />
+        <EmptyState icon={StickyNote} title="提示词库为空" hint="在本机提示词目录放入 .md 文件即可" />
       )}
     </div>
   )
