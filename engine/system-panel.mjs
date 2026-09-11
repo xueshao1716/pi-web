@@ -61,7 +61,17 @@ export function saveNetworkConfig(agentDir, config, fsMod = fs) {
 /** 系统信息聚合（含外网配置） */
 export function systemInfo(wsRoot, agentDir, fsMod = fs) {
   let version = "";
-  try { version = JSON.parse(fsMod.readFileSync(path.join(agentDir, "package.json"), "utf8")).version || ""; } catch {}
+  // AGENT_DIR 通常是 Pi 的用户目录，不一定包含工作台自身的 package.json。
+  // 优先读取运行时目录，找不到时回退到工作区/本模块所在仓库，保证系统面板展示真实版本。
+  const packageRoots = [agentDir, wsRoot, path.join(import.meta.dirname, "..")]
+    .filter(Boolean)
+    .filter((dir, i, all) => all.indexOf(dir) === i);
+  for (const root of packageRoots) {
+    try {
+      const candidate = JSON.parse(fsMod.readFileSync(path.join(root, "package.json"), "utf8"));
+      if (candidate?.version) { version = String(candidate.version); break; }
+    } catch {}
+  }
   const net = loadNetworkConfig(agentDir, fsMod);
   const lanIPs = [];
   try {
