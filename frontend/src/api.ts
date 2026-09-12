@@ -145,6 +145,7 @@ export const StoryApi = {
   patchProject: (id: string, body: Partial<StoryProject>) => api<{ project: StoryProject }>(`/api/story/projects/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
   previewRun: (id: string, body: { sceneId: string; beatId: string; kind: StoryGenerationRun['kind']; model: StoryGenerationRun['model']; params?: Record<string, unknown>; seed?: number; inputAssets?: StoryGenerationRun['inputAssets'] }) => api<{ project: StoryProject; run: StoryGenerationRun; context: { prompt: string; referenceIds: string[] } }>(`/api/story/projects/${encodeURIComponent(id)}/run-preview`, { method: 'POST', body }),
   run: (id: string, body: { sceneId: string; beatId: string; kind: StoryGenerationRun['kind']; model?: StoryGenerationRun['model']; params?: Record<string, unknown>; seed?: number; inputAssets?: StoryGenerationRun['inputAssets'] }) => api<{ project: StoryProject; run: StoryGenerationRun; context: { prompt: string; referenceIds: string[] } }>(`/api/story/projects/${encodeURIComponent(id)}/run`, { method: 'POST', body, timeoutMs: 240000 }),
+  assist: (id: string, idea: string) => api<{ assist: any; model: { provider: string; id: string } }>(`/api/story/projects/${encodeURIComponent(id)}/assist`, { method: 'POST', body: { idea }, timeoutMs: 100000 }),
 }
 export const MessagesApi = {
   add: (sid: string, text: string) => api<{ ok: boolean; id: string }>(`/api/sessions/${encodeURIComponent(sid)}/messages`, { method: 'POST', body: { text } }),

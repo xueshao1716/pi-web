@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { createProject, listProjects, readProject, writeProject, validateProject, mergeBeatContext } from './story-store.mjs';
 import { compileStoryPrompt } from './story-prompts.mjs';
 import { createImageAdapter, createNovelAdapter, createVideoAdapter } from './story-adapters.mjs';
+import { buildStoryAssistPrompt, parseStoryAssist } from './story-assist.mjs';
 import { json } from './http-utils.mjs';
 
 const makeId = () => crypto.randomUUID();
@@ -138,5 +139,18 @@ export async function handleStoryRunPreview(ctx, res, id, body) {
 export async function handleStoryRun(ctx, res, id, body) {
   try {
     return json(res, 200, await createStoryOrchestrator(ctx).runGeneration(id, bodyOrEmpty(body)));
+  } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryAssist(ctx, res, id, body) {
+  try {
+    if (typeof ctx.directChat !== 'function' || typeof ctx.getDefaultModel !== 'function') throw Object.assign(new Error('智能填充引擎未接入'), { statusCode: 503 });
+    const project = await readProject(ctx.root, id);
+    const idea = String(bodyOrEmpty(body).idea || '').trim().slice(0, 2000);
+    if (!idea) throw Object.assign(new Error('请输入想补充的故事想法'), { statusCode: 400 });
+    const model = body?.model?.id ? body.model : ctx.getDefaultModel();
+    const result = await ctx.directChat(model, buildStoryAssistPrompt({ title: project.title, logline: project.logline, idea, current: project.bible }), [], { thinking: false, maxTokens: 2400, timeout: 90000 });
+    if (!result?.text) throw new Error('智能填充模型没有返回内容');
+    return json(res, 200, { assist: parseStoryAssist(result.text), model: { provider: model?.provider || '', id: model?.id || '' } });
   } catch (e) { return sendError(res, e); }
 }
