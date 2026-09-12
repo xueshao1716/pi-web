@@ -1,13 +1,13 @@
 import { lazy, Suspense, useState } from 'react'
 import { TOOL_COLORS, COLOR_ERROR, COLOR_TOOL_FALLBACK } from '../theme/palettes'
-import { Brain, FileText, Check, X, Pencil, ChevronRight, Square, Info } from 'lucide-react'
+import { Brain, FileText, Check, X, Pencil, ChevronRight, Square, Info, Download, RefreshCw } from 'lucide-react'
 const Markdown = lazy(() => import('./Markdown'))
 
 function LazyMarkdown({ text }: { text: string }) {
   return <Suspense fallback={<div className="text-pi-dim2 text-xs py-2">渲染中…</div>}><Markdown text={text} /></Suspense>
 }
 
-import { withFileToken } from '../api'
+import { downloadApiFile, withFileToken } from '../api'
 import { scrapeVideos, dedupeMediaUrls, mediaPathKey } from '../lib/media-embed'
 import { fmtMsgTime } from '../lib/fmt-time'
 import type { ChatMessage, RunningTool, ToolStatus } from '../types'
@@ -93,6 +93,25 @@ function Thinking({ text, live }: { text: string; live?: boolean }) {
 
 function Attachments({ msg }: { msg: ChatMessage }) {
   const videos = dedupeMediaUrls(msg.videos?.length ? msg.videos : scrapeVideos(msg.text || ''))
+  const [downloading, setDownloading] = useState<string | null>(null)
+  const [failed, setFailed] = useState<Record<string, boolean>>({})
+  const videoName = (url: string, index: number) => {
+    try {
+      const raw = decodeURIComponent(url.split('?path=')[1]?.split('&')[0] || '')
+      const name = raw.split('/').pop()
+      if (name && /\.(mp4|webm|mov)$/i.test(name)) return name
+    } catch { /* fall back to a stable name */ }
+    return `元枢视频-${index + 1}.mp4`
+  }
+  const downloadVideo = async (url: string, index: number) => {
+    if (downloading) return
+    setDownloading(url)
+    try {
+      const path = url.includes('/api/ws/file') && !url.includes('download=') ? `${url}&download=1` : url
+      await downloadApiFile(path, videoName(url, index))
+    } catch { /* 下载中心会记录成功；失败由浏览器/客户端自身提示 */ }
+    finally { setDownloading(null) }
+  }
   return (
     <>
       {msg.images?.map((src, i) => (
@@ -103,9 +122,16 @@ function Attachments({ msg }: { msg: ChatMessage }) {
       {msg.audios?.map((url, i) => (
         <div key={'aud' + i} className="my-1.5"><audio controls src={withFileToken(url)} className="max-w-full h-9" /></div>
       ))}
-      {videos.map((url) => (
-        <div key={'vid:' + mediaPathKey(url)} className="my-2">
-          <video controls playsInline src={withFileToken(url)} className="w-full max-w-[560px] aspect-video rounded-pi-lg border border-pi-border-soft bg-black" />
+      {videos.map((url, index) => (
+        <div key={'vid:' + mediaPathKey(url)} className="my-2 w-full max-w-[560px]">
+          <video controls playsInline preload="metadata" src={withFileToken(url)} onError={() => setFailed(state => ({ ...state, [url]: true }))} className="w-full aspect-video rounded-pi-lg border border-pi-border-soft bg-black" />
+          <div className="mt-1.5 flex items-center justify-between gap-2">
+            <span className="min-w-0 truncate text-[11px] text-pi-dim2">{failed[url] ? '视频暂时无法播放，可直接下载原文件' : videoName(url, index)}</span>
+            <button type="button" className="btn-tool inline-flex shrink-0 items-center gap-1.5 px-2.5" onClick={() => downloadVideo(url, index)} disabled={downloading === url} aria-label={`下载${videoName(url, index)}`} title="下载视频">
+              {downloading === url ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              <span className="text-[11px]">{downloading === url ? '保存中…' : '下载视频'}</span>
+            </button>
+          </div>
         </div>
       ))}
       {msg.files?.map((f, i) => (

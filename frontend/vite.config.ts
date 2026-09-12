@@ -11,7 +11,9 @@ export default defineConfig({
   base: './',  // 相对路径，构建产物可放任意子目录（如 public/react/）
   build: {
     outDir: 'dist',        // 独立输出，绝不覆盖 public/
-    emptyOutDir: true,     // dist 可以清（只含 React 产物）
+    // 保留上一版指纹资源，避免手机/桌面端仍在运行旧主包时，懒加载模块变成 404。
+    // 新入口通过 no-cache 自动更新；旧资源多留一段时间不会影响当前版本。
+    emptyOutDir: false,
     rollupOptions: {
       input: 'index.html',
     },
@@ -26,4 +28,3 @@ export default defineConfig({
     },
   },
 })
-

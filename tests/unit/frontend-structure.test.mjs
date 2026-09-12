@@ -92,6 +92,18 @@ test('结构：聊天必须接住 SSE video 媒体并渲染 <video>', () => {
   assert.ok(types.includes('videos?:'), 'ChatMessage 必须有 videos')
 })
 
+test('结构：会话视频必须提供移动端可点击下载，并在播放失败时保留下载入口', () => {
+  const msg = read('components', 'Message.tsx')
+  assert.ok(msg.includes('downloadApiFile'), '视频下载必须走带鉴权的下载 API')
+  assert.ok(msg.includes('下载视频'), '视频播放器下方必须有明确下载按钮')
+  assert.ok(msg.includes('onError'), '移动端播放失败时必须显示可下载状态')
+})
+
+test('结构：前端构建必须保留上一版指纹资源，避免懒加载模块在移动端更新后 404', () => {
+  const vite = readFileSync(join(ROOT, 'frontend', 'vite.config.ts'), 'utf8')
+  assert.match(vite, /emptyOutDir:\s*false/, 'Vite 构建不能清空旧指纹资源')
+})
+
 test('前端收到会话已更新事件后立即刷新会话列表', () => {
   const chat = read('components', 'ChatArea.tsx')
   assert.match(chat, /case 'session_updated':[\s\S]*?refreshSessions\(\)/, 'session_updated 必须立即刷新会话列表')
