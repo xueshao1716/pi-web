@@ -85,6 +85,15 @@ export function createAIBodyRuntime({ rootDir, readState, now = () => new Date()
     ]
     return { version: 1, observedAt: clock(), continuity: store.continuity(), state, currentRun, runs, roles, engines, totals,
       principle: 'AIBody 贯穿人格、任务、记忆、角色协作与治理；验收页只是观察入口。',
+      companionship: {
+        continuity: '同一会话承接已记录主题与状态',
+        memory: '记忆可查看、可纠正、可由用户控制',
+        boundary: '不模拟情感依赖，不替用户做价值判断',
+      },
+      evolution: {
+        mode: '提案制迭代', humanApproval: true, rollback: true,
+        scope: ['技能', '经验', '记忆', '工作方式'], protected: ['人格', '身份', '高风险权限'],
+      },
       theory: [
         { id: 'continuity', label: '连续性', detail: '每轮承接同会话状态，重启后恢复未完成记录。', evidence: ['aibody-runtime', 'memory', 'emotion'] },
         { id: 'orchestration', label: '母体统筹', detail: '主角色负责规划与交付，子角色按需协作并受边界约束。', evidence: ['aibody-runtime', 'subagent-traces'] },

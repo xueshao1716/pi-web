@@ -29,6 +29,23 @@ test('empty runtime reports no observations or invented provider values', t => {
   assert.ok(Object.values(view.state).every(state => state.status === 'not_observed'))
 })
 
+test('overview makes companionship and evolution governance explicit without claiming consciousness', t => {
+  const { runtime } = fixture(t)
+  const view = runtime.overview()
+  assert.deepEqual(view.companionship, {
+    continuity: '同一会话承接已记录主题与状态',
+    memory: '记忆可查看、可纠正、可由用户控制',
+    boundary: '不模拟情感依赖，不替用户做价值判断',
+  })
+  assert.deepEqual(view.evolution, {
+    mode: '提案制迭代',
+    humanApproval: true,
+    rollback: true,
+    scope: ['技能', '经验', '记忆', '工作方式'],
+    protected: ['人格', '身份', '高风险权限'],
+  })
+})
+
 test('beginTurn makes a builder directive with execution, evidence and authority boundaries', t => {
   const { runtime } = fixture(t)
   const run = runtime.beginTurn(input())

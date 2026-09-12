@@ -644,7 +644,11 @@ export const GitReviewApi = {
 export interface AIBodyModule { label: string; path: string; available: boolean }
 export interface AIBodyLayer { id: 'host' | 'organism' | 'expression' | string; label: string; summary: string; modules: AIBodyModule[] }
 export interface AIBodyTheory { id: string; label: string; detail: string; evidence: string[] }
-export interface AIBodyOverview { updatedAt?: string; principle: string; theory: AIBodyTheory[]; layers: AIBodyLayer[] }
+export interface AIBodyOverview {
+  updatedAt?: string; principle: string; theory: AIBodyTheory[]; layers: AIBodyLayer[]
+  companionship?: { continuity: string; memory: string; boundary: string }
+  evolution?: { mode: string; humanApproval: boolean; rollback: boolean; scope: string[]; protected: string[] }
+}
 export const AIBodyApi = {
   overview: () => api<AIBodyOverview>('/api/aibody'),
 }
