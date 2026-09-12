@@ -64,6 +64,39 @@ export interface Artifact {
   mtimeMs?: number
 }
 
+export interface StoryAssetRef { id: string; role?: string; weight?: number }
+export interface StoryCharacter { id: string; name: string; [key: string]: unknown }
+export interface StoryLocation { id: string; name: string; [key: string]: unknown }
+export interface StoryBible {
+  characters: StoryCharacter[]
+  locations: StoryLocation[]
+  props: Record<string, unknown>[]
+  wardrobe: Record<string, unknown>[]
+  style: Record<string, unknown>
+  rules: Record<string, unknown>[]
+}
+export interface StoryGenerationRun {
+  id: string
+  projectId: string
+  sceneId: string
+  beatId: string
+  kind: 'novel' | 'image' | 'video'
+  model: { provider: string; id: string }
+  capabilities: { reference: boolean; keyframe: boolean; seed: boolean }
+  params: Record<string, unknown>
+  seed?: number
+  inputAssets: StoryAssetRef[]
+  outputAssets: StoryAssetRef[]
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'degraded'
+  degradation?: string[]
+  parentRunId?: string
+  createdAt: string
+  finishedAt?: string
+}
+export interface StoryBeat { id: string; kind: 'novel' | 'image' | 'video'; prompt: string; references: StoryAssetRef[]; inheritFromBeatId?: string; activeRunId?: string }
+export interface StoryScene { id: string; index: number; title: string; summary: string; beats: StoryBeat[]; outputs: StoryGenerationRun[]; activeRunId?: string }
+export interface StoryProject { id: string; title: string; logline?: string; bible: StoryBible; scenes: StoryScene[]; activeSceneId?: string; createdAt: string; updatedAt: string }
+
 // 交付物（/api/ws/deliveries）条目
 export interface AssetDelivery {
   name: string
