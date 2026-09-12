@@ -51,6 +51,12 @@ export function appendRun(scene, run) {
 function findScene(project, id) { return (project.scenes || []).find(s => s.id === id); }
 function findBeat(scene, id) { return (scene?.beats || []).find(b => b.id === id); }
 
+function pickCapableModel(models, kind) {
+  const hits = (models || []).filter(m => m?.capabilities?.[kind] || (kind === 'novel' && m?.capabilities?.chat));
+  const rank = m => { const id = String(m?.id || '').toLowerCase(); if (/3\.|latest|pro/.test(id)) return 0; if (/2\.5/.test(id)) return 1; if (/2\.1/.test(id)) return 2; if (/2\.0/.test(id)) return 3; return 4; };
+  return hits.sort((a, b) => rank(a) - rank(b))[0] || null;
+}
+
 export function createStoryOrchestrator({ root, clock = {}, adapters = {}, generateImage = null, generateVideo = null, saveArtifact = null, directChat = null, getDefaultModel = null, getModelList = null }) {
   if (!root) throw new Error('story orchestrator 缺少 root');
   const withUpdated = project => ({ ...project, updatedAt: (clock.now || nowIso)() });
@@ -90,7 +96,7 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       const kind = ['novel', 'image', 'video'].includes(input.kind) ? input.kind : beat.kind;
       const explicitModel = input.model?.id && input.model.id !== 'auto' && input.model.provider !== 'auto' ? input.model : null;
       const candidates = typeof getModelList === 'function' ? getModelList() : [];
-      const capable = candidates.find(m => m?.capabilities?.[kind]) || candidates.find(m => m?.capabilities?.chat && kind === 'novel');
+      const capable = pickCapableModel(candidates, kind);
       const model = explicitModel || capable || (typeof getDefaultModel === 'function' ? getDefaultModel() : input.model);
       const context = mergeBeatContext(project, scene, beat);
       const compiled = compileStoryPrompt({ bible: project.bible, scene, beat, inherited: context });

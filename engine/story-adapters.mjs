@@ -21,7 +21,7 @@ export function createNovelAdapter({ directChat }) {
     async generate({ prompt, model, history = [], params = {} } = {}) {
       if (typeof directChat !== 'function') return { status: 'failed', error: '小说引擎未接入' };
       try {
-        const result = await directChat(model, prompt, history, { maxTokens: params.maxTokens || 6000, thinking: false, timeout: params.timeout || 180000 });
+        const result = await directChat(model, prompt, history, { maxTokens: params.maxTokens || 6000, timeout: params.timeout || 180000 });
         const text = String(result?.text || '').trim();
         if (!text) return { status: 'failed', error: '小说模型未返回正文', model: cleanModel(model) };
         return { status: 'succeeded', model: cleanModel(model), output: { type: 'text', text } };

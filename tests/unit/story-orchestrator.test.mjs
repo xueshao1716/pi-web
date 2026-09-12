@@ -36,3 +36,13 @@ test('runGeneration executes adapter and persists output with status', async () 
   assert.equal(result.run.outputAssets[0].type, 'text');
   assert.equal(result.project.scenes[0].outputs[0].status, 'succeeded');
 });
+
+test('runGeneration selects a capable image model when auto is requested', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-story-image-'));
+  const project = createProject({ title: '图像故事', scenes: [{ id: 's1', index: 1, title: '一', summary: '', beats: [{ id: 'b1', kind: 'image', prompt: '画面', references: [] }], outputs: [] }] }, { id: () => 'p2', now: () => '2026-09-12T08:00:00.000Z' });
+  await writeProject(root, project);
+  let used;
+  const api = createStoryOrchestrator({ root, getDefaultModel: () => ({ provider: 'text', id: 'chat' }), getModelList: () => [{ provider: 'img', id: 'image-1', capabilities: { image: true } }], adapters: { image: { generate: async ({ model }) => { used = model; return { status: 'succeeded', output: { type: 'image', url: '/x' } }; } } }, clock: { id: () => 'r2', now: () => '2026-09-12T08:01:00.000Z' } });
+  await api.runGeneration('p2', { sceneId: 's1', beatId: 'b1', kind: 'image', model: { provider: 'auto', id: 'auto' } });
+  assert.deepEqual(used, { provider: 'img', id: 'image-1', capabilities: { image: true } });
+});

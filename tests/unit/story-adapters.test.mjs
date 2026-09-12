@@ -11,11 +11,13 @@ test('image adapter returns a normalized artifact result', async () => {
 });
 
 test('novel adapter preserves draft text as a controllable artifact', async () => {
-  const adapter = createNovelAdapter({ directChat: async () => ({ text: '她在雨里停下。' }) });
+  let received;
+  const adapter = createNovelAdapter({ directChat: async (_model, _prompt, _history, opts) => { received = opts; return { text: '她在雨里停下。' }; } });
   const result = await adapter.generate({ prompt: '写一段告别', model: { provider: 'p', id: 'm' } });
   assert.equal(result.status, 'succeeded');
   assert.equal(result.output.text, '她在雨里停下。');
   assert.equal(result.output.type, 'text');
+  assert.equal('thinking' in received, false);
 });
 
 test('video adapter normalizes a completed video and saves it', async () => {
