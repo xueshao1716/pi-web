@@ -1,5 +1,7 @@
 import crypto from 'node:crypto';
 import { createProject, listProjects, readProject, writeProject, validateProject, mergeBeatContext } from './story-store.mjs';
+import { compileStoryPrompt } from './story-prompts.mjs';
+import { createImageAdapter, createNovelAdapter } from './story-adapters.mjs';
 import { json } from './http-utils.mjs';
 
 const makeId = () => crypto.randomUUID();
@@ -48,9 +50,14 @@ export function appendRun(scene, run) {
 function findScene(project, id) { return (project.scenes || []).find(s => s.id === id); }
 function findBeat(scene, id) { return (scene?.beats || []).find(b => b.id === id); }
 
-export function createStoryOrchestrator({ root, clock = {} }) {
+export function createStoryOrchestrator({ root, clock = {}, adapters = {}, generateImage = null, saveArtifact = null, directChat = null, getDefaultModel = null }) {
   if (!root) throw new Error('story orchestrator 缺少 root');
   const withUpdated = project => ({ ...project, updatedAt: (clock.now || nowIso)() });
+  const resolvedAdapters = {
+    image: adapters.image || createImageAdapter({ generateImage, saveArtifact }),
+    novel: adapters.novel || createNovelAdapter({ directChat }),
+    video: adapters.video,
+  };
   return {
     list: () => listProjects(root),
     create: async input => { const project = createProject(input, clock); await writeProject(root, project); return project; },
@@ -73,6 +80,34 @@ export function createStoryOrchestrator({ root, clock = {} }) {
       project.updatedAt = (clock.now || nowIso)();
       await writeProject(root, project);
       return { project, run, context };
+    },
+    runGeneration: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const scene = findScene(project, input.sceneId);
+      const beat = findBeat(scene, input.beatId);
+      if (!scene || !beat) throw Object.assign(new Error('sceneId 或 beatId 不存在'), { statusCode: 400 });
+      const kind = ['novel', 'image', 'video'].includes(input.kind) ? input.kind : beat.kind;
+      const model = input.model?.id ? input.model : (typeof getDefaultModel === 'function' ? getDefaultModel() : input.model);
+      const context = mergeBeatContext(project, scene, beat);
+      const compiled = compileStoryPrompt({ bible: project.bible, scene, beat, inherited: context });
+      const run = createGenerationRun({ ...input, kind, model, projectId: id, sceneId: scene.id, beatId: beat.id, inputAssets: input.inputAssets || compiled.referenceIds.map(assetId => ({ id: assetId, role: 'reference' })) }, clock);
+      run.status = 'running';
+      appendRun(scene, run);
+      project.updatedAt = (clock.now || nowIso)();
+      await writeProject(root, project);
+      const adapter = resolvedAdapters[kind];
+      if (!adapter?.generate) {
+        run.status = 'failed'; run.degradation = [...(run.degradation || []), `${kind}: 当前未接入生成适配器`];
+        await writeProject(root, project);
+        return { project, run, context: compiled };
+      }
+      const result = await adapter.generate({ prompt: compiled.text, model, seed: run.seed, params: run.params, references: compiled.referenceIds });
+      if (result?.output) run.outputAssets = [{ id: `${run.id}-output`, role: 'output', ...result.output }];
+      if (result?.status === 'succeeded') run.status = run.degradation?.length ? 'degraded' : 'succeeded';
+      else { run.status = 'failed'; run.degradation = [...(run.degradation || []), result?.error || '生成失败']; }
+      run.finishedAt = (clock.now || nowIso)();
+      await writeProject(root, project);
+      return { project, run, context: compiled };
     },
   };
 }
@@ -98,4 +133,10 @@ export async function handleStoryProjectPatch(ctx, res, id, body) {
 
 export async function handleStoryRunPreview(ctx, res, id, body) {
   try { return json(res, 200, await createStoryOrchestrator(ctx).previewRun(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryRun(ctx, res, id, body) {
+  try {
+    return json(res, 200, await createStoryOrchestrator(ctx).runGeneration(id, bodyOrEmpty(body)));
+  } catch (e) { return sendError(res, e); }
 }
