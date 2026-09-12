@@ -2,6 +2,7 @@ import type { Model, Session, ChatMessage, SessionMessages, Artifact, AssetDeliv
 import { parseSseBlocks, type RunEvent, type RunStatus } from './lib/run-events'
 import { rememberDownload } from './lib/downloads'
 import { saveNativeDownload } from './lib/native-download'
+import type { WorkExplanationData } from './lib/work-explanation'
 
 // ── 本地鉴权 ──
 // 元枢只把访问令牌留在当前设备的浏览器存储中；旧 key 只用于一次性迁移，避免升级后掉线。
@@ -595,11 +596,12 @@ export const EngineApi = {
 
 export type RunPhase = 'queued' | 'thinking' | 'executing' | 'remembering' | 'delivering' | 'completed' | 'failed' | 'stopped' | 'interrupted'
 export interface RunSummary {
+  explanation?: WorkExplanationData
   id: string; sessionId: string; status: string; phase: RunPhase; messagePreview: string; toolCount: number; memoryCount: number; memoryPreview: string | null; error: string | null; resumeAvailable?: boolean; durationMs?: number | null; failureCategory?: string | null
 }
 export interface RunOverview { active: RunSummary[]; recent: RunSummary[]; health: { status: 'idle' | 'busy' | 'degraded'; activeCount: number; failedCount: number } }
 export const RunApi = {
-  overview: () => api<RunOverview>('/api/run/overview'),
+  overview: (sessionId?: string) => api<RunOverview>(`/api/run/overview${sessionId ? `?session=${encodeURIComponent(sessionId)}` : ''}`),
   get: (id: string) => api<RunSummary & { lastSeq: number }>(`/api/runs/${encodeURIComponent(id)}`),
   resume: (id: string) => api<RunSummary & { lastSeq: number }>(`/api/runs/${encodeURIComponent(id)}/resume`, { method: 'POST' }),
 }

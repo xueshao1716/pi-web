@@ -80,6 +80,15 @@ export default function Engine() {
       </section>
       <div className="engine-sections" data-slot="engine-sections">
         <details className="engine-detail" name="engine-section">
+          <summary><Boxes aria-hidden="true" /><span className="engine-detail-title">系统如何分工</span><span className="engine-detail-hint">引擎、模型与子智能体</span><ChevronDown className="engine-detail-chevron" aria-hidden="true" /></summary>
+          <div className="engine-detail-content text-sm leading-relaxed space-y-3 text-pi-dim">
+            <p><strong className="text-pi-text">AIBody 协调层</strong>承接任务主题、身份与记忆，记录角色协作和证据。是否发生了记忆写入或委派，以每轮工作说明为准。</p>
+            <p><strong className="text-pi-text">主引擎</strong>控制任务执行、工具调用和恢复；<strong className="text-pi-text">模型</strong>负责理解需求和生成回复。当前配置和某次任务实际使用的引擎、模型可能不同。</p>
+            <p><strong className="text-pi-text">子智能体</strong>负责被委派的局部任务，返回结论与依据，由主角色综合。子智能体自评有把握不等于系统检查通过。</p>
+            <p>展开下方“运行诊断”，可查看每轮已记录的选择依据、协作、产物和检查结果。没有记录表示尚未观测到，并不表示功能不可用。</p>
+          </div>
+        </details>
+        <details className="engine-detail" name="engine-section">
           <summary><Activity aria-hidden="true" /><span className="engine-detail-title">运行诊断</span><span className="engine-detail-hint">{runUnavailable ? '暂不可用' : runData ? `${runData.recent.length} 次运行记录` : '加载中'}</span><ChevronDown className="engine-detail-chevron" aria-hidden="true" /></summary>
           <div className="engine-detail-content"><EngineRunDiagnostics data={runData} error={runError || refreshFailed.runs} onOpenSession={openSession} /></div>
         </details>

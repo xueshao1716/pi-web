@@ -807,6 +807,8 @@ async function handleChat(req, res, body) {
   // 内置 write/edit/bash 执行前可靠拦截，因此不能让恢复请求盲目重放。
   const forceResumeUnified = body.__runContext?.resume === true;
   const useAgent = !!defaultModel && engineDecision.lead === "pi" && !forceResumeUnified;
+  const observedEngine = forceResumeUnified ? "yuanshu" : engineDecision.lead === "dsh" ? "dsh" : useAgent ? "pi" : defaultModel ? "yuanshu" : "pi";
+  try { sseWrite(res, "engine_selected", { engine: observedEngine, reason: forceResumeUnified ? "恢复任务使用元枢循环，承接已保存的步骤。" : ({ primary: "使用系统配置的主引擎。", force: "启动配置指定使用元枢引擎。", "non-native": "当前模型通道由元枢自建循环承接。", "cannot-lead": "配置主引擎无法承担此任务，由可执行的引擎接替。" }[engineDecision.reason] || "使用本轮可用的执行通道。") }); } catch {}
   if (forceResumeUnified || engineDecision.lead === "dsh" || (defaultModel && !useAgent)) {
     const hb2 = startSseHeartbeat(res);
     // 打断支持：客户端断开 SSE 时中止 unifiedChat / dsh 子进程
@@ -880,6 +882,7 @@ async function handleChat(req, res, body) {
   let bootstrapTurn = isFirstTurn(entry.sm) && process.env.PI_TWO_PHASE !== "0";
   const hbTimer = startSseHeartbeat(res); // 心跳保活（公网隧道不因 idle 断开）
   const writer = createSseWriter(res); // 背压控制：慢网络时事件排队等 drain，不丢不堆
+  try { const selected = entry.agentModel || effModel; writer.push("model_selected", { model: { provider: selected?.provider, id: selected?.id } }); } catch {}
   try { writer.push("note", { text: leadNote(engineDecision) }); } catch {}
   // Cursor Router 播报：Auto 路由决策对用户透明（取 Cursor 可用性长板，可解释）
   if (autoRoute && autoRoute.auto && effModel) {
@@ -1593,7 +1596,10 @@ const runManager = createRunManager({
 });
 const recoveredRuns = runManager.recover();
 if (recoveredRuns.length) console.log(`[runs] 已将 ${recoveredRuns.length} 个旧实例任务标记为 interrupted`);
-const runApi = createRunApi({ manager: runManager, json });
+const runApi = createRunApi({ manager: runManager, json, readContext: async (run) => ({
+  bodyRun: aibodyRuntime.getRun(run.id),
+  subagents: await subagent.getSubagentHistory({ sessionId: run.sessionId, runId: run.id, limit: 50 }),
+}) });
 
 const API_ROUTES = [
   // ── 连续创作编排（阶段一：项目/Story Bible/镜头运行记录）──
@@ -1620,7 +1626,7 @@ const API_ROUTES = [
   ["POST", "/api/sessions/db/sweep", async (res, req) => handleDbSweep(res, await readBody(req))],
   // ── 会话 ──
   ["GET", "/api/emotion", (res, req, url) => handleEmotion(res, url)],
-  ["GET", "/api/run/overview", (res) => runApi.overview(res)],
+  ["GET", "/api/run/overview", (res, req, url) => runApi.overview(res, req, url)],
   ["GET", "/api/emotion/tide", (res) => json(res, 200, { tide: emotion.getTide(300) })],
   ["GET", "/api/emotion/feelings", (res) => json(res, 200, { feelings: emotion.getFeelings(50) })],
   ["GET", "/api/agent-status", (res) => handleAgentStatus(res)],

@@ -5,12 +5,12 @@ import fs from 'node:fs'
 const root = new URL('../../', import.meta.url)
 const read = (file) => fs.readFileSync(new URL(file, root), 'utf8')
 
-test('chat run status consumes overview and renders timeline with stop action', () => {
+test('chat run status consumes overview and renders shared explanation with stop action', () => {
   const component = read('frontend/src/components/ChatRunStatus.tsx')
   const chatArea = read('frontend/src/components/ChatArea.tsx')
 
   assert.match(component, /RunApi\.overview/)
-  assert.match(component, /RunTimeline/)
+  assert.ok(component.includes('<WorkExplanation'))
   assert.match(component, /onStop/)
   assert.match(component, /active run|activeRun|active/i)
   assert.match(chatArea, /ChatRunStatus/)

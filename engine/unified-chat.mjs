@@ -728,6 +728,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     }
   } catch {}
   writer = writer || createSseWriter(res);
+  try { writer.push("model_selected", { model: { provider: chatModel?.provider, id: chatModel?.id } }); } catch {}
   if (engineInitError) {
     try { writer.push("note", { code: "engine_init_failed", text: `engine_init_failed：引擎初始化失败，本次降级运行（${engineInitError.message}）。` }); } catch {}
   }

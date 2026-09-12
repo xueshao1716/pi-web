@@ -91,5 +91,5 @@ export function createAIBodyRuntime({ rootDir, readState, now = () => new Date()
         { id: 'governance', label: '可治理', detail: '真实事件可追踪；人格与提案仍需原有人工审批。', evidence: ['gene', 'approval'] },
       ], layers }
   }
-  return { beginTurn, observe, finishTurn, overview }
+  return { beginTurn, observe, finishTurn, overview, getRun: runId => publicRun(store.get(text(runId, 96))) }
 }

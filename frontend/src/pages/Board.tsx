@@ -12,7 +12,7 @@ import ActivityFeed from '../components/ActivityFeed'
 import { MoodOrb } from '../components/MoodOrb'
 import { useXiaoyuEmotion } from '../lib/useXiaoyuEmotion'
 import HealthBadge from '../components/HealthBadge'
-import RunTimeline from '../components/RunTimeline'
+import WorkExplanationList from '../components/WorkExplanationList'
 
 // ── 工作台（2026-09-03，Phase 1）：概览卡 ×4 + 三列泳道 + 活动时间线 ──
 // 布局借鉴 SaaS 项目看板；数据全部来自现有 API（sessions/time-tasks/stats/agent-events）
@@ -139,7 +139,7 @@ export default function Board() {
   const { data: delivData } = useSWR('board-deliveries', () => WsApi.deliveries(), { refreshInterval: 60_000 })
   const { data: dailyData } = useSWR('board-daily', () => StatsApi.daily(), { refreshInterval: 120_000 })
   const { data: saData } = useSWR('board-subagent', () => SubagentApi.runs(), { refreshInterval: 20_000 })
-  const { data: runData } = useSWR('board-run-overview', () => RunApi.overview(), { refreshInterval: 8_000 })
+  const { data: runData, error: runError } = useSWR('board-run-overview', () => RunApi.overview(), { refreshInterval: 8_000 })
 
   const sessions = sessData?.sessions || []
   const tasks = taskData?.tasks || []
@@ -175,10 +175,7 @@ export default function Board() {
       <div className="max-w-[1080px] mx-auto px-4 sm:px-6 py-5 flex flex-col gap-4">
         <PageHeader title="工作台" description="接下来做什么：接着聊、去创作、看交付" meta={<HealthBadge status={runData?.health.status || 'idle'} label={activeRuns.length ? `${activeRuns.length} 个运行中` : undefined} />} />
 
-        {activeRuns.length > 0 && <div className="panel p-3 border-pi-accent/25 bg-pi-accent-soft/30">
-          <div className="flex items-center justify-between gap-3 mb-2"><div className="text-[12px] font-semibold text-pi-text">主驾正在工作</div><span className="text-[10px] text-pi-dim2">实时更新</span></div>
-          <div className="space-y-2">{activeRuns.slice(0, 3).map(run => <div key={run.id} className="flex items-center gap-3"><RunTimeline phase={run.phase} compact /><span className="min-w-0 flex-1 truncate text-[11px] text-pi-dim">{run.messagePreview || '正在处理任务'}</span><span className="text-[10px] text-pi-dim2">工具 {run.toolCount}</span></div>)}</div>
-        </div>}
+        <WorkExplanationList data={runData} error={runError} onOpenSession={id => { selectSession(id); goChat() }} />
 
         <div data-slot="board-next" className="panel p-3 flex flex-col gap-2">
           <div className="text-[12px] font-semibold text-pi-text px-1">接下来做什么</div>

@@ -7,10 +7,10 @@ import { fileURLToPath } from 'node:url'
 const root = path.resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const read = file => fs.readFileSync(path.join(root, file), 'utf8')
 
-test('Board consumes RunApi overview and renders active run timeline', () => {
+test('Board consumes RunApi overview and renders shared work explanations', () => {
   const src = read('frontend/src/pages/Board.tsx')
   assert.match(src, /RunApi\.overview\(\)/)
-  assert.match(src, /RunTimeline/)
+  assert.ok(src.includes('<WorkExplanationList'))
   assert.match(src, /HealthBadge/)
 })
 

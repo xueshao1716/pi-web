@@ -16,7 +16,8 @@ function publicRun(run) {
   }
   return safe
 }
-import { buildRunSnapshot } from './run-observability.mjs'
+import { buildRunSnapshot, summarizeRun } from './run-observability.mjs'
+import { buildWorkExplanation } from './work-explanation.mjs'
 
 function cursorFrom(req, url) {
   const query = Number.parseInt(url?.searchParams?.get('after') || '0', 10)
@@ -36,12 +37,22 @@ function lastSeqOf(manager, runId) {
   return Array.isArray(events) ? (events.at(-1)?.seq || 0) : 0
 }
 
-export function createRunApi({ manager, json }) {
+export function createRunApi({ manager, json, readContext = null }) {
+  const explain = async (run, events) => {
+    let context = {}
+    try { context = await readContext?.(run) || {} } catch { context = { unavailable: true } }
+    return buildWorkExplanation(run, events, context)
+  }
   return {
-    overview(res) {
-      const runs = typeof manager.list === 'function' ? manager.list() : []
+    async overview(res, _req, url) {
+      const sessionId = url?.searchParams?.get('session')
+      const runs = (typeof manager.list === 'function' ? manager.list() : []).filter(run => !sessionId || run.sessionId === sessionId)
       const eventsByRun = new Map(runs.map(run => [run.id, manager.readAfter(run.id, 0)]))
-      return json(res, 200, buildRunSnapshot(runs, eventsByRun))
+      const snapshot = buildRunSnapshot(runs, eventsByRun)
+      const sources = new Map(runs.map(run => [run.id, run]))
+      const visible = new Map([...snapshot.active, ...snapshot.recent].map(run => [run.id, run]))
+      await Promise.all([...visible.values()].map(async run => { run.explanation = await explain(sources.get(run.id), eventsByRun.get(run.id)) }))
+      return json(res, 200, snapshot)
     },
     async create(res, body, req = null) {
       try {
@@ -60,10 +71,11 @@ export function createRunApi({ manager, json }) {
         throw error
       }
     },
-    get(res, runId) {
+    async get(res, runId) {
       const run = manager.get(runId)
       if (!run) return json(res, 404, { error: 'run_not_found' })
-      return json(res, 200, { ...publicRun(run), lastSeq: lastSeqOf(manager, runId) })
+      const events = manager.readAfter?.(runId, 0) || []
+      return json(res, 200, { ...publicRun(run), ...summarizeRun(run, events), explanation: await explain(run, events), lastSeq: events.at(-1)?.seq || 0 })
     },
     events(res, req, url, runId) {
       const run = manager.get(runId)

@@ -991,10 +991,9 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
               />
             </div>
           )}
-      </div>
-
-      <div className="chat-reading-column mx-auto w-full px-3 sm:px-4">
-        <ChatRunStatus sessionId={currentSessionId} onStop={stop} onResume={resumeRun} />
+        <div className="chat-reading-column mx-auto w-full px-3 sm:px-4">
+          <ChatRunStatus sessionId={currentSessionId} onStop={stop} onResume={resumeRun} />
+        </div>
       </div>
 
       {/* 输入栏 */}

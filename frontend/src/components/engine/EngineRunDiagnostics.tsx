@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ArrowUpRight, TriangleAlert } from 'lucide-react'
 import type { RunOverview } from '../../api'
 import RunTimeline from '../RunTimeline'
+import WorkExplanation from '../WorkExplanation'
 
 export default function EngineRunDiagnostics({ data, error, onOpenSession }: { data?: RunOverview; error?: unknown; onOpenSession: (id: string) => void }) {
   const [failuresOnly, setFailuresOnly] = useState(false)
@@ -29,6 +30,7 @@ export default function EngineRunDiagnostics({ data, error, onOpenSession }: { d
           <span className="ml-3">{run.messagePreview || '未记录任务摘要'}</span>
         </summary>
         <div className="pb-4 text-sm space-y-2">
+          <WorkExplanation run={run} />
           {run.error && <p className="text-pi-danger break-words flex items-start gap-2"><TriangleAlert className="w-4 h-4 shrink-0 mt-0.5" /><span className="min-w-0 break-all">{run.error}</span></p>}
           <p className="text-pi-dim">工具执行 {run.toolCount} 次</p>
           <p className="text-xs text-pi-dim break-all">运行 {run.id}</p>

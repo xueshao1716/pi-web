@@ -18,6 +18,20 @@ function fakeJson(res, code, value) {
   res.end(JSON.stringify(value))
 }
 
+test('会话筛选在近期截取之前执行，详情和概览共用说明', async () => {
+  const runs = Array.from({ length: 12 }, (_, i) => ({ id: `r${i}`, sessionId: i === 0 ? 'old-session' : 'new-session', status: 'completed', updatedAt: new Date(1000000 + i * 1000).toISOString() }))
+  const manager = { list: () => runs, get: id => runs.find(r => r.id === id), readAfter: () => [] }
+  const api = createRunApi({ manager, json: fakeJson })
+  const res = new FakeResponse()
+  await api.overview(res, null, new URL('http://local/api/run/overview?session=old-session'))
+  const body = JSON.parse(res.text())
+  assert.deepEqual(body.recent.map(r => r.id), ['r0'])
+  assert.equal(body.recent[0].explanation.verification.state, 'not_observed')
+  const detail = new FakeResponse()
+  await api.get(detail, 'r0')
+  assert.deepEqual(JSON.parse(detail.text()).explanation, body.recent[0].explanation)
+})
+
 test('create 返回 202；session_busy 返回 409 与 activeRunId', async () => {
   const manager = {
     create(body) {

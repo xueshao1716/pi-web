@@ -4,8 +4,10 @@ import {
   Bot, Check, ChevronDown, ChevronRight, CircleAlert, Clock3, ExternalLink,
   FileCode2, GitBranch, GitCompare, Layers3, PackageOpen, RefreshCw, ShieldCheck,
 } from 'lucide-react'
-import { AIBodyApi, GitReviewApi, SubagentApi, type AIBodyLayer, type GitReviewFile, type SubagentHistoryRun } from '../api'
+import { AIBodyApi, GitReviewApi, SubagentApi, RunApi, type AIBodyLayer, type GitReviewFile, type SubagentHistoryRun } from '../api'
 import PageHeader from '../components/PageHeader'
+import WorkExplanationList from '../components/WorkExplanationList'
+import { useApp } from '../store'
 
 const emptyFiles: GitReviewFile[] = []
 const statusLabel = (status: GitReviewFile['status']) => ({ untracked: '未跟踪', added: '新增', deleted: '删除', renamed: '重命名', modified: '修改' }[status])
@@ -71,6 +73,8 @@ function RunRecord({ run }: { run: SubagentHistoryRun }) {
 }
 
 export default function ReviewWorkbench() {
+  const { selectSession } = useApp()
+  const { data: runData, error: runError } = useSWR('review-run-overview', () => RunApi.overview(), { refreshInterval: 15000 })
   const { data: review, error, isLoading, mutate } = useSWR('git-review', () => GitReviewApi.review(), { refreshInterval: 30000, revalidateOnFocus: true })
   const { data: history } = useSWR('subagent-history', () => SubagentApi.history(), { refreshInterval: 30000, revalidateOnFocus: true })
   const { data: aibody } = useSWR('aibody-overview', () => AIBodyApi.overview(), { refreshInterval: 120000, revalidateOnFocus: true })
@@ -111,6 +115,7 @@ export default function ReviewWorkbench() {
       {!isLoading && !error && review?.error && <div className="review-alert" role="alert"><CircleAlert className="w-4 h-4" />仓库输出过大，暂时无法完整读取；请刷新后继续。</div>}
       {!isLoading && !error && review && !review.isRepo && <div className="review-empty"><GitCompare className="w-7 h-7" /><h2>这里还不是 Git 仓库</h2><p>当前工作台没有找到可验收的源码仓库。</p></div>}
 
+      <div className="my-5"><WorkExplanationList data={runData} error={runError} onOpenSession={id => { selectSession(id); location.hash = '#/chat' }} /><p className="text-xs text-pi-dim mt-2">以上证据对应各自任务，不能代替下方当前仓库的改动检查。</p></div>
       {!isLoading && !error && review?.isRepo && !review.error && <>
         <section className="review-summary" aria-label="改动摘要"><div><span className="review-summary-label">改动文件</span><strong>{files.length}</strong><small>{files.filter(file => file.status === 'untracked').length} 项未跟踪</small></div><div><span className="review-summary-label">新增行</span><strong className="text-pi-success">+{summary.additions}</strong></div><div><span className="review-summary-label">删除行</span><strong className="text-pi-danger">-{summary.deletions}</strong></div><div className="review-summary-verification"><span className="review-summary-label">验收状态</span><span className={`review-verification review-verification-${verification.state}`}><span className="review-status-dot" />{verification.state === 'passed' ? '已通过' : verification.state === 'failed' ? '有问题' : verification.state === 'running' ? '进行中' : '尚未执行'}</span><small>只显示真实执行结果</small></div></section>
 
