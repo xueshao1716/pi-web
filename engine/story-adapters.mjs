@@ -29,3 +29,18 @@ export function createNovelAdapter({ directChat }) {
     },
   };
 }
+
+export function createVideoAdapter({ generateVideo, saveArtifact }) {
+  return {
+    async generate({ prompt, model, params = {}, references = [] } = {}) {
+      if (typeof generateVideo !== 'function') return { status: 'failed', error: '视频引擎未接入' };
+      const finalPrompt = references.length ? `${String(prompt || '').trim()}\n[连续性参考] ${references.join(',')}` : String(prompt || '').trim();
+      try {
+        const result = await generateVideo(model?.provider, model?.id, finalPrompt, params);
+        if (!result?.video) return { status: 'failed', error: result?.error || '视频模型未返回片子', model: cleanModel(model) };
+        const stored = typeof saveArtifact === 'function' ? await saveArtifact({ type: 'video', url: result.video, prompt: finalPrompt }) : result.video;
+        return { status: 'succeeded', model: cleanModel(model), output: { type: 'video', url: stored || result.video, prompt: finalPrompt } };
+      } catch (error) { return { status: 'failed', error: String(error?.message || error).slice(0, 200), model: cleanModel(model) }; }
+    },
+  };
+}

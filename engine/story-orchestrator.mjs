@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { createProject, listProjects, readProject, writeProject, validateProject, mergeBeatContext } from './story-store.mjs';
 import { compileStoryPrompt } from './story-prompts.mjs';
-import { createImageAdapter, createNovelAdapter } from './story-adapters.mjs';
+import { createImageAdapter, createNovelAdapter, createVideoAdapter } from './story-adapters.mjs';
 import { json } from './http-utils.mjs';
 
 const makeId = () => crypto.randomUUID();
@@ -50,13 +50,13 @@ export function appendRun(scene, run) {
 function findScene(project, id) { return (project.scenes || []).find(s => s.id === id); }
 function findBeat(scene, id) { return (scene?.beats || []).find(b => b.id === id); }
 
-export function createStoryOrchestrator({ root, clock = {}, adapters = {}, generateImage = null, saveArtifact = null, directChat = null, getDefaultModel = null }) {
+export function createStoryOrchestrator({ root, clock = {}, adapters = {}, generateImage = null, generateVideo = null, saveArtifact = null, directChat = null, getDefaultModel = null }) {
   if (!root) throw new Error('story orchestrator 缺少 root');
   const withUpdated = project => ({ ...project, updatedAt: (clock.now || nowIso)() });
   const resolvedAdapters = {
     image: adapters.image || createImageAdapter({ generateImage, saveArtifact }),
     novel: adapters.novel || createNovelAdapter({ directChat }),
-    video: adapters.video,
+    video: adapters.video || createVideoAdapter({ generateVideo, saveArtifact }),
   };
   return {
     list: () => listProjects(root),
