@@ -27,3 +27,17 @@ test('story workbench renders generated media in an inline preview surface', () 
   assert.match(source, /<img/);
   assert.match(source, /<video/);
 });
+
+test('story workbench lets the current shot choose output type and edit its prompt', () => {
+  assert.match(source, /selectedKind/);
+  assert.match(source, /输出类型/);
+  assert.match(source, /镜头要求/);
+  assert.match(source, /setGenerationKind/);
+  assert.match(source, /kind: selectedKind/);
+});
+
+test('story smart fill applies the returned scene and shot instead of dropping them', () => {
+  assert.match(source, /assistResult\.scene/);
+  assert.match(source, /assistResult\.beat/);
+  assert.match(source, /patchProject\(project\.id, \{ scenes/);
+});
