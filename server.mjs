@@ -78,7 +78,7 @@ import * as confirmRegistry from "./engine/tools/confirm-registry.mjs";
 import { initRefineApi, readRefineJson, runRefineScript, handleRefineStatus, handleRefineList, detectSkillDomain, handleRefineFeedback, handleRefineGenes, handleRefinePlan, handleRefineApprove, handleRefineReject, handleRefineRollback } from "./engine/refine-api.mjs";
 import { initMcpServer, handleMcp } from "./engine/mcp-server.mjs";
 import { initMcpChat } from "./engine/mcp-chat.mjs";
-import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview } from "./engine/story-orchestrator.mjs";
+import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun } from "./engine/story-orchestrator.mjs";
 import { startShare, stopShareSync, handleShare, handleShareStatus, handleShareStop } from "./engine/share-api.mjs";
 import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
@@ -1602,6 +1602,7 @@ const API_ROUTES = [
   ["GET", /^\/api\/story\/projects\/([^/]+)$/, (res, req, url, m) => handleStoryProject({ root: WS_ROOT }, res, m[1])],
   ["PATCH", /^\/api\/story\/projects\/([^/]+)$/, async (res, req, url, m) => handleStoryProjectPatch({ root: WS_ROOT }, res, m[1], await readBody(req, 8))],
   ["POST", /^\/api\/story\/projects\/([^/]+)\/run-preview$/, async (res, req, url, m) => handleStoryRunPreview({ root: WS_ROOT }, res, m[1], await readBody(req, 8))],
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/run$/, async (res, req, url, m) => handleStoryRun({ root: WS_ROOT, generateImage, saveArtifact, directChat, getDefaultModel: () => defaultModel }, res, m[1], await readBody(req, 8))],
   // ── 会话数据库（08-29 真落地：编号/健康度/批量清理；必须先于 :id 正则路由）──
   ["GET", "/api/sessions/db/list", (res) => handleDbList(res)],
   ["GET", "/api/sessions/db/stats", (res) => handleDbStats(res)],

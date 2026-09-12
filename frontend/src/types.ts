@@ -64,7 +64,7 @@ export interface Artifact {
   mtimeMs?: number
 }
 
-export interface StoryAssetRef { id: string; role?: string; weight?: number }
+export interface StoryAssetRef { id: string; role?: string; weight?: number; type?: string; url?: string; text?: string; prompt?: string }
 export interface StoryCharacter { id: string; name: string; [key: string]: unknown }
 export interface StoryLocation { id: string; name: string; [key: string]: unknown }
 export interface StoryBible {
