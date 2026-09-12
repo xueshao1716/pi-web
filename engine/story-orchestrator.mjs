@@ -51,7 +51,7 @@ export function appendRun(scene, run) {
 function findScene(project, id) { return (project.scenes || []).find(s => s.id === id); }
 function findBeat(scene, id) { return (scene?.beats || []).find(b => b.id === id); }
 
-export function createStoryOrchestrator({ root, clock = {}, adapters = {}, generateImage = null, generateVideo = null, saveArtifact = null, directChat = null, getDefaultModel = null }) {
+export function createStoryOrchestrator({ root, clock = {}, adapters = {}, generateImage = null, generateVideo = null, saveArtifact = null, directChat = null, getDefaultModel = null, getModelList = null }) {
   if (!root) throw new Error('story orchestrator 缺少 root');
   const withUpdated = project => ({ ...project, updatedAt: (clock.now || nowIso)() });
   const resolvedAdapters = {
@@ -88,7 +88,10 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       const beat = findBeat(scene, input.beatId);
       if (!scene || !beat) throw Object.assign(new Error('sceneId 或 beatId 不存在'), { statusCode: 400 });
       const kind = ['novel', 'image', 'video'].includes(input.kind) ? input.kind : beat.kind;
-      const model = input.model?.id ? input.model : (typeof getDefaultModel === 'function' ? getDefaultModel() : input.model);
+      const explicitModel = input.model?.id && input.model.id !== 'auto' && input.model.provider !== 'auto' ? input.model : null;
+      const candidates = typeof getModelList === 'function' ? getModelList() : [];
+      const capable = candidates.find(m => m?.capabilities?.[kind]) || candidates.find(m => m?.capabilities?.chat && kind === 'novel');
+      const model = explicitModel || capable || (typeof getDefaultModel === 'function' ? getDefaultModel() : input.model);
       const context = mergeBeatContext(project, scene, beat);
       const compiled = compileStoryPrompt({ bible: project.bible, scene, beat, inherited: context });
       const run = createGenerationRun({ ...input, kind, model, projectId: id, sceneId: scene.id, beatId: beat.id, inputAssets: input.inputAssets || compiled.referenceIds.map(assetId => ({ id: assetId, role: 'reference' })) }, clock);
@@ -148,9 +151,21 @@ export async function handleStoryAssist(ctx, res, id, body) {
     const project = await readProject(ctx.root, id);
     const idea = String(bodyOrEmpty(body).idea || '').trim().slice(0, 2000);
     if (!idea) throw Object.assign(new Error('请输入想补充的故事想法'), { statusCode: 400 });
-    const model = body?.model?.id ? body.model : ctx.getDefaultModel();
-    const result = await ctx.directChat(model, buildStoryAssistPrompt({ title: project.title, logline: project.logline, idea, current: project.bible }), [], { thinking: false, maxTokens: 2400, timeout: 90000 });
-    if (!result?.text) throw new Error('智能填充模型没有返回内容');
-    return json(res, 200, { assist: parseStoryAssist(result.text), model: { provider: model?.provider || '', id: model?.id || '' } });
+    const requested = body?.model?.id && body.model.id !== 'auto' ? body.model : null;
+    const available = typeof ctx.getModelList === 'function' ? ctx.getModelList() : [];
+    const fast = available.find(m => m?.capabilities?.chat && !m.reasoning && /agnes-3\.0-flash/i.test(m.id))
+      || available.find(m => m?.capabilities?.chat && !m.reasoning)
+      || ctx.getDefaultModel();
+    const candidates = [requested, fast, ctx.getDefaultModel()].filter((m, i, all) => m?.id && all.findIndex(x => x.provider === m.provider && x.id === m.id) === i);
+    let lastError = '智能填充模型没有返回内容';
+    for (const model of candidates.slice(0, 2)) {
+      try {
+        const result = await ctx.directChat(model, buildStoryAssistPrompt({ title: project.title, logline: project.logline, idea, current: project.bible }), [], { maxTokens: 2200, timeout: 40000 });
+        if (!result?.text) { lastError = `${model.provider}/${model.id} 没有返回内容`; continue; }
+        try { return json(res, 200, { assist: parseStoryAssist(result.text), model: { provider: model.provider || '', id: model.id || '' } }); }
+        catch (error) { lastError = String(error?.message || error); }
+      } catch (error) { lastError = String(error?.message || error); }
+    }
+    throw new Error(lastError);
   } catch (e) { return sendError(res, e); }
 }
