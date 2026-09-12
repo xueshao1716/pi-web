@@ -14,6 +14,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : TauriActivity() {
+  private val downloads = YuanshuDownloads(this)
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
@@ -34,6 +35,8 @@ class MainActivity : TauriActivity() {
     super.onWebViewCreate(webView)
     // 原生桥接：不管 WebView 里加载的是本地连接页还是用户自己填的远程 pi-web 地址，都能拿到这几个原生能力
     webView.addJavascriptInterface(YuanshuBridge(this, webView), "YuanshuBridge")
+    downloads.attach(webView)
+    webView.addJavascriptInterface(downloads, "YuanshuDownloads")
 
     // 某些 Android/WebView 组合（尤其是 edge-to-edge 下的厂商 WebView）不会把 IME
     // 反映到布局高度，导致前端的 visualViewport 也看不到键盘。把系统报告的真实
@@ -53,5 +56,10 @@ class MainActivity : TauriActivity() {
       insets
     }
     ViewCompat.requestApplyInsets(webView)
+  }
+
+  override fun onDestroy() {
+    downloads.dispose()
+    super.onDestroy()
   }
 }

@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState, type ComponentType, type LazyExoticComponent, type ReactNode } from 'react'
-import { MessagesSquare, BrainCircuit, Images, Clock4, LayoutGrid, LayoutDashboard, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog, Cpu, Palette, Database, GitCompare, LogOut, Ellipsis } from 'lucide-react'
+import { MessagesSquare, BrainCircuit, Images, Clock4, Download, LayoutGrid, LayoutDashboard, Settings2, FolderClosed, PanelLeftOpen, Sparkles, Factory, MonitorCog, Cpu, Palette, Database, GitCompare, LogOut, Ellipsis } from 'lucide-react'
 import { useApp } from './store'
 import { useIsMobile } from './hooks/useIsMobile'
 import { useHashRoute, PageErrorBoundary, type Route } from './hooks/useHashRoute'
@@ -24,6 +24,7 @@ import { useThemePreferences } from './hooks/useThemePreferences'
 const ModelHub = lazy(() => import('./pages/ModelHub'))
 const Assets = lazy(() => import('./pages/Assets'))
 const Tasks = lazy(() => import('./pages/Tasks'))
+const Downloads = lazy(() => import('./pages/Downloads'))
 const Apps = lazy(() => import('./pages/Apps'))
 const EnginePage = lazy(() => import('./pages/Engine'))
 const LingXiPage = lazy(() => import('./pages/LingXi'))
@@ -58,6 +59,7 @@ const PAGE_ROUTES: PageRoute[] = [
   { route: 'models', icon: BrainCircuit, label: ROUTE_LABELS.models, Page: ModelHub, nav: false },
   { route: 'assets', icon: Images, label: ROUTE_LABELS.assets, Page: Assets },
   { route: 'tasks', icon: Clock4, label: ROUTE_LABELS.tasks, Page: Tasks },
+  { route: 'downloads', icon: Download, label: ROUTE_LABELS.downloads, Page: Downloads },
   { route: 'apps', icon: LayoutGrid, label: ROUTE_LABELS.apps, Page: Apps },
   { route: 'engine', icon: Cpu, label: ROUTE_LABELS.engine, Page: EnginePage },
   { route: 'themes', icon: Palette, label: ROUTE_LABELS.themes, Page: ThemesPage, nav: false },

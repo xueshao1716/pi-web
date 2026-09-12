@@ -78,3 +78,6 @@ app/node_modules/
 !app/dist/**
 tmp-*.cjs
 *.log
+# 本地打包/视觉验收脚本生成的状态文件与临时快照
+*.exit
+.tmp-feel-test/

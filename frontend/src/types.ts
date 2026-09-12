@@ -77,7 +77,7 @@ export interface AssetDelivery {
   openPath?: string
 }
 
-export type AssetKind = 'image' | 'video' | 'audio' | 'text' | 'other'
+export type AssetKind = 'image' | 'video' | 'audio' | 'text' | 'presentation' | 'other'
 export type AssetTimeRange = 'all' | 'today' | '7d' | '30d'
 
 export interface AssetItem {

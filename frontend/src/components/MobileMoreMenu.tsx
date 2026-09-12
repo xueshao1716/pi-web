@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import {
-  Activity, BrainCircuit, ClipboardCheck, Cpu, Database, Factory, FolderKanban, GitCompare,
+  Activity, BrainCircuit, ClipboardCheck, Cpu, Database, Download, Factory, FolderKanban, GitCompare,
   LayoutDashboard, LayoutGrid, LogOut, MonitorCog, PackageCheck, Palette, PanelRight, Sparkles,
   TerminalSquare, X,
 } from 'lucide-react'
@@ -19,6 +19,7 @@ const MORE_ROUTES: { route: Route; icon: typeof Sparkles; label: string }[] = [
   { route: 'engine', icon: Cpu, label: ROUTE_LABELS.engine },
   { route: 'themes', icon: Palette, label: ROUTE_LABELS.themes },
   { route: 'sessiondb', icon: Database, label: ROUTE_LABELS.sessiondb },
+  { route: 'downloads', icon: Download, label: ROUTE_LABELS.downloads },
   { route: 'system', icon: MonitorCog, label: ROUTE_LABELS.system },
 ]
 

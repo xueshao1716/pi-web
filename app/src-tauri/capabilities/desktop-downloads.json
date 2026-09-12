@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop-downloads",
+  "description": "Allow the local desktop workspace to open the system Downloads directory.",
+  "platforms": ["windows", "linux", "macOS"],
+  "windows": ["main"],
+  "local": true,
+  "remote": { "urls": ["http://127.0.0.1:8787/*", "http://localhost:8787/*"] },
+  "permissions": ["allow-open-download-folder"]
+}

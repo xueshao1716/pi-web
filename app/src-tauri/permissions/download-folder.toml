@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-open-download-folder"
+description = "Open the fixed system Downloads directory."
+commands.allow = ["open_download_folder"]

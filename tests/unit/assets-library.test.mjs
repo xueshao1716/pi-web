@@ -2,6 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   assetKindForName,
+  assetContextLabel,
+  assetKindLabel,
   filterAssets,
   mergeAssets,
   normalizeArtifacts,
@@ -29,7 +31,7 @@ const delivery = (overrides = {}) => ({
   ...overrides,
 })
 
-test('assetKindForName maps common media, text, binary documents, and unknown extensions', () => {
+test('assetKindForName maps common media, text, presentations, and unknown extensions', () => {
   assert.equal(assetKindForName('photo.JPG'), 'image')
   assert.equal(assetKindForName('clip.webm'), 'video')
   assert.equal(assetKindForName('voice.m4a'), 'audio')
@@ -38,7 +40,8 @@ test('assetKindForName maps common media, text, binary documents, and unknown ex
   assert.equal(assetKindForName('report.pdf'), 'other')
   assert.equal(assetKindForName('report.docx'), 'other')
   assert.equal(assetKindForName('sheet.xlsx'), 'other')
-  assert.equal(assetKindForName('slides.pptx'), 'other')
+  assert.equal(assetKindForName('slides.pptx'), 'presentation')
+  assert.equal(assetKindForName('slides.ppt'), 'presentation')
   assert.equal(assetKindForName('archive.zip'), 'other')
 })
 
@@ -47,6 +50,17 @@ test('projectForPath derives the first meaningful project segment', () => {
   assert.equal(projectForPath('生成物/cover.png'), '未分类')
   assert.equal(projectForPath('cover.png'), '未分类')
   assert.equal(projectForPath('/工程/元枢安卓App/cover.png'), '元枢安卓App')
+})
+
+test('assetContextLabel keeps delivery assets from presenting an unknown project as metadata', () => {
+  assert.equal(assetContextLabel({ source: 'delivery', project: '未分类' }), '交付')
+  assert.equal(assetContextLabel({ source: 'artifact', project: '元枢安卓App' }), '元枢安卓App')
+})
+
+test('assetKindLabel turns internal asset kinds into readable Chinese labels', () => {
+  assert.equal(assetKindLabel('presentation'), '演示文稿')
+  assert.equal(assetKindLabel('image'), '图片')
+  assert.equal(assetKindLabel('other'), '其他')
 })
 
 test('normalizers expose stable source/path IDs and directory safety metadata', () => {
@@ -109,6 +123,17 @@ test('delivery timestamps participate in normalization, filtering, and sorting',
   assert.equal(recent.date, new Date(now - 60_000).toISOString())
   assert.deepEqual(filterAssets([recent, old], { timeRange: '7d', now }).map(item => item.name), ['recent.mp4'])
   assert.deepEqual(sortAssets([old, recent], 'newest').map(item => item.name), ['recent.mp4', 'old.mp4'])
+})
+
+test('normalizers fall back to mtime when an artifact date contains a folder label', () => {
+  const mtimeMs = Date.parse('2026-09-07T12:34:56.000Z')
+  const [item] = normalizeArtifacts([artifact({
+    name: '下集-诀别.mp4',
+    path: '生成物/视频/大话西游铁扇/下集-诀别.mp4',
+    date: '大话西游铁扇',
+    mtimeMs,
+  })])
+  assert.equal(item.date, new Date(mtimeMs).toISOString())
 })
 
 test('sortAssets orders newest and oldest by mtimeMs without mutating input', () => {

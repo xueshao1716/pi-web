@@ -1,64 +1,185 @@
-// ══ 隔离子任务执行器（P2，2026-08-19）══
-// 多 agent 本质（Reasonix 观点）：子代理是"隔离上下文 + 成本分级 + 结构化回传"的执行器，不是协调原语。
-// 设计：
-//   - 独立上下文：只带 task + 最小 context，不污染主 agent 上下文
-//   - flash 优先：成本分级（子任务不值得用 pro）
-//   - 结构化回传：模型输出 { result, evidence, confidence } JSON，主 agent 只收结论不读过程
-// 依赖注入：复用 HttpModelAdapter（httpFetch/authReader/modelReader/resolveAuth 由宿主注入）
-
+// 隔离子任务执行器：一次分析调用 + 可追溯生命周期台账。
+// 子代理仍不是工具执行器；它只返回结构化分析结论，不写文件、不跑命令。
 import { HttpModelAdapter } from "./model-adapter.mjs";
+import path from "node:path";
+import {
+  configureSubagentTraces,
+  getSubagentHistory as readSubagentHistory,
+  historyFromMemory,
+  rememberInMemoryTrace,
+  safeEvidence,
+  safeRole,
+} from "./subagent-traces.mjs";
 
 let _adapter = null;
+let _adapterOptions = null;
 let _getDefaultModel = () => null;
 let _getFlashModel = () => null;
+let _traceStore = configureSubagentTraces();
+let _ordinal = 0;
 
-export function initSubagent({ httpFetch, authReader, modelReader, resolveAuth, getDefaultModel, getFlashModel }) {
-  _adapter = new HttpModelAdapter({ httpFetch, authReader, modelReader, resolveAuth });
-  if (getDefaultModel) _getDefaultModel = getDefaultModel;
-  if (getFlashModel) _getFlashModel = getFlashModel;
+function makeId(prefix = "subagent") {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/**
- * 派发一个隔离子任务。
- * @param {object} p
- * @param {string} p.task        子任务描述（要做什么、输出什么结论）
- * @param {string[]} [p.context] 最小上下文（只放必要信息，避免上下文膨胀）
- * @param {object} [p.model]     指定模型（缺省 flash → default）
- * @param {number} [p.timeoutMs] 超时
- * @returns {Promise<{done:true,result:string,evidence:string[],confidence:number,model:object}|{done:false,error:string,raw?:string,model?:object}>}
- */
-export async function spawnSubagent({ task, context = [], model, timeoutMs = 120000 }) {
+function abortError(message = "子任务已取消") {
+  const error = new Error(message);
+  error.name = "AbortError";
+  return error;
+}
+
+function combineSignal(parentSignal, timeoutMs) {
+  const controller = new AbortController();
+  let timer = null;
+  let timedOut = false;
+  const abort = () => { if (!controller.signal.aborted) controller.abort(); };
+  if (parentSignal) {
+    if (parentSignal.aborted) abort();
+    else parentSignal.addEventListener("abort", abort, { once: true });
+  }
+  if (Number.isFinite(timeoutMs) && timeoutMs > 0) timer = setTimeout(() => { timedOut = true; abort(); }, timeoutMs);
+  return {
+    signal: controller.signal,
+    timedOut: () => timedOut,
+    dispose: () => { if (timer) clearTimeout(timer); parentSignal?.removeEventListener?.("abort", abort); },
+  };
+}
+
+function safeContext(context) {
+  const value = context && typeof context === "object" ? context : {};
+  const out = {};
+  const keys = ["identity", "goal", "strategy", "preferences", "constraints", "corrections", "evidence", "activeRoles"];
+  for (const key of keys) {
+    const item = value[key];
+    if (typeof item === "string") out[key] = item.slice(0, 500);
+    else if (Array.isArray(item)) out[key] = item.filter(x => typeof x === "string").slice(0, 6).map(x => x.slice(0, 300));
+  }
+  return out;
+}
+
+function contextMessages(aibodyContext) {
+  const context = safeContext(aibodyContext);
+  if (!Object.keys(context).length) return [];
+  return [{ role: "user", content: `安全共享上下文（仅供本次分析）：${JSON.stringify(context)}` }];
+}
+
+function emit(onEvent, type, data) {
+  try {
+    if (typeof onEvent !== "function") return;
+    const result = onEvent(type, data);
+    if (result && typeof result.catch === "function") result.catch(() => {});
+  } catch { /* observers cannot break execution */ }
+}
+
+export function initSubagent(options = {}) {
+  const { httpFetch, authReader, modelReader, resolveAuth, getDefaultModel, getFlashModel, traceDir } = options;
+  _adapterOptions = { httpFetch, authReader, modelReader, resolveAuth };
+  _adapter = new HttpModelAdapter(_adapterOptions);
+  if (getDefaultModel) _getDefaultModel = getDefaultModel;
+  if (getFlashModel) _getFlashModel = getFlashModel;
+  _traceStore = configureSubagentTraces(traceDir || "");
+  _ordinal = 0;
+}
+
+export async function spawnSubagent({
+  task,
+  context = [],
+  model,
+  timeoutMs = 120000,
+  role = "analyst",
+  sessionId = "",
+  runId = "",
+  signal,
+  onEvent,
+  aibodyContext,
+} = {}) {
+  const normalizedRole = safeRole(role);
   const m = model || _getFlashModel() || _getDefaultModel();
-  if (!m || !_adapter) return { done: false, error: "subagent 未初始化或无可用模型" };
+  const subagentRunId = makeId("subagent");
+  const ordinal = ++_ordinal;
+  const common = { runId: subagentRunId, parentRunId: runId, sessionId, role: normalizedRole, task, model: m, attempt: 1, turn: 1, ordinal };
+  const started = await _traceStore.begin(common);
+  rememberInMemoryTrace(started);
+  emit(onEvent, "subagent_started", { ...started, result: "", evidence: [] });
+  const finish = async (patch) => {
+    const record = await _traceStore.finish(subagentRunId, patch);
+    rememberInMemoryTrace(record);
+    emit(onEvent, "subagent_finished", { ...record });
+    return record;
+  };
+  if (signal?.aborted) {
+    await finish({ status: "cancelled", error: "父任务已取消" });
+    return { done: false, error: "子任务已取消", cancelled: true, model: m, subagentRunId };
+  }
+  if (!m || !_adapterOptions) {
+    const record = await finish({ status: "failed", error: "subagent 未初始化或无可用模型" });
+    return { done: false, error: record.error, model: m, subagentRunId };
+  }
+  const combined = combineSignal(signal, timeoutMs);
+  const baseFetch = _adapterOptions.httpFetch;
+  const wrappedFetch = async (url, options = {}) => {
+    // The shared adapter retries generic network errors once; mark cancellation as
+    // timeout-like internally so an already-cancelled parent never sleeps/retries.
+    if (combined.signal.aborted) throw abortError("timeout");
+    const request = (baseFetch || globalThis.fetch)(url, { ...options, signal: combined.signal });
+    return Promise.race([
+      request,
+      new Promise((_, reject) => combined.signal.addEventListener("abort", () => reject(abortError("timeout")), { once: true })),
+    ]);
+  };
+  const adapter = new HttpModelAdapter({ ..._adapterOptions, httpFetch: wrappedFetch });
   const SYSTEM = "你是一个专精单任务的小助手。只完成交给你的任务，不要扩展、不要闲聊。\n" +
+    "你只有分析能力，不得声称已经写文件、运行命令或生成了真实产物。\n" +
     "输出必须严格为 JSON 对象（不要输出任何其他文字）：\n" +
     "{\"result\": \"任务结论（字符串）\", \"evidence\": [\"关键证据1\", \"关键证据2\"], \"confidence\": 0到1的数字}";
   const messages = [
     { role: "system", content: SYSTEM },
-    ...(context || []).map(c => ({ role: "user", content: c })),
-    { role: "user", content: task },
+    ...contextMessages(aibodyContext),
+    ...(Array.isArray(context) ? context.map(c => ({ role: "user", content: String(c).slice(0, 600) })).slice(0, 8) : []),
+    { role: "user", content: String(task || "").slice(0, 1000) },
   ];
-  let r;
   try {
-    r = await _adapter.chat(m, messages, { params: { temperature: 0.3 }, maxTokens: 2000, signal: AbortSignal.timeout(timeoutMs) });
-  } catch (e) {
-    return { done: false, error: String(e?.message || e).slice(0, 150), model: m };
+    const response = await adapter.chat(m, messages, { params: { temperature: 0.3 }, maxTokens: 2000, signal: combined.signal });
+    if (combined.signal.aborted) throw abortError(combined.timedOut() ? "子任务超时" : "子任务已取消");
+    combined.dispose();
+    if (response?.aborted) throw abortError("子任务已取消");
+    if (response?.error || !response?.text) {
+      const record = await finish({ status: "failed", error: response?.error || "无回复" });
+      return { done: false, error: record.error, model: m, subagentRunId };
+    }
+    let parsed = null;
+    try {
+      const match = String(response.text).match(/\{[\s\S]*\}/);
+      if (match) parsed = JSON.parse(match[0]);
+    } catch { /* handled below */ }
+    if (!parsed || parsed.result === undefined) {
+      const record = await finish({ status: "failed", error: "输出不是预期 JSON 结构", result: String(response.text).slice(0, 300) });
+      return { done: false, error: record.error, raw: record.result, model: m, subagentRunId };
+    }
+    const result = String(parsed.result).slice(0, 4000);
+    const evidence = safeEvidence(parsed.evidence);
+    const confidence = typeof parsed.confidence === "number" ? Math.max(0, Math.min(1, parsed.confidence)) : 0.5;
+    await finish({ status: "completed", result, evidence, confidence });
+    return { done: true, result, evidence, confidence, model: m, subagentRunId };
+  } catch (error) {
+    combined.dispose();
+    const timedOut = combined.timedOut();
+    const cancelled = signal?.aborted || (error?.name === "AbortError" && !timedOut);
+    const message = cancelled ? "子任务已取消" : timedOut ? "子任务超时" : String(error?.message || error).slice(0, 800);
+    await finish({ status: cancelled ? "cancelled" : "failed", error: message });
+    return { done: false, error: message, cancelled, model: m, subagentRunId };
   }
-  if (r.error || !r.text) return { done: false, error: r.error || "无回复", model: m };
-  // 解析结构化输出（宽容：找第一个 { } 块）
-  let parsed = null;
-  try {
-    const match = String(r.text).match(/\{[\s\S]*\}/);
-    if (match) parsed = JSON.parse(match[0]);
-  } catch {}
-  if (!parsed || parsed.result === undefined) {
-    return { done: false, error: "输出不是预期 JSON 结构", raw: String(r.text).slice(0, 300), model: m };
-  }
-  return {
-    done: true,
-    result: String(parsed.result),
-    evidence: Array.isArray(parsed.evidence) ? parsed.evidence.map(String) : [],
-    confidence: typeof parsed.confidence === "number" ? Math.max(0, Math.min(1, parsed.confidence)) : 0.5,
-    model: m,
-  };
 }
+
+export async function getSubagentHistory({ sessionId, runId, limit = 50, traceDir } = {}) {
+  // Reuse the initialized store when callers ask for its own directory. This
+  // avoids two recovery passes racing to rewrite the same orphan record.
+  if (traceDir && _traceStore?.traceDir === path.resolve(String(traceDir))) {
+    return _traceStore.history({ sessionId, runId, limit });
+  }
+  if (traceDir) return readSubagentHistory({ sessionId, runId, limit, traceDir });
+  const rows = await _traceStore.history({ sessionId, runId, limit });
+  return rows.length ? rows : historyFromMemory({ sessionId, runId, limit });
+}
+
+export { safeContext };

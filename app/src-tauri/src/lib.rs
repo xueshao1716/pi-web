@@ -1,10 +1,25 @@
 // 元枢壳客户端：桌面直连本机服务；Android 走连接页（可输局域网/隧道地址）
 // 设计铁律：壳零业务逻辑——只决定 WebView 首屏 URL，其余全是中层 SPA 的事
 
+use tauri::Manager;
+use tauri_plugin_opener::OpenerExt;
+
+#[tauri::command]
+fn open_download_folder(app: tauri::AppHandle) -> Result<(), String> {
+    let directory = app
+        .path()
+        .download_dir()
+        .map_err(|error| format!("无法定位下载目录：{error}"))?;
+    app.opener().open_path(directory.to_string_lossy(), None::<&str>)
+        .map_err(|error| format!("无法打开下载目录：{error}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .invoke_handler(tauri::generate_handler![open_download_folder])
         .setup(|app| {
             #[cfg(desktop)]
             {

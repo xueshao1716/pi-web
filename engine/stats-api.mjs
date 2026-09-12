@@ -3,17 +3,20 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { fileURLToPath } from "node:url";
 import { json } from "./http-utils.mjs";
 import { scanSessionFiles, parseSessionFile, getSessionList, readEntriesFromFile, invalidateSessionCache } from "./session-files.mjs";
 import { extractMessages } from "./session-utils.mjs";
+import { sanitizeText } from "./sanitize.mjs";
 
 let _getAgentDir = () => "", _cwd = "", _DefaultResourceLoader = null;
 // 08-29 修复：handleStats/handleCompact/handleRename 引用 openSession/ensureAgent/defaultModel 但从未注入
 //（8/20 拆分裸引用漏网，三个 API 坏了 9 天：/api/sessions/:id/stats|compact|rename）
-let _openSession = null, _ensureAgent = null, _getDefaultModel = () => null;
-export function initStatsApi({ getAgentDir = null, cwd = "", DefaultResourceLoader = null, openSession = null, ensureAgent = null, getDefaultModel = null } = {}) {
+let _openSession = null, _ensureAgent = null, _getDefaultModel = () => null, _subagentHistoryProvider = null;
+export function initStatsApi({ getAgentDir = null, cwd = "", DefaultResourceLoader = null, openSession = null, ensureAgent = null, getDefaultModel = null, subagentHistoryProvider = null } = {}) {
   if (getAgentDir) _getAgentDir = getAgentDir; _cwd = cwd; _DefaultResourceLoader = DefaultResourceLoader;
   if (openSession) _openSession = openSession; if (ensureAgent) _ensureAgent = ensureAgent; if (getDefaultModel) _getDefaultModel = getDefaultModel;
+  if (subagentHistoryProvider) _subagentHistoryProvider = subagentHistoryProvider;
 }
 
 export async function handleGlobalStats(res) {
@@ -127,39 +130,233 @@ export async function handleDailyStats(res) {
   json(res, 200, out);
 }
 
-// ── subagent 异步运行（09-03，工作台泳道）：多候选根 best-effort 扫描 status.json ──
-// pi-subagents 的 asyncDirRoot 当前版本未固定落盘位置，这里扫描已知候选；无命中返回空数组，
-// 将来异步运行真正落盘后自动上板，无需再改前端。
-export async function handleSubagentRuns(res) {
-  const os = await import("node:os");
-  const home = os.homedir();
-  const roots = [
-    path.join(home, ".pi-subagents", "runs"),
-    path.join(home, ".pi", "agent", "async-runs"),
-    path.join(home, ".pi", "agent", "subagent-runs"),
-  ];
-  const runs = [];
-  const VALID = new Set(["running", "active", "waiting", "needs_attention", "paused", "completed", "failed", "done"]);
+// ── 子智能体工作记录（只读）：mission/run/artifact 的安全摘要 ──
+// 记录由 pi-subagents 写在项目/用户目录的 missions，异步执行器写在系统临时目录。
+// 这里只读 status/meta，不返回 transcript、请求正文、绝对路径或大段模型输出。
+const SUBAGENT_VALID_STATES = new Set(["queued", "running", "active", "waiting", "needs_attention", "paused", "completed", "complete", "failed", "done", "stopped"]);
+const SUBAGENT_LIMITS = { missions: 80, runs: 160, artifacts: 16, text: 280, list: 12 };
+const MODULE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+function clip(value, max = SUBAGENT_LIMITS.text) {
+  const text = String(value ?? "").trim();
+  return text.length > max ? `${text.slice(0, Math.max(0, max - 1))}…` : text;
+}
+
+function safeClip(value, max = SUBAGENT_LIMITS.text) {
+  return clip(sanitizeText(value), max);
+}
+
+function asIso(value, fallback = null) {
+  if (value == null || value === "") return fallback;
+  const numeric = typeof value === "number" || /^\d+(?:\.\d+)?$/.test(String(value));
+  const date = new Date(numeric ? Number(value) : value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : fallback;
+}
+
+function readObject(file) {
+  try {
+    const value = JSON.parse(fs.readFileSync(file, "utf8"));
+    return value && typeof value === "object" ? value : null;
+  } catch { return null; }
+}
+
+function uniquePaths(values) {
+  const seen = new Set();
+  return values.map(value => String(value || "").trim()).filter(Boolean).map(value => path.resolve(value)).filter(value => {
+    if (!value || seen.has(value)) return false;
+    seen.add(value); return true;
+  });
+}
+
+function relativeArtifactPath(file, roots) {
+  const absolute = path.resolve(String(file || ""));
   for (const root of roots) {
+    const rel = path.relative(path.resolve(root), absolute);
+    if (rel && !rel.startsWith("..") && !path.isAbsolute(rel)) return rel.replaceAll("\\", "/");
+  }
+  return path.basename(absolute) || "artifact";
+}
+
+function safeWorkspaceRef(value) {
+  const text = String(value || "").trim();
+  if (!text) return undefined;
+  // A mission's cwd helps identify the project, but never expose a host path.
+  const normalized = text.replaceAll("\\", "/");
+  const parts = normalized.split("/").filter(Boolean);
+  return parts.length ? `…/${parts.at(-1)}` : undefined;
+}
+
+function walkFiles(root, depth = 2, out = []) {
+  if (!root || depth < 0 || out.length >= 500) return out;
+  let entries;
+  try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch { return out; }
+  for (const entry of entries) {
+    if (out.length >= 500) break;
+    const full = path.join(root, entry.name);
+    if (entry.isFile()) out.push(full);
+    else if (entry.isDirectory() && depth > 0) walkFiles(full, depth - 1, out);
+  }
+  return out;
+}
+
+function metadataIndex(artifactRoots) {
+  const index = new Map();
+  for (const file of artifactRoots.flatMap(root => walkFiles(root, 2))) {
+    if (!/_meta\.json$/i.test(file)) continue;
+    const meta = readObject(file);
+    const id = String(meta?.runId || "").trim();
+    if (id && !index.has(id)) index.set(id, meta);
+  }
+  return index;
+}
+
+function listStrings(value, max = SUBAGENT_LIMITS.list) {
+  return Array.isArray(value) ? value.map(item => safeClip(item, 220)).filter(Boolean).slice(0, max) : [];
+}
+
+function enrichRun(run, { source = "mission", missionId = null, meta = null } = {}) {
+  const id = String(run?.runId || run?.id || "").trim();
+  const child = meta?.childReport || {};
+  const state = String(run?.state || run?.status || meta?.status || "unknown");
+  const normalized = {
+    id: id || "unknown",
+    runId: id || "unknown",
+    source,
+    missionId: missionId || undefined,
+    agent: safeClip(run?.agent || run?.agentName || meta?.agent || meta?.agentName || run?.steps?.[0]?.agent || "子智能体", 80),
+    state: SUBAGENT_VALID_STATES.has(state) ? state : "unknown",
+    status: SUBAGENT_VALID_STATES.has(state) ? state : "unknown",
+    task: safeClip(run?.task || run?.taskPreview || run?.label || meta?.task || "", 180),
+    startedAt: asIso(run?.startedAt || run?.createdAt || meta?.startedAt),
+    updatedAt: asIso(run?.updatedAt || run?.lastUpdate || run?.endedAt || run?.completedAt || meta?.lastUpdate || meta?.completedAt),
+    completedAt: asIso(run?.completedAt || meta?.completedAt),
+    durationMs: Number.isFinite(Number(run?.durationMs)) ? Number(run.durationMs) : (Number.isFinite(Number(meta?.durationMs)) ? Number(meta.durationMs) : null),
+    model: safeClip(typeof (run?.model || meta?.model) === "string" ? (run?.model || meta?.model) : (run?.model?.id || meta?.model?.id || ""), 120) || undefined,
+    toolCount: Number.isFinite(Number(run?.toolCount)) ? Number(run.toolCount) : (Number.isFinite(Number(meta?.toolCount)) ? Number(meta.toolCount) : 0),
+    eventCount: Number.isFinite(Number(run?.eventCount)) ? Number(run.eventCount) : undefined,
+    error: safeClip(run?.error || meta?.error || "", 280) || undefined,
+    acceptanceStatus: safeClip(run?.acceptance?.status || meta?.acceptance?.status || child?.acceptance?.status || "", 80) || undefined,
+    reviewFindings: listStrings(run?.reviewFindings || child?.reviewFindings),
+    residualRisks: listStrings(run?.residualRisks || child?.residualRisks),
+  };
+  return Object.fromEntries(Object.entries(normalized).filter(([, value]) => value !== undefined));
+}
+
+function missionArtifacts(items, artifactRoots) {
+  if (!Array.isArray(items)) return [];
+  return items.slice(0, SUBAGENT_LIMITS.artifacts).map(item => {
+    const raw = typeof item === "string" ? item : item?.path;
+    if (!raw) return null;
+    const absolute = String(raw);
+    const name = path.basename(absolute) || "artifact";
+    return {
+      kind: clip(item?.kind || "other", 40),
+      name: clip(name, 120),
+      path: clip(relativeArtifactPath(absolute, artifactRoots), 180),
+      description: safeClip(item?.description || "", 180) || undefined,
+    };
+  }).filter(Boolean);
+}
+
+export function collectSubagentHistory({ missionRoots = [], asyncRoots = [], artifactRoots = [] } = {}) {
+  const roots = uniquePaths(missionRoots);
+  const asyncDirs = uniquePaths(asyncRoots);
+  const artifacts = uniquePaths(artifactRoots);
+  const metaByRun = metadataIndex(artifacts);
+  const missions = [];
+  const missionSeen = new Set();
+  const allRuns = new Map();
+
+  for (const root of roots) {
+    let files = [];
+    try { files = fs.readdirSync(root).filter(name => name.endsWith(".json")).map(name => path.join(root, name)); } catch {}
+    for (const file of files) {
+      const mission = readObject(file);
+      const id = String(mission?.id || path.basename(file, ".json")).trim();
+      if (!mission || missionSeen.has(id)) continue;
+      missionSeen.add(id);
+      const missionRuns = Array.isArray(mission.runs) ? mission.runs.slice(0, SUBAGENT_LIMITS.runs).map((run, index) => {
+        const enriched = enrichRun(run, { source: "mission", missionId: id, meta: metaByRun.get(run?.runId || run?.id) });
+        if (enriched.runId !== "unknown") return enriched;
+        const syntheticId = `${id || "mission"}:run-${index + 1}`;
+        return { ...enriched, id: syntheticId, runId: syntheticId };
+      }) : [];
+      for (const run of missionRuns) if (!allRuns.has(run.runId)) allRuns.set(run.runId, run);
+      missions.push({
+        id,
+        title: safeClip(mission.title || id, 180),
+        objective: safeClip(mission.objective || "", 280),
+        status: clip(mission.status || "unknown", 60),
+        createdAt: asIso(mission.createdAt),
+        updatedAt: asIso(mission.updatedAt || mission.createdAt),
+        cwd: safeWorkspaceRef(mission.cwd),
+        summary: safeClip(mission.summary || "", 360) || undefined,
+        acceptanceStatus: safeClip(mission.acceptance?.status || "", 80) || undefined,
+        runs: missionRuns,
+        artifacts: missionArtifacts(mission.artifacts, artifacts),
+      });
+    }
+  }
+
+  for (const root of asyncDirs) {
+    let dirs = [];
+    try { dirs = fs.readdirSync(root, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => path.join(root, entry.name)); } catch {}
+    for (const dir of dirs) {
+      const statusPath = path.join(dir, "status.json");
+      const status = readObject(statusPath);
+      if (!status) continue;
+      const eventPath = path.join(dir, "events.jsonl");
+      let eventCount = 0;
+      try { eventCount = fs.readFileSync(eventPath, "utf8").split(/\r?\n/).filter(Boolean).length; } catch {}
+      const rawRun = enrichRun({ ...status, eventCount }, { source: "async", meta: status });
+      const run = rawRun.runId === "unknown"
+        ? { ...rawRun, id: `async:${path.basename(dir)}`, runId: `async:${path.basename(dir)}` }
+        : rawRun;
+      if (!allRuns.has(run.runId) || allRuns.get(run.runId).source === "async") allRuns.set(run.runId, run);
+    }
+  }
+
+  const byUpdated = (a, b) => (Date.parse(b?.updatedAt || b?.createdAt || b?.startedAt || "") || 0) - (Date.parse(a?.updatedAt || a?.createdAt || a?.startedAt || "") || 0);
+  missions.sort(byUpdated);
+  const runs = [...allRuns.values()].sort(byUpdated).slice(0, SUBAGENT_LIMITS.runs);
+  return {
+    updatedAt: new Date().toISOString(),
+    counts: { missions: missions.length, runs: runs.length, failed: runs.filter(run => ["failed", "stopped"].includes(run.state)).length },
+    missions: missions.slice(0, SUBAGENT_LIMITS.missions),
+    runs,
+  };
+}
+
+function defaultSubagentHistoryRoots() {
+  const home = os.homedir();
+  const username = (() => { try { return os.userInfo().username; } catch { return process.env.USERNAME || process.env.USER || "user"; } })();
+  const tempRoot = path.join(os.tmpdir(), `pi-subagents-user-${String(username).replace(/[^a-zA-Z0-9_-]/g, "-")}`, "async-subagent-runs");
+  const missionRoots = [path.join(MODULE_ROOT, ".pi-subagents", "missions"), path.join(_cwd, ".pi-subagents", "missions"), path.join(home, ".pi-subagents", "missions")];
+  const artifactRoots = [path.join(MODULE_ROOT, ".pi-subagents", "artifacts"), path.join(_cwd, ".pi-subagents", "artifacts"), path.join(home, ".pi-subagents", "artifacts")];
+  return { missionRoots, artifactRoots, asyncRoots: [tempRoot, path.join(home, ".pi-subagents", "runs"), path.join(home, ".pi", "agent", "async-runs"), path.join(home, ".pi", "agent", "subagent-runs")] };
+}
+
+export async function handleSubagentHistory(res) {
+  const history = collectSubagentHistory(defaultSubagentHistoryRoots());
+  if (typeof _subagentHistoryProvider === "function") {
     try {
-      for (const id of fs.readdirSync(root)) {
-        const sp = path.join(root, id, "status.json");
-        try {
-          const s = JSON.parse(fs.readFileSync(sp, "utf8"));
-          const state = String(s.state || s.status || "unknown");
-          runs.push({
-            id: s.runId || id,
-            agent: s.agent || s.agentName || "unknown",
-            state: VALID.has(state) ? state : "unknown",
-            task: String(s.task || s.taskPreview || s.label || "").slice(0, 120),
-            startedAt: s.startedAt || s.createdAt || null,
-            updatedAt: s.updatedAt || s.endedAt || fs.statSync(sp).mtime.toISOString(),
-          });
-        } catch {}
+      const own = await _subagentHistoryProvider({ limit: 160 });
+      if (Array.isArray(own) && own.length) {
+        const runs = [...own, ...(history.runs || [])];
+        const seen = new Set();
+        history.runs = runs.filter(run => { const id = String(run?.runId || run?.id || ""); if (!id || seen.has(id)) return false; seen.add(id); return true; }).slice(0, 160);
+        history.counts.runs = history.runs.length;
+        history.counts.failed = history.runs.filter(run => ["failed", "stopped", "cancelled"].includes(run.state)).length;
+        history.updatedAt = new Date().toISOString();
       }
     } catch {}
   }
-  json(res, 200, { runs: runs.slice(0, 50) });
+  json(res, 200, history);
+}
+
+export async function handleSubagentRuns(res) {
+  const history = collectSubagentHistory(defaultSubagentHistoryRoots());
+  json(res, 200, { runs: history.runs.filter(run => run.source === "async").slice(0, 50) });
 }
 
 // 安全版会话统计：引擎 getSessionStats 遇到"无 usage 的 assistant 消息"会抛

@@ -1,5 +1,7 @@
 import type { Model, Session, ChatMessage, SessionMessages, Artifact, AssetDelivery, SkillSummary } from './types'
 import { parseSseBlocks, type RunEvent, type RunStatus } from './lib/run-events'
+import { rememberDownload } from './lib/downloads'
+import { saveNativeDownload } from './lib/native-download'
 
 // ── 本地鉴权 ──
 // 元枢只把访问令牌留在当前设备的浏览器存储中；旧 key 只用于一次性迁移，避免升级后掉线。
@@ -67,6 +69,11 @@ export async function downloadApiFile(path: string, filename?: string): Promise<
   const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
   const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1]
   const resolvedName = filename || (encoded ? decodeURIComponent(encoded) : plain) || 'download'
+  const nativeSave = await saveNativeDownload(blob, resolvedName)
+  if (nativeSave) {
+    rememberDownload({ name: resolvedName, url: path, size: blob.size, sourcePath: path, createdAt: new Date().toISOString(), ...nativeSave })
+    return
+  }
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
@@ -76,6 +83,7 @@ export async function downloadApiFile(path: string, filename?: string): Promise<
   link.click()
   link.remove()
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  rememberDownload({ name: resolvedName, url: path, size: blob.size, sourcePath: path, createdAt: new Date().toISOString() })
 }
 
 const TIMEOUT = 30000
@@ -597,9 +605,6 @@ export const StatsApi = {
 
 // 工作台：subagent 异步运行（best-effort 扫描，无落盘时返回空）
 export interface SubagentRun { id: string; agent: string; state: string; task: string; startedAt?: string | null; updatedAt?: string | null }
-export const SubagentApi = {
-  runs: () => api<{ runs: SubagentRun[] }>('/api/subagent/runs'),
-}
 
 // ── 改动与验收工作台：只读 Git 快照 ──
 export interface GitReviewFile {
@@ -613,6 +618,8 @@ export interface GitReview {
   isRepo: boolean
   error?: string
   branch: string | null
+  /** Git root used by the review workbench (the application repository, not the content workspace). */
+  root?: string
   files: GitReviewFile[]
   diff: string
   diffTruncated: boolean
@@ -620,6 +627,59 @@ export interface GitReview {
 }
 export const GitReviewApi = {
   review: () => api<GitReview>('/api/git/review'),
+}
+
+export interface AIBodyModule { label: string; path: string; available: boolean }
+export interface AIBodyLayer { id: 'host' | 'organism' | 'expression' | string; label: string; summary: string; modules: AIBodyModule[] }
+export interface AIBodyTheory { id: string; label: string; detail: string; evidence: string[] }
+export interface AIBodyOverview { updatedAt?: string; principle: string; theory: AIBodyTheory[]; layers: AIBodyLayer[] }
+export const AIBodyApi = {
+  overview: () => api<AIBodyOverview>('/api/aibody'),
+}
+
+export interface SubagentHistoryRun {
+  id: string
+  runId: string
+  source: 'mission' | 'async' | string
+  missionId?: string
+  agent: string
+  state: string
+  status: string
+  task: string
+  startedAt?: string | null
+  updatedAt?: string | null
+  completedAt?: string | null
+  durationMs?: number | null
+  model?: string
+  toolCount?: number
+  eventCount?: number
+  error?: string
+  acceptanceStatus?: string
+  reviewFindings?: string[]
+  residualRisks?: string[]
+}
+export interface SubagentMission {
+  id: string
+  title: string
+  objective?: string
+  status: string
+  createdAt?: string | null
+  updatedAt?: string | null
+  cwd?: string
+  summary?: string
+  acceptanceStatus?: string
+  runs: SubagentHistoryRun[]
+  artifacts: { kind: string; name: string; path: string; description?: string }[]
+}
+export interface SubagentHistory {
+  updatedAt?: string
+  counts: { missions: number; runs: number; failed: number }
+  missions: SubagentMission[]
+  runs: SubagentHistoryRun[]
+}
+export const SubagentApi = {
+  runs: () => api<{ runs: SubagentRun[] }>('/api/subagent/runs'),
+  history: () => api<SubagentHistory>('/api/subagent/history'),
 }
 
 // ── 定时任务（时间引擎）──
@@ -645,6 +705,7 @@ export const WsApi = {
   search: (q: string) => api<{ results?: any[] }>(`/api/ws/search?q=${encodeURIComponent(q)}`),
   artifacts: () => api<{ artifacts: Artifact[] }>('/api/ws/artifacts'),
   deliveries: () => api<{ deliveries?: AssetDelivery[] }>('/api/ws/deliveries'),
+  preview: (path: string) => api<{ kind: 'presentation'; name: string; slides: { index: number; title: string; lines: string[] }[]; note?: string }>('/api/ws/preview', { method: 'POST', body: { path }, timeoutMs: 30000 }),
   // 交付：把工作空间文件复制到 交付/ 目录（版本化）
   deliver: (sourcePath: string, name?: string) => api<{ ok: boolean; path: string; version: number }>('/api/ws/deliver', { method: 'POST', body: { sourcePath, name } }),
   rename: (oldPath: string, newName: string) => api<{ ok: boolean; path: string }>('/api/ws/rename', { method: 'POST', body: { oldPath, newName } }),

@@ -1,0 +1,57 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { execFileSync } from 'node:child_process'
+
+test('NSIS build launcher parses and starts its hidden child script', { skip: process.platform !== 'win32' }, () => {
+  const launcher = new URL('../../app/run-nsis-build.ps1', import.meta.url)
+  const child = new URL('../../app/nsis-build-child.ps1', import.meta.url)
+  const launcherText = fs.readFileSync(launcher, 'utf8')
+  const childText = fs.readFileSync(child, 'utf8')
+  const android = new URL('../../app/run-android-build.ps1', import.meta.url)
+  for (const file of [launcher, child, android]) {
+    const scriptPath = fileURLToPath(file).replace(/'/g, "''")
+    const command = `$ErrorActionPreference='Stop'; $tokens=$null; $errors=$null; [System.Management.Automation.Language.Parser]::ParseFile('${scriptPath}',[ref]$tokens,[ref]$errors)|Out-Null; if($errors.Count){throw ($errors|Out-String)}`
+    execFileSync('powershell.exe', ['-NoProfile', '-EncodedCommand', Buffer.from(command, 'utf16le').toString('base64')], { stdio: 'pipe' })
+  }
+  assert.match(launcherText, /-File.*\$child/)
+  assert.ok(childText.includes('--bundles nsis --ci'))
+  assert.ok(childText.includes('$build.WaitForExit()'), 'Wait for the compiler process directly; PS5 job waiting can hang after NSIS exits')
+})
+
+test('NSIS build treats compiler stderr as output and only delivers the current version', { skip: process.platform !== 'win32' }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yuanshu-build-'))
+  const app = path.join(root, 'app with spaces')
+  const workspace = path.join(root, 'workspace')
+  const bundles = path.join(workspace, '.build-cache/cargo/release/bundle/nsis')
+  try {
+    fs.mkdirSync(path.join(app, 'node_modules/.bin'), { recursive: true })
+    fs.mkdirSync(path.join(app, 'src-tauri'), { recursive: true })
+    fs.mkdirSync(bundles, { recursive: true })
+    fs.copyFileSync(new URL('../../app/nsis-build-child.ps1', import.meta.url), path.join(app, 'nsis-build-child.ps1'))
+    fs.writeFileSync(path.join(app, 'src-tauri/tauri.conf.json'), JSON.stringify({ version: '0.2.4', productName: '元枢' }))
+    fs.writeFileSync(path.join(app, 'node_modules/.bin/tauri.cmd'), '@echo off\r\necho compiler warning 1>&2\r\nexit /b 0\r\n')
+    fs.writeFileSync(path.join(bundles, '元枢_0.2.4_x64-setup.exe'), 'MZcurrent')
+    fs.writeFileSync(path.join(bundles, '元枢_0.2.2_x64-setup.exe'), 'MZold')
+    const stale = new Date(Date.now() + 60000)
+    fs.utimesSync(path.join(bundles, '元枢_0.2.2_x64-setup.exe'), stale, stale)
+    try {
+      execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(app, 'nsis-build-child.ps1')], { env: { ...process.env, PI_WORKSPACE: workspace }, stdio: 'pipe' })
+    } catch (error) {
+      const logs = ['tauri-build.log', 'tauri-build-stderr.log'].map(name => {
+        const file = path.join(app, name)
+        if (!fs.existsSync(file)) return name + ': absent'
+        const bytes = fs.readFileSync(file)
+        return name + ': ' + bytes.toString(bytes[0] === 255 ? 'utf16le' : 'utf8')
+      })
+      throw new Error(logs.join('\n'), { cause: error })
+    }
+    assert.equal(fs.readFileSync(path.join(app, 'tauri-build.exit'), 'utf8').trim(), '0')
+    const delivered = path.join(workspace, '交付/元枢桌面客户端')
+    assert.deepEqual(fs.readdirSync(delivered), ['元枢_0.2.4_x64-setup.exe'])
+    assert.equal(fs.readFileSync(path.join(delivered, '元枢_0.2.4_x64-setup.exe'), 'utf8'), 'MZcurrent')
+  } finally { fs.rmSync(root, { recursive: true, force: true }) }
+})

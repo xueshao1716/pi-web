@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 export function createMiscApi(deps) {
   const {
@@ -12,8 +13,11 @@ export function createMiscApi(deps) {
     getAgentDir, authPath, modelsPath,
     openSession, ensureAgent, getDefaultModel,
     refreshModelList, scanSessionFiles, extractText, parseSessionFile,
-    cwd, scanExclude, gitRunner: injectedGitRunner = null,
+    cwd, scanExclude, gitCwd = null, projectRoot = null, gitRunner: injectedGitRunner = null,
   } = deps;
+  // Git 验收默认针对元枢源码仓库；工作空间仍由 cwd 提供给产物、会话等 API。
+  const reviewRoot = path.resolve(gitCwd || cwd);
+  const appRoot = path.resolve(projectRoot || path.join(path.dirname(fileURLToPath(import.meta.url)), ".."));
 
   // 产物扫描：只扫关键目录（根目录 + 生成物/ + 收发文件/今天 + 工程/），时间窗内 + 成品类型
   function scanRecentArtifacts(withinMs = 2 * 60 * 1000, max = 10) {
@@ -160,6 +164,50 @@ export function createMiscApi(deps) {
     json(res, 200, { results: results.slice(0, 20) });
   }
 
+  // GET /api/aibody —— 将 AIBody 理论映射到当前代码中可验证的模块。
+  // 这是一个只读的“系统脉络”快照，不把理论写进人格提示词，也不暴露文件内容。
+  async function handleAIBody(res) {
+    const moduleMap = {
+      host: [
+        ['运行时与模型', 'server.mjs'],
+        ['工具执行与安全', 'engine/tools/unified-tools.mjs'],
+        ['会话编排', 'engine/agent-loop.mjs'],
+      ],
+      organism: [
+        ['基因与继承', 'engine/gene.mjs'],
+        ['技能路由', 'engine/skill-gene.mjs'],
+        ['记忆治理', 'engine/memory-gardener.mjs'],
+        ['工作记忆', 'engine/yuanshu-workmem.mjs'],
+        ['关系与情绪', 'engine/emotion.mjs'],
+        ['判断与改进', 'engine/improve-api.mjs'],
+      ],
+      expression: [
+        ['对话与交付', 'frontend/src/components/ChatArea.tsx'],
+        ['工作台与状态', 'frontend/src/pages/Board.tsx'],
+        ['主题与壁纸', 'frontend/src/theme/apply.ts'],
+      ],
+    };
+    const layerMeta = {
+      host: { label: '宿主层', summary: '模型、工具和运行时，提供行动边界。' },
+      organism: { label: '母体层', summary: '基因、记忆、技能、关系与治理，形成持续性。' },
+      expression: { label: '表现层', summary: '对话、工作台与交付，把系统状态呈现给你。' },
+    };
+    const layers = Object.entries(moduleMap).map(([id, entries]) => ({
+      id, label: layerMeta[id].label, summary: layerMeta[id].summary,
+      modules: entries.map(([label, relativePath]) => ({ label, path: relativePath, available: fs.existsSync(path.join(appRoot, relativePath)) })),
+    }));
+    json(res, 200, {
+      updatedAt: new Date().toISOString(),
+      principle: '自信底色，越自信越谨慎；能力可以成长，主权与边界不能被绕过。',
+      theory: [
+        { id: 'continuity', label: '连续性', detail: '记忆、关系和技能共同维护跨任务的身份连续。', evidence: ['engine/memory-gardener.mjs', 'engine/emotion.mjs', 'engine/skill-gene.mjs'] },
+        { id: 'judgment', label: '判断', detail: '先解释为什么这样做，再交付结果，并把风险留在台面上。', evidence: ['engine/improve-api.mjs', 'engine/yuanshu-delegate.mjs'] },
+        { id: 'sovereignty', label: '主权边界', detail: '删除、密钥、支付、人格与隧道等高风险能力保持物理隔离。', evidence: ['engine/tools/security.mjs', 'engine/tools/approval.mjs'] },
+      ],
+      layers,
+    });
+  }
+
   // Git 集成
   function runGit(args) {
     if (typeof injectedGitRunner === "function") return injectedGitRunner(args);
@@ -173,6 +221,20 @@ export function createMiscApi(deps) {
           if (err.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" || /maxBuffer length exceeded/i.test(msg)) {
             return resolve({ ok: false, isRepo: true, output: "", error: "output_too_large" });
           }
+          return resolve({ ok: false, isRepo: true, output: msg.split("\n").slice(-5).join("\n") });
+        }
+        resolve({ ok: true, output: stdout });
+      });
+    });
+  }
+  function runReviewGit(args, { maxBuffer = 2 * 1024 * 1024 } = {}) {
+    if (typeof injectedGitRunner === "function") return injectedGitRunner(args);
+    return new Promise((resolve) => {
+      execFile("git", ["-C", reviewRoot, ...args], { encoding: "utf8", timeout: 8000, maxBuffer }, (err, stdout) => {
+        if (err) {
+          const msg = String(err.message || "");
+          if (msg.includes("not a git repository") || msg.includes("Not a git repository")) return resolve({ ok: false, isRepo: false, output: "" });
+          if (err.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" || /maxBuffer length exceeded/i.test(msg)) return resolve({ ok: false, isRepo: true, output: stdout || "", error: "output_too_large" });
           return resolve({ ok: false, isRepo: true, output: msg.split("\n").slice(-5).join("\n") });
         }
         resolve({ ok: true, output: stdout });
@@ -193,9 +255,10 @@ export function createMiscApi(deps) {
   async function handleGitReview(res) {
     const unknownVerification = { state: "unknown", checks: [] };
     const [statusResult, diffResult, numstatResult] = await Promise.all([
-      runGit(["status", "--porcelain=v1", "-z", "--branch", "--untracked-files=normal"]),
-      runGit(["diff", "--no-ext-diff", "--unified=3", "HEAD", "--"]),
-      runGit(["diff", "--no-ext-diff", "--numstat", "-z", "HEAD", "--"]),
+      runReviewGit(["status", "--porcelain=v1", "-z", "--branch", "--untracked-files=normal"]),
+      // 生成物较多时完整 diff 可能超过默认 2 MB；最终响应仍会收敛到 160 KB。
+      runReviewGit(["diff", "--no-ext-diff", "--unified=3", "HEAD", "--"], { maxBuffer: 32 * 1024 * 1024 }),
+      runReviewGit(["diff", "--no-ext-diff", "--numstat", "-z", "HEAD", "--"]),
     ]);
     if (statusResult.error) {
       return json(res, 200, { isRepo: statusResult.isRepo !== false, branch: null, files: [], diff: "", diffTruncated: false, error: statusResult.error, verification: unknownVerification });
@@ -238,10 +301,11 @@ export function createMiscApi(deps) {
     }
     const rawDiff = String(diffResult.output || "");
     const maxDiffChars = 160_000;
-    const diffTruncated = rawDiff.length > maxDiffChars;
+    const diffTruncated = diffResult.error === "output_too_large" || rawDiff.length > maxDiffChars;
     const diff = diffTruncated ? rawDiff.slice(0, maxDiffChars) : rawDiff;
     return json(res, 200, {
       isRepo: true,
+      root: reviewRoot,
       branch,
       files: [...files.values()].slice(0, 300),
       diff,
@@ -252,6 +316,6 @@ export function createMiscApi(deps) {
 
   return {
     scanRecentArtifacts, handlePrompts, handleSessionTree, handleSessionBranch,
-    handleModelsRemove, handleSearch, runGit, handleGitStatus, handleGitDiff, handleGitReview,
+    handleModelsRemove, handleSearch, handleAIBody, runGit, handleGitStatus, handleGitDiff, handleGitReview,
   };
 }

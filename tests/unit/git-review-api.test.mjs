@@ -77,6 +77,29 @@ test('git review reports oversized command output instead of inventing a changed
   } finally { fs.rmSync(cwd, { recursive: true, force: true }) }
 })
 
+test('git review keeps a bounded diff preview when the repository diff exceeds the process buffer', async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'piweb-git-review-diff-large-'))
+  try {
+    git(cwd, ['init', '-b', 'main'])
+    git(cwd, ['config', 'user.email', 'test@example.com'])
+    git(cwd, ['config', 'user.name', 'Test'])
+    const before = 'a'.repeat(2_200_000) + '\n'
+    const after = 'b'.repeat(2_200_000) + '\n'
+    fs.writeFileSync(path.join(cwd, 'large.txt'), before)
+    git(cwd, ['add', 'large.txt'])
+    git(cwd, ['commit', '-m', 'initial'])
+    fs.writeFileSync(path.join(cwd, 'large.txt'), after)
+
+    const fx = fixture(cwd)
+    await fx.api.handleGitReview({})
+    const result = fx.response()
+    assert.equal(result.status, 200)
+    assert.equal(result.body.diffTruncated, true)
+    assert.ok(result.body.diff.length > 0)
+    assert.match(result.body.diff, /diff --git a\/large\.txt b\/large\.txt/)
+  } finally { fs.rmSync(cwd, { recursive: true, force: true }) }
+})
+
 test('git review preserves Chinese and valid filenames that resemble shell fragments', async () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'piweb-git-review-noise-'))
   try {
@@ -109,4 +132,35 @@ test('git review parses NUL-delimited renames and unusual path characters withou
       { path: 'after.ts', status: 'modified', code: ' M', additions: 4, deletions: 0 },
     ])
   } finally { fs.rmSync(cwd, { recursive: true, force: true }) }
+})
+
+test('git review can inspect an explicit repository root independently from the workspace cwd', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'piweb-git-review-workspace-'))
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'piweb-git-review-repo-'))
+  try {
+    git(repo, ['init', '-b', 'main'])
+    git(repo, ['config', 'user.email', 'test@example.com'])
+    git(repo, ['config', 'user.name', 'Test'])
+    fs.writeFileSync(path.join(repo, 'app.ts'), 'export const value = 1\n')
+    git(repo, ['add', 'app.ts'])
+    git(repo, ['commit', '-m', 'initial'])
+    fs.writeFileSync(path.join(repo, 'app.ts'), 'export const value = 2\n')
+    fs.writeFileSync(path.join(workspace, 'noise.txt'), 'workspace noise\n')
+
+    let explicitResponse
+    const explicit = createMiscApi({
+      json: (_res, status, body) => { explicitResponse = { status, body } },
+      readJsonFile: () => ({}), writeJsonFile: () => true,
+      getAgentDir: () => workspace, authPath: '', modelsPath: '',
+      openSession: async () => null, ensureAgent: async () => {}, getDefaultModel: () => null,
+      refreshModelList: async () => {}, scanSessionFiles: () => [], extractText: () => '', parseSessionFile: () => ({}),
+      cwd: workspace, gitCwd: repo, scanExclude: /(^|[\\/])node_modules([\\/]|$)/i,
+    })
+    await explicit.handleGitReview({})
+    assert.equal(explicitResponse.body.root, repo)
+    assert.deepEqual(explicitResponse.body.files.map(file => file.path), ['app.ts'])
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true })
+    fs.rmSync(repo, { recursive: true, force: true })
+  }
 })

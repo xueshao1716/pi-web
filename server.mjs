@@ -50,7 +50,7 @@ import { createRunApi } from "./engine/run-api.mjs";
 import { initThemePrefs, loadThemePrefs, saveThemePrefs } from "./engine/theme-prefs.mjs";
 import { initEnginePair, loadEnginePair, saveEnginePair, swapEnginePair, resolveLead, describePair, leadNote } from "./engine/engine-pair.mjs";
 import { decorateEngineStatus, pluginFromBody, isCorePlugin } from "./engine/engine-panel.mjs";
-import { initWorkspaceApi, WS_ROOT, findWorkspaceFiles, wsSafePath, saveArtifact, handleWsTree, handleWsFile, handleWsRead, handleWsWrite, handleWsArtifacts, wsNextVersion, wsCopyDir, handleWsDeliver, handleWsPackage, handleWsDeliveries, handleWsRename, handleWsDelete, handleWsSearch, handleWsProjectCreate, handleWsConvert } from "./engine/workspace-api.mjs";
+import { initWorkspaceApi, WS_ROOT, findWorkspaceFiles, wsSafePath, saveArtifact, handleWsTree, handleWsFile, handleWsRead, handleWsPreview, handleWsWrite, handleWsArtifacts, wsNextVersion, wsCopyDir, handleWsDeliver, handleWsPackage, handleWsDeliveries, handleWsRename, handleWsDelete, handleWsSearch, handleWsProjectCreate, handleWsConvert } from "./engine/workspace-api.mjs";
 import { initContextLoader, makeLoader, loadExperience, readRulesWithImports, loadContextRules, jitRulesForPath, loadProjectRules, loadSkillIndex, execActivateSkill, ACTIVATE_SKILL_TOOL, WORK_PROTOCOL, loadMemory, loadMemoryIndex, loadExperienceIndex, shouldInjectFullMemory, setLastUserQuery } from "./engine/context-loader.mjs";
 import { initMediaApi, findMediaModel, detectMediaIntents, extractMediaPrompt, mediaAwarePrompt, mediaReadyNotice, explainMediaError, generateMediaAsync, generateTTS, generateImage, handleImage, handleImageWithSave, generateVideo, handleMedia, assistantContentWithMedia } from "./engine/media-api.mjs";
 import { extractPlayableMedia } from "./engine/media-embed.mjs";
@@ -66,7 +66,7 @@ import { systemInfo as buildSystemInfo, loadNetworkConfig, saveNetworkConfig, ch
 import { initTuiBridge } from "./engine/tui-bridge.mjs";
 import { listLingXi, addLingXi, setLingXi, removeLingXi } from "./engine/lingxi.mjs";
 import { initDshKeys, dshResolveBin, handleDshStatus, handleDshWebStart, handleKeysStatus, loadPolicies, toolMatch, policyDecide, handleKeysApply, handleKeysPresets, refreshModelList, handleModelsManage, handleModelsAdd, KNOWN_PROVIDERS, PROVIDER_PRESETS, resolveAuth } from "./engine/dsh-keys.mjs";
-import { initStatsApi, handleGlobalStats, handleProviderStats, handleDailyStats, handleSubagentRuns, safeSessionStats, handleStats, handleCompact, listBuiltinSkills, handleSkills, handleSkillRead, handleParseFile, escHtml, handleExport, resolveFsPath, handleFsList, handleFsRead, handleRename } from "./engine/stats-api.mjs";
+import { initStatsApi, handleGlobalStats, handleProviderStats, handleDailyStats, handleSubagentRuns, handleSubagentHistory, safeSessionStats, handleStats, handleCompact, listBuiltinSkills, handleSkills, handleSkillRead, handleParseFile, escHtml, handleExport, resolveFsPath, handleFsList, handleFsRead, handleRename } from "./engine/stats-api.mjs";
 import { initModelClient, directChat, handleThink, handleDirectChat, maybeCompactHistory } from "./engine/model-client.mjs";
 import { initSelfHeal, createRepairCheckpoint, handleUpdateCheck, handleUpdateApply, handleRepair, handleDesignerGenerate, handleDesignerSave, handleCompare } from "./engine/self-heal.mjs";
 import { initImproveApi, analyzeImprovements, openImprovements, setImprovementStatus } from "./engine/improve-api.mjs";
@@ -88,6 +88,8 @@ import { sanitizeSessionFile } from "./engine/session-sanitize.mjs";
 import { createCorsPolicy } from "./engine/cors-policy.mjs";
 import { initSessionDb, handleDbList, handleDbRebuild, handleDbSanitize, handleDbMeta, handleDbStats, handleDbSweep, sweepSessionsNow, ensureSessionSequence } from "./engine/session-db.mjs";
 import { isListedGroup } from "./engine/session-groups.mjs";
+import { createAIBodyRuntime } from "./engine/aibody-runtime.mjs";
+import { createAIBodyHost } from "./engine/aibody-host.mjs";
 import { initRecallApi, rebuildIndex, handleRecall, handleRecallAsk, handleSummaries, buildSummaries, recallStats } from "./engine/recall-api.mjs";
 const memoryApi = await import("./engine/memory.mjs");
 const { initMemorySync } = await import("./engine/memory-sync.mjs");
@@ -225,6 +227,19 @@ try { bindOutputGuardDeps({ readEntriesFromFile, extractText }); } catch {}
 const AGENT_DIR = getAgentDir();
 const AUTH_PATH = path.join(AGENT_DIR, "auth.json");
 const MODELS_PATH = path.join(AGENT_DIR, "models-store.json");
+// AIBody 是全系统运行协调层：它观察主任务、记忆、角色和子任务的真实事件，
+// 不替代既有基因/情绪/记忆实现，也不把文件存在性当作运行证据。
+const aibodyRuntime = createAIBodyRuntime({
+  rootDir: path.join(AGENT_DIR, "yuanshu-aibody"),
+  readState: () => ({
+    identity: { summary: "元枢主角色：小语", details: { host: "元枢工作台" } },
+    genes: typeof emotion.getGenome === "function" ? { summary: "11 基因人格基线与表达已加载", details: { count: Object.keys(emotion.getGenome()?.genes || {}).length } } : null,
+    emotion: typeof emotion.getLatestSnapshot === "function" ? (() => { const s = emotion.getLatestSnapshot(); return s ? { summary: s.state || s.label || "当前情绪已观测", details: { intensity: s.intensity ?? null } } : null })() : null,
+    memory: (() => { try { const p = path.join(CONFIG.cwd, "记忆.md"); return fs.existsSync(p) ? { summary: "固定记忆已接入", details: { bytes: fs.statSync(p).size } } : null } catch { return null } })(),
+    governance: { summary: "高风险操作与人格提案保持人工确认", details: { proposals: "approval_required" } },
+  }),
+});
+const aibodyHost = createAIBodyHost(aibodyRuntime);
 // 启用 agent 通道扩展注册（2026-08-27 补 compat/thinkingLevelMap 后启用）：把 store 里
 // 「已配 key + SDK 不认识」的自定义通道（bigmodel/商汤/新雷等）注册进兼容适配器，
 // 使 agent 会话（专项工作台/终端/TUI）与聊天同通道同凭据可用。
@@ -239,7 +254,7 @@ initYuanshuWorkmem(path.join(AGENT_DIR, "yuanshu-work")); // 每会话 task_plan
 initMediaApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, authPath: AUTH_PATH, getModelList: () => modelList }); // 媒体生成层注入
 initAsrApi({ resolveAuth, readJsonFile, modelsPath: MODELS_PATH, httpJsonFetch }); // 语音转文字（mimo-v2.5-asr 免费通道）
 initDshKeys({ dshWebPort: 3080, readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, ModelRuntime, refreshModelList, setModelList: (l) => { modelList = l; }, getDefaultModel: () => defaultModel, setDefaultModel: (m) => { defaultModel = m; }, setModelRuntime: (r) => { modelRuntime = r; }, getModelRuntime: () => modelRuntime, keepModels: KEEP_MODELS, resetModelHealth }); // dsh/keys/模型管理注入
-initStatsApi({ getAgentDir, cwd: CONFIG.cwd, DefaultResourceLoader, openSession, ensureAgent, getDefaultModel: () => defaultModel }); // 统计/技能/导出注入（08-29 补注入 openSession/ensureAgent——三个 handler 裸引用坏了 9 天）
+initStatsApi({ getAgentDir, cwd: CONFIG.cwd, DefaultResourceLoader, openSession, ensureAgent, getDefaultModel: () => defaultModel, subagentHistoryProvider: (scope) => subagent.getSubagentHistory(scope) }); // 统计/技能/导出注入
 initSessionDb({ agentDir: getAgentDir(), cwd: CONFIG.cwd, deleteSession }); // 会话数据库（编号/健康度/标签/空会话清扫）
 initRecallApi({ agentDir: getAgentDir(), chat: unifiedChat, getDefaultModel: () => defaultModel }); // 跨会话回忆（09-04，Hermes FTS5 思想）
 initModelClient({ readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, resolveAuth, getModelList: () => modelList, getDefaultModel: () => defaultModel, unifiedChat, detectMediaIntents, generateMediaAsync, extractMediaPrompt, readEntriesFromFile, createSseWriter }); // 直调模型客户端注入
@@ -385,8 +400,8 @@ const CRLF = "\r\n";
 // ── 模块化拆分接线（2026-08-29 #7 红线治理）：workspace杂项API / model-keys / session-bus / model-session ──
 const modelKeysApi = createModelKeys({ readJsonFile, getAgentDir, getModelList: () => modelList });
 const { saveSessionModelKey, loadSessionModelKey, saveLastModel } = modelKeysApi;
-const miscApi = createMiscApi({ json, readJsonFile, writeJsonFile, getAgentDir, authPath: AUTH_PATH, modelsPath: MODELS_PATH, openSession, ensureAgent, getDefaultModel: () => defaultModel, refreshModelList, scanSessionFiles, extractText, parseSessionFile, cwd: CONFIG.cwd, scanExclude: /(^|[\\/])(node_modules|\.git|\.cache|backups?|temp|tmp|\.token)([\\/]|$)/i });
-const { scanRecentArtifacts, handlePrompts, handleSessionTree, handleSessionBranch, handleModelsRemove, handleSearch, runGit, handleGitStatus, handleGitDiff, handleGitReview } = miscApi;
+const miscApi = createMiscApi({ json, readJsonFile, writeJsonFile, getAgentDir, authPath: AUTH_PATH, modelsPath: MODELS_PATH, openSession, ensureAgent, getDefaultModel: () => defaultModel, refreshModelList, scanSessionFiles, extractText, parseSessionFile, cwd: CONFIG.cwd, gitCwd: __dirname, scanExclude: /(^|[\\/])(node_modules|\.git|\.cache|backups?|temp|tmp|\.token)([\\/]|$)/i });
+const { scanRecentArtifacts, handlePrompts, handleSessionTree, handleSessionBranch, handleModelsRemove, handleSearch, handleAIBody, runGit, handleGitStatus, handleGitDiff, handleGitReview } = miscApi;
 const sessionBusApi = createSessionBus({ json });
 const { busGet, busPush, handleSessionStream } = sessionBusApi;
 const { handleModels, handleSwitchModel } = createModelSessionApi({ json, readJsonFile, resolveAuth, modelCapabilities, modelsPath: MODELS_PATH, getModelList: () => modelList, getDefaultModel: () => defaultModel, getModelRuntime: () => modelRuntime, getConfig: () => CONFIG, activeSessions, createSessionAgent, saveLastModel, saveSessionModelKey });
@@ -403,6 +418,7 @@ try {
     getFlashModel: () => modelList.find(m => m.provider === "sensenova" && /flash-lite/i.test(m.id))
       || modelList.find(m => m.provider === "xiaomi-token-plan-cn" && /mimo-v2\.5$/i.test(m.id))
       || defaultModel,
+    traceDir: path.join(AGENT_DIR, "yuanshu-subagents"),
   });
 } catch (e) { console.log("[元枢] subagent 初始化失败: " + String(e?.message || e).slice(0, 80)); }
 // P3 资产路由：技能库摘要索引注入（任务→技能自动匹配）
@@ -618,6 +634,24 @@ async function handleChat(req, res, body) {
     const sf = entry.sm.sessionFile;
     if (sf && fs.existsSync(sf)) chatBaseline = fs.readFileSync(sf, "utf8").split("\n").filter(Boolean).length;
   } catch {}
+  // 在主聊天 SSE 外层接入 AIBody：同一条流观察计划、工具、子任务、记忆与产物，
+  // 结束时自动持久化本轮状态；不会改变 SSE 内容或背压行为。
+  const aibodyTurn = aibodyHost.attach({
+    res,
+    runId: body.__runContext?.runId || undefined,
+    sessionId: sessionId || findKeyByEntry(entry),
+    engine: "yuanshu",
+    source: "chat",
+    message,
+    signals: body.__runContext?.signal,
+  });
+  const chatRunContext = {
+    ...(body.__runContext || {}),
+    runId: body.__runContext?.runId || aibodyTurn.runId,
+    sessionId: sessionId || findKeyByEntry(entry),
+    onEvent: aibodyTurn.event,
+    aibodyContext: { goal: aibodyTurn.topic, strategy: aibodyTurn.directive },
+  };
   // busy → 打断当前任务（对标 TUI interrupt：同一会话上处理新消息）
   if (entry.busy) {
     const curAgent = entry.agent;
@@ -783,7 +817,7 @@ async function handleChat(req, res, body) {
       if (engineDecision.lead === "dsh" && !forceResumeUnified) {
         await handleDshChat(res, entry, message, sessionId || findKeyByEntry(entry), abortCtrl.signal, { cwd: CONFIG.cwd });
       } else {
-        await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl.signal, undefined, thinkOn, body.taskKey, (entry.modelKey && !isAutoModel(entry.modelKey)) ? entry.modelKey : null, null, body.__runContext || null);
+        await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl.signal, undefined, thinkOn, body.taskKey, (entry.modelKey && !isAutoModel(entry.modelKey)) ? entry.modelKey : null, null, chatRunContext);
       }
     } catch (e) {
       try { sseWrite(res, "error", { message: String(e?.message || e) }); } catch {}
@@ -1437,7 +1471,7 @@ async function handleChat(req, res, body) {
       const abortCtrl2 = new AbortController();
       const onClose2 = () => { try { abortCtrl2.abort(); } catch {} };
       req.on("close", onClose2);
-      await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl2.signal, writer, undefined, body.taskKey, null, null, body.__runContext || null);
+      await handleUnifiedChat(res, entry, message, sessionId || findKeyByEntry(entry), body.params, abortCtrl2.signal, writer, undefined, body.taskKey, null, null, chatRunContext);
       req.removeListener("close", onClose2);
     } catch (e2) {
       try { writer.push("error", { message: `降级通道也失败: ${explainMediaError(e2)}` }); } catch {}
@@ -1685,6 +1719,7 @@ const API_ROUTES = [
   ["GET", "/api/stats/providers", (res) => handleProviderStats(res)],
   ["GET", "/api/stats/daily", (res) => handleDailyStats(res)],
   ["GET", "/api/subagent/runs", (res) => handleSubagentRuns(res)],
+  ["GET", "/api/subagent/history", (res) => handleSubagentHistory(res)],
   // ── 进化引擎（09-03）：反思式进化提案 + 人工审批写回 ──
   ["GET", "/api/evolution/proposals", (res) => json(res, 200, { proposals: listEvolution() })],
   ["POST", "/api/evolution/propose", async (res, req) => { const b = await readBody(req); return json(res, 200, await proposeEvolution({ name: b.name, model: defaultModel })); }],
@@ -1718,6 +1753,7 @@ const API_ROUTES = [
   ["GET", "/api/ws/file", (res, req, url) => handleWsFile(res, req, url)],
   ["HEAD", "/api/ws/file", (res, req, url) => handleWsFile(res, req, url)],
   ["GET", "/api/ws/read", (res, req, url) => handleWsRead(res, url.searchParams.get("path") || "")],
+  ["POST", "/api/ws/preview", async (res, req) => handleWsPreview(res, await readBody(req))],
   ["GET", "/api/ws/artifacts", (res) => handleWsArtifacts(res)],
   ["POST", "/api/ws/write", async (res, req) => handleWsWrite(res, await readBody(req))],
   ["POST", "/api/ws/deliver", async (res, req) => handleWsDeliver(res, await readBody(req))],
@@ -1801,6 +1837,8 @@ const API_ROUTES = [
   ["GET", "/api/git/status", (res) => handleGitStatus(res)],
   ["GET", "/api/git/diff", (res) => handleGitDiff(res)],
   ["GET", "/api/git/review", (res) => handleGitReview(res)],
+  ["GET", "/api/aibody", (res, req, url) => json(res, 200, aibodyRuntime.overview({ sessionId: url?.searchParams?.get("session") || undefined, runId: url?.searchParams?.get("run") || undefined }))],
+  ["GET", "/api/aibody/overview", (res, req, url) => json(res, 200, aibodyRuntime.overview({ sessionId: url?.searchParams?.get("session") || undefined, runId: url?.searchParams?.get("run") || undefined }))],
   // ── 浏览器操作（CDP 控制 Chrome）──
   ["POST", "/api/browser/start", async (res, req) => { const b = await import("./engine/browser.mjs"); const r = await b.startChrome(); json(res, r.error ? 500 : 200, r); }],
   ["POST", "/api/browser/stop", async (res) => { const b = await import("./engine/browser.mjs"); json(res, 200, b.stopChrome()); }],

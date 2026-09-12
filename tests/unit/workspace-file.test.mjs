@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { handleWsFile, handleWsDeliveries, handleWsRename, handleWsDelete, initWorkspaceApi, localDayStamp, artifactBaseName, looksLikeImageBytes, writeArtifactSidecar } from "../../engine/workspace-api.mjs";
+import { handleWsFile, handleWsPreview, handleWsDeliveries, handleWsRename, handleWsDelete, initWorkspaceApi, localDayStamp, artifactBaseName, looksLikeImageBytes, writeArtifactSidecar } from "../../engine/workspace-api.mjs";
 import { readFileSync } from "node:fs";
 
 function mockRes() {
@@ -61,6 +61,25 @@ test("server 路由表要把 HEAD /api/ws/file 接到同一 handler", () => {
   assert.match(server, /\["HEAD",\s*"\/api\/ws\/file"/);
 });
 
+test("PPT 内容预览只接受工作空间内的 pptx 文件", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-web-ppt-preview-"));
+  try {
+    fs.writeFileSync(path.join(root, "notes.txt"), "hello");
+    initWorkspaceApi({ wsRoot: root });
+    const res = mockRes();
+    await handleWsPreview(res, { path: "notes.txt" });
+    assert.equal(res.status, 400);
+    assert.match(String(JSON.parse(res.body).error), /pptx/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("server 路由表要暴露 PPT 内容预览接口", () => {
+  const server = readFileSync(new URL("../../server.mjs", import.meta.url), "utf8");
+  assert.match(server, /\["POST",\s*"\/api\/ws\/preview"/);
+});
+
 test("handleWsDeliveries：条目带 ISO mtime，供工作台判断今日交付", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-web-deliv-"));
   try {
@@ -84,6 +103,7 @@ test("html/pdf 必须是浏览器能打开的 MIME，不能 octet-stream + nosni
   assert.match(wsFileMime(".html"), /text\/html/);
   assert.match(wsFileMime(".md"), /text\/plain|text\/markdown/);
   assert.match(wsFileMime(".pdf"), /application\/pdf/);
+  assert.match(wsFileMime(".pptx"), /presentation/);
   assert.equal(wsFileMime(".bin"), "application/octet-stream");
 });
 

@@ -81,6 +81,7 @@ const WS_MIME = {
   ".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8",
   ".md": "text/plain; charset=utf-8", ".txt": "text/plain; charset=utf-8", ".css": "text/css; charset=utf-8",
   ".json": "application/json", ".pdf": "application/pdf",
+  ".ppt": "application/vnd.ms-powerpoint", ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 };
 
 export function wsFileMime(ext) {
@@ -344,6 +345,43 @@ export async function handleWsRead(res, reqPath) {
     const content = fs.readFileSync(safe, "utf8");
     json(res, 200, { content, name: path.basename(safe), path: reqPath });
   } catch { json(res, 500, { error: "读取失败（可能非文本）" }); }
+}
+
+// POST /api/ws/preview —— 生成演示文稿的结构化内容预览（不改动原文件）
+// 浏览器无法原生渲染 PPTX；这里提取每页文字，让资产页至少能快速核对内容，原文件仍可下载/打开。
+export async function handleWsPreview(res, body) {
+  const reqPath = String(body?.path || "");
+  const safe = wsSafePath(reqPath);
+  if (!safe || !fs.existsSync(safe) || !fs.statSync(safe).isFile()) return json(res, 404, { error: "文件不存在" });
+  const ext = path.extname(safe).toLowerCase();
+  if (ext !== ".pptx") return json(res, 400, { error: "当前仅支持 .pptx 内容预览，请下载或新窗口打开 .ppt 文件" });
+  let stat;
+  try { stat = fs.statSync(safe); } catch { return json(res, 404, { error: "文件不存在" }); }
+  if (stat.size > 50 * 1024 * 1024) return json(res, 413, { error: "演示文稿超过 50MB，暂不支持在线内容预览" });
+  const script = `import json, sys
+from pptx import Presentation
+prs = Presentation(sys.argv[1])
+slides = []
+for i, slide in enumerate(prs.slides, 1):
+    lines = []
+    for shape in slide.shapes:
+        if getattr(shape, "has_text_frame", False):
+            for para in shape.text_frame.paragraphs:
+                text = "".join(run.text for run in para.runs).strip()
+                if text and text not in lines:
+                    lines.append(text)
+    title = (lines[0] if lines else f"第 {i} 页")[:160]
+    slides.append({"index": i, "title": title, "lines": lines[1:] if len(lines) > 1 else lines})
+print(json.dumps(slides, ensure_ascii=False))`;
+  try {
+    const out = await new Promise((resolve, reject) => {
+      execFile("python", ["-c", script, safe], { encoding: "utf8", timeout: 25000, maxBuffer: 8 * 1024 * 1024, windowsHide: true }, (err, stdout) => err ? reject(err) : resolve(stdout));
+    });
+    const slides = JSON.parse(String(out || "[]"));
+    json(res, 200, { kind: "presentation", name: path.basename(safe), slides, note: "当前为文字内容预览，版式请下载原文件或新窗口打开。" });
+  } catch (e) {
+    json(res, 422, { error: "PPT 内容预览失败，请下载原文件打开" });
+  }
 }
 
 // POST /api/ws/write —— 写文件

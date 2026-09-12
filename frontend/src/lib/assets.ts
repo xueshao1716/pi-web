@@ -15,6 +15,7 @@ const TEXT_EXTENSIONS = new Set([
   'html', 'htm', 'css', 'js', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'py', 'java',
   'c', 'h', 'cpp', 'rs', 'go', 'sql', 'log',
 ])
+const PRESENTATION_EXTENSIONS = new Set(['ppt', 'pptx', 'odp', 'key'])
 
 const IGNORED_PROJECT_SEGMENTS = new Set([
   '生成物', '交付', '工程', '文档', '收发文件', 'workshop-out', '图片', '音频', '视频',
@@ -35,6 +36,7 @@ export function assetKindForName(name: string): AssetKind {
   if (VIDEO_EXTENSIONS.has(extension)) return 'video'
   if (AUDIO_EXTENSIONS.has(extension)) return 'audio'
   if (TEXT_EXTENSIONS.has(extension)) return 'text'
+  if (PRESENTATION_EXTENSIONS.has(extension)) return 'presentation'
   return 'other'
 }
 
@@ -47,6 +49,21 @@ export function projectForPath(value: string): string {
   return '未分类'
 }
 
+export function assetContextLabel(item: Pick<AssetItem, 'source' | 'project'>): string {
+  return item.source === 'delivery' ? '交付' : item.project
+}
+
+export function assetKindLabel(kind: AssetKind): string {
+  return ({
+    image: '图片',
+    video: '视频',
+    audio: '音频',
+    text: '文本/文档',
+    presentation: '演示文稿',
+    other: '其他',
+  } satisfies Record<AssetKind, string>)[kind]
+}
+
 const timestampFor = (date: unknown, mtimeMs: unknown) => {
   if (typeof mtimeMs === 'number' && Number.isFinite(mtimeMs)) return mtimeMs
   if (typeof mtimeMs === 'string' && mtimeMs.trim() && Number.isFinite(Number(mtimeMs))) return Number(mtimeMs)
@@ -56,7 +73,7 @@ const timestampFor = (date: unknown, mtimeMs: unknown) => {
 }
 
 const dateFor = (date: unknown, mtimeMs: number) => {
-  if (typeof date === 'string' && date.trim()) return date
+  if (typeof date === 'string' && date.trim() && Number.isFinite(Date.parse(date))) return date
   return mtimeMs > 0 ? new Date(mtimeMs).toISOString() : ''
 }
 

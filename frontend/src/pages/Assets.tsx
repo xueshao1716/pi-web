@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import useSWR from 'swr'
+import { Download } from 'lucide-react'
 import PageHeader from '../components/PageHeader'
 import Gallery from '../components/Gallery'
 import { WsApi, withFileToken, downloadApiFile } from '../api'
@@ -34,11 +35,17 @@ export default function Assets() {
     setSelectedAsset(item)
     setPreviewAsset(item.isDirectory ? null : item)
   }
+  const closeDetails = () => { setSelectedAsset(null); setPreviewAsset(null) }
+  const dismissMobileDetails = () => { try { if (window.matchMedia('(max-width: 800px)').matches) setSelectedAsset(null) } catch {} }
+  const closePreview = () => {
+    setPreviewAsset(null)
+    try { if (window.matchMedia('(max-width: 800px)').matches) setSelectedAsset(null) } catch {}
+  }
   const clearFilters = () => { setKind('all'); setTimeRange('all'); setProject('all'); setSearch('') }
   const showFeedback = (tone: 'ok' | 'error', text: string) => { setFeedback({ tone, text }); window.setTimeout(() => setFeedback(null), 3500) }
   const refreshAssets = async () => { await Promise.all([mutateArtifacts(), mutateDeliveries()]) }
   const openAsset = (item: AssetItem) => {
-    if (item.url && (!item.isDirectory || item.openPath)) window.open(withFileToken(item.url), '_blank', 'noopener,noreferrer')
+    if (item.url && (!item.isDirectory || item.openPath)) { window.open(withFileToken(item.url), '_blank', 'noopener,noreferrer'); dismissMobileDetails() }
   }
   const downloadAsset = async (item: AssetItem) => {
     if (item.isDirectory || !item.url) return
@@ -46,6 +53,7 @@ export default function Assets() {
     try {
       await downloadApiFile(downloadUrl, item.name)
       showFeedback('ok', '下载已开始')
+      dismissMobileDetails()
     } catch (error: any) {
       showFeedback('error', '下载失败：' + (error?.message || '请稍后重试'))
     }
@@ -63,7 +71,7 @@ export default function Assets() {
   return (
     <div className="assets-page flex-1 overflow-y-auto relative z-10">
       <div className="assets-page__inner max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-6">
-        <PageHeader title="资产库" description="生成物与交付物集中浏览，按项目、类型和时间快速定位" meta={<span>{allAssets.length} 项资产{selectedAsset ? ` · 已选 ${selectedAsset.name}` : ''}</span>} />
+        <PageHeader title="资产库" description="生成物与交付物集中浏览，按项目、类型和时间快速定位" meta={<span>{allAssets.length} 项资产{selectedAsset ? ` · 已选 ${selectedAsset.name}` : ''}</span>} actions={<button type="button" className="btn-ghost text-xs px-3 min-h-10 inline-flex items-center gap-1.5" onClick={() => { location.hash = '#/downloads' }}><Download className="w-3.5 h-3.5" />下载中心</button>} />
         <Gallery />
         <AssetToolbar counts={{ total: allAssets.length, visible: filteredAssets.length, selected: selectedAsset ? 1 : 0 }} filters={{ kind, timeRange, project, search, order }} projects={projects} onKindChange={setKind} onTimeChange={setTimeRange} onProjectChange={setProject} onSearchChange={setSearch} onOrderChange={setOrder} onClear={clearFilters} />
         {feedback && <div className={`asset-feedback asset-feedback--${feedback.tone}`} role="status">{feedback.text}</div>}
@@ -72,10 +80,11 @@ export default function Assets() {
           <main className="assets-page__main">
             <AssetCollection items={filteredAssets} selectedId={selectedAsset?.id || null} onSelect={selectAsset} loading={isLoading} hasFilters={hasFilters} onClearFilters={clearFilters} />
           </main>
-          <AssetDetails item={selectedAsset} onRename={renameAsset} onDelete={deleteAsset} onDownload={downloadAsset} onOpen={openAsset} onPreview={setPreviewAsset} />
+          {selectedAsset && <button type="button" className="asset-details-backdrop" aria-label="关闭资产详情" onClick={closeDetails} />}
+          <AssetDetails item={selectedAsset} onRename={renameAsset} onDelete={deleteAsset} onDownload={downloadAsset} onOpen={openAsset} onPreview={setPreviewAsset} onClose={closeDetails} />
         </div>
       </div>
-      <AssetPreview item={previewAsset} onClose={() => setPreviewAsset(null)} onAction={action => previewAsset && (action === 'open' ? openAsset(previewAsset) : downloadAsset(previewAsset))} />
+      <AssetPreview item={previewAsset} onClose={closePreview} onAction={action => previewAsset && (action === 'open' ? openAsset(previewAsset) : downloadAsset(previewAsset))} />
     </div>
   )
 }

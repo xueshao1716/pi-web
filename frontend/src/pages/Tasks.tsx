@@ -75,6 +75,11 @@ function formatRunTime(startedAt: string) {
   return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
+function runTimestamp(startedAt: string) {
+  const value = new Date(startedAt).getTime()
+  return Number.isFinite(value) ? value : 0
+}
+
 function RunHistory({ id }: { id: string }) {
   const { data, isLoading } = useSWR(`task-history-${id}`, () => TasksApi.history(id), { dedupingInterval: 5000 })
   const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set())
@@ -83,7 +88,11 @@ function RunHistory({ id }: { id: string }) {
   if (!hist.length) return <div className="text-[11px] text-pi-dim2 py-2">暂无运行记录</div>
 
   // 历史最多展示最近 10 条，先按自然日分组，让长记录变成可扫描的时间轴。
-  const visibleHistory = hist.slice(0, 10)
+  // 后端通常按最新在前返回，但历史是用户最关心的时间线，前端仍按时间再排一次，
+  // 防止旧版本或外部写入导致“最近运行”顺序错乱。
+  const visibleHistory = [...hist]
+    .sort((a, b) => runTimestamp(b.startedAt) - runTimestamp(a.startedAt) || String(b.queueId).localeCompare(String(a.queueId)))
+    .slice(0, 10)
   const groups = visibleHistory.reduce<{ key: string; label: string; items: TaskRun[] }[]>((all, run) => {
     const key = runDateKey(run.startedAt)
     const group = all.find(item => item.key === key)
@@ -135,9 +144,9 @@ function RunHistory({ id }: { id: string }) {
                 // The card keeps the complete source field ({h.result}); CSS only controls the collapsed preview.
                 const hasLongResult = result.length > 180 || result.includes('\n')
                 return (
-                  <article key={h.queueId} className="rounded-pi-md border border-pi-border-soft bg-pi-bg2/45 px-3 py-2.5 transition-colors hover:border-pi-border-hi hover:bg-pi-bg2/70">
-                    <div className="flex items-start gap-2.5">
-                      <div className={`mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-pi-sm border ${status.tone}`}>
+                  <article key={h.queueId} className="task-run-card rounded-pi-md border border-pi-border-soft bg-pi-bg2/45 px-3 py-2.5 transition-colors hover:border-pi-border-hi hover:bg-pi-bg2/70">
+                    <div className="task-run-card__body flex items-start gap-2.5">
+                      <div className={`task-run-card__status-icon mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-pi-sm border ${status.tone}`}>
                         <StatusIcon className="h-3.5 w-3.5" strokeWidth={1.9} aria-hidden="true" />
                       </div>
                       <div className="min-w-0 flex-1">
@@ -146,7 +155,7 @@ function RunHistory({ id }: { id: string }) {
                           <time className="text-[11px] font-medium tabular-nums text-pi-text" dateTime={h.startedAt}>{formatRunTime(h.startedAt)}</time>
                           <span className="ml-auto inline-flex items-center gap-1 text-[10px] text-pi-dim2"><Timer className="h-3 w-3" />{formatRunDuration(h.durationMs)}</span>
                         </div>
-                        <div className="mt-1.5 flex items-start gap-2">
+                        <div className="task-run-result mt-1.5 flex items-start gap-2">
                           <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-pi-dim2">任务结果</span>
                           {result ? (
                             <p className={`min-w-0 flex-1 whitespace-pre-wrap break-words text-[12px] leading-relaxed text-pi-text/90 ${!isResultExpanded && hasLongResult ? 'line-clamp-2' : ''}`}>{result}</p>
@@ -245,8 +254,8 @@ export default function Tasks() {
             const canArchive = t.state !== 'archived'
 
             return (
-              <div key={t.id} className={`panel !p-3.5 card-hover group/task group ${t.running ? 'ring-1 ring-pi-accent/30' : ''}`}>
-                <div className="flex items-start gap-3">
+              <div key={t.id} className={`task-card panel !p-3.5 card-hover group/task group ${t.running ? 'ring-1 ring-pi-accent/30' : ''}`}>
+                <div className="task-card__body flex items-start gap-3">
                   <div className="w-11 h-11 rounded-pi-md bg-pi-accent/12 border border-pi-accent/25 flex flex-col items-center justify-center flex-shrink-0"
                     style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,.06)' }}>
                     <span className="text-[10px] text-pi-accent leading-none font-semibold tracking-wide">{TYPE_LABEL[t.type]}</span>
@@ -275,7 +284,7 @@ export default function Tasks() {
                       )}
                     </div>
                   </div>
-                  <div className="hov-reveal touch-hit flex items-center gap-1 flex-shrink-0">
+                  <div className="task-card__actions hov-reveal touch-hit flex items-center gap-1 flex-shrink-0">
                     {/* 立即执行 */}
                     {canRun && (
                       <button title="立即执行" aria-label="立即执行" disabled={actionBusy === t.id}
@@ -322,7 +331,7 @@ export default function Tasks() {
                 </div>
                 {/* 运行历史（展开时加载） */}
                 {isExpanded && t.history?.length > 0 && (
-                  <div className="ml-14 mt-2 pl-3 border-l border-pi-border-soft">
+                  <div className="task-history-shell ml-14 mt-2 pl-3 border-l border-pi-border-soft">
                     <RunHistory id={t.id} />
                   </div>
                 )}

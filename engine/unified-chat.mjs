@@ -48,7 +48,6 @@ export function initUnifiedChat({ executeUnifiedTool = null, findKeyByEntry = nu
   if (getAgentDir) _getAgentDir = getAgentDir;
   _createSandboxAsk = createSandboxAsk;
 }
-
 // ══ 工具调用消毒（2026-08-22 修复 400 "`function` is not set"）：
 // 上游返回的 tool_calls 可能缺 function 字段（流式截断/非标准格式），原样回传给 API 会 400，
 // 且坏消息留在历史里每轮重发 → 会话永久卡死。策略：能修补则修补（空 name 丢弃），缺 function 的条目剔除。
@@ -645,7 +644,7 @@ async function ensureEngineInit() {
 }
 
 // ══ 消息看板：pi 更新 + 能力看板 ══
-const APP_VERSION = "2.7.0"; // pi-web 正式版本（每次发版 bump + 记入 CHANGELOG.md）
+const APP_VERSION = "2.7.1"; // pi-web 正式版本（每次发版 bump + 记入 CHANGELOG.md）
 const CAPABILITIES = [
   { icon: "💬", name: "多模型对话", desc: "deepseek / 小米 mimo / Agnes，思考 + 工具调用" },
   { icon: "🛠", name: "编程工具", desc: "读文件 / 写文件 / 编辑 / 跑命令（与 TUI 同一引擎）" },
@@ -889,7 +888,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
   }
   async function runLockedChat(locked) {
     // history 末条已是 handleChat 改写后的规划指令消息（含需求），直接复用；只传只读工具定义
-    const result = await unifiedChat(chatModel, history, { onTool: onToolStart, onToolEnd, onCheckpoint, params, signal, tools: locked, sandboxMode: "read-only", sandboxWsRoot: _cwd, sandboxAsk: approvalAsk, effects: runContext?.effects, resumeSnapshot: runContext?.resume ? runContext.checkpoint?.historySnapshot : null, resumeCheckpointKind: runContext?.resume ? runContext.checkpoint?.checkpointKind : null, resumeToolPlan: runContext?.resume && runContext.checkpoint?.checkpointKind === "tool_plan" ? runContext.checkpoint?.toolPlan : null, executionContext: { runId: runContext?.runId, attempt: runContext?.attempt } });
+    const result = await unifiedChat(chatModel, history, { onTool: onToolStart, onToolEnd, onCheckpoint, params, signal, tools: locked, sandboxMode: "read-only", sandboxWsRoot: _cwd, sandboxAsk: approvalAsk, effects: runContext?.effects, resumeSnapshot: runContext?.resume ? runContext.checkpoint?.historySnapshot : null, resumeCheckpointKind: runContext?.resume ? runContext.checkpoint?.checkpointKind : null, resumeToolPlan: runContext?.resume && runContext.checkpoint?.checkpointKind === "tool_plan" ? runContext.checkpoint?.toolPlan : null, executionContext: { runId: runContext?.runId, sessionId: runContext?.sessionId, attempt: runContext?.attempt, onEvent: runContext?.onEvent, aibodyContext: runContext?.aibodyContext } });
     if (!result || result.error) {
       clearTask(taskId, "error"); writer.push("error", { message: result?.error || "模型未返回内容" }); finishEmotion(); return;
     }
@@ -929,7 +928,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     resumeSnapshot: runContext?.resume ? runContext.checkpoint?.historySnapshot : null,
     resumeCheckpointKind: runContext?.resume ? runContext.checkpoint?.checkpointKind : null,
     resumeToolPlan: runContext?.resume && runContext.checkpoint?.checkpointKind === "tool_plan" ? runContext.checkpoint?.toolPlan : null,
-    executionContext: { runId: runContext?.runId, attempt: runContext?.attempt },
+    executionContext: { runId: runContext?.runId, sessionId: runContext?.sessionId, attempt: runContext?.attempt, onEvent: runContext?.onEvent, aibodyContext: runContext?.aibodyContext },
   };
   let result = await unifiedChat(chatModel, history, chatOpts);
   // The resumed tool plan is consumed before the first model request. Do not
@@ -1009,7 +1008,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     const proModel = routeProCandidate();
     if (proModel && (proModel.provider !== chatModel.provider || proModel.id !== chatModel.id)) {
       writer.push("note", { text: `🚀 模型自报任务超纲，升级 ${proModel.provider}/${proModel.id} 重试${proMatch[1] ? `（原因：${proMatch[1].trim()}）` : ""}…` });
-      const proResult = await unifiedChat(proModel, history, { onTool: onToolStart, onToolEnd, onCheckpoint, params, signal, tools: toolDefs, sandboxMode: chatOpts.sandboxMode, sandboxWsRoot: _cwd, sandboxAsk: approvalAsk, effects: runContext?.effects, resumeSnapshot: null, resumeCheckpointKind: null, resumeToolPlan: null, executionContext: { runId: runContext?.runId, attempt: runContext?.attempt } });
+      const proResult = await unifiedChat(proModel, history, { onTool: onToolStart, onToolEnd, onCheckpoint, params, signal, tools: toolDefs, sandboxMode: chatOpts.sandboxMode, sandboxWsRoot: _cwd, sandboxAsk: approvalAsk, effects: runContext?.effects, resumeSnapshot: null, resumeCheckpointKind: null, resumeToolPlan: null, executionContext: { runId: runContext?.runId, sessionId: runContext?.sessionId, attempt: runContext?.attempt, onEvent: runContext?.onEvent, aibodyContext: runContext?.aibodyContext } });
       if (proResult?.text && !proResult.error) {
         const proTxt = String(proResult.text).trim();
         if (!NEEDS_PRO_RE.test(proTxt)) {

@@ -5,6 +5,7 @@ const kinds: { value: AssetKind | 'all'; label: string }[] = [
   { value: 'image', label: '图片' },
   { value: 'video', label: '视频' },
   { value: 'audio', label: '音频' },
+  { value: 'presentation', label: '演示文稿' },
   { value: 'text', label: '文本/文档' },
   { value: 'other', label: '其他' },
 ]
