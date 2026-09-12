@@ -156,7 +156,7 @@ export async function handleStoryAssist(ctx, res, id, body) {
     const fast = available.find(m => m?.capabilities?.chat && !m.reasoning && /agnes-3\.0-flash/i.test(m.id))
       || available.find(m => m?.capabilities?.chat && !m.reasoning)
       || ctx.getDefaultModel();
-    const candidates = [requested, fast, ctx.getDefaultModel()].filter((m, i, all) => m?.id && all.findIndex(x => x.provider === m.provider && x.id === m.id) === i);
+    const candidates = [requested, fast, ctx.getDefaultModel()].filter((m, i, all) => m?.id && all.findIndex(x => x?.provider === m.provider && x?.id === m.id) === i);
     let lastError = '智能填充模型没有返回内容';
     for (const model of candidates.slice(0, 2)) {
       try {
