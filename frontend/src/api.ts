@@ -1,4 +1,4 @@
-import type { Model, Session, ChatMessage, SessionMessages, Artifact, AssetDelivery, SkillSummary } from './types'
+import type { Model, Session, ChatMessage, SessionMessages, Artifact, AssetDelivery, SkillSummary, StoryProject, StoryGenerationRun } from './types'
 import { parseSseBlocks, type RunEvent, type RunStatus } from './lib/run-events'
 import { rememberDownload } from './lib/downloads'
 import { saveNativeDownload } from './lib/native-download'
@@ -136,6 +136,14 @@ export const SessionsApi = {
   remove: (sid: string) => api<{ ok: boolean }>(`/api/sessions/${encodeURIComponent(sid)}`, { method: 'DELETE' }),
   stats: (sid: string) => api<any>(`/api/sessions/${encodeURIComponent(sid)}/stats`),
   export: (sid: string, format = 'html') => `/api/sessions/${encodeURIComponent(sid)}/export?format=${encodeURIComponent(format)}`,
+}
+
+export const StoryApi = {
+  listProjects: () => api<{ projects: StoryProject[] }>('/api/story/projects'),
+  createProject: (body: { title: string; logline?: string }) => api<{ project: StoryProject }>('/api/story/projects', { method: 'POST', body }),
+  getProject: (id: string) => api<{ project: StoryProject }>(`/api/story/projects/${encodeURIComponent(id)}`),
+  patchProject: (id: string, body: Partial<StoryProject>) => api<{ project: StoryProject }>(`/api/story/projects/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
+  previewRun: (id: string, body: { sceneId: string; beatId: string; kind: StoryGenerationRun['kind']; model: StoryGenerationRun['model']; params?: Record<string, unknown>; seed?: number; inputAssets?: StoryGenerationRun['inputAssets'] }) => api<{ project: StoryProject; run: StoryGenerationRun; context: { prompt: string; referenceIds: string[] } }>(`/api/story/projects/${encodeURIComponent(id)}/run-preview`, { method: 'POST', body }),
 }
 export const MessagesApi = {
   add: (sid: string, text: string) => api<{ ok: boolean; id: string }>(`/api/sessions/${encodeURIComponent(sid)}/messages`, { method: 'POST', body: { text } }),
