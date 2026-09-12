@@ -21,3 +21,9 @@ test('story workbench exposes model selection and forwards it to generation', ()
   assert.match(apiSource, /assist:.*model\?/);
   assert.match(apiSource, /body: \{ idea, model \}/);
 });
+
+test('story workbench renders generated media in an inline preview surface', () => {
+  assert.match(source, /生成预览/);
+  assert.match(source, /<img/);
+  assert.match(source, /<video/);
+});
