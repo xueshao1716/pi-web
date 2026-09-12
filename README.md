@@ -305,7 +305,7 @@ npm run build:mobile:web
 
 Tauri Android 构建使用 `app/src-tauri` 的 Gradle/Tauri 工程，Capacitor Android 构建使用 Capacitor 工程；构建前先执行上面的前端命令。APK 交付文件名必须标明 ABI：单架构使用 `arm64`、`armeabi-v7a`、`x86` 或 `x86_64`，四 ABI 合包才使用 `universal`，不能把单架构包称为通用包。
 
-Windows 发布脚本默认把 Cargo、Gradle、npm 和临时文件放到 `D:\pi-workspace\.build-cache`，正式安装包写入 `D:\pi-workspace\交付`；手动构建时也应设置 `CARGO_HOME`、`CARGO_TARGET_DIR`、`GRADLE_USER_HOME`、`npm_config_cache`、`TEMP` 和 `TMP`，避免系统盘缓存膨胀。桌面/Android 壳版本统一维护在 `app/src-tauri/tauri.conf.json` 与 `app/src-tauri/Cargo.toml`，当前为 `0.2.2`。
+Windows 发布脚本默认把 Cargo、Gradle、npm 和临时文件放到 `D:\pi-workspace\.build-cache`，正式安装包写入 `D:\pi-workspace\交付`；手动构建时也应设置 `CARGO_HOME`、`CARGO_TARGET_DIR`、`GRADLE_USER_HOME`、`npm_config_cache`、`TEMP` 和 `TMP`，避免系统盘缓存膨胀。桌面/Android 壳版本统一维护在 `app/src-tauri/tauri.conf.json` 与 `app/src-tauri/Cargo.toml`，当前为 `0.2.4`。
 
 默认服务只监听 `127.0.0.1`，因此现有反向代理/域名指向本机端口的方式不变。需要手机直接访问电脑局域网 IP 时，显式设置 `PI_WEB_LAN=1`，并配合 Windows 防火墙和访问令牌。
 

@@ -1,7 +1,7 @@
 # pi-web 架构状态快照（活文档）
 
 > 模式借鉴 KickSide `.ai/architecture/current-state.md`：每次后端结构改动，**同步更新本文件**。
-> 这是"当前是什么"，不是"设计成什么"。过时即失职。最后更新：2026-09-07 by 小语
+> 这是"当前是什么"，不是"设计成什么"。过时即失职。最后更新：2026-09-12 by 元枢
 
 ## 进程拓扑（谁在跑、怎么拉起）
 
@@ -50,6 +50,7 @@
 - 刷视频修复（2026-09-07）：消息含「剧本」时宿主不旁路出片（避免叠 `generate_video`）；`HEAD /api/ws/file` 回头不灌 body；前端按 path 去重播放器（忽略 sig）
 - 元枢会话连续性（2026-09-06）：用户原话先落盘，打断也留痕；有历史就注明不是新开。创作先判断，搜两轮锁不到就动手
 - 元枢评测绳（2026-09-06）：`runYuanshuEval` 冻结用例出 `passed/total/score`；`GET /api/engine/pair` 带 `eval`；不跑真模型，不证明出片/联网
+- AIBody 系统协调（2026-09-12）：`aibody-runtime` 贯穿主聊天的规划、工具、子智能体、记忆、产物和治理观察；`aibody-runtime.json` 持久化有限运行记录，重启中的任务标为 `interrupted`。`subagent-traces` 记录父任务/会话关联、角色、状态和证据；不保存原始上下文或隐藏推理。`/api/aibody/overview` 与 `/api/subagent/history` 是全局只读观察入口，改动验收页不再承担唯一展示职责。
 - 元枢情绪（2026-09-06）：`beginYuanshuEmotion` / `endYuanshuEmotion` 挂进 `handleUnifiedChat`；同一句 10 秒内不重复加 VAD（pi 兑底再进一次也不叠）
 - 元枢 vs pi 横评（2026-09-06）：同一 `/api/chat` + deepseek-v4-flash；现网 9/10 平手，元枢均时更短；契约绳 2026-09-07 为 23/23（含磁盘工作记忆 plan_files）。不够切默认主驾。脚本 `bench/engine-bench.mjs`
 

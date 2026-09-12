@@ -20,4 +20,4 @@ Android 包名为 `com.yuanshu.app`，versionCode 为 `2004`；使用 release �
 
 前端类型检查、构建、自动化测试以及 360/390px 浏览器模拟验收已完成；Android 下载数据的 JVM 单元测试与 release 构建已通过，签名和版本已核对。Android 没有连接手机实测，系统保存窗口、覆盖安装与外部应用打开文件仍需按 `docs/android-real-device-acceptance.md` 验收。
 
-本次未提交或推送代码，保留工作区供统一提交。构建缓存与交付文件均位于 D 盘。
+本版本代码已提交并推送到 GitHub 与 Gitee 的 `main` 分支。构建缓存与交付文件均位于 D 盘。
