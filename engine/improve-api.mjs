@@ -47,6 +47,13 @@ function makeProposal(kind, title, evidence, suggestion, priority) {
   };
 }
 
+// The shared jsonl also stores evolution, skill-nudge and memory-nudge records.
+// Keep those streams out of the ordinary improvement inbox; each has its own
+// approval surface and uses `state`, while this module owns `status`.
+function isImprovementProposal(p) {
+  return p && (p.kind === "weakness" || p.kind === "efficiency" || p.kind === "improvement");
+}
+
 // 分析工作数据 → 生成改进提案（幂等：同标题不重复，只更新证据）
 export function analyzeImprovements() {
   const existing = load();
@@ -102,17 +109,32 @@ export function analyzeImprovements() {
   } catch { /* 无自愈计数 */ }
 
   if (props.length) save(existing.concat(props));
-  return existing.filter((p) => p.status === "open").sort((a, b) => b.priority - a.priority);
+  return openImprovements();
 }
 
 export function openImprovements() {
-  return load().filter((p) => p.status === "open").sort((a, b) => b.priority - a.priority);
+  return load().filter((p) => isImprovementProposal(p) && p.status === "open")
+    .sort((a, b) => (b.priority || 0) - (a.priority || 0));
+}
+
+export function getImprovementDiagnostics() {
+  const rows = load();
+  const open = rows.filter((p) => p?.status === "open" || p?.state === "open");
+  return {
+    total: rows.length,
+    open: open.length,
+    openImprovements: rows.filter((p) => isImprovementProposal(p) && p.status === "open").length,
+    openEvolution: rows.filter((p) => p.kind === "evolution" && p.state === "open").length,
+    openSkillNudge: rows.filter((p) => p.kind === "skill-nudge" && p.state === "open").length,
+    openMemoryNudge: rows.filter((p) => p.kind === "memory-nudge" && p.state === "open").length,
+  };
 }
 
 export function setImprovementStatus(id, status) {
   const list = load();
   const p = list.find((x) => x.id === id);
   if (!p) return { error: "提案不存在" };
+  if (!isImprovementProposal(p)) return { error: "不是普通改进提案" };
   p.status = status;
   save(list);
   return { ok: true, status };

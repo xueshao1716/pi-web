@@ -69,7 +69,7 @@ import { initDshKeys, dshResolveBin, handleDshStatus, handleDshWebStart, handleK
 import { initStatsApi, handleGlobalStats, handleProviderStats, handleDailyStats, handleSubagentRuns, handleSubagentHistory, safeSessionStats, handleStats, handleCompact, listBuiltinSkills, handleSkills, handleSkillRead, handleParseFile, escHtml, handleExport, resolveFsPath, handleFsList, handleFsRead, handleRename } from "./engine/stats-api.mjs";
 import { initModelClient, directChat, handleThink, handleDirectChat, maybeCompactHistory } from "./engine/model-client.mjs";
 import { initSelfHeal, createRepairCheckpoint, handleUpdateCheck, handleUpdateApply, handleRepair, handleDesignerGenerate, handleDesignerSave, handleCompare } from "./engine/self-heal.mjs";
-import { initImproveApi, analyzeImprovements, openImprovements, setImprovementStatus } from "./engine/improve-api.mjs";
+import { initImproveApi, analyzeImprovements, openImprovements, getImprovementDiagnostics, setImprovementStatus } from "./engine/improve-api.mjs";
 import { initEvolutionApi, proposeEvolution, applyEvolution, listEvolution, dismissEvolution, nudgeSkill, applySkillNudge, dismissSkillNudge, listSkillNudges, evaluateProposal, proposeMemoryNudge, listMemoryNudges, applyMemoryNudge, dismissMemoryNudge, analyzeMemoryCompress, proposeMemoryCompress, listMemoryCompress, applyMemoryCompress, dismissMemoryCompress } from "./engine/evolution-api.mjs";
 import { initSessionManager, createSession, evictInactiveSessions, slimSessionImages, compactSession, openSession, initSearchTool, initShareTool, createSessionAgent, ensureAgent, isFirstTurn, deleteSession } from "./engine/session-manager.mjs";
 import { initUnifiedChat, unifiedChat, engineCurrentModel, initEngine, getCodeRuntime, getCodeMode, toolBindingDesc, toolBindingArgs, toolBindingArgsObj, handleNotices, handleUnifiedChat, touchTask, clearTask, handleAgentEventIn, handleAgentEventOut } from "./engine/unified-chat.mjs";
@@ -1728,8 +1728,8 @@ const API_ROUTES = [
   ["DELETE", /^\/api\/sessions\/([^/]+)$/, async (res, req, url, m) => { await deleteSession(decodeURIComponent(m[1])); return json(res, 200, { ok: true }); }],
   ["GET", /^\/api\/sessions\/([^/]+)\/export$/, (res, req, url, m) => handleExport(res, decodeURIComponent(m[1]), url.searchParams.get("format") || "html")],
   ["GET", "/api/stats/global", (res) => handleGlobalStats(res)],
-  ["GET", "/api/improvements", (res) => json(res, 200, { improvements: openImprovements() })],
-  ["POST", "/api/improvements/analyze", (res) => json(res, 200, { improvements: analyzeImprovements() })],
+  ["GET", "/api/improvements", (res) => json(res, 200, { improvements: openImprovements(), diagnostics: getImprovementDiagnostics() })],
+  ["POST", "/api/improvements/analyze", (res) => json(res, 200, { improvements: analyzeImprovements(), diagnostics: getImprovementDiagnostics() })],
   ["POST", /^\/api\/improvements\/([^/]+)\/status$/, async (res, req, url, m) => json(res, 200, setImprovementStatus(decodeURIComponent(m[1]), (await readBody(req)).status || "dismissed"))],
   ["GET", "/api/stats/providers", (res) => handleProviderStats(res)],
   ["GET", "/api/stats/daily", (res) => handleDailyStats(res)],

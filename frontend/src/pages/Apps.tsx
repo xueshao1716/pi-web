@@ -207,6 +207,10 @@ function PromptsView() {
   }
   return (
     <div className="space-y-2">
+      <div className="flex items-center justify-between px-1 text-[12px] text-pi-dim2">
+        <span>提示词资产</span>
+        <span className="tabular-nums">当前 {prompts.length} 个 · 来自本机提示词目录</span>
+      </div>
       {prompts.map(p => (
         <div key={p.name} className="panel !p-3">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => setOpen(open === p.name ? null : p.name)}>
@@ -228,6 +232,7 @@ function ImproveView() {
   const { data, mutate } = useSWR('improvements', () => ImprovementsApi.list())
   const [busy, setBusy] = useState(false)
   const items = data?.improvements || []
+  const diagnostics = data?.diagnostics
   const analyze = async () => {
     setBusy(true)
     try { await ImprovementsApi.analyze(); await mutate() } catch {} finally { setBusy(false) }
@@ -238,6 +243,19 @@ function ImproveView() {
       <button className="btn-primary text-[13px] px-3 py-1.5 disabled:opacity-60" onClick={analyze} disabled={busy}>
         {busy ? '分析中…' : '分析运行数据找改进点'}
       </button>
+      {diagnostics && (
+        <div className="panel !p-3 text-[12px] text-pi-dim2">
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            <span>普通改进 <b className="text-pi-text">{diagnostics.openImprovements}</b></span>
+            <span>进化提案 <b className="text-pi-text">{diagnostics.openEvolution}</b></span>
+            <span>技能沉淀 <b className="text-pi-text">{diagnostics.openSkillNudge}</b></span>
+            <span>记忆提案 <b className="text-pi-text">{diagnostics.openMemoryNudge}</b></span>
+          </div>
+          {!diagnostics.openImprovements && (diagnostics.openEvolution + diagnostics.openSkillNudge + diagnostics.openMemoryNudge > 0) && (
+            <div className="mt-1.5">其他提案已分别放在「进化引擎」「技能库」和「记忆园丁」，不会混进普通改进提案。</div>
+          )}
+        </div>
+      )}
       {items.map((it: any, i: number) => (
         <div key={it.id || i} className="panel !p-3">
           <div className="text-[13px] text-pi-text font-medium">{it.title || it.summary || it.id}</div>
@@ -246,7 +264,7 @@ function ImproveView() {
         </div>
       ))}
       {!items.length && (
-        <EmptyState icon={TrendingUp} title="当前没有待处理的改进提案" hint="点上方按钮分析 provider 用量与错误率" />
+        <EmptyState icon={TrendingUp} title="当前没有待处理的普通改进提案" hint="分析只会在冷却、用量或自愈次数达到阈值时生成；进化类提案请到对应模块查看" />
       )}
     </div>
   )

@@ -550,8 +550,8 @@ export const PromptsApi = {
   list: () => api<{ prompts: { name: string; description: string; content: string }[] }>('/api/prompts'),
 }
 export const ImprovementsApi = {
-  list: () => api<{ improvements: any[] }>('/api/improvements'),
-  analyze: () => api<{ improvements: any[] }>('/api/improvements/analyze', { method: 'POST' }),
+  list: () => api<{ improvements: any[]; diagnostics?: { total: number; open: number; openImprovements: number; openEvolution: number; openSkillNudge: number; openMemoryNudge: number } }>('/api/improvements'),
+  analyze: () => api<{ improvements: any[]; diagnostics?: { total: number; open: number; openImprovements: number; openEvolution: number; openSkillNudge: number; openMemoryNudge: number } }>('/api/improvements/analyze', { method: 'POST' }),
   setStatus: (id: string, status: string) => api<any>(`/api/improvements/${encodeURIComponent(id)}/status`, { method: 'POST', body: { status } }),
 }
 
