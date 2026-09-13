@@ -7,6 +7,8 @@ export interface DownloadRecord {
   createdAt: string
   savedUri?: string
   location?: string
+  status?: 'saved' | 'started' | 'failed'
+  error?: string
 }
 
 const STORAGE_KEY = 'yuanshu_download_history_v1'
@@ -30,6 +32,8 @@ function safeRecords(value: unknown): DownloadRecord[] {
       createdAt: typeof (item as any).createdAt === 'string' ? String((item as any).createdAt) : new Date(0).toISOString(),
       savedUri: typeof (item as any).savedUri === 'string' && (item as any).savedUri.startsWith('content://') ? (item as any).savedUri : undefined,
       location: typeof (item as any).location === 'string' ? (item as any).location : undefined,
+      status: ['saved', 'started', 'failed'].includes((item as any).status) ? (item as any).status : undefined,
+      error: typeof (item as any).error === 'string' ? String((item as any).error) : undefined,
     }))
 }
 
@@ -52,6 +56,8 @@ export function rememberDownload(input: Omit<DownloadRecord, 'id'> & { id?: stri
     createdAt,
     savedUri: input.savedUri,
     location: input.location,
+    status: input.status,
+    error: input.error,
   }
   if (!storage) return record
   try {

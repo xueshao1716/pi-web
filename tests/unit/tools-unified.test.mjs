@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-  BASE_TOOL_SCHEMAS, createUnifiedToolExecutor, rewriteInlineCode, rewriteCmdForWin32, webSearchTool, stripHtml,
+  BASE_TOOL_SCHEMAS, createUnifiedToolExecutor, rewriteInlineCode, rewriteCmdForWin32, ensureCommandDirectories, webSearchTool, stripHtml,
 } from "../../engine/tools/unified-tools.mjs";
 import { matchDenyRule, isProtectedPath, safeJoin, DANGEROUS_CMD_RE, INTERACTIVE_CMD_RE } from "../../engine/tools/security.mjs";
 import { commandTouchesSensitive } from "../../engine/tools/secrets-guard.mjs";
@@ -82,6 +82,13 @@ test("engine/tools 工具集（unified-tools.mjs）", (t) => {
     const out = rewriteCmdForWin32("ls D:/pi-web/public/static/ 2>/dev/null | head -20");
     assert.ok(!out.includes("/dev/null"), "cmd 会把 /dev/null 当成路径");
     assert.ok(/2>nul/i.test(out));
+  });
+  t.test("ensureCommandDirectories：为 Windows 下载/媒体命令预建中文目录", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "piweb-media-"));
+    const target = path.join(root, "生成物", "焦点访谈AI圆桌", "素材", "clip1.mp4");
+    ensureCommandDirectories(`curl -L -o "${target}" "https://example.com/clip.mp4"`);
+    assert.ok(fs.existsSync(path.dirname(target)));
+    fs.rmSync(root, { recursive: true, force: true });
   });
   t.test("bash 工具说明必须写明是 Windows cmd，不要去 curl 出图接口", () => {
     const bash = BASE_TOOL_SCHEMAS.find((s) => s.function.name === "bash");

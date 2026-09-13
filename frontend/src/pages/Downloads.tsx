@@ -69,7 +69,7 @@ export default function Downloads() {
                   <div className="download-record__icon">{record.savedUri ? <CheckCircle2 className="w-4 h-4" /> : <Download className="w-4 h-4" />}</div>
                   <div className="download-record__content">
                     <strong title={record.name}>{record.name}</strong>
-                    <span>{record.savedUri ? '已保存' : '已发起下载'} · {formatSize(record.size)} · {formatTime(record.createdAt)}</span>
+                    <span>{record.status === 'failed' ? '下载失败' : (record.savedUri || record.status === 'saved') ? '已保存' : '已发起下载'} · {formatSize(record.size)} · {formatTime(record.createdAt)}</span>
                     {record.location && <span>{record.location}</span>}
                   </div>
                   <div className="download-record__actions">

@@ -17,7 +17,7 @@ import { execFileAbortable } from "../yuanshu-stability.mjs";
 
 // ── 工具 schema（OpenAI function 格式）──
 export const BASE_TOOL_SCHEMAS = [
-  { type: "function", function: { name: "bash", description: "运行 shell 命令（Windows cmd.exe，不是 bash/PowerShell）。用 dir、type；中文搜文件用 node 读 UTF-8，不要 findstr。出图/视频/配音用 generate_image / generate_video / generate_tts，不要读 auth.json/.token。重定向写 2>nul。不要 curl 本机 /api/image，不要启动 Vite 5173 或第二份 8787。", parameters: { type: "object", properties: { command: { type: "string", description: "要运行的命令" } }, required: ["command"] } } },
+  { type: "function", function: { name: "bash", description: "运行 Windows cmd.exe（不是 bash/PowerShell）。优先使用工作空间相对路径，媒体下载先 mkdir 再 curl/ffmpeg；不要依赖 cd /d 切换中文绝对路径。用 dir、type；中文搜文件用 node 读 UTF-8，不要 findstr。出图/视频/配音用 generate_image / generate_video / generate_tts，不要读 auth.json/.token。重定向写 2>nul。不要 curl 本机 /api/image，不要启动 Vite 5173 或第二份 8787。", parameters: { type: "object", properties: { command: { type: "string", description: "要运行的命令" } }, required: ["command"] } } },
   { type: "function", function: { name: "read", description: "读取文件内容（工作空间内相对路径，或磁盘上的绝对路径如 D:/proj/file.json）", parameters: { type: "object", properties: { path: { type: "string", description: "文件路径" } }, required: ["path"] } } },
   { type: "function", function: { name: "write", description: "写入文件（自动创建目录）", parameters: { type: "object", properties: { path: { type: "string", description: "文件路径（相对工作空间）" }, content: { type: "string", description: "文件内容" } }, required: ["path", "content"] } } },
   { type: "function", function: { name: "edit", description: "用精确文本替换修改文件（先 read 再 edit）", parameters: { type: "object", properties: { path: { type: "string" }, oldText: { type: "string" }, newText: { type: "string" } }, required: ["path", "oldText", "newText"] } } },
@@ -58,6 +58,28 @@ export function rewriteCmdForWin32(cmd) {
     .replace(/2>\s*\/dev\/null/gi, "2>nul")
     .replace(/(^|[^=\w])>\s*\/dev\/null/g, "$1>nul")
     .replace(/\/dev\/null/g, "nul");
+}
+
+// cmd.exe 在部分 Windows 代码页下处理中文绝对路径并不稳定。媒体任务常见的
+// `mkdir ...` + `curl -o ...` 若只把错误重定向到 nul，会把“目录没建成”伪装成成功。
+// 在交给 cmd 前用 Node 预建目录，既保留模型原命令，也让后续下载/ffmpeg 能落盘。
+export function ensureCommandDirectories(cmd) {
+  const text = String(cmd || "");
+  const found = [];
+  const collect = (re, directory) => {
+    let match;
+    while ((match = re.exec(text))) {
+      const value = (match[1] || match[2] || match[3] || "").trim();
+      if (!value || !/^(?:[a-zA-Z]:[\\/]|\\\\)/.test(value)) continue;
+      found.push(directory ? value : path.dirname(value));
+    }
+  };
+  collect(/\b(?:mkdir|md)\s+(?:"([^"]+)"|'([^']+)'|([^\s&|]+))/gi, true);
+  collect(/(?:^|[\s&|])(?:-o|--output)\s+(?:"([^"]+)"|'([^']+)'|([^\s&|]+))/gi, false);
+  for (const dir of found) {
+    try { fs.mkdirSync(dir, { recursive: true }); } catch { /* cmd will return the original error */ }
+  }
+  return found;
 }
 
 // ── Web 搜索：Bing 网页搜索（免费无 key）。返回结构化结果列表 ──
@@ -200,6 +222,7 @@ export function createUnifiedToolExecutor(deps = {}) {
         // 非零退出码也返回输出（如 grep 无匹配、git status 非干净状态），让模型自行判断；仅超时/被 kill 视为异常
         // 注意：改写后的内联代码必须绕过 cmd（cmd 会把带引号的绝对路径与 cwd 拼接，导致 MODULE_NOT_FOUND），直接 execFile 解释器
         const runOpts = { encoding: "buffer", timeout: 300000, cwd: getCwd(), windowsHide: true, maxBuffer: 16 * 1024 * 1024, signal: ctx.signal };
+        if (process.platform === "win32") ensureCommandDirectories(runCmd);
         const run = fixed
           ? execFileAbortable(fixed.interp, [fixed.file], runOpts)
           : execFileAbortable(process.env.ComSpec || "cmd.exe", ["/c", runCmd], runOpts);

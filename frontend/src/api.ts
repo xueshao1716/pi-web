@@ -62,7 +62,29 @@ export function withFileToken(url: string): string {
 export async function downloadApiFile(path: string, filename?: string, onProgress?: (message: string) => void): Promise<string> {
   onProgress?.('正在获取文件…')
   const access = fileAccess(path, getApiBase(), _token, true)
-  const response = await fetch(access.url, { headers: access.headers, signal: AbortSignal.timeout(180000) })
+  let response: Response
+  try {
+    response = await fetch(access.url, { headers: access.headers, signal: AbortSignal.timeout(180000) })
+  } catch (error) {
+    // 远程生成物通常不开放 CORS，fetch 会在浏览器侧直接失败。此时仍把
+    // 原文件交给浏览器/客户端打开，并记录“已发起”，否则用户既拿不到文件也看不到下载中心记录。
+    const external = /^https?:\/\//i.test(access.url) && (typeof location === 'undefined' || new URL(access.url, location.href).origin !== location.origin)
+    if (!external || typeof document === 'undefined') throw error
+    const resolvedName = filename || 'download'
+    const link = document.createElement('a')
+    link.href = access.url
+    link.download = resolvedName
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+    link.style.display = 'none'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    const recordDownload = rememberDownload
+    recordDownload({ name: resolvedName, url: path, size: 0, sourcePath: path, createdAt: new Date().toISOString(), status: 'started', error: String((error as any)?.message || '远程文件由浏览器打开保存') })
+    onProgress?.('已发起浏览器下载；若未自动保存，请在打开的原文件页面选择保存')
+    return '已发起下载；若未自动保存，请在打开的原文件页面选择保存'
+  }
   if (!response.ok) {
     if (response.status === 401) { try { window.dispatchEvent(new Event('pi-unauthorized')) } catch {} }
     const data = await response.json().catch(() => null)
@@ -77,7 +99,7 @@ export async function downloadApiFile(path: string, filename?: string, onProgres
   onProgress?.('文件已就绪，正在打开保存位置…')
   const nativeSave = await saveNativeDownload(blob, resolvedName)
   if (nativeSave) {
-    rememberDownload({ name: resolvedName, url: path, size: blob.size, sourcePath: path, createdAt: new Date().toISOString(), ...nativeSave })
+    rememberDownload({ name: resolvedName, url: path, size: blob.size, sourcePath: path, createdAt: new Date().toISOString(), status: 'saved', ...nativeSave })
     return `已保存到${nativeSave.location}`
   }
   const url = URL.createObjectURL(blob)
@@ -89,7 +111,7 @@ export async function downloadApiFile(path: string, filename?: string, onProgres
   link.click()
   link.remove()
   window.setTimeout(() => URL.revokeObjectURL(url), 60000)
-  rememberDownload({ name: resolvedName, url: path, size: blob.size, sourcePath: path, createdAt: new Date().toISOString() })
+  rememberDownload({ name: resolvedName, url: path, size: blob.size, sourcePath: path, createdAt: new Date().toISOString(), status: 'saved' })
   return '已交给浏览器下载；若未弹出，请点击“打开原文件保存”'
 }
 
