@@ -837,6 +837,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
         return [];
       });
       const items = [];
+      const deliveredKeys = new Set();
       for (const mr of results || []) {
         if (!mr) continue;
         if (mr.error && !mr.url) {
@@ -852,6 +853,10 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
             try { runContext.effects.complete(runContext.runId, mr.__effectKey, { ...mr, artifactUrl: mr.url }); } catch {}
           }
         }
+        // 同一远程地址或同一已落盘路径只交付一次，避免模型重复引用时把同一文件发多遍。
+        const deliveryKey = `${mr.type || "media"}:${String(mr.url).trim()}`;
+        if (deliveredKeys.has(deliveryKey)) continue;
+        deliveredKeys.add(deliveryKey);
         const clean = { ...mr };
         delete clean.__effectKey;
         delete clean.__effectReused;

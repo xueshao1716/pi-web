@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { handleWsFile, handleWsPreview, handleWsDeliveries, handleWsRename, handleWsDelete, initWorkspaceApi, localDayStamp, artifactBaseName, looksLikeImageBytes, writeArtifactSidecar } from "../../engine/workspace-api.mjs";
+import { handleWsFile, handleWsPreview, handleWsDeliveries, handleWsRename, handleWsDelete, initWorkspaceApi, localDayStamp, artifactBaseName, artifactFileName, allocateArtifactPath, looksLikeImageBytes, writeArtifactSidecar, saveArtifact } from "../../engine/workspace-api.mjs";
 import { readFileSync } from "node:fs";
 
 function mockRes() {
@@ -136,17 +136,49 @@ test("localDayStamp 用本地日历日，不用 UTC，避免凌晨写进昨天�
   assert.equal(localDayStamp(now), local);
 });
 
-test("artifactBaseName 小语肖像可读，且带时分秒毫秒避免覆盖", () => {
+test("artifactFileName 遵守命名契约：主题、类型、日期时间、唯一尾缀且清理非法字符", () => {
   const now = new Date("2026-09-05T02:17:47.925+08:00");
-  const name = artifactBaseName({ prompt: "一位温柔的AI少女半身像，名叫小语。", now });
-  assert.ok(name.startsWith("小语肖像_"), `实际: ${name}`);
-  const stamp = String(now.getHours()).padStart(2, "0")
+  const name = artifactFileName({ prompt: "一位温柔的AI少女半身像，名叫小语。", type: "image", now, uniqueId: "a1b2c3" });
+  assert.ok(name.startsWith("小语肖像_图片_"), `实际: ${name}`);
+  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-`
+    + String(now.getHours()).padStart(2, "0")
     + String(now.getMinutes()).padStart(2, "0")
     + String(now.getSeconds()).padStart(2, "0")
     + "-" + String(now.getMilliseconds()).padStart(3, "0");
   assert.ok(name.includes(stamp), `必须带本地时分秒毫秒，实际: ${name}`);
-  const cat = artifactBaseName({ prompt: "一只橘猫蹲在屋顶", now });
+  assert.ok(name.endsWith("-a1b2c3.png"));
+  assert.ok(!/[\\/:*?"<>|\u0000-\u001f]/.test(name));
+  assert.ok(name.length <= 120);
+  const cat = artifactBaseName({ prompt: "一只橘猫蹲在屋顶", now, uniqueId: "cat001" });
   assert.ok(cat.includes("橘猫"), `实际: ${cat}`);
+});
+
+test("allocateArtifactPath 遇到同名文件自动递增，且不覆盖已有产物", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-web-artifact-name-"));
+  try {
+    const first = path.join(root, "主题_图片_20260905-021747-925-a1b2c3.png");
+    fs.writeFileSync(first, Buffer.from("existing"));
+    const allocated = allocateArtifactPath(root, "主题_图片_20260905-021747-925-a1b2c3", ".png");
+    assert.equal(path.basename(allocated), "主题_图片_20260905-021747-925-a1b2c3-2.png");
+    fs.writeFileSync(allocated, Buffer.from("new"));
+    assert.equal(fs.readFileSync(first, "utf8"), "existing");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("saveArtifact 同一时刻同一提示词也生成两个不同路径，旁路文件跟随最终文件", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-web-artifact-save-"));
+  try {
+    initWorkspaceApi({ wsRoot: root });
+    const data = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+    const [a, b] = await Promise.all([
+      saveArtifact({ type: "image", url: data, prompt: "同一个宣传主题" }),
+      saveArtifact({ type: "image", url: data, prompt: "同一个宣传主题" }),
+    ]);
+    assert.notEqual(a, b);
+    const files = fs.readdirSync(path.join(root, "生成物", "图片", localDayStamp())).filter(n => n.endsWith(".png"));
+    assert.equal(files.length, 2);
+    assert.ok(files.every(n => fs.existsSync(path.join(root, "生成物", "图片", localDayStamp(), n.replace(/\.png$/, ".json")))));
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test("looksLikeImageBytes 认 PNG 头，拒 HTML 错误页冒充图片", () => {

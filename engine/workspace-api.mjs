@@ -2,6 +2,7 @@
 // 依赖注入：initWorkspaceApi({ wsRoot })；json/readBody 来自 http-utils，safeJoin 来自 tools/security
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { execFile } from "node:child_process";
 import { json } from "./http-utils.mjs";
 import { safeJoin } from "./tools/security.mjs";
@@ -130,20 +131,64 @@ export function localDayStamp(now = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function artifactBaseName({ prompt = "", now = new Date() } = {}) {
+function artifactSlug(prompt = "") {
   const p = String(prompt || "");
   let slug = "产物";
   if (/小语/.test(p) && /少女|半身像/.test(p)) slug = "小语肖像";
   else {
-    const cleaned = p.replace(/[\\/:*?"<>|\s，。！？、,.]+/g, "").slice(0, 10);
+    const cleaned = p
+      .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "-")
+      .replace(/[\s，。！？、,.]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^[.\-\s]+|[.\-\s]+$/g, "")
+      .slice(0, 32);
     if (cleaned) slug = cleaned;
   }
+  return slug.slice(0, 32) || "产物";
+}
+
+function artifactTypeLabel(type = "") {
+  return type === "image" ? "图片" : type === "video" ? "视频" : type === "audio" ? "音频" : "产物";
+}
+
+function shortArtifactId() {
+  return crypto.randomBytes(4).toString("hex");
+}
+
+export function artifactBaseName({ prompt = "", now = new Date(), uniqueId = shortArtifactId(), type = "" } = {}) {
   const d = now instanceof Date ? now : new Date(now);
-  const stamp = String(d.getHours()).padStart(2, "0")
+  const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}-`
+    + String(d.getHours()).padStart(2, "0")
     + String(d.getMinutes()).padStart(2, "0")
     + String(d.getSeconds()).padStart(2, "0")
     + "-" + String(d.getMilliseconds()).padStart(3, "0");
-  return `${slug}_${stamp}`;
+  const id = String(uniqueId || shortArtifactId()).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 16) || shortArtifactId();
+  return `${artifactSlug(prompt)}_${artifactTypeLabel(type)}_${stamp}-${id}`;
+}
+
+export function artifactFileName({ prompt = "", type = "", now = new Date(), uniqueId = shortArtifactId() } = {}) {
+  const ext = type === "image" ? ".png" : type === "audio" ? ".wav" : type === "video" ? ".mp4" : "";
+  return `${artifactBaseName({ prompt, now, uniqueId, type })}${ext}`;
+}
+
+// 用 wx 原子创建占位文件，避免并发生成在同一毫秒选择同一个路径。
+// 调用方获得路径后负责写入内容；若后续失败，应删除这个占位文件。
+export function allocateArtifactPath(dir, baseName, ext = "") {
+  const cleanBase = String(baseName || "产物").replace(/[\\/:*?"<>|\u0000-\u001f]/g, "-").replace(/[. ]+$/g, "").slice(0, 120) || "产物";
+  const extText = String(ext || "");
+  const cleanExt = !extText ? "" : extText.startsWith(".") ? extText : `.${extText}`;
+  for (let n = 1; n < 10000; n++) {
+    const suffix = n === 1 ? "" : `-${n}`;
+    const candidate = path.join(dir, `${cleanBase}${suffix}${cleanExt}`);
+    try {
+      const fd = fs.openSync(candidate, "wx");
+      fs.closeSync(fd);
+      return candidate;
+    } catch (e) {
+      if (e?.code !== "EEXIST") throw e;
+    }
+  }
+  throw new Error("产物命名空间已满");
 }
 
 export function artifactSidecarPath(filePath) {
@@ -200,20 +245,20 @@ export function readArtifactSidecar(filePath) {
 
 // 媒体产物落盘：远程 URL 下载 / data URL 保存 → 返回本地可访问路径
 export async function saveArtifact(artifact) {
+  let reservedFile = "";
   try {
     const now = new Date();
     const date = localDayStamp(now);
     const typeDir = artifact.type === "image" ? "图片" : artifact.type === "audio" ? "音频" : "视频";
     const dir = path.join(WS_ROOT, "生成物", typeDir, date);
     fs.mkdirSync(dir, { recursive: true });
-    // 精确到毫秒，避免同一分钟连续生成时静默覆盖前一张。
     const ext = artifact.type === "image" ? ".png" : artifact.type === "audio" ? ".wav" : ".mp4";
-    const file = path.join(dir, `${artifactBaseName({ prompt: artifact.prompt, now })}${ext}`);
+    const baseName = artifactBaseName({ prompt: artifact.prompt, now, type: artifact.type });
+    let dataBuf = null;
     if (artifact.url.startsWith("data:")) {
       const b64 = artifact.url.split(",")[1];
-      const dataBuf = Buffer.from(b64, "base64");
+      dataBuf = Buffer.from(b64, "base64");
       if (artifact.type === "image" && !looksLikeImageBytes(dataBuf)) throw new Error("data URL 不是图片");
-      fs.writeFileSync(file, dataBuf);
     } else if (artifact.url.startsWith("http")) {
       // P0 安全修复：SSRF 防护——禁止下载内网/回环地址
       try {
@@ -233,21 +278,27 @@ export async function saveArtifact(artifact) {
       // 响应体大小限制：50MB（防 OOM）
       if (buf.length > 50 * 1024 * 1024) throw new Error(`下载内容超过 50MB 限制`);
       if (artifact.type === "image" && !looksLikeImageBytes(buf)) throw new Error("下载内容不是图片（可能是 HTML 错误页）");
-      fs.writeFileSync(file, buf);
+      dataBuf = buf;
     } else {
       return artifact.url;
     }
-    writeArtifactSidecar(file, { prompt: artifact.prompt, type: artifact.type });
-    console.log(`[元枢] 产物已落盘: ${file}`);
+    reservedFile = allocateArtifactPath(dir, baseName, ext);
+    fs.writeFileSync(reservedFile, dataBuf);
+    writeArtifactSidecar(reservedFile, { prompt: artifact.prompt, type: artifact.type });
+    console.log(`[元枢] 产物已落盘: ${reservedFile}`);
     // 用签名 URL（免鉴权，24h 有效）——img 标签可直接加载，无需带 token
     try {
       const fb = await import("./filebox.mjs");
-      const rel = path.relative(WS_ROOT, file);
+      const rel = path.relative(WS_ROOT, reservedFile);
       return fb.signedUrl(rel);
     } catch {
-      return `/api/ws/file?path=${encodeURIComponent(file)}`;
+      return `/api/ws/file?path=${encodeURIComponent(reservedFile)}`;
     }
   } catch (e) {
+    if (reservedFile) {
+      try { if (fs.existsSync(reservedFile) && fs.statSync(reservedFile).size === 0) fs.unlinkSync(reservedFile); } catch {}
+      try { const sidecar = artifactSidecarPath(reservedFile); if (fs.existsSync(sidecar)) fs.unlinkSync(sidecar); } catch {}
+    }
     console.log(`[元枢] 落盘失败: ${String(e?.message || e).slice(0, 60)}`);
     return artifact.url;
   }
