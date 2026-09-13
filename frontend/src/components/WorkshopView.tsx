@@ -34,6 +34,8 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
   const [themeKey, setThemeKey] = useState('navy')
   const [deck, setDeck] = useState<{ dir: string; pages: DeckPage[] } | null>(null)
   const abortHtmlRef = useRef<(() => void) | null>(null)
+  const [historyLoading, setHistoryLoading] = useState('')
+  const [historyError, setHistoryError] = useState('')
   const history = useSWR('ppt-history', () => WorkshopApi.pptHistory(), { revalidateOnFocus: false })
   const themes = useSWR('ppt-themes', () => WorkshopApi.pptThemes(), { revalidateOnFocus: false })
   const [distillOpen, setDistillOpen] = useState(false)
@@ -54,12 +56,33 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
       append('[提炼失败] ' + (e?.message || String(e)))
     } finally { setDistilling(false) }
   }
-  const loadHistory = async (json: string) => {
+  const loadHistory = async (entry: NonNullable<typeof history.data>['entries'][number]) => {
+    const json = entry.json || ''
+    if (!json || historyLoading) return
+    setHistoryLoading(entry.id); setHistoryError('')
     try {
-      const r = await fetch(withFileToken(`/api/ws/file?path=${encodeURIComponent(json)}`))
-      const doc = await r.json()
-      if (Array.isArray(doc?.slides) && doc.slides.length) setOutline({ jsonPath: json, slides: doc.slides })
-    } catch {}
+      const filePath = entry.file?.path || json
+      const dir = filePath.split('/').slice(0, -1).join('/')
+      // HTML 历史包含顶层数组和 { slides } 两种 deck.json 形态，统一走
+      // gallery 读取器，拿到完整页面 HTML 后回到设计稿预览。
+      if (dir.includes('/ppthtml-')) {
+        const loaded = await WorkshopApi.galleryDeck(dir)
+        if (!loaded.pages?.length) throw new Error('设计稿没有可预览页面')
+        setEngine('html'); setOutline(null); setDeck(loaded)
+        append(`[往期] 已载入设计稿：${entry.theme || entry.id}`)
+        return
+      }
+      const response = await fetch(withFileToken(`/api/ws/file?path=${encodeURIComponent(json)}`))
+      if (!response.ok) throw new Error(`读取历史失败（${response.status}）`)
+      const doc = await response.json()
+      // 兼容旧版经典 PPT：ppt_data.json 是对象，新版/旧版 deck.json 可能直接是数组。
+      const slides = Array.isArray(doc) ? doc : doc?.slides
+      if (!Array.isArray(slides) || !slides.length) throw new Error('历史大纲为空或格式不受支持')
+      setEngine('classic'); setDeck(null); setOutline({ jsonPath: json, slides })
+      append(`[往期] 已载入经典 PPT 大纲：${entry.theme || entry.id}`)
+    } catch (error: any) {
+      setHistoryError(`载入失败：${String(error?.message || error).slice(0, 120)}`)
+    } finally { setHistoryLoading('') }
   }
 
   const pptModel = useWorkshopModel('pi_workshop_model_ppt')
@@ -142,16 +165,20 @@ export default function WorkshopView({ kind }: { kind: Kind }) {
 
       {/* 往期生成（可载入大纲再编辑/重建）*/}
       {(history.data?.entries?.length ?? 0) > 0 && (
-        <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
-          <History className="w-3.5 h-3.5 text-pi-dim2" />
-          <span className="text-pi-dim2">往期：</span>
-          {history.data!.entries.slice(0, 5).map(h => (
-            <button key={h.id} className="px-2 py-1 rounded-pi-pill bg-pi-bg2/60 border border-pi-border-soft text-pi-dim hover:text-pi-text hover:border-pi-accent/40 transition-colors truncate max-w-48"
-              title={h.json ? '载入大纲可再编辑重建' : '无大纲快照'}
-              onClick={() => h.json && loadHistory(h.json)}>
-              {h.theme?.slice(0, 14)}{h.theme?.length > 14 ? '…' : ''}
-            </button>
-          ))}
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+            <History className="w-3.5 h-3.5 text-pi-dim2" />
+            <span className="text-pi-dim2">往期：</span>
+            {history.data!.entries.slice(0, 5).map(h => {
+              const isHtml = String(h.file?.path || h.json || '').includes('/ppthtml-')
+              return <button key={h.id} disabled={!h.json || !!historyLoading} className="px-2 py-1 rounded-pi-pill bg-pi-bg2/60 border border-pi-border-soft text-pi-dim hover:text-pi-text hover:border-pi-accent/40 transition-colors truncate max-w-48 disabled:opacity-50"
+                title={h.json ? (isHtml ? '载入设计稿预览' : '载入大纲可再编辑重建') : '无大纲快照'}
+                onClick={() => h.json && loadHistory(h)}>
+                {historyLoading === h.id ? '载入中…' : <>{h.theme?.slice(0, 14)}{h.theme?.length > 14 ? '…' : ''}</>}
+              </button>
+            })}
+          </div>
+          {historyError && <div className="text-[11px] text-pi-red px-1" role="alert">{historyError}</div>}
         </div>
       )}
 
