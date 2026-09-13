@@ -38,8 +38,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [currentModel, setCurModel] = useState(() => { try { return localStorage.getItem('pi_model') || 'auto/auto' } catch { return 'auto/auto' } })
   const [currentSessionId, setCurSid] = useState<string | null>(null)
 
-  // ── SWR 数据层：初次加载后保持稳定，避免手机回到前台时整页闪屏。
-  // 模型和会话的变更由明确动作（新建/删除/结束任务）调用 refresh* 同步。
+  // ── SWR 数据层：跨端/跨标签页以服务端为准。
+  // 仅靠显式动作会让另一端新建的会话在当前端长期不可见，因此恢复焦点或网络时重验。
   const { data: modelsData } = useSWR(authed ? 'models' : null, fetchers.models, {
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
@@ -47,8 +47,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     onErrorRetry: (retry) => setTimeout(retry, 8000),
   })
   const { data: sessionsData } = useSWR(authed ? 'sessions' : null, fetchers.sessions, {
-    revalidateOnFocus: false,
-    revalidateOnReconnect: false,
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
     dedupingInterval: 3000,
     onErrorRetry: (retry) => setTimeout(retry, 8000),
   })

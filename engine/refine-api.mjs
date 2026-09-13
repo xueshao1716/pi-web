@@ -9,6 +9,17 @@ import * as emotion from "./emotion.mjs";
 let _cwd = "";
 export function initRefineApi({ cwd = "" } = {}) { _cwd = cwd; }
 
+// 将 Python/上游错误压成可操作的中文提示，避免把无关堆栈直接展示给用户。
+export function formatRefineError(raw) {
+  const text = String(raw || "").trim();
+  if (/\b402\b|Payment Required|insufficient balance|余额不足|quota/i.test(text)) return "上游模型额度不足（HTTP 402）。已确认 DeepSeek 当前不可用，请补充额度或切换可用模型后重试。";
+  if (/\b401\b|Unauthorized|invalid.*key|认证/i.test(text)) return "上游模型认证失败（HTTP 401）。请检查模型凭证。";
+  if (/timed? ?out|timeout|超时/i.test(text)) return "上游模型请求超时。请稍后重试或切换模型。";
+  if (/ENOTFOUND|ECONNRESET|ECONNREFUSED|URLError|网络/i.test(text)) return "上游模型网络不可达。请检查代理、域名和本机网络后重试。";
+  const last = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean).pop();
+  return (last || "经验沉淀生成失败").slice(0, 240);
+}
+
 // ══ 经验沉淀台（refine 提案制，Prime Agent 移植）══
 // 工具：工具/refine_proposal.py（plan/list/approve --only/reject/rollback/status）
 // ⚠️ 路径必须用函数延迟求值：_cwd 由 initRefineApi 在运行时注入，若顶层用 const 立即求值，
@@ -165,7 +176,7 @@ export async function handleRefinePlan(res, body) {
   if (body?.dryRun) args.push("--dry-run");
   if (body?.instructions) args.push("--instructions", String(body.instructions));
   const r = await runRefineScript(args, 240000);
-  if (r.code !== 0) return json(res, 500, { error: r.err || r.out || `python exit ${r.code}` });
+  if (r.code !== 0) return json(res, 502, { error: formatRefineError(r.err || r.out || `python exit ${r.code}`), detail: r.err ? String(r.err).slice(-500) : undefined });
   const data = readRefineJson(REFINE_PROPOSALS(), { pending: [], applied: [], rejected: [] });
   const latest = data.pending?.length ? data.pending[data.pending.length - 1] : null;
   json(res, 200, { ok: true, latest, count: data.pending.length, log: r.out.slice(-600) });

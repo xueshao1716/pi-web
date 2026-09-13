@@ -59,6 +59,7 @@ export default function SessionDb() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState('')
+  const [sortMode, setSortMode] = useState<'recent' | 'oldest' | 'seq-asc' | 'seq-desc'>('recent')
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null)
@@ -134,10 +135,17 @@ export default function SessionDb() {
     else toast('删除失败', 'error')
   }
 
-  const visible = useMemo(() => rows
-    .filter(r => (!filter || r.health === filter) && (!q || r.name.toLowerCase().includes(q.toLowerCase()) || String(r.seq || '').includes(q)))
-    .sort(compareRows),
-    [rows, q, filter])
+  const visible = useMemo(() => {
+    const filtered = rows.filter(r => (!filter || r.health === filter) && (!q || r.name.toLowerCase().includes(q.toLowerCase()) || String(r.seq || '').includes(q)))
+    return filtered.sort((a, b) => {
+      const pinned = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)
+      if (pinned) return pinned
+      if (sortMode === 'seq-asc') return (a.seq || Number.MAX_SAFE_INTEGER) - (b.seq || Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id)
+      if (sortMode === 'seq-desc') return (b.seq || 0) - (a.seq || 0) || a.id.localeCompare(b.id)
+      const byTime = rowTime(b) - rowTime(a)
+      return (sortMode === 'oldest' ? -byTime : byTime) || a.id.localeCompare(b.id)
+    })
+  }, [rows, q, filter, sortMode])
 
   const hcls = (h: string) => HEALTH[h]?.cls || HEALTH.ok.cls
 
@@ -166,6 +174,12 @@ export default function SessionDb() {
             <option value="ok">正常</option>
             <option value="large">偏大</option>
             <option value="oversized">超限</option>
+          </select>
+          <select value={sortMode} onChange={e => setSortMode(e.target.value as typeof sortMode)} aria-label="会话排序方式" className="input-pi !py-1.5 text-[13px] w-32">
+            <option value="recent">最近更新</option>
+            <option value="oldest">最早更新</option>
+            <option value="seq-asc">编号升序</option>
+            <option value="seq-desc">编号降序</option>
           </select>
           <button onClick={rebuild} disabled={busy} className="btn-ghost text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
             <RefreshCw className={`w-3.5 h-3.5 ${busy ? 'animate-spin' : ''}`} />重建索引

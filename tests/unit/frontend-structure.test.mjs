@@ -110,6 +110,24 @@ test('前端收到会话已更新事件后立即刷新会话列表', () => {
   assert.doesNotMatch(chat.match(/case 'session_updated':[\s\S]*?case 'completed':/)?.[0] || '', /mutateMsgs\(\)/, '流式收尾前不能刷新消息正文，避免和实时 assistant 重复')
 })
 
+test('跨端切回前台后必须刷新当前会话正文，并恢复 SWR 焦点/重连同步', () => {
+  const chat = read('components', 'ChatArea.tsx')
+  const store = read('store.tsx')
+  assert.match(chat, /visibilitychange[\s\S]*?mutateMsgs\(\)/, '切回前台必须刷新当前会话消息')
+  assert.match(chat, /revalidateOnFocus:\s*true/, '当前会话消息需允许焦点重验证')
+  assert.match(chat, /revalidateOnReconnect:\s*true/, '当前会话消息需允许断线重连重验证')
+  assert.match(store, /revalidateOnFocus:\s*true/, '会话目录需允许焦点重验证')
+  assert.match(store, /revalidateOnReconnect:\s*true/, '会话目录需允许断线重连重验证')
+})
+
+test('会话库必须提供显式时间/编号排序入口', () => {
+  const page = read('pages', 'SessionDb.tsx')
+  assert.ok(page.includes('sortMode'), '会话库需要保存排序模式')
+  assert.ok(page.includes('最近更新'), '会话库需要提供最近更新排序')
+  assert.ok(page.includes('最早更新'), '会话库需要提供最早更新排序')
+  assert.ok(page.includes('编号'), '会话库需要提供编号排序')
+})
+
 
 test('后端提交聊天记录后同时广播会话更新事件，支持其他前端实例同步', () => {
   const server = readFileSync(join(ROOT, 'server.mjs'), 'utf8')

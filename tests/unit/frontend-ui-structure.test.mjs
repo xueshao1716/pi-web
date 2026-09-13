@@ -8,13 +8,13 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const SRC = join(ROOT, 'frontend', 'src')
 const read = (...parts) => readFileSync(join(SRC, ...parts), 'utf8')
 
-test('聊天与首页数据层不因焦点切换自动整页重载，外部事件只在提交边界同步', () => {
+test('聊天与首页数据层只在恢复时增量同步，避免整页重载', () => {
   const store = read('store.tsx')
   const chat = read('components', 'ChatArea.tsx')
 
-  assert.match(store, /revalidateOnFocus:\s*false/, '全局模型/会话缓存失焦恢复时不得自动整页重拉')
-  assert.match(store, /revalidateOnReconnect:\s*false/, '全局模型/会话缓存断线恢复时不得自动整页重拉')
-  assert.match(chat, /revalidateOnFocus:\s*false/, '长会话切回前台不得自动重取并替换整段消息')
+  assert.match(store, /const \{ data: modelsData \} = useSWR[\s\S]*?revalidateOnFocus:\s*false/, '模型配置不因焦点切换整页重拉')
+  assert.match(store, /const \{ data: sessionsData \} = useSWR[\s\S]*?revalidateOnFocus:\s*true/, '会话目录恢复焦点时应增量重验')
+  assert.match(chat, /revalidateOnFocus:\s*true/, '当前会话恢复焦点时应增量重验')
   assert.ok(chat.includes('let primed = false') || chat.includes('primed = false'), '打开会话必须等 subscribed 再同步，避免重放 session_updated 触发第二次整段 /messages')
   assert.ok(chat.includes("event?.type === 'message' || event?.type === 'turn_end' || event?.type === 'session_updated'"), '会话同步只应在新消息或轮次结束边界触发')
   assert.ok(chat.includes('if (!primed) return') || chat.includes('if (!primed)'), '重放阶段不得 mutateMsgs')
@@ -378,7 +378,7 @@ test('会话库使用公共页头，并为桌面表格和移动卡片提供等�
 test('会话库客户端排序以更新时间为主，编号只做最终稳定兜底', () => {
   const sessionDb = read('pages', 'SessionDb.tsx')
   assert.match(sessionDb, /updatedAt/, '会话库行数据必须保留更新时间')
-  assert.ok(sessionDb.includes('function rowTime') && sessionDb.includes('.sort(compareRows)'), '会话库必须按更新时间排序')
+  assert.ok(sessionDb.includes('function rowTime') && sessionDb.includes('.sort((a, b) =>'), '会话库必须按更新时间排序')
   assert.doesNotMatch(sessionDb, /\.sort\(\(a, b\) => \(b\.pinned \? 1 : 0\) - \(a\.pinned \? 1 : 0\) \|\| \(b\.seq/, '会话库不得再按编号主导排序')
 })
 

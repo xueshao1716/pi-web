@@ -124,12 +124,11 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
   const assistantMsgIdRef = useRef<string | null>(null) // 本轮 assistant 消息的固定 id，流式期间快照与最终写入用同一 id（避免重复）
   const wasBackgroundRef = useRef(false) // 本轮流式期间是否曾去过后台（哪怕又切回来了），放宽通知触发条件用
 
-  // ── 消息缓存：长会话不跟随窗口焦点整段重载，避免回到 App 时闪屏。
-  // 手动下拉、当前 Run 完成、其他端真正完成一轮时才同步。
+  // ── 消息缓存：正常阅读不反复重载；跨端切回、断线重连时允许 SWR 取最新正文。
   const msgKey = currentSessionId ? ['messages', currentSessionId] : null
   const { data: msgData, isLoading, mutate: mutateMsgs } = useSWR(msgKey,
     ([, sid]: readonly [string, string]) => SessionsApi.messages(sid, { tail: 80 }),
-    { revalidateOnFocus: false, revalidateOnReconnect: false, dedupingInterval: 3000 })
+    { revalidateOnFocus: true, revalidateOnReconnect: true, dedupingInterval: 3000 })
   const { state: emoState, meta: emoMetaLive, publishEmotion } = useXiaoyuEmotion()
   // ── 本地消息存储：从 IndexedDB 加载，与服务端数据合并 ──
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>([])
@@ -244,20 +243,23 @@ export default function ChatArea({ compactHeader, rightPanel, onRightPanel }: {
     }
   }
 
-  // 手机息屏恢复只更新会话目录；消息正文保持阅读位置，用户可下拉主动刷新。
-  // 流式 Run 本身由持久化事件游标恢复，不依赖整段 messages 重取。
+  // 手机息屏/切到另一端后恢复：先落盘本端流缓冲，再同时刷新目录与当前正文。
+  // 流式 Run 仍由持久化事件游标恢复；正在流式时不拉整段正文，避免覆盖实时草稿。
   useEffect(() => {
     let hiddenAt = 0
     const onVis = () => {
       if (document.hidden) { hiddenAt = Date.now(); if (streamRef.current) wasBackgroundRef.current = true; return }
       // 息屏恢复：先把组装器缓冲强制落盘，再刷新会话目录（旧版 flushNow 行为）
       asmRef.current?.flushNow()
-      if (hiddenAt && Date.now() - hiddenAt > 10_000) refreshSessions()
+      if (hiddenAt && Date.now() - hiddenAt > 1_000 && !streamRef.current) {
+        void mutateMsgs()
+        void refreshSessions()
+      }
       hiddenAt = 0
     }
     document.addEventListener('visibilitychange', onVis)
     return () => document.removeEventListener('visibilitychange', onVis)
-  }, [refreshSessions])
+  }, [mutateMsgs, refreshSessions])
 
   const pull = usePullToRefresh(async () => {
     await mutateMsgs()
