@@ -57,18 +57,24 @@ export function mergeBeatContext(project, scene, beat) {
   const prompts = [];
   const references = [];
   const visited = new Set();
+  const previousOutputs = [];
   let current = beat;
   while (current) {
     if (visited.has(current.id)) throw new Error('beat 继承链存在循环');
     visited.add(current.id);
     if (current.prompt) prompts.unshift(String(current.prompt).trim());
+    if (current.id !== beat.id) {
+      const output = [...(scene.outputs || [])].reverse().find(run => run.beatId === current.id && ['succeeded', 'degraded'].includes(run.status) && run.outputAssets?.length);
+      const prose = output?.outputAssets.filter(asset => asset.type === 'text' && asset.text).map(asset => asset.text).join('\n');
+      if (prose) previousOutputs.unshift(prose.slice(-12000));
+    }
     for (const ref of (current.references || [])) {
       const id = typeof ref === 'string' ? ref : ref?.id;
       if (id && !references.includes(id)) references.unshift(id);
     }
     current = current.inheritFromBeatId ? findBeat(scene, current.inheritFromBeatId) : null;
   }
-  return { prompt: prompts.filter(Boolean).join('\n'), referenceIds: references, bible: project?.bible || BIBLE() };
+  return { prompt: [...prompts.filter(Boolean), ...(previousOutputs.length ? ['## 已生成前文（承接结尾，推进新情节，不重复开场）', ...previousOutputs.slice(-3)] : [])].join('\n'), referenceIds: references, bible: project?.bible || BIBLE() };
 }
 
 function projectRoot(root) { return path.join(root, 'story-projects'); }

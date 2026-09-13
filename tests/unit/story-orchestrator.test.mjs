@@ -6,6 +6,19 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+test('preview is read-only and a continuing novel receives the actual previous prose', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-continuity-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const project = createProject({title:'连续测试',scenes:[{id:'s',beats:[{id:'b1',kind:'novel',prompt:'开端',references:[]},{id:'b2',kind:'novel',prompt:'继续',inheritFromBeatId:'b1',references:[]}],outputs:[{id:'r0',beatId:'b1',status:'succeeded',outputAssets:[{id:'text0',type:'text',text:'她把钥匙藏进蓝色信封。'}]}]}]}, {id:()=> 'p'});
+  await writeProject(root, project);
+  let prompt;
+  const api=createStoryOrchestrator({root,adapters:{novel:{generate:async input=>{prompt=input.prompt;return {status:'succeeded',output:{type:'text',text:'续文'}}}}}});
+  await api.previewRun('p',{sceneId:'s',beatId:'b2',kind:'novel'});
+  assert.equal((await api.get('p')).scenes[0].outputs.length,1,'preview must not create fake queued jobs');
+  await api.runGeneration('p',{sceneId:'s',beatId:'b2',kind:'novel'});
+  assert.match(prompt,/她把钥匙藏进蓝色信封/);
+});
+
 test('negotiateCapabilities reports unsupported reference and seed', () => {
   const r = negotiateCapabilities({ reference: true, keyframe: false, seed: true }, { reference: false, keyframe: false, seed: false });
   assert.deepEqual(r.degradation, ['reference: 当前模型不支持参考资产', 'seed: 当前模型不支持固定 seed']);
@@ -35,6 +48,18 @@ test('runGeneration executes adapter and persists output with status', async () 
   assert.equal(result.run.status, 'succeeded');
   assert.equal(result.run.outputAssets[0].type, 'text');
   assert.equal(result.project.scenes[0].outputs[0].status, 'succeeded');
+});
+
+test('unexpected adapter failure finishes and records a failed run instead of leaving it running', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-story-error-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const api=createStoryOrchestrator({root,adapters:{novel:{generate:async()=>{throw new Error('通道中断')}}}});
+  const p=await api.create({title:'临时错误测试',scenes:[{id:'s',beats:[{id:'b',kind:'novel',prompt:'开场',references:[]}],outputs:[]}]});
+  const result=await api.runGeneration(p.id,{sceneId:'s',beatId:'b',kind:'novel'});
+  assert.equal(result.run.status,'failed');
+  assert.ok(result.run.finishedAt);
+  assert.ok(result.run.degradation.includes('通道中断'));
+  assert.equal((await api.get(p.id)).scenes[0].outputs[0].status,'failed');
 });
 
 test('runGeneration selects a capable image model when auto is requested', async () => {

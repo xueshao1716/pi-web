@@ -95,6 +95,8 @@ function Attachments({ msg }: { msg: ChatMessage }) {
   const videos = dedupeMediaUrls(msg.videos?.length ? msg.videos : scrapeVideos(msg.text || ''))
   const [downloading, setDownloading] = useState<string | null>(null)
   const [failed, setFailed] = useState<Record<string, boolean>>({})
+  const [downloadStatus, setDownloadStatus] = useState<Record<string, string>>({})
+  const [downloadErrors, setDownloadErrors] = useState<Record<string, boolean>>({})
   const videoName = (url: string, index: number) => {
     try {
       const raw = decodeURIComponent(url.split('?path=')[1]?.split('&')[0] || '')
@@ -106,10 +108,15 @@ function Attachments({ msg }: { msg: ChatMessage }) {
   const downloadVideo = async (url: string, index: number) => {
     if (downloading) return
     setDownloading(url)
+    setDownloadErrors(state => ({ ...state, [url]: false }))
+    const report = (message: string) => setDownloadStatus(state => ({ ...state, [url]: message }))
     try {
       const path = url.includes('/api/ws/file') && !url.includes('download=') ? `${url}&download=1` : url
-      await downloadApiFile(path, videoName(url, index))
-    } catch { /* 下载中心会记录成功；失败由浏览器/客户端自身提示 */ }
+      report(await downloadApiFile(path, videoName(url, index), report))
+    } catch (error: any) {
+      setDownloadErrors(state => ({ ...state, [url]: true }))
+      report(error?.message === 'Failed to fetch' ? '无法获取视频，请检查连接；也可打开原文件保存' : error?.message || '下载未完成，请重试')
+    }
     finally { setDownloading(null) }
   }
   return (
@@ -127,11 +134,13 @@ function Attachments({ msg }: { msg: ChatMessage }) {
           <video controls playsInline preload="metadata" src={withFileToken(url)} onError={() => setFailed(state => ({ ...state, [url]: true }))} className="w-full aspect-video rounded-pi-lg border border-pi-border-soft bg-black" />
           <div className="mt-1.5 flex items-center justify-between gap-2">
             <span className="min-w-0 truncate text-[11px] text-pi-dim2">{failed[url] ? '视频暂时无法播放，可直接下载原文件' : videoName(url, index)}</span>
-            <button type="button" className="btn-tool inline-flex shrink-0 items-center gap-1.5 px-2.5" onClick={() => downloadVideo(url, index)} disabled={downloading === url} aria-label={`下载${videoName(url, index)}`} title="下载视频">
+            <button type="button" className="btn-tool inline-flex min-h-11 shrink-0 items-center gap-1.5 px-2.5" onClick={() => downloadVideo(url, index)} disabled={Boolean(downloading)} aria-label={`下载${videoName(url, index)}`} title="下载视频">
               {downloading === url ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
               <span className="text-[11px]">{downloading === url ? '保存中…' : '下载视频'}</span>
             </button>
           </div>
+          {downloadStatus[url] && <div role={downloadErrors[url] ? 'alert' : 'status'} className={`mt-2 text-xs leading-relaxed ${downloadErrors[url] ? 'text-pi-danger' : 'text-pi-dim'}`}>{downloadStatus[url]}</div>}
+          {downloadStatus[url] && !downloading && <div className="flex flex-wrap gap-4 text-xs text-pi-accent"><a className="inline-flex min-h-11 items-center underline" href={withFileToken(url.includes('/api/ws/file') ? `${url}&download=1` : url)} download={videoName(url, index)} target="_blank" rel="noopener noreferrer">打开原文件保存</a><a className="inline-flex min-h-11 items-center" href="#/downloads">查看下载记录</a></div>}
         </div>
       ))}
       {msg.files?.map((f, i) => (

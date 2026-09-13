@@ -2,6 +2,7 @@ import type { Model, Session, ChatMessage, SessionMessages, Artifact, AssetDeliv
 import { parseSseBlocks, type RunEvent, type RunStatus } from './lib/run-events'
 import { rememberDownload } from './lib/downloads'
 import { saveNativeDownload } from './lib/native-download'
+import { fileAccess } from './lib/file-access'
 import type { WorkExplanationData } from './lib/work-explanation'
 
 // ── 本地鉴权 ──
@@ -53,27 +54,31 @@ export function webSocketUrl(path: string): string {
 
 // 文件 URL 补 token（<img>/<audio>/<video> 标签带不了 Authorization 头，服务端 checkAuth 接受 ?token=）
 export function withFileToken(url: string): string {
-  if (!url || !url.includes('/api/ws/file') || url.includes('sig=') || url.includes('token=')) return url
-  const sep = url.includes('?') ? '&' : '?'
-  return `${apiUrl(url)}${sep}token=${encodeURIComponent(_token)}`
+  if (!url || !url.includes('/api/ws/file')) return url
+  return fileAccess(url, getApiBase(), _token).url
 }
 
 /** Download a non-JSON API/file response with the current local token. */
-export async function downloadApiFile(path: string, filename?: string): Promise<void> {
-  const response = await fetch(apiUrl(path), { headers: { Authorization: `Bearer ${_token}` } })
+export async function downloadApiFile(path: string, filename?: string, onProgress?: (message: string) => void): Promise<string> {
+  onProgress?.('正在获取文件…')
+  const access = fileAccess(path, getApiBase(), _token, true)
+  const response = await fetch(access.url, { headers: access.headers, signal: AbortSignal.timeout(180000) })
   if (!response.ok) {
     if (response.status === 401) { try { window.dispatchEvent(new Event('pi-unauthorized')) } catch {} }
-    throw new Error(`HTTP ${response.status}`)
+    const data = await response.json().catch(() => null)
+    throw new Error(data?.error || (response.status === 404 ? '原文件已不存在，请重新生成或从资产库查找' : `下载失败（HTTP ${response.status}）`))
   }
   const blob = await response.blob()
   const disposition = response.headers.get('content-disposition') || ''
   const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
   const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1]
   const resolvedName = filename || (encoded ? decodeURIComponent(encoded) : plain) || 'download'
+  if (!blob.size) throw new Error('文件为空，请重新生成')
+  onProgress?.('文件已就绪，正在打开保存位置…')
   const nativeSave = await saveNativeDownload(blob, resolvedName)
   if (nativeSave) {
     rememberDownload({ name: resolvedName, url: path, size: blob.size, sourcePath: path, createdAt: new Date().toISOString(), ...nativeSave })
-    return
+    return `已保存到${nativeSave.location}`
   }
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -83,8 +88,9 @@ export async function downloadApiFile(path: string, filename?: string): Promise<
   document.body.appendChild(link)
   link.click()
   link.remove()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  window.setTimeout(() => URL.revokeObjectURL(url), 60000)
   rememberDownload({ name: resolvedName, url: path, size: blob.size, sourcePath: path, createdAt: new Date().toISOString() })
+  return '已交给浏览器下载；若未弹出，请点击“打开原文件保存”'
 }
 
 const TIMEOUT = 30000

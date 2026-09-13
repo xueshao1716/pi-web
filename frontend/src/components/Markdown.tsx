@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { highlightCode, highlightAuto } from '../lib/highlight'
 import GenUIBlock from './GenUI'
 import SafeBlock from './SafeBlock'
+import FileLink from './FileLink'
 
 // 降级纯文本块：自定义渲染失败时的统一兜底
 function PlainFallback({ content, className }: { content: string; className?: string }) {
@@ -89,7 +90,7 @@ export default function Markdown({ text }: { text: string }) {
             }
             return <code className="bg-gray-800 rounded px-1.5 py-0.5 text-[13px]" {...props}>{children}</code>
           },
-          a({ children, href }) { return <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--pi-accent2)" }} className="hover:underline">{children}</a> },
+          a({ children, href }) { return <FileLink href={href}>{children}</FileLink> },
           table({ children }) { return <div className="overflow-x-auto my-2"><table className="w-full border-collapse">{children}</table></div> },
           th({ children }) { return <th className="border border-gray-700 px-3 py-1.5 bg-gray-800/50 font-semibold text-left">{children}</th> },
           td({ children }) { return <td className="border border-gray-700 px-3 py-1.5">{children}</td> },

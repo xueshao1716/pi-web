@@ -83,10 +83,8 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       if (!scene || !beat) throw Object.assign(new Error('sceneId 或 beatId 不存在'), { statusCode: 400 });
       const context = mergeBeatContext(project, scene, beat);
       const run = createGenerationRun({ ...input, projectId: id, sceneId: scene.id, beatId: beat.id, inputAssets: input?.inputAssets || context.referenceIds.map(assetId => ({ id: assetId, role: 'reference' })) }, clock);
-      appendRun(scene, run);
-      project.updatedAt = (clock.now || nowIso)();
-      await writeProject(root, project);
-      return { project, run, context };
+      const compiled = compileStoryPrompt({ bible: project.bible, scene, beat, inherited: context });
+      return { project, run, context: { ...compiled, prompt: compiled.text } };
     },
     runGeneration: async (id, input = {}) => {
       const project = await readProject(root, id);
@@ -111,7 +109,9 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
         await writeProject(root, project);
         return { project, run, context: compiled };
       }
-      const result = await adapter.generate({ prompt: compiled.text, model, seed: run.seed, params: run.params, references: compiled.referenceIds });
+      let result;
+      try { result = await adapter.generate({ prompt: compiled.text, model, seed: run.seed, params: run.params, references: compiled.referenceIds }); }
+      catch (error) { result = { status: 'failed', error: String(error?.message || error).slice(0, 300) }; }
       if (result?.output) run.outputAssets = [{ id: `${run.id}-output`, role: 'output', ...result.output }];
       if (result?.status === 'succeeded') run.status = run.degradation?.length ? 'degraded' : 'succeeded';
       else { run.status = 'failed'; run.degradation = [...(run.degradation || []), result?.error || '生成失败']; }
