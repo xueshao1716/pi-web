@@ -3,14 +3,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { initModelRouter, classifyTaskComplexity, routeForAuto, routeProCandidate, isAutoModel, isOcGoBlocked, markOcGoBlocked, ocGoCandidate, pickFallbackDefault, markModelBlocked, isModelBlocked, resetModelHealth, pickFallbackExcluding, markSticky, routeSticky } from "../../engine/model-router.mjs";
 
-// 构造假模型池（2026-08-20 链路：商汤主力 / nvidia 换 llama / 千问已下架移除）
+// 构造假模型池（2026-09-10 链路：agnes 主力 / 商汤小米 nvidia 兜底 / ark 已下架移除）
 const makePool = () => [
+  { provider: "agnes", id: "agnes-3.0-flash" },
+  { provider: "agnes", id: "agnes-2.5-flash" },
   { provider: "sensenova", id: "sensenova-6.7-flash-lite" },
   { provider: "xiaomi-token-plan-cn", id: "mimo-v2.5" },
   { provider: "xiaomi-token-plan-cn", id: "mimo-v2.5-pro" },
   { provider: "opencode-go", id: "deepseek-v4-flash" },
   { provider: "opencode-go", id: "deepseek-v4-pro" },
-  { provider: "volces-ark", id: "ark-code-latest" },
   { provider: "nvidia", id: "meta/llama-3.1-8b-instruct" },
 ];
 let pool = makePool();
@@ -48,6 +49,7 @@ test("429 标记: ocGo 被隔离后 pro 候选回落", () => {
   const pro = routeProCandidate();
   assert.ok(pro, "应有 pro 候选");
   assert.notEqual(pro.provider, "opencode-go", "429 期间 pro 不该是 ocGo");
+  assert.notEqual(pro.provider, "volces-ark", "ark 已下架不应出现");
   console.log(`  [429] pro 候选→${pro.provider}/${pro.id}`);
 });
 
@@ -66,15 +68,14 @@ test("健康冷却: 商汤主力 403 → flash 自动绕开，落到下一顺位
   const chosen = `${r.model.provider}/${r.model.id}`;
   console.log(`  [403] 商汤冷却后 simple→${chosen}`);
   assert.notEqual(chosen, "sensenova/sensenova-6.7-flash-lite", "403 的商汤应被绕开");
-  assert.equal(chosen, "xiaomi-token-plan-cn/mimo-v2.5", "落到免费链下一顺位 mimo（2026-08-21 主力升级）");
+  assert.equal(chosen, "agnes/agnes-2.5-flash", "落到 flash 链首顺位 agnes（2026-09-04 agnes 主力）");
 });
 
 test("健康冷却: pro 链同样过滤冷却模型", () => {
   markOcGoBlocked("test"); // ocGo 整体冷却
-  const ark = pool.find((m) => m.provider === "volces-ark");
-  markModelBlocked(ark, { reason: "HTTP 429" });
-  const pro = routeProCandidate(); // ocGo 冷却 + ark 冷却 → 无 pro 可用
-  assert.equal(pro, undefined, "ocGo 429 + ark 冷却 → 无 pro 可用");
+  const pro = routeProCandidate(); // ocGo 冷却后应回落 agnes（ark 已下架）
+  assert.ok(pro, "ocGo 冷却后仍有 pro 候选（agnes）");
+  assert.equal(pro.provider, "agnes", "pro 回落应为 agnes");
 });
 
 test("排除兜底: pickFallbackExcluding 绝不返回被排除的模型", () => {
@@ -83,22 +84,22 @@ test("排除兜底: pickFallbackExcluding 绝不返回被排除的模型", () =>
   if (fb) assert.notEqual(`${fb.provider}/${fb.id}`, "sensenova/sensenova-6.7-flash-lite", "兜底不可回到被排除模型");
 });
 
-test("健康冷却: resetModelHealth 清零后 mimo 恢复主力", () => {
+test("健康冷却: resetModelHealth 清零后 agnes 恢复主力", () => {
   resetModelHealth();
   assert.equal(isModelBlocked(pool[0]), false);
   const r = routeForAuto("你好");
-  assert.equal(`${r.model.provider}/${r.model.id}`, "sensenova/sensenova-6.7-flash-lite");
+  assert.equal(`${r.model.provider}/${r.model.id}`, "agnes/agnes-2.5-flash");
 });
 
 // ── 会话粘性路由（2026-08-24） ──
 test("粘性: simple 轮 10min 内沿用上轮 pro，不降档", () => {
   resetModelHealth();
   const sess = "sticky-001";
-  const ark = pool.find(m => m.provider === "volces-ark");
-  markSticky(sess, ark, 10 * 60 * 1000);
+  const proModel = pool.find(m => m.provider === "opencode-go" && m.id === "deepseek-v4-pro");
+  markSticky(sess, proModel, 10 * 60 * 1000);
   const r = routeForAuto("你好", sess);
   assert.ok(r.reasons.join(",").includes("会话粘性"), "应命中粘性");
-  assert.equal(r.model.id, ark.id, "应沿用 pro(ark) 不降档");
+  assert.equal(r.model.id, proModel.id, "应沿用 pro 不降档");
 });
 
 test("粘性不防升级: 10min 内复杂任务照样升 pro", () => {
@@ -108,7 +109,11 @@ test("粘性不防升级: 10min 内复杂任务照样升 pro", () => {
   markSticky(sess, mimo, 10 * 60 * 1000);
   const r = routeForAuto("请重构整个项目的架构，设计跨模块缓存策略，编写单元测试", sess);
   assert.equal(r.level, "complex");
-  assert.equal(r.model.provider, "opencode-go", "复杂任务应升级到 pro");
+  assert.notEqual(r.model.id, mimo.id, "复杂任务应升级离开粘性的 flash 模型");
+  assert.ok(
+    r.model.provider === "agnes" || r.model.provider === "opencode-go",
+    "应升到 pro 链成员（agnes 或 ocGo），实际: " + r.model.provider
+  );
 });
 
 test("粘性过期: routeSticky 窗口过期后返回 null", () => {
@@ -133,17 +138,18 @@ test("粘性清理: 粘性命中的模型被标记冷却后自动失效", () => 
   assert.equal(hit, null, "粘性命中模型被冷却后应返回 null 并清理");
 });
 
-// ── pro 不可用真实回落（ocGo+ark 全凉） ──
+// ── pro 不可用真实回落（ocGo 冷却 + agnes 全冷却） ──
 test("复杂任务: pro 全不可用时回落到 flash 并播报真实原因", () => {
   resetModelHealth();
   markOcGoBlocked("ocGo 429");
-  const ark = pool.find(m => m.provider === "volces-ark");
-  markModelBlocked(ark, { reason: "ark 429" });
+  // ark 已下架；agnes 两条全冷却模拟 pro 链全凉
+  markModelBlocked(pool.find(m => m.provider === "agnes" && m.id === "agnes-3.0-flash"), { reason: "429" });
+  markModelBlocked(pool.find(m => m.provider === "agnes" && m.id === "agnes-2.5-flash"), { reason: "429" });
   const r = routeForAuto("请重构整个项目的架构，设计跨模块缓存策略");
   assert.equal(r.level, "complex");
   assert.ok(r.reasons.some(x => x.includes("pro 暂不可用") || x.includes("回落主力模型")), "reasons 应说明真实原因");
   assert.notEqual(r.model.provider, "opencode-go", "回落模型不应当是 ocGo");
-  assert.notEqual(r.model.provider, "volces-ark", "回落模型不应当是 ark");
+  assert.notEqual(r.model.provider, "agnes", "agnes 已冷却不应再选");
   console.log("  [pro 回落] → " + r.model.provider + "/" + r.model.id);
 });
 

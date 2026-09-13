@@ -89,7 +89,6 @@ export function pickFallbackDefault() {
     || findLive("agnes", /3\.0-flash/i)
     || findLive("sensenova", /flash-lite/i)
     || findLive("nvidia", /llama-3\.1-8b/i)
-    || findLive("volces-ark", /ark-code/i)
     || defaultModel; // 全部冷却时仍返回 defaultModel（宁可重试已知模型，不可无模型可用）
 }
 
@@ -106,7 +105,6 @@ export function pickFallbackExcluding(excludeModel) {
     findLive("zai-coding-cn", /glm-5\.3-flash/i),
     findLive("xiaomi-token-plan-cn", /mimo-v2\.5$/i),
     findLive("nvidia", /llama-3\.1-8b/i),
-    findLive("volces-ark", /ark-code/i),
   ].filter(Boolean).filter(m => modelKey(m) !== excludeKey);
   if (cands[0]) return cands[0];
   const fb = pickFallbackDefault();
@@ -155,21 +153,19 @@ function flashCandidate() {
     || findLive("xiaomi-token-plan-cn", /mimo-v2\.5$/i)
     || ocGoCandidate(/deepseek-v4-flash/i)
     || findLive("nvidia", /llama-3\.1-8b/i)
-    || findLive("volces-ark", /ark-code/i)
     || pickFallbackDefault();
 }
 // pro 候选（复杂任务 / NEEDS_PRO 升级共用）：
 // ⚠️ 2026-08-19 修正：千问不再作为 pro（它已是 flash 主力）——否则"升级"是假升级。
-//   真 pro = ocGo deepseek-v4-pro（8/23 套餐恢复后）→ ark（thinking 空回复，末位）。（mimo-pro 已摘除）
+//   真 pro = ocGo deepseek-v4-pro（8/23 套餐恢复后）。（mimo-pro 已摘除）
+// 2026-09-10：agnes-2.5-pro 首位摘除（cpk key 无 pro，每次先试再失败）；volces-ark 下架（用户定）
 export function routeProCandidate() {
   // 用户定（2026-09-04）：Agnes 旗舰首选 pro；09-04 晚换 cpk 新 key（TokenPlan 套餐）后无 pro，
   // 降级到 agnes-2.5-flash 顶 pro 位（仍是 Agnes 优先），ocGo 套餐随后。
   // 2026-09-09：agnes-3.0-flash（思考型）发布，顶旗舰位，2.5-flash 退居其后
-  return findLive("agnes", /2\.5-pro$/i)
-    || findLive("agnes", /3\.0-flash/i)
+  return findLive("agnes", /3\.0-flash/i)
     || findLive("agnes", /2\.5-flash$/i)
-    || ocGoCandidate(/deepseek-v4-pro/i)
-    || findLive("volces-ark", /ark-code/i);
+    || ocGoCandidate(/deepseek-v4-pro/i);
 }
 
 // Auto 路由：按复杂度选 flash/pro。
