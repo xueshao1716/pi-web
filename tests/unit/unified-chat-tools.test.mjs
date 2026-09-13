@@ -6,7 +6,8 @@ import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { sanitizeToolCallList, repairToolArgs, modelAllowsTools, createRunHistorySnapshot, restoreRunHistorySnapshot } from "../../engine/unified-chat.mjs";
+import { sanitizeToolCallList, repairToolArgs, modelAllowsTools, createRunHistorySnapshot, restoreRunHistorySnapshot, formatSessionHistory } from "../../engine/unified-chat.mjs";
+import { persistYuanshuToolTrace } from "../../engine/yuanshu-session.mjs";
 
 test("repairToolArgs：中转脏前缀修复", (t) => {
   t.test('"{}{...}" 拼接前缀 → 剥离为合法 JSON', () => {
@@ -60,6 +61,29 @@ test("运行历史快照：保留系统提示与工具尾部，恢复时不重�
   assert.equal(snapshot.turn, 2);
   assert.deepEqual(restoreRunHistorySnapshot(snapshot), history);
   assert.ok(JSON.stringify(snapshot).length < 10_000);
+});
+
+test("会话历史：工具调用与结果回灌到下一轮模型上下文", () => {
+  assert.deepEqual(formatSessionHistory([
+    { role: "user", text: "拼接视频" },
+    { role: "assistant", text: "已找到素材", tools: [{ id: "t1", name: "bash", args: { command: "dir" }, output: "s1.mp4\ns2.mp4", isError: false }] },
+  ]), [
+    { role: "user", content: "拼接视频" },
+    { role: "assistant", content: "已找到素材", tool_calls: [{ id: "t1", type: "function", function: { name: "bash", arguments: JSON.stringify({ command: "dir" }) } }] },
+    { role: "tool", tool_call_id: "t1", content: "s1.mp4\ns2.mp4" },
+  ]);
+});
+
+test("会话落盘：当前轮工具轨迹可在下一轮恢复，且不会重复结果", () => {
+  const saved = [];
+  persistYuanshuToolTrace({ appendMessage: m => saved.push(m) }, [
+    { role: "user", content: "继续" },
+    { role: "assistant", content: null, tool_calls: [{ id: "t1", type: "function", function: { name: "bash", arguments: JSON.stringify({ command: "dir" }) } }] },
+    { role: "tool", tool_call_id: "t1", content: "s1.mp4", isError: false },
+  ]);
+  assert.equal(saved.filter(m => m.role === "assistant").length, 1);
+  assert.equal(saved.filter(m => m.role === "toolResult").length, 1);
+  assert.equal(saved[1].toolCallId, "t1");
 });
 
 test("恢复后的备用模型不得重新携带旧快照", () => {

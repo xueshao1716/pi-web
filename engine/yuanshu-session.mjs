@@ -31,3 +31,37 @@ export function persistYuanshuAssistant(sm, text, mediaItems = []) {
   sm.appendMessage({ role: "assistant", content: Array.isArray(body) ? body : [{ type: "text", text: String(text || "") }] });
   void mediaItems;
 }
+
+// Persist the model/tool exchange that happened after the current user turn.
+// Unified chat keeps this transcript in memory, but the session file used to
+// receive only the final prose. That made the next turn lose the actual
+// command output (and made a resumed task look like a fresh conversation).
+export function persistYuanshuToolTrace(sm, history = []) {
+  if (!sm?.appendMessage || !Array.isArray(history)) return;
+  let userIndex = -1;
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i]?.role === "user") { userIndex = i; break; }
+  }
+  if (userIndex < 0) return;
+  const seen = new Set();
+  const persistedResults = new Set();
+  for (const message of history.slice(userIndex + 1)) {
+    if (message?.role !== "assistant" || !Array.isArray(message.tool_calls) || !message.tool_calls.length) continue;
+    const calls = message.tool_calls.filter(c => c?.id && c?.function?.name);
+    if (!calls.length || calls.some(c => seen.has(c.id))) continue;
+    const blocks = [];
+    if (typeof message.content === "string" && message.content.trim()) blocks.push({ type: "text", text: message.content });
+    for (const call of calls) {
+      blocks.push({ type: "toolCall", id: String(call.id), name: String(call.function.name), arguments: String(call.function.arguments || "{}") });
+      seen.add(call.id);
+    }
+    try { sm.appendMessage({ role: "assistant", content: blocks }); } catch {}
+    for (const result of history) {
+      if (result?.role !== "tool" || !result.tool_call_id || !seen.has(result.tool_call_id) || persistedResults.has(result.tool_call_id)) continue;
+      try {
+        sm.appendMessage({ role: "toolResult", toolCallId: String(result.tool_call_id), isError: !!result.isError, content: [{ type: "text", text: String(result.content || "") }] });
+        persistedResults.add(result.tool_call_id);
+      } catch {}
+    }
+  }
+}

@@ -58,3 +58,24 @@ test("unifiedChat：截断工具参数后保留已完成步骤并继续任务", 
     await new Promise(resolve => server.close(resolve));
   }
 });
+
+test("unifiedChat：工具轮次耗尽时返回可恢复错误而非伪完成", async () => {
+  let requests = 0;
+  const server = http.createServer((req, res) => {
+    requests += 1;
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    res.end(sseMessage({ content: `阶段 ${requests}`, tool_calls: [{ id: `call-${requests}`, type: "function", function: { name: "write", arguments: JSON.stringify({ path: `step-${requests}.txt`, content: "x" }) } }] }));
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  const model = { provider: "mock-max-turns", id: "mock", baseUrl: `http://127.0.0.1:${port}`, api: "openai-completions" };
+  const readJsonFile = file => file === "mock-auth.json" ? { "mock-max-turns": { key: "test" } } : { "mock-max-turns": { models: [model] } };
+  initDshKeys({ authPath: "mock-auth.json", modelsPath: "mock-models.json", readJsonFile });
+  initUnifiedChat({ authPath: "mock-auth.json", modelsPath: "mock-models.json", readJsonFile, getModelList: () => [model], getDefaultModel: () => model, UNIFIED_TOOLS: [{ type: "function", function: { name: "write", parameters: { type: "object" } } }], executeUnifiedTool: async () => ({ text: "已执行", isError: false }) });
+  try {
+    const result = await unifiedChat(model, [{ role: "user", content: "持续执行" }], { maxTurns: 2 });
+    assert.equal(result.error, "工具调用被截断（多半是输出超长），请把任务拆小再试");
+    assert.equal(result.partial, true);
+    assert.ok(Array.isArray(result.history));
+  } finally { await new Promise(resolve => server.close(resolve)); }
+});

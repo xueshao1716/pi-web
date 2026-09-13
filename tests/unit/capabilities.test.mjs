@@ -39,6 +39,7 @@ test("cap-05 isRepeatReply: 无基准（新会话）不判复读", () => {
 test("cap-22 shouldInjectFullMemory: 远程软件话题触发", () => {
   assert.equal(shouldInjectFullMemory("免费远程控制软件有哪些"), true);
   assert.equal(shouldInjectFullMemory("帮我想想"), true);
+  assert.equal(shouldInjectFullMemory("继续拼接视频成片"), true);
   assert.equal(shouldInjectFullMemory("哈哈今天天气不错"), false);
 });
 

@@ -26,7 +26,7 @@ import { compactKeepArchive } from "./yuanshu-compact.mjs";
 import { prependAssembledSystem } from "./yuanshu-prompt.mjs";
 import { assembleYuanshuSystem, registerPromptSection, promptTimeText, promptPersonaText } from "./yuanshu-seams.mjs";
 import { bindWorkmemSession, formatPlanPrompt } from "./yuanshu-workmem.mjs";
-import { persistYuanshuUser, persistYuanshuAssistant, abortedAssistantText } from "./yuanshu-session.mjs";
+import { persistYuanshuUser, persistYuanshuAssistant, persistYuanshuToolTrace, abortedAssistantText } from "./yuanshu-session.mjs";
 import { beginYuanshuEmotion, endYuanshuEmotion } from "./yuanshu-emotion.mjs";
 import { resolveAuth } from "./dsh-keys.mjs";
 import { runYuanshuToolRound, attachYuanshuCodeTool, toolCallLoopKey, toolCallsFromPlan } from "./yuanshu-loop.mjs";
@@ -139,6 +139,36 @@ export function lastPartialAssistantText(history) {
 export function fallbackHistoryForDirectChat(history) {
   if (!Array.isArray(history)) return [];
   return history.at(-1)?.role === "user" ? history.slice(0, -1) : [...history];
+}
+
+// Rebuild an OpenAI-compatible history from the compact session projection.
+// Keep assistant tool calls paired with their tool results so the next turn
+// can continue a long task instead of guessing what already happened.
+export function formatSessionHistory(hist = []) {
+  const out = [];
+  for (const item of Array.isArray(hist) ? hist : []) {
+    if (!item?.role) continue;
+    if (item.role === "user") {
+      out.push({ role: "user", content: String(item.text || "") });
+      continue;
+    }
+    if (item.role !== "assistant") continue;
+    const text = String(item.text || "");
+    const tools = Array.isArray(item.tools) ? item.tools.filter(t => t?.id && t?.name) : [];
+    if (!tools.length) {
+      if (text) out.push({ role: "assistant", content: text });
+      continue;
+    }
+    out.push({
+      role: "assistant",
+      content: text || null,
+      tool_calls: tools.map(t => ({ id: String(t.id), type: "function", function: { name: String(t.name), arguments: JSON.stringify(t.args || {}) } })),
+    });
+    for (const tool of tools) {
+      out.push({ role: "tool", tool_call_id: String(tool.id), content: shrinkToolResult(String(tool.output || "")) });
+    }
+  }
+  return out;
 }
 
 const RUN_HISTORY_SNAPSHOT_VERSION = 1;
@@ -538,7 +568,7 @@ export async function unifiedChat(model, messages, opts = {}) {
   }
   // 超过轮数上限：尽量返回中间结果（不直接丢错误）。出图旁路已在跑时不要用 20 轮红字盖住图。
   const partial = lastPartialAssistantText(history);
-  if (partial) return { text: partial, partial: true, streamed };
+  if (partial) return { error: TRUNCATED_TOOL_ERROR, text: partial, partial: true, history, streamed };
   if (opts.imageIntent) return { text: "", partial: true, streamed, truncated: true };
   return { error: `工具调用超过 ${maxTurns} 轮，已停止（任务过于复杂或陷入循环）` };
 }
@@ -859,7 +889,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     }
   };
   const onCheckpoint = createRunCheckpointWriter(writer, runContext);
-  let history = [...hist.map(h => ({ role: h.role, content: h.role === "tool" ? shrinkToolResult(h.text) : h.text })), { role: "user", content: mediaAwarePrompt(message, []) }];
+  let history = [...formatSessionHistory(hist), { role: "user", content: mediaAwarePrompt(message, []) }];
   if (shouldInjectFullMemory(message)) setLastUserQuery(message);
   bindTodoSession(sessionId);
   bindWorkmemSession(sessionId);
@@ -972,6 +1002,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
   if (!result || result.error) {
     await deliverUnifiedMedia();
     if (mediaItems.length) {
+      try { persistYuanshuToolTrace(entry.sm, result?.history || []); } catch {}
       if (result?.text && !result.streamed) writer.push("delta", { text: result.text });
       try {
         persistYuanshuAssistant(entry.sm, assistantContentWithMedia(result?.text || "", mediaItems));
@@ -982,6 +1013,10 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
       finishEmotion();
       return;
     }
+    try {
+      persistYuanshuToolTrace(entry.sm, result?.history || []);
+      if (result?.text) persistYuanshuAssistant(entry.sm, result.text);
+    } catch {}
     clearTask(taskId, "error");
     writer.push("error", { message: result?.error || "模型未返回内容，请稍后重试" });
     finishEmotion();
@@ -992,6 +1027,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     await deliverUnifiedMedia();
     if (mediaItems.length || result.partial || result.truncated) {
       try {
+        persistYuanshuToolTrace(entry.sm, result.history || []);
         persistYuanshuAssistant(entry.sm, assistantContentWithMedia(result.partial ? lastPartialAssistantText(result.history || []) : "", mediaItems));
       } catch {}
       writer.push("done", { sessionId, model: result.usedModel || { provider: chatModel.provider, id: chatModel.id } });
@@ -1050,7 +1086,10 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
   try {
     await deliverUnifiedMedia();
     // 异常未解决时不写 assistant（避免复读/空/纯思考文本落盘污染会话，防止下轮复读死循环）
-    if (!anomalyUnresolved) persistYuanshuAssistant(entry.sm, assistantContentWithMedia(text, mediaItems));
+    if (!anomalyUnresolved) {
+      persistYuanshuToolTrace(entry.sm, history);
+      persistYuanshuAssistant(entry.sm, assistantContentWithMedia(text, mediaItems));
+    }
   } catch {}
   if (entry.agent) { try { entry.agent.dispose(); } catch {} entry.agent = null; }
   if (!entry.sm.getSessionName()) { try { entry.sm.appendSessionInfo(message.slice(0, 24)); } catch {} }
