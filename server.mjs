@@ -25,6 +25,7 @@ import { initToolResultArchive } from "./engine/tool-result-archive.mjs";
 import { initFileLock, usingSharedFileQueue } from "./engine/file-lock.mjs";
 import { promptTimeText } from "./engine/yuanshu-seams.mjs";
 import { readActivityRhythm } from "./engine/activity-rhythm.mjs";
+import { settleTurnMemory } from "./engine/turn-memory.mjs";
 import { extractPromises, recordPromises, loadPromises, pendingPromises, closePromise, pendingPromiseText } from "./engine/promises.mjs";
 import { createSoilReader } from "./engine/aibody-soil.mjs";
 // ── 会话解析纯函数（拆模块）：消息/文本/图片/文件提取 ──
@@ -583,6 +584,11 @@ try {
 // 实现已抽到 engine/reasonix-tools.mjs（纯逻辑模块）：
 //   ① shrinkToolResult 工具结果压缩（P3） ② NEEDS_PRO_RE 自报升级（P3） ③ scavengeToolCalls 捞回（P2）
 
+// ══ 记忆结算：引擎无关，实现见 engine/turn-memory.mjs ══
+// 它必须在**所有**产生助手回复的引擎路径上跑。原先这段代码只写在下面 Pi 分支的
+// try 里，而 Pi 分支位于 early-return 之后 → yuanshu(unified) 与 dsh 静默不写记忆，
+// Pi 失败降级时也被跳过；而引擎目录声明的恰恰相反。现在由两个分支的 finally 各调一次。
+
 // 统一对话循环：openai 兼容 API → tool_calls 循环 → 思考提取
 async function handleChat(req, res, body) {
   let message = typeof body.message === "string" ? body.message.trim() : "";
@@ -825,6 +831,8 @@ async function handleChat(req, res, body) {
     } catch {}
   }
   try { sseWrite(res, "engine_selected", { engine: observedEngine, reason: forceResumeUnified ? "恢复任务使用元枢循环，承接已保存的步骤。" : ({ primary: "使用系统配置的主引擎。", force: "启动配置指定使用元枢引擎。", "non-native": "当前模型通道由元枢自建循环承接。", "cannot-lead": "配置主引擎无法承担此任务，由可执行的引擎接替。" }[engineDecision.reason] || "使用本轮可用的执行通道。") }); } catch {}
+  // 本轮开始前的会话文件大小：收尾结算时按这个偏移切片，只认本轮新追加的助手回复
+  const sessionBytesBefore = (() => { try { return fs.statSync(entry.sm.sessionFile).size; } catch { return 0; } })();
   if (forceResumeUnified || engineDecision.lead === "dsh" || (defaultModel && !useAgent)) {
     const hb2 = startSseHeartbeat(res);
     // 打断支持：客户端断开 SSE 时中止 unifiedChat / dsh 子进程
@@ -847,6 +855,13 @@ async function handleChat(req, res, body) {
       if (entry.gen === thisGen) entry.busy = false;
       try { res.end(); } catch {}
       if (entry.gen === thisGen) invalidateSessionCache(); // 消息写入会话文件 → 列表缓存失效
+      // 记忆结算：放在 res.end() 之后，不拖慢客户端收尾。
+      // dsh 按引擎目录声明的边界（「不接记忆 / 出图 / 规划主循环」）跳过；
+      // 被新请求顶掉的轮次也跳过——那时按偏移切片会切到新轮次的回复，属于错误归因。
+      const ranUnifiedLoop = !(engineDecision.lead === "dsh" && !forceResumeUnified);
+      if (ranUnifiedLoop && entry.gen === thisGen) {
+        await settleTurnMemory({ wsRoot: CONFIG.cwd, entry, message, sessionId, bytesBefore: sessionBytesBefore });
+      }
     }
     return;
   }
@@ -1423,55 +1438,9 @@ async function handleChat(req, res, body) {
       const imgs = extractMessageImages(entry.sm);
       for (const img of imgs.slice(0, 3)) writer.push("image", img);
     } catch {}
-    // 自动记忆：对话结束，把本轮重要信息沉淀到记忆日志
-    try {
-      const mem = await import("./engine/memory.mjs");
-      const assistLatest = (() => {
-        try {
-          const entries = readEntriesFromFile(entry.sm.sessionFile);
-          for (let i = entries.length - 1; i >= 0; i--) {
-            const e = entries[i];
-            if (e?.type === "message" && e?.message?.role === "assistant") {
-              const t = extractText(e.message.content) || "";
-              if (t.trim()) return t;
-            }
-          }
-        } catch {}
-        return "";
-      })();
-      mem.autoMemorize(CONFIG.cwd, { userMsg: message, assistantMsg: assistLatest });
-      // 承诺兑现：把助手自己许下的"明天/回头/下次…"落成账。
-      // 只提取入库；**结清必须显式**（台前按钮或明确证据），这里不做任何自动判定。
-      try {
-        const found = extractPromises(assistLatest, { at: new Date(), sessionId });
-        if (found.length) {
-          const rec = recordPromises(CONFIG.cwd, found);
-          if (rec?.added) console.log(`[promises] 新增 ${rec.added} 条待兑现承诺`);
-        }
-      } catch {}
-      // 纠正记忆：用户纠正语气/做法时自动记录（防再犯）——只认明确纠正句式，排除口头语
-      const correctMatch = message.match(/(?:别再|不要再|别总是|不要总是|不要这样|别这样|以后别|以后不要|记住(?:别|不要|要)|不要再用|别老用)([^，。,!！?？]{2,40})/);
-      if (correctMatch) {
-        const correction = String(correctMatch[1] || "").trim();
-        // 排除寒暄/情绪口头语：别闹了、别客气、别急、别担心……不是纠正，不记录
-        const ban = /闹|客气|急|慌|谢|担心|怕|想太多|介意|不好意思/;
-        if (correction.length > 1 && !ban.test(correction) && !/再犯|纠正/.test(message)) {
-          mem.saveCorrection(CONFIG.cwd, { trigger: message.slice(0, 40), correction: `不要再${correction}` });
-        }
-      }
-      // 关系记忆：用户透露偏好/习惯时自动记录——去掉"我一直"（多引出观点陈述非偏好），排除观点句式
-      const relMatch = message.match(/(?:我喜欢|我习惯|我偏好|我平时|我更爱|我偏爱)(.{2,30}?)(?:，|,|。|$)/);
-      if (relMatch) {
-        const detail = String(relMatch[1] || "").trim();
-        // 排除观点陈述（我觉得/我认为/感觉…是想法不是偏好），避免"我一直觉得"类误抓
-        const skip = /^(觉得|认为|感觉|想|希望|想要|打算)/;
-        if (detail.length > 1 && !skip.test(detail)) mem.saveRelation(CONFIG.cwd, { aspect: "用户透露", detail });
-      }
-      // 进化快照：每 20 轮存一份（可回退）
-      // 原实现是读 listSnapshots().length 再 %20：0 触发后份数恒为 1，而 1..19 都不满足条件，
-      // 所以这个分支在第一次之后就永远进不去了（死代码）。改成落盘计数器，语义才是"每 20 轮"。
-      mem.tickSnapshot(CONFIG.cwd, 20);
-    } catch {}
+    // 记忆结算（流水账 / 承诺 / 纠正 / 关系 / 每-N-轮快照计数）已抽成 settleTurnMemory，
+    // 在 finally 里对 pi 与 yuanshu 统一执行。原先就写在这个 try 里，于是
+    // yuanshu / dsh 路径静默不写记忆，Pi 失败降级到 unified 时也被一起跳过。
     clearTask(taskId, "done");
     try { await mediaDelivered; } catch {}
     if (settledMedia.length) {
@@ -1545,6 +1514,11 @@ async function handleChat(req, res, body) {
     try { writer.close(); } catch {}
     try { res.end(); } catch {}
     if (entry.gen === thisGen) invalidateSessionCache(); // 消息写入会话文件 → 列表缓存失效
+    // 记忆结算：pi 成功、以及 pi 失败降级到 unified 之后（此时助手回复由 unified 落盘），
+    // 都在这里统一结算一次。放在 res.end() 之后，不拖慢客户端收尾。
+    if (entry.gen === thisGen) {
+      await settleTurnMemory({ wsRoot: CONFIG.cwd, entry, message, sessionId, bytesBefore: sessionBytesBefore });
+    }
   }
 }
 
