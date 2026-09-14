@@ -23,3 +23,20 @@ test('partial AI draft preserves established people and scene history', async ()
   assert.equal(next.bible.style.visual,'水墨')
   assert.equal(next.scenes[0].outputs[0].id,'old')
 })
+// 2026-09-14 修复：editedBible 原实现把整个 bible 压成文本行再按行重建为 {id,name,text}，
+// 于是用户在界面里编辑一次设定，appearance / wardrobe / 角色定妆照 refImage 就全被抹掉。
+test('editing the bible keeps structured fields and never leaks the portrait into the text area', async () => {
+  const mod = await import('../../frontend/src/lib/story-draft.ts')
+  const { bibleText, editedBible } = mod
+  const bible = { characters: [{ id: 'c1', name: '阿宁', appearance: '黑发', refImage: '/signed/portrait.png' }], locations: [], props: [], wardrobe: [], rules: [], style: { visual: '水墨' } }
+  const text = bibleText(bible)
+  assert.ok(!text.characters.includes('/signed/portrait.png'), '定妆照 URL 不能混进可编辑的人物文本行')
+  assert.ok(text.characters.includes('黑发'))
+  // 用户改了一行文字后，结构化字段与定妆照都必须还在
+  const next = editedBible(bible, { ...text, characters: '阿宁；黑发；左脸有痣' })
+  assert.equal(next.characters[0].refImage, '/signed/portrait.png', '定妆照不能在编辑设定后丢失')
+  assert.equal(next.characters[0].appearance, '黑发')
+  assert.ok(String(next.characters[0].name).includes('左脸有痣'), '用户输入的新文本必须落进去')
+  // 完全没改的字段保持原引用，不做无谓重建
+  assert.equal(next.style.visual, '水墨')
+})

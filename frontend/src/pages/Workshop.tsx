@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ImagePlus, Presentation, BookOpen, Smartphone, Film } from 'lucide-react'
+import { ImagePlus, Presentation, BookOpen, Smartphone, Film, Clapperboard } from 'lucide-react'
 import PageHeader from '../components/PageHeader'
 import GeneratePanel from '../components/GeneratePanel'
 import VideoGeneratePanel from '../components/VideoGeneratePanel'
@@ -8,15 +8,17 @@ import WorkshopView from '../components/WorkshopView'
 import NovelStudioView from '../components/NovelStudioView'
 import WanXiang from '../components/WanXiang'
 import WorkshopUiBoard from '../components/WorkshopUiBoard'
+import { StoryPanel } from './StoryWorkbench'
 
-// ── 专项工作台：出图 / 视频 / PPT / 小说 / 界面工坊 ──
+// ── 专项工作台：出图 / 视频 / PPT / 小说 / 界面工坊 / 连续创作 ──
 
-type Tab = 'image' | 'video' | 'ppt' | 'novel' | 'ui'
+type Tab = 'image' | 'video' | 'ppt' | 'novel' | 'ui' | 'story'
 const TABS: [Tab, typeof ImagePlus | typeof Film, string][] = [
   ['image', ImagePlus, 'AI 绘画'],
   ['video', Film, '视频工坊'],
   ['ppt', Presentation, 'PPT 生成'],
   ['novel', BookOpen, '小说工坊'],
+  ['story', Clapperboard, '连续创作'],
   ['ui', Smartphone, '界面工坊'],
 ]
 const TAB_DESC: Record<Tab, string> = {
@@ -24,15 +26,17 @@ const TAB_DESC: Record<Tab, string> = {
   video: '技能写镜头提示词，选模型出片，成品自动归档到生成物/视频',
   ppt: '走 ppt-generator 技能全流程，通常需要几分钟',
   novel: '项目管理：产品化 → 五层 → 真相 → 写章 → 修订 → 导出',
+  story: '先完成一段好故事，再让人物和情节接着走；分镜、设定与成品都在同一处',
   ui: 'M3E 拖拽草图板：拼组件 → 调主题 → 导出 Prompt 给 AI 编码',
 }
 
-export default function Workshop() {
+export default function Workshop({ initialTab }: { initialTab?: Tab } = {}) {
   const [imagePrompt, setImagePrompt] = useState('')
   const [videoPrompt, setVideoPrompt] = useState('')
   const [videoSeconds, setVideoSeconds] = useState('10')
   const [videoFrame, setVideoFrame] = useState('16:9')
   const [tab, setTab] = useState<Tab>(() => {
+    if (initialTab) return initialTab
     try {
       const saved = localStorage.getItem('pi_workshop_tab')
       if (saved === 'wanxiang') return 'image'
@@ -97,6 +101,7 @@ export default function Workshop() {
         )}
         {tab === 'ppt' && <WorkshopView key="ppt" kind="ppt" />}
         {tab === 'novel' && <NovelStudioView />}
+        {tab === 'story' && <StoryPanel />}
         {tab === 'ui' && <WorkshopUiBoard />}
       </div>
     </div>

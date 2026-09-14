@@ -78,7 +78,7 @@ import * as confirmRegistry from "./engine/tools/confirm-registry.mjs";
 import { initRefineApi, readRefineJson, runRefineScript, handleRefineStatus, handleRefineList, detectSkillDomain, handleRefineFeedback, handleRefineGenes, handleRefinePlan, handleRefineApprove, handleRefineReject, handleRefineRollback } from "./engine/refine-api.mjs";
 import { initMcpServer, handleMcp } from "./engine/mcp-server.mjs";
 import { initMcpChat } from "./engine/mcp-chat.mjs";
-import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryAssist } from "./engine/story-orchestrator.mjs";
+import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryAssist, handleStoryPortrait } from "./engine/story-orchestrator.mjs";
 import { startShare, stopShareSync, handleShare, handleShareStatus, handleShareStop } from "./engine/share-api.mjs";
 import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
@@ -288,7 +288,7 @@ initEvolutionApi({ root: CONFIG.cwd, prompts: path.join(getAgentDir(), "prompts"
   for (const [provider, cfg] of Object.entries(store)) {
     if (!authed.has(provider)) continue;
     for (const m of (cfg.models || [])) {
-      all.push({ provider, id: m.id, name: m.name || m.id, api: m.api, baseUrl: m.baseUrl, reasoning: !!m.reasoning, contextWindow: m.contextWindow, input: m.input, compat: m.compat, thinkingLevelMap: m.thinkingLevelMap, capabilities: m.capabilities || modelCapabilities(m.id) });
+      all.push({ provider, id: m.id, name: m.name || m.id, api: m.api, baseUrl: m.baseUrl, reasoning: !!m.reasoning, contextWindow: m.contextWindow, input: m.input, compat: m.compat, thinkingLevelMap: m.thinkingLevelMap, capabilities: { ...modelCapabilities(m.id), ...(m.capabilities || {}) } });
     }
   }
   modelList = all.filter(m => {
@@ -1620,6 +1620,8 @@ const API_ROUTES = [
   ["POST", /^\/api\/story\/projects\/([^/]+)\/run-preview$/, async (res, req, url, m) => handleStoryRunPreview({ root: WS_ROOT }, res, m[1], await readBody(req, 8))],
   ["POST", /^\/api\/story\/projects\/([^/]+)\/run$/, async (res, req, url, m) => handleStoryRun({ root: WS_ROOT, generateImage, generateVideo, saveArtifact, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 8))],
   ["POST", /^\/api\/story\/projects\/([^/]+)\/assist$/, async (res, req, url, m) => handleStoryAssist({ root: WS_ROOT, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 8))],
+  // 角色定妆照：产出可复用的形象参考图，写回 bible；后续镜头生成会当作真实参考图注入
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/portrait$/, async (res, req, url, m) => handleStoryPortrait({ root: WS_ROOT, generateImage, saveArtifact, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 8))],
   // ── 会话数据库（08-29 真落地：编号/健康度/批量清理；必须先于 :id 正则路由）──
   ["GET", "/api/sessions/db/list", (res) => handleDbList(res)],
   ["GET", "/api/sessions/db/stats", (res) => handleDbStats(res)],

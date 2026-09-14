@@ -11,6 +11,14 @@ export function modelCapabilities(id) {
   if (/video/i.test(id)) { caps.video = true; caps.chat = false; }
   if (/tts/i.test(id)) { caps.tts = true; caps.chat = false; }
   if (/asr/i.test(id)) { caps.asr = true; caps.chat = false; }
+  // 连续性参数（reference/keyframe/seed）——含义是「本管道会把它原样转发给上游」，
+  // 不是「上游保证遵守」：media-api.generateImage 会转发 image（图生图），
+  // video-request.videoCreateBody 会转发 image/first_frame/images[]/seed。
+  // 2026-09-14 之前这三个键从未被任何代码写入，于是 story-orchestrator 的
+  // negotiateCapabilities 对**每一个**图像/视频任务都报「当前模型不支持参考资产」——
+  // 能力协商层在问一个没人填的字段，用户看到的是假的降级提示，参考图通路也从未打开。
+  if (caps.image || caps.video) { caps.reference = true; caps.seed = true; }
+  if (caps.video) caps.keyframe = true;
   return caps;
 }
 

@@ -79,7 +79,10 @@ export async function refreshModelList() {
         provider, id: m.id, name: m.name || m.id, api: m.api, baseUrl: m.baseUrl,
         reasoning: !!m.reasoning, contextWindow: m.contextWindow, input: m.input,
         compat: m.compat, thinkingLevelMap: m.thinkingLevelMap,
-        capabilities: m.capabilities || modelCapabilities(m.id),
+        // 派生默认值 + 持久化覆盖：store 里的 capabilities 是**加模型时的快照**，
+        // 新补的 reference/keyframe/seed 它自然没有（2026-09-14）。
+        // 只写 `m.capabilities || 派生` 会让老快照永久压掉新能力，故改为合并。
+        capabilities: { ...modelCapabilities(m.id), ...(m.capabilities || {}) },
       });
     }
   }

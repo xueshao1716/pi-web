@@ -1,5 +1,8 @@
 .story-workbench { flex: 1; min-height: 0; overflow-y: auto; padding: clamp(16px, 3vw, 32px); color: var(--pi-text); }
 .story-workbench > * { max-width: 1440px; margin-inline: auto; }
+/* 作为「创作」页内视图嵌入时：外层已有滚动与内边距，这里不再重复（否则双层滚动） */
+.story-workbench-embedded { overflow: visible; padding: 0; }
+.story-workbench-embedded > * { max-width: none; }
 .story-header, .story-section-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .story-header { flex-wrap: wrap; margin-bottom: 24px; }
 .story-header > .story-actions { flex-wrap: nowrap; }
@@ -54,6 +57,14 @@
 .story-settings summary { cursor: pointer; font-size: 14px; line-height: 1.7; padding-block: 10px; }
 .story-settings summary span { font-size: 12px; color: var(--pi-dim); margin-left: 8px; }
 .story-settings-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; margin: 16px 0; }
+/* 角色定妆照：形象参考图，后续画面/视频会真的带上它 */
+.story-portraits { margin: 16px 0; padding: 12px; border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-md); background: var(--pi-bg1); }
+.story-portraits-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+.story-portrait-list { display: grid; grid-template-columns: repeat(auto-fill,minmax(140px,1fr)); gap: 12px; }
+.story-portrait-card { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.story-portrait-card img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--pi-r-sm); border: 1px solid var(--pi-border-soft); background: var(--pi-bg2); }
+.story-portrait-empty { width: 100%; aspect-ratio: 1; display: grid; place-items: center; border-radius: var(--pi-r-sm); border: 1px dashed var(--pi-border); background: var(--pi-bg2); color: var(--pi-dim); font-size: 12px; }
+.story-portrait-card strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .story-model-select { max-width: 220px; }
 @media (max-width: 1100px) {
   .story-layout { grid-template-columns: 160px minmax(0,1fr); gap: 20px; }

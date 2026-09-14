@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ModelsApi, StoryApi } from '../api'
-import type { Model, StoryBeat, StoryProject } from '../types'
+import type { Model, StoryBeat, StoryCharacter, StoryProject } from '../types'
 import { applyStoryDraft, bibleText, editedBible } from '../lib/story-draft'
 import StoryStart from '../components/story/StoryStart'
 import StorySettings from '../components/story/StorySettings'
@@ -13,7 +13,9 @@ const modelKey = (m: Model) => `${m.provider}::${m.id}`
 const modelValue = (key: string) => { const [provider, ...rest] = key.split('::'); return provider && rest.length ? { provider, id: rest.join('::') } : undefined }
 const capable = (m: Model, kind: StoryBeat['kind']) => Boolean(m.capabilities?.[kind === 'novel' ? 'chat' : kind])
 
-export default function StoryWorkbench() {
+// 连续创作面板：已并入「创作」（pages/Workshop.tsx）作为一个页内视图，
+// 因此不再自带 h1（由创作的 PageHeader 承担），也不再自带滚动容器（外层已滚）。
+export function StoryPanel() {
   const [projects, setProjects] = useState<StoryProject[]>([])
   const [project, setProject] = useState<StoryProject | null>(null)
   const [selected, setSelected] = useState('')
@@ -107,10 +109,19 @@ export default function StoryWorkbench() {
     await requestDraft(r.project, `为下一段构思具体情节：${next.prompt}\n之前的段落和实际产出：${JSON.stringify(currentScene).slice(-10000)}`, selectedKind)
   })
   const saveBible = () => action('正在保存设定', async () => { if (project) { const r=await StoryApi.patchProject(project.id,{bible:editedBible(project.bible,bibleDraft)});update(r.project);hydrateBible(r.project);setNotice('设定已保存') } })
+  // 角色定妆照：生成一张可复用的形象参考图并写回设定；
+  // 之后生成画面/视频时编排层会自动把它作为真实参考图注入。
+  const portrait = (character: StoryCharacter) => action(`正在生成「${character.name || character.id}」的定妆照`, async () => {
+    if (!project) return
+    const r = await StoryApi.portrait(project.id, { characterId: character.id })
+    update(r.project); hydrateBible(r.project)
+    if (r.image) setNotice(`「${r.character?.name || character.name || character.id}」的定妆照已保存；后续画面与视频会带上它作为参考图。`)
+    else setError(r.error || '定妆照生成失败，请换一个图像模型再试')
+  })
   const currentRuns = scene?.outputs.filter(r => r.beatId === beat?.id) || []
   const hasOutput = currentRuns.some(r => r.outputAssets?.length)
-  return <div className="story-workbench">
-    <header className="story-header"><div><h1>连续创作</h1><p>先完成一段好故事，再让人物和情节接着走。</p></div><div className="story-actions">
+  return <div className="story-workbench story-workbench-embedded">
+    <header className="story-header"><div className="story-actions">
       <select aria-label="选择故事项目" disabled={Boolean(busy)} value={project?.id || ''} onChange={e => choose(projects.find(p => p.id === e.target.value) || null)}><option value="">开始新故事</option>{projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}</select>
       <button className="btn-ghost" disabled={Boolean(busy)} onClick={() => choose(null)}>新故事</button><button className="btn-ghost" disabled={Boolean(busy)} onClick={load}>刷新</button>
     </div></header>
@@ -134,8 +145,10 @@ export default function StoryWorkbench() {
           {!hasOutput && <p className="story-hint">先生成本段成品，再继续下一段。结果不满意时可以修改内容重新生成，旧版本会保留。</p>}
           {compiled && <details open><summary>本次生成输入</summary><div className="story-prose">{compiled}</div></details>}
         </section>{scene && beat && <StoryResults scene={scene} beat={beat} />}</div>
-        <StorySettings values={bibleDraft} busy={Boolean(busy)} onChange={setBibleDraft} onSave={saveBible} />
+        <StorySettings values={bibleDraft} busy={Boolean(busy)} characters={project.bible.characters || []} onPortrait={portrait} onChange={setBibleDraft} onSave={saveBible} />
       </main>
     </div>}
   </div>
 }
+
+export default StoryPanel

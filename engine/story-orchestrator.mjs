@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { createProject, listProjects, readProject, writeProject, validateProject, mergeBeatContext } from './story-store.mjs';
-import { compileStoryPrompt } from './story-prompts.mjs';
+import { compileStoryPrompt, buildPortraitPrompt } from './story-prompts.mjs';
 import { createImageAdapter, createNovelAdapter, createVideoAdapter } from './story-adapters.mjs';
 import { buildStoryAssistPrompt, parseStoryAssist } from './story-assist.mjs';
 import { json } from './http-utils.mjs';
@@ -48,6 +48,18 @@ export function appendRun(scene, run) {
   return scene;
 }
 
+// 出场角色 → 定妆照 URL。规则刻意保持可解释，不做玄学推断：
+// 1) 角色名出现在编译后的提示词里 → 视为出场（compileStoryPrompt 会把每个角色的 name 写进提示词）；
+// 2) 一个都没匹配上时，退回首张有定妆照的角色（通常是主角），最多 limit 张。
+// 这张图会成为真实的图生图/视频 reference 输入，而不是只把 id 拼进提示词。
+export function pickReferenceImages(project, promptText, limit = 2) {
+  const chars = (project?.bible?.characters || []).filter(c => c && (c.refImage || c.ref));
+  if (!chars.length) return [];
+  const text = String(promptText || '');
+  const mentioned = chars.filter(c => c.name && text.includes(String(c.name)));
+  return (mentioned.length ? mentioned : chars).slice(0, limit).map(c => String(c.refImage || c.ref)).filter(Boolean);
+}
+
 function findScene(project, id) { return (project.scenes || []).find(s => s.id === id); }
 function findBeat(scene, id) { return (scene?.beats || []).find(b => b.id === id); }
 
@@ -60,6 +72,11 @@ function pickCapableModel(models, kind) {
 export function createStoryOrchestrator({ root, clock = {}, adapters = {}, generateImage = null, generateVideo = null, saveArtifact = null, directChat = null, getDefaultModel = null, getModelList = null }) {
   if (!root) throw new Error('story orchestrator 缺少 root');
   const withUpdated = project => ({ ...project, updatedAt: (clock.now || nowIso)() });
+  const resolveModel = (explicit, kind, fallback) => {
+    const isExplicit = explicit?.id && explicit.id !== 'auto' && explicit.provider !== 'auto';
+    const candidates = typeof getModelList === 'function' ? getModelList() : [];
+    return (isExplicit ? explicit : null) || pickCapableModel(candidates, kind) || (typeof getDefaultModel === 'function' ? getDefaultModel() : fallback);
+  };
   const resolvedAdapters = {
     image: adapters.image || createImageAdapter({ generateImage, saveArtifact }),
     novel: adapters.novel || createNovelAdapter({ directChat }),
@@ -92,13 +109,13 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       const beat = findBeat(scene, input.beatId);
       if (!scene || !beat) throw Object.assign(new Error('sceneId 或 beatId 不存在'), { statusCode: 400 });
       const kind = ['novel', 'image', 'video'].includes(input.kind) ? input.kind : beat.kind;
-      const explicitModel = input.model?.id && input.model.id !== 'auto' && input.model.provider !== 'auto' ? input.model : null;
-      const candidates = typeof getModelList === 'function' ? getModelList() : [];
-      const capable = pickCapableModel(candidates, kind);
-      const model = explicitModel || capable || (typeof getDefaultModel === 'function' ? getDefaultModel() : input.model);
+      const model = resolveModel(input.model, kind, input.model);
       const context = mergeBeatContext(project, scene, beat);
       const compiled = compileStoryPrompt({ bible: project.bible, scene, beat, inherited: context });
       const run = createGenerationRun({ ...input, kind, model, projectId: id, sceneId: scene.id, beatId: beat.id, inputAssets: input.inputAssets || compiled.referenceIds.map(assetId => ({ id: assetId, role: 'reference' })) }, clock);
+      // 参考图只在模型声明支持时注入：不支持的模型塞图会 400，反而掩盖真实的降级原因。
+      const referenceImages = run.capabilities.reference ? pickReferenceImages(project, compiled.text) : [];
+      if (referenceImages.length) run.referenceImages = referenceImages;
       run.status = 'running';
       appendRun(scene, run);
       project.updatedAt = (clock.now || nowIso)();
@@ -110,7 +127,7 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
         return { project, run, context: compiled };
       }
       let result;
-      try { result = await adapter.generate({ prompt: compiled.text, model, seed: run.seed, params: run.params, references: compiled.referenceIds }); }
+      try { result = await adapter.generate({ prompt: compiled.text, model, seed: run.seed, params: run.params, references: compiled.referenceIds, referenceImages }); }
       catch (error) { result = { status: 'failed', error: String(error?.message || error).slice(0, 300) }; }
       if (result?.output) run.outputAssets = [{ id: `${run.id}-output`, role: 'output', ...result.output }];
       if (result?.status === 'succeeded') run.status = run.degradation?.length ? 'degraded' : 'succeeded';
@@ -118,6 +135,28 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       run.finishedAt = (clock.now || nowIso)();
       await writeProject(root, project);
       return { project, run, context: compiled };
+    },
+    // 角色定妆照：按角色设定出一张可复用的形象参考图，写回 bible.characters[].refImage。
+    // 这张图随后会被 runGeneration 当成真实参考图注入（图像走图生图、视频走 reference 模式），
+    // 这是"锁定人物外貌"的入口——在此之前 story 层只有文字描述，产品自己也在界面上承认做不到。
+    generatePortrait: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const characters = Array.isArray(project.bible?.characters) ? project.bible.characters : [];
+      if (!characters.length) throw Object.assign(new Error('这个故事还没有角色：先让 AI 补一段设定，或到下方设定里加一个角色'), { statusCode: 400 });
+      const character = characters.find(c => String(c?.id) === String(input.characterId)) || characters[0];
+      const adapter = resolvedAdapters.image;
+      if (!adapter?.generate) throw Object.assign(new Error('图像引擎未接入'), { statusCode: 503 });
+      const model = resolveModel(input.model, 'image', null);
+      const result = await adapter.generate({ prompt: buildPortraitPrompt({ bible: project.bible, character }), model, params: { size: input.size } });
+      const url = result?.output?.url;
+      if (!url) return { project, character, status: 'failed', error: result?.error || '定妆照生成失败', model: result?.model };
+      const next = withUpdated({
+        ...project,
+        bible: { ...project.bible, characters: characters.map(c => (c === character ? { ...c, refImage: url } : c)) },
+      });
+      validateProject(next);
+      await writeProject(root, next);
+      return { project: next, character: { ...character, refImage: url }, image: url, status: result.status, model: result.model };
     },
   };
 }
@@ -151,8 +190,13 @@ export async function handleStoryRun(ctx, res, id, body) {
   } catch (e) { return sendError(res, e); }
 }
 
-export async function handleStoryAssist(ctx, res, id, body) {
+export async function handleStoryPortrait(ctx, res, id, body) {
   try {
+    return json(res, 200, await createStoryOrchestrator(ctx).generatePortrait(id, bodyOrEmpty(body)));
+  } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryAssist(ctx, res, id, body) {  try {
     if (typeof ctx.directChat !== 'function' || typeof ctx.getDefaultModel !== 'function') throw Object.assign(new Error('智能填充引擎未接入'), { statusCode: 503 });
     const project = await readProject(ctx.root, id);
     const idea = String(bodyOrEmpty(body).idea || '').trim().slice(0, 2000);

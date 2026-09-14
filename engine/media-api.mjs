@@ -214,7 +214,10 @@ export async function generateTTS(text) {
 }
 
 // 绘图：返回图片数据（供 handleChat 绘图模型通道复用）
-export async function generateImage(provider, modelId, prompt, size) {
+// image 参数为可选的参考图（URL 或 data URI）→ 图生图/参考锁定。
+// 通用路径本就把 image 转发给上游（见 handleImage），这里补齐函数签名，
+// 好让故事编排等调用方也能用上真正的参考图，而不是只把 id 拼进提示词。
+export async function generateImage(provider, modelId, prompt, size, image) {
   const resolved = _resolveAuth(provider);
   if (!resolved) return null;
   const baseUrl = resolved.baseUrl || (_readJsonFile(_modelsPath)[provider]?.models || []).find(m => m.id === modelId)?.baseUrl;
@@ -224,7 +227,7 @@ export async function generateImage(provider, modelId, prompt, size) {
   const mkReq = (u) => httpJsonFetch(u, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model: modelId, prompt, n: 1, size: size || "1024x1024" }),
+    body: JSON.stringify({ model: modelId, prompt, n: 1, size: size || "1024x1024", ...(image ? { image } : {}) }),
     timeout: 180000,
   });
   let r = await mkReq(`${baseNoV1}/v1/images/generations`);

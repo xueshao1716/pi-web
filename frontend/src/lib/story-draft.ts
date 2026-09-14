@@ -24,13 +24,29 @@ export function applyStoryDraft(project: StoryProject, draft: any, sceneId: stri
   return { bible, scenes }
 }
 
+// 参考图是二进制引用，不该混进可编辑的文本行（否则会被当成"人物外貌"的一段文字）
+const REF_KEYS = new Set(['id', 'refImage', 'ref'])
+
 export function bibleText(bible: StoryBible): Record<string, string> {
-  return Object.fromEntries([...fields.map(key => [key, (bible[key] || []).map(item => Object.entries(item).filter(([k, v]) => k !== 'id' && v).map(([, v]) => v).join('；')).join('\n')]), ['style', Object.values(bible.style || {}).join('；')]])
+  return Object.fromEntries([...fields.map(key => [key, (bible[key] || []).map(item => Object.entries(item).filter(([k, v]) => !REF_KEYS.has(k) && v).map(([, v]) => v).join('；')).join('\n')]), ['style', Object.values(bible.style || {}).join('；')]])
 }
+// 2026-09-14 修复数据丢失：原实现把整个 bible 压成文本行、再按行重建为 {id,name,text}，
+// 于是用户只要在界面里编辑一次设定，characters[].appearance / wardrobe / refImage
+// 这类结构化字段就被抹掉了（定妆照也会跟着丢）。现在改成按名字/下标认回原条目并保留其余字段。
 export function editedBible(bible: StoryBible, values: Record<string, string>): StoryBible {
   const original = bibleText(bible)
   const result = { ...bible }
-  for (const key of fields) if (values[key] !== original[key]) result[key] = (values[key] || '').split('\n').map(text => text.trim()).filter(Boolean).map((text, i) => ({ id: `${key}-${i + 1}`, name: text, text }))
+  for (const key of fields) {
+    if (values[key] === original[key]) continue // 没动过就原样保留，不做任何重建
+    const lines = (values[key] || '').split('\n').map(text => text.trim()).filter(Boolean)
+    const existing = Array.isArray(bible[key]) ? bible[key] : []
+    result[key] = lines.map((text, i) => {
+      const matched = existing.find(item => String(item?.name || '') === text || String(item?.text || '') === text) || existing[i]
+      return matched
+        ? { ...matched, id: String(matched.id || `${key}-${i + 1}`), name: text, text }
+        : { id: `${key}-${i + 1}`, name: text, text }
+    })
+  }
   if (values.style !== original.style) result.style = { visual: values.style }
   return result
 }

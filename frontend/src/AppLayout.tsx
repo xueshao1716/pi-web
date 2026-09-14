@@ -33,7 +33,6 @@ const SystemPage = lazy(() => import('./pages/System'))
 const ThemesPage = lazy(() => import('./pages/Themes'))
 const SessionDbPage = lazy(() => import('./pages/SessionDb'))
 const WorkshopPage = lazy(() => import('./pages/Workshop'))
-const StoryWorkbench = lazy(() => import('./pages/StoryWorkbench'))
 const TuiTerminal = lazy(() => import('./components/TuiTerminal'))
 const WorkSpace = lazy(() => import('./components/Workspace'))
 const Deliveries = lazy(() => import('./components/Deliveries'))
@@ -45,6 +44,11 @@ const TaskInspector = lazy(() => import('./components/TaskInspector'))
 // 深链别名：#/review 渲染工作台并把视图预设为「改动验收」
 function BoardReviewPage() {
   return <BoardPage initialView="review" />
+}
+
+// 深链别名：#/story 渲染创作并把 tab 预设为「连续创作」
+function WorkshopStoryPage() {
+  return <WorkshopPage initialTab="story" />
 }
 
 type PageRoute = {
@@ -63,7 +67,9 @@ const PAGE_ROUTES: PageRoute[] = [
   { route: 'review', icon: GitCompare, label: ROUTE_LABELS.review, Page: BoardReviewPage },
   { route: 'lingxi', icon: Sparkles, label: ROUTE_LABELS.lingxi, Page: LingXiPage },
   { route: 'workshop', icon: Factory, label: ROUTE_LABELS.workshop, Page: WorkshopPage },
-  { route: 'story', icon: Sparkles, label: ROUTE_LABELS.story, Page: StoryWorkbench },
+  // 连续创作已并入创作（页内视图）。保留 story 路由作为深链别名，
+  // 让 #/story 与既有收藏继续可用。
+  { route: 'story', icon: Sparkles, label: ROUTE_LABELS.story, Page: WorkshopStoryPage },
   { route: 'models', icon: BrainCircuit, label: ROUTE_LABELS.models, Page: ModelHub, nav: false },
   { route: 'assets', icon: Images, label: ROUTE_LABELS.assets, Page: Assets },
   { route: 'tasks', icon: Clock4, label: ROUTE_LABELS.tasks, Page: Tasks },

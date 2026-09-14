@@ -19,6 +19,8 @@ export const ROUTE_LABELS = {
 // 桌面主栏只放用户每天会找的工作入口；引擎从“更多”提升为一等入口。
 // 改动验收不再是独立主栏项：它的板块与工作台重复（近期工作说明、子智能体记录），
 // 已并入工作台作为页内视图；#/review 仍保留为深链别名。
-export const RAIL_PRIMARY = ['chat', 'board', 'workshop', 'story', 'assets', 'tasks', 'engine'] as const
+// 连续创作同理：它是创作的一条产线，已并入创作作为页内视图；#/story 保留为深链别名。
+// 附带修复：手机「更多」菜单里从来没有连续创作入口，并入创作后手机端才到得了。
+export const RAIL_PRIMARY = ['chat', 'board', 'workshop', 'assets', 'tasks', 'engine'] as const
 
 export const RAIL_MORE = ['lingxi', 'apps', 'sessiondb', 'downloads', 'system'] as const

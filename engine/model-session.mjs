@@ -23,7 +23,9 @@ export function createModelSessionApi(deps) {
           contextWindow: m.contextWindow,
           vision: Array.isArray(m.input) && m.input.includes("image"),
           reasoning: !!m.reasoning,
-          capabilities: m.capabilities || modelCapabilities(m.id),
+          // 派生默认值 + 持久化覆盖：store 快照是加模型时写的，没有后补的
+          // reference/keyframe/seed；只写 `m.capabilities || 派生` 会让老快照永久压掉新能力。
+          capabilities: { ...modelCapabilities(m.id), ...(m.capabilities || {}) },
           free: sm.free,
           note: sm.note || "",
         };
