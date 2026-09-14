@@ -1,4 +1,9 @@
-# AGENTS.md —— pi-web 仓库 AI 协作准则
+# AGENTS.md —— 元枢（Yuanshu）仓库 AI 协作准则
+
+> 产品名是**元枢 / Yuanshu**，不是 pi-web。`pi-web` 只剩两处合理用途：一是远端仓库名
+> （GitHub/Gitee 上的 repo，改名需在平台操作），二是 `yuanshu` 命令的兼容别名。
+> 新增代码、文案、计划任务名一律用 `yuanshu` / `元枢`；环境变量用 `YUANSHU_*`
+> （`PI_WEB_*` 保留为兼容读，别删，见 `engine/env.mjs`）。
 
 > 任何 AI 会话（小语/其他 agent）在本仓库工作时，先读本文件。本文件是**仓库级硬约定**，
 > 与个人记忆无关；与记忆冲突时，以本文件为准并提醒使用者更新记忆。
@@ -25,7 +30,7 @@
 
 ## 并行会话规则（2026-09-03 踩踏事故三条教训）
 
-1. **同一时间只允许一个会话改 pi-web 源码**。要并行，去 `.worktrees/` 开 worktree，合并前先 rebase
+1. **同一时间只允许一个会话改元枢源码**。要并行，去 `.worktrees/` 开 worktree，合并前先 rebase
 2. 动手前先 `git status --short` + `git log --oneline -3`：工作区脏 = 别人在干活，**不要 checkout/stash 别人的现场**
 3. 发现"改了没生效"：先对比 `curl 127.0.0.1:8787/` 的 bundle hash 与磁盘 dist 是否一致，
    再查服务进程（`Get-CimInstance Win32_Process`）是否单实例、从哪个目录起——

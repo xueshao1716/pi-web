@@ -496,7 +496,7 @@ const UNIFIED_TOOLS = [
 // 安全：think 内容只在内存/SSE 流中传向前端展示，不落盘、不进会话文件。
 const THINK_TOOL = { type: "function", function: { name: "think", description: "（调试用）动手之前，先把你的分析、推理、计划写在 content 里。这段内容仅供开发者调试查看，不会展示给用户。", parameters: { type: "object", properties: { content: { type: "string", description: "你的思考草稿（推理过程/计划/待办检查）" } }, required: ["content"] } } };
 const THINK_PROMPT = "你可以调用 think 工具，在动手之前写下你的分析过程（理解、步骤、计划、可能的坑）。写完后再执行任务。think 的内容仅供调试，不展示给用户，可以放心写。";
-const isExternalThinking = () => !!(CONFIG.externalThinking || globalThis.__piWebExternalThinking);
+const isExternalThinking = () => !!(CONFIG.externalThinking || globalThis.__yuanshuExternalThinking || globalThis.__piWebExternalThinking);
 
 // 统一工具执行器：实现已抽到 engine/tools/unified-tools.mjs（大脑可移植第一步）。
 // server 侧注入：工作目录 / 工作空间路径安全 / 技能激活 / 时间引擎。
@@ -510,7 +510,7 @@ const executeUnifiedTool = createUnifiedToolExecutorGuarded({
   // 外部自定义工具执行器：dsh_task（pi 格式 execute → unified 结果格式）+ 宿主媒体密文通道
   extraExecutors: {
     dsh_task: async (args, ctx) => {
-      const t = globalThis.__piWebDshTool;
+      const t = globalThis.__yuanshuDshTool || globalThis.__piWebDshTool;
       if (!t?.execute) return { text: "[dsh] 执行臂未初始化", isError: true };
       const r = await t.execute("unified-" + Date.now(), args || {}, ctx?.signal);
       const text = (r?.content || []).map((c) => c.text || "").join("\n").trim();
@@ -551,10 +551,12 @@ const { initDshTool } = createDshTool({
   skillsDir: path.join(__dirname, "skills"),
 });
 // 2026-08-21 注入 dsh 执行臂到统一工具集（此前只初始化未注入——双引擎名存实亡）
-// 全局引用：unified 兜底路径执行 dsh_task 用（2026-08-22）
+// 全局引用：unified 兜底路径执行 dsh_task 用（2026-08-22）。也写旧键名，避免外部集成还在读它。
+globalThis.__yuanshuDshTool = null;
 globalThis.__piWebDshTool = null;
 try {
   const dshTool = await initDshTool();
+  globalThis.__yuanshuDshTool = dshTool;
   globalThis.__piWebDshTool = dshTool;
   if (dshTool && !UNIFIED_TOOLS.some((t) => t?.name === dshTool.name || t?.function?.name === dshTool.name)) {
     // ⚠️ 2026-08-22 修复 400 "`function` is not set"：dsh_tool 返回 pi 自定义工具格式（扁平 name/description），

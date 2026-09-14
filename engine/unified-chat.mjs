@@ -558,7 +558,7 @@ export async function unifiedChat(model, messages, opts = {}) {
       try {
         const fsdiag = await import("node:fs");
         // M1 路径外部化：调试日志进系统临时目录，不再写死盘符
-        fsdiag.appendFileSync(path.join(os.tmpdir(), "pi-web-unified-debug.log"), JSON.stringify({
+        fsdiag.appendFileSync(path.join(os.tmpdir(), "yuanshu-unified-debug.log"), JSON.stringify({
           t: new Date().toISOString(), model: model.provider + "/" + model.id, turn,
           content_len: content.length, reasoning_len: think.length,
           tool_calls: Array.isArray(tcs) ? tcs.length : (msg.tool_calls?.length || 0),
@@ -676,7 +676,7 @@ async function ensureEngineInit() {
 }
 
 // ══ 消息看板：pi 更新 + 能力看板 ══
-const APP_VERSION = "2.7.1"; // pi-web 正式版本（每次发版 bump + 记入 CHANGELOG.md）
+const APP_VERSION = "2.7.1"; // 元枢正式版本（每次发版 bump + 记入 CHANGELOG.md）
 const CAPABILITIES = [
   { icon: "💬", name: "多模型对话", desc: "deepseek / 小米 mimo / Agnes，思考 + 工具调用" },
   { icon: "🛠", name: "编程工具", desc: "读文件 / 写文件 / 编辑 / 跑命令（与 TUI 同一引擎）" },

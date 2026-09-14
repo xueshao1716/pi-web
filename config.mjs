@@ -10,9 +10,14 @@ const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TOKEN_FILE = path.join(__dirname, ".token");
 
-// 访问令牌：环境变量 PI_WEB_TOKEN 优先，其次 .token 文件，否则生成一个并保存
+// 环境变量统一入口：新名 YUANSHU_* 优先，旧名 PI_WEB_* 继续认。
+// 实现在 engine/env.mjs，engine/ 下的模块也复用它（避免各写一份导致行为漂移）。
+import { env } from "./engine/env.mjs";
+
+// 访问令牌：环境变量 YUANSHU_TOKEN（旧名 PI_WEB_TOKEN）优先，其次 .token 文件，否则生成一个并保存
 function loadToken() {
-  if (process.env.PI_WEB_TOKEN) return process.env.PI_WEB_TOKEN;
+  const fromEnv = env("TOKEN");
+  if (fromEnv) return fromEnv;
   try {
     const t = fs.readFileSync(TOKEN_FILE, "utf8").trim();
     if (t) return t;
@@ -76,20 +81,20 @@ function defaultCwd() {
 }
 
 export const CONFIG = {
-  port: parseInt(process.env.PI_WEB_PORT || "8787", 10),
-  // 默认仅监听本机；需要手机直接通过局域网 IP 连接时显式设置 PI_WEB_LAN=1。
-  host: process.env.PI_WEB_HOST || (process.env.PI_WEB_LAN === "1" ? "0.0.0.0" : "127.0.0.1"),
-  corsOrigins: process.env.PI_WEB_CORS_ORIGINS || "",
+  port: parseInt(env("PORT") || "8787", 10),
+  // 默认仅监听本机；需要手机直接通过局域网 IP 连接时显式设置 YUANSHU_LAN=1。
+  host: env("HOST") || (env("LAN") === "1" ? "0.0.0.0" : "127.0.0.1"),
+  corsOrigins: env("CORS_ORIGINS") || "",
   token: loadToken(),
   tokenFile: TOKEN_FILE,
   // 工作目录：优先环境变量；默认主目录/pi-workspace（跨平台，不硬编码）
-  cwd: process.env.PI_WEB_CWD || defaultCwd(),
+  cwd: env("CWD") || defaultCwd(),
   // 允许的工具集，逗号分隔
-  tools: (process.env.PI_WEB_TOOLS || "read,write,edit,bash").split(",").map(s => s.trim()).filter(Boolean),
+  tools: (env("TOOLS") || "read,write,edit,bash").split(",").map(s => s.trim()).filter(Boolean),
   // 默认模型，空 = 使用第一个可用模型
-  model: process.env.PI_WEB_MODEL || "zhipu-paid/glm-5.3-flash", // 2026-08-31 默认主力切智谱付费 glm-5.3-flash（env PI_WEB_MODEL 可覆盖）
+  model: env("MODEL") || "zhipu-paid/glm-5.3-flash", // 2026-08-31 默认主力切智谱付费 glm-5.3-flash（env YUANSHU_MODEL 可覆盖）
   // 外部思考调试开关（externalThinking）：给模型挂 think 工具导出推理草稿（默认关）
-  externalThinking: process.env.PI_WEB_EXTERNAL_THINKING === "1",
+  externalThinking: env("EXTERNAL_THINKING") === "1",
   // 兼容适配器包路径（跨平台推导）
   piPackage: resolvePiPackage(),
 };

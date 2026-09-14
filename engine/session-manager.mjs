@@ -9,6 +9,7 @@ import { appendArchiveJsonl, archivePathFor } from "./yuanshu-compact.mjs";
 import { execActivateSkill } from "./context-loader.mjs";
 import { httpJsonFetch } from "./http.mjs";
 import { wsSafePath } from "./workspace-api.mjs";
+import { env } from "./env.mjs";
 
 let _cwd = "", _sessionsDir = "", _tools = [], _getModelList = () => [], _getDefaultModel = () => null, _activeSessions = null, _createAgentSessionServices = null, _createAgentSessionFromServices = null, _getModelRuntime = () => null,
     _SessionManager = null, _SettingsManager = null, _DefaultResourceLoader = null, _getAgentDir = () => "", _readJsonFile = null, _writeJsonFile = null, _piPackage = "", _isModelBlocked = () => false,
@@ -423,7 +424,7 @@ export async function initShareTool() {
         } catch (e) {
           return { content: [{ type: "text", text: `复制失败: ${String(e?.message || e).slice(0, 80)}` }] };
         }
-        const host = process.env.PI_WEB_SHARE_HOST || "share.myxinyu.xin";
+        const host = env("SHARE_HOST") || "share.myxinyu.xin";
         const isHtml = fs.existsSync(path.join(target, "index.html"));
         const url = `https://${host}/${encodeURIComponent(base)}${isHtml ? "/" : ""}`;
         return {

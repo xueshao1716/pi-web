@@ -5,11 +5,13 @@ import path from "node:path";
 import { execFile, spawn } from "node:child_process";
 import { json } from "./http-utils.mjs";
 import { wsSafePath } from "./workspace-api.mjs";
+import { env } from "./env.mjs";
 
 // ── 分享管理（LEGACY，保留兼容：现分享由外部分享服务器 node server.js + 隧道统一管理）──
-// 说明：前端已无调用入口；域名通过环境变量 PI_WEB_SHARE_HOST 配置，开源环境可留空（仅本地访问）
+// 说明：前端已无调用入口；域名通过环境变量 YUANSHU_SHARE_HOST（旧名 PI_WEB_SHARE_HOST）配置，
+// 开源环境可留空（仅本地访问）
 const SHARE_PORT = 8642;
-const SHARE_HOST = process.env.PI_WEB_SHARE_HOST || "";
+const SHARE_HOST = env("SHARE_HOST") || "";
 let shareProcess = null; // 当前分享的 http.server 子进程
 let sharePath = null;    // 分享的目录
 

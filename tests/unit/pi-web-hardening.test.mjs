@@ -153,7 +153,10 @@ test('HTTP responses expose the browser security baseline and redact nested erro
 test('README documents the reproducible multi-platform frontend workflow', async () => {
   const readme = await read('README.md')
   for (const term of [
-    'frontend/dist', 'npm run build:mobile:web', 'PI_WEB_LAN=1',
+    'frontend/dist', 'npm run build:mobile:web', 'YUANSHU_LAN=1',
     'zhipu-paid/glm-5.3-flash', 'arm64', 'armeabi-v7a', 'x86_64', 'universal',
+    // 环境变量已从 PI_WEB_* 迁到 YUANSHU_*，但旧名仍是兼容读的；
+    // 文档必须同时交代这一点，否则老安装升级后不知道自己的变量还算不算数。
+    'PI_WEB_',
   ]) assert.match(readme, new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `README must document ${term}`)
 })

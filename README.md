@@ -87,7 +87,7 @@ yuanshu
 
 3. **重启服务**：`taskkill /F /IM node.exe` 后重新 `yuanshu`（或 `cd ~/pi-web && node server.mjs`），刷新 http://127.0.0.1:8787 即可对话
 
-> 当前默认模型为 `zhipu-paid/glm-5.3-flash`（可用 `PI_WEB_MODEL` 覆盖）；具体可用模型取决于本机 `models-store.json` 和 provider 配置。
+> 当前默认模型为 `zhipu-paid/glm-5.3-flash`（可用 `YUANSHU_MODEL` 覆盖）；具体可用模型取决于本机 `models-store.json` 和 provider 配置。
 > 更多模型商（小米/阿里/火山等）逐个加进 auth.json 即可，模型清单见 `~/.pi/agent/models-store.json`。
 >
 > **dsh 引擎的 key**：凭证只留在本机进程环境或 `~/.pi/agent/auth.json`，元枢不会替用户登录外部平台，也不会自动执行 `git push`。与元枢共用同一把 DeepSeek key 即可。
@@ -221,23 +221,29 @@ node server.mjs
 
 # 3. 访问
 # http://127.0.0.1:8787
-# 首次打开输入访问令牌（见 .token 文件或环境变量 PI_WEB_TOKEN）
+# 首次打开输入访问令牌（见 .token 文件或环境变量 YUANSHU_TOKEN）
 ```
 
 ## 环境变量
 
+变量前缀统一为 `YUANSHU_*`。旧的 `PI_WEB_*` **仍然生效**（两个都读，新名优先），
+老安装里已经导出的变量不需要改；新写配置请用新名。空白值一律视同未设置。
+
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `PI_WEB_PORT` | `8787` | 服务端口 |
-| `PI_WEB_HOST` | `127.0.0.1` | 监听地址；显式设置后优先于 LAN 模式 |
-| `PI_WEB_LAN` | 空 | 设置为 `1` 后，在未设置 `PI_WEB_HOST` 时监听 `0.0.0.0`，供手机直接通过局域网 IP 连接 |
-| `PI_WEB_CORS_ORIGINS` | 内置本地壳 origin | 逗号分隔的额外允许来源；不要填写不受信任的站点 |
-| `PI_WEB_TOKEN` | 自动生成 | 访问令牌（存 `.token`） |
-| `PI_WEB_CWD` | `~/pi-workspace` | 工作空间根目录 |
-| `PI_WEB_TOOLS` | `read,write,edit,bash` | 允许的工具集 |
-| `PI_WEB_MODEL` | `zhipu-paid/glm-5.3-flash` | 默认模型；可覆盖 |
-| `PI_PACKAGE` | 自动解析 | pi 引擎入口路径 |
-| `PI_WEB_SHARE_HOST` | 空 | 外网分享域名（可选，配置后启用分享） |
+| `YUANSHU_PORT` | `8787` | 服务端口 |
+| `YUANSHU_HOST` | `127.0.0.1` | 监听地址；显式设置后优先于 LAN 模式 |
+| `YUANSHU_LAN` | 空 | 设置为 `1` 后，在未设置 `YUANSHU_HOST` 时监听 `0.0.0.0`，供手机直接通过局域网 IP 连接 |
+| `YUANSHU_CORS_ORIGINS` | 内置本地壳 origin | 逗号分隔的额外允许来源；不要填写不受信任的站点 |
+| `YUANSHU_TOKEN` | 自动生成 | 访问令牌（存 `.token`） |
+| `YUANSHU_CWD` | `~/pi-workspace` | 工作空间根目录 |
+| `YUANSHU_TOOLS` | `read,write,edit,bash` | 允许的工具集 |
+| `YUANSHU_MODEL` | `zhipu-paid/glm-5.3-flash` | 默认模型；可覆盖 |
+| `YUANSHU_EXTERNAL_THINKING` | 空 | 设为 `1` 给模型挂 think 工具导出推理草稿 |
+| `YUANSHU_SHARE_HOST` | 空 | 外网分享域名（可选，配置后启用分享） |
+| `PI_PACKAGE` | 自动解析 | pi 引擎入口路径（这一个是上游 pi 包自己的名字，不随产品改名） |
+
+> 兼容别名：上表每一项都可用 `PI_WEB_` 前缀代替 `YUANSHU_`，例如 `PI_WEB_PORT`／`PI_WEB_LAN`／`PI_WEB_SHARE_HOST`。
 
 ## 配置模型与密钥
 
@@ -297,7 +303,7 @@ cp models.example.json ~/.pi/agent/models-store.json
 ## 外网分享（可选）
 
 1. 将项目放入工作空间的 `外网分享/` 目录（或自定目录）
-2. 配置 `PI_WEB_SHARE_HOST` 指向你的域名，并按需配置隧道（如 cloudflared）
+2. 配置 `YUANSHU_SHARE_HOST` 指向你的域名，并按需配置隧道（如 cloudflared）
 3. 分享链接：`https://<你的域名>/<项目名>/`
 
 ## 前端与多端构建
@@ -313,7 +319,7 @@ Tauri Android 构建使用 `app/src-tauri` 的 Gradle/Tauri 工程，Capacitor A
 
 Windows 发布脚本默认把 Cargo、Gradle、npm 和临时文件放到 `D:\pi-workspace\.build-cache`，正式安装包写入 `D:\pi-workspace\交付`；手动构建时也应设置 `CARGO_HOME`、`CARGO_TARGET_DIR`、`GRADLE_USER_HOME`、`npm_config_cache`、`TEMP` 和 `TMP`，避免系统盘缓存膨胀。桌面/Android 壳版本统一维护在 `app/src-tauri/tauri.conf.json` 与 `app/src-tauri/Cargo.toml`，当前为 `0.2.4`。
 
-默认服务只监听 `127.0.0.1`，因此现有反向代理/域名指向本机端口的方式不变。需要手机直接访问电脑局域网 IP 时，显式设置 `PI_WEB_LAN=1`，并配合 Windows 防火墙和访问令牌。
+默认服务只监听 `127.0.0.1`，因此现有反向代理/域名指向本机端口的方式不变。需要手机直接访问电脑局域网 IP 时，显式设置 `YUANSHU_LAN=1`，并配合 Windows 防火墙和访问令牌。
 
 ## 开发
 

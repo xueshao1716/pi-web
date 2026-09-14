@@ -134,7 +134,7 @@ cp frontend/dist/assets/* public/react/assets/
 - **构建绝不写 `public/`**：`vite.config.ts` 的 `outDir` 必须是独立的 `dist`，且 `emptyOutDir` 独立，否则会覆盖线上 `index.html`（曾发生一次已恢复）。
 - **base 用相对路径** `'./'`：产物才能放任意子目录。
 - **PowerShell 写中文文件会乱码**：改含中文的 JS/CSS 用 `edit`/`write` 工具，勿用 `Set-Content -Encoding UTF8`（曾把 workspace.js 改成 GBK 乱码）。
-- **CDP 截图需注入 token**：dev 联调要在 localStorage 设 `pi_web_token`。
+- **CDP 截图需注入 token**：dev 联调要在 localStorage 设 `yuanshu_access_token`（旧键 `pi_web_token` 仍被兼容读取，见 `src/api.ts`）。
 
 ---
 
