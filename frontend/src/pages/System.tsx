@@ -74,7 +74,7 @@ export default function System() {
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
         <PageHeader
           title="系统"
-          description="查看服务运行状态、更新来源与网络入口；系统能力等技术信息收在页面底部。"
+          description="查看服务运行状态、更新来源与网络入口；功能一览等技术信息收在页面底部。"
           meta={<span className="text-[11px] text-pi-dim2">{dirty ? '配置有未保存修改' : '服务配置中心'}</span>}
         />
 
@@ -188,7 +188,7 @@ export default function System() {
 
         <details className="panel !p-0 overflow-hidden mb-4">
           <summary className="px-4 py-3 cursor-pointer select-none flex items-center justify-between gap-3">
-            <span className="inline-flex items-center gap-2 text-[13px] font-semibold text-pi-text"><MonitorCog className="w-4 h-4 text-pi-accent" aria-hidden="true" />系统能力</span>
+            <span className="inline-flex items-center gap-2 text-[13px] font-semibold text-pi-text"><MonitorCog className="w-4 h-4 text-pi-accent" aria-hidden="true" />功能一览</span>
             <span className="inline-flex items-center gap-1.5 text-[11px] text-pi-dim2 font-normal">技术信息<ChevronDown className="w-3.5 h-3.5" aria-hidden="true" /></span>
           </summary>
           <div className="border-t border-pi-border-soft p-4">

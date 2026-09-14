@@ -287,14 +287,16 @@ test('系统网络摘要只陈述已发现入口，不把配置数据解释为�
   assert.doesNotMatch(networkTile, /可用|未配置|待配置|在线|离线/, '网络摘要不得把入口配置解释为网络可达性')
 })
 
-test('系统能力默认折叠，保留更新、网络编辑保存与实际端口 LAN 复制行为', () => {
+test('功能一览默认折叠，保留更新、网络编辑保存与实际端口 LAN 复制行为', () => {
   const system = read('pages', 'System.tsx')
   const detailsStart = system.indexOf('<details')
   const detailsEnd = system.indexOf('</details>', detailsStart)
-  assert.ok(detailsStart >= 0 && detailsEnd > detailsStart, '系统能力必须位于 details')
+  assert.ok(detailsStart >= 0 && detailsEnd > detailsStart, '功能一览必须位于 details')
   const details = system.slice(detailsStart, detailsEnd)
-  assert.ok(!/<details[^>]*\sopen(?:=|\s|>)/.test(details), '系统能力必须默认折叠')
-  assert.ok(details.includes('系统能力'), '折叠区必须包含系统能力清单')
+  assert.ok(!/<details[^>]*\sopen(?:=|\s|>)/.test(details), '功能一览必须默认折叠')
+  // 不能叫「系统能力」：主栏的「能力」是引擎运行时页，同名会让人以为两页重复
+  assert.ok(details.includes('功能一览'), '折叠区必须包含功能清单')
+  assert.ok(!details.includes('系统能力'), '折叠区不得再叫「系统能力」，与主栏「能力」页撞名')
   for (const behavior of [
     "useSWR('system-info', () => SystemApi.info(), { dedupingInterval: 30000 })",
     'SystemApi.checkUpdate()',
