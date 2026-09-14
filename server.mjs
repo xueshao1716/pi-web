@@ -23,6 +23,8 @@ import { createModelSessionApi } from "./engine/model-session.mjs";
 import { shrinkToolResult, NEEDS_PRO_RE, scavengeToolCalls } from "./engine/reasonix-tools.mjs";
 import { initToolResultArchive } from "./engine/tool-result-archive.mjs";
 import { initFileLock, usingSharedFileQueue } from "./engine/file-lock.mjs";
+import { promptTimeText } from "./engine/yuanshu-seams.mjs";
+import { createSoilReader } from "./engine/aibody-soil.mjs";
 // ── 会话解析纯函数（拆模块）：消息/文本/图片/文件提取 ──
 import { extractMessages, extractText, extractImages, extractFiles, resolveLeafId, windowMessages } from "./engine/session-utils.mjs";
 import { initSessionFiles, scanSessionFiles, parseSessionFile, parseSessionFileCached, readEntriesFromFile, getSessionList, invalidateSessionCache, extractMessageFiles, extractMessageImages } from "./engine/session-files.mjs";
@@ -246,13 +248,7 @@ const MODELS_PATH = path.join(AGENT_DIR, "models-store.json");
 // 不替代既有基因/情绪/记忆实现，也不把文件存在性当作运行证据。
 const aibodyRuntime = createAIBodyRuntime({
   rootDir: path.join(AGENT_DIR, "yuanshu-aibody"),
-  readState: () => ({
-    identity: { summary: "元枢主角色：小语", details: { host: "元枢工作台" } },
-    genes: typeof emotion.getGenome === "function" ? { summary: "11 基因人格基线与表达已加载", details: { count: Object.keys(emotion.getGenome()?.genes || {}).length } } : null,
-    emotion: typeof emotion.getLatestSnapshot === "function" ? (() => { const s = emotion.getLatestSnapshot(); return s ? { summary: s.state || s.label || "当前情绪已观测", details: { intensity: s.intensity ?? null } } : null })() : null,
-    memory: (() => { try { const p = path.join(CONFIG.cwd, "记忆.md"); return fs.existsSync(p) ? { summary: "固定记忆已接入", details: { bytes: fs.statSync(p).size } } : null } catch { return null } })(),
-    governance: { summary: "高风险操作与人格提案保持人工确认", details: { proposals: "approval_required" } },
-  }),
+  readState: createSoilReader({ agentDir: AGENT_DIR, cwd: CONFIG.cwd, emotion }),
 });
 const aibodyHost = createAIBodyHost(aibodyRuntime);
 // 启用 agent 通道扩展注册（2026-08-27 补 compat/thinkingLevelMap 后启用）：把 store 里
@@ -651,13 +647,29 @@ async function handleChat(req, res, body) {
     const sf = entry.sm.sessionFile;
     if (sf && fs.existsSync(sf)) chatBaseline = fs.readFileSync(sf, "utf8").split("\n").filter(Boolean).length;
   } catch {}
+  // 通道策略：主次引擎对（engine-pair）决定本轮主驾。默认仍是 pi 主驾、元枢兑底。
+  // PI_USE_AGENT=0 → 强制元枢。非 SDK 原生通道只让兼容 agent 兑底（dsh 有自己的通道）。
+  // ⚠️ 这段是纯计算，必须放在 AIBody attach **之前**：attach 会把 engine 写进观测记录，
+  // 原先硬编码 "yuanshu"，主驾是 pi 时记录就是错的。留在这里又用 observedEngine 会 TDZ。
+  const reqProv = (typeof body.model === "string" && body.model.includes("/"))
+    ? body.model.split("/")[0]
+    : null;
+  const engineDecision = resolveLead(loadEnginePair(), {
+    forceYuanshu: process.env.PI_USE_AGENT === "0",
+    nativeChannel: !reqProv || NATIVE_PROVIDERS.has(reqProv),
+  });
+  // 恢复任务必须走带 effects ledger 的统一工具循环；SDK agent 无法在
+  // 内置 write/edit/bash 执行前可靠拦截，因此不能让恢复请求盲目重放。
+  const forceResumeUnified = body.__runContext?.resume === true;
+  const useAgent = !!defaultModel && engineDecision.lead === "pi" && !forceResumeUnified;
+  const observedEngine = forceResumeUnified ? "yuanshu" : engineDecision.lead === "dsh" ? "dsh" : useAgent ? "pi" : defaultModel ? "yuanshu" : "pi";
   // 在主聊天 SSE 外层接入 AIBody：同一条流观察计划、工具、子任务、记忆与产物，
   // 结束时自动持久化本轮状态；不会改变 SSE 内容或背压行为。
   const aibodyTurn = aibodyHost.attach({
     res,
     runId: body.__runContext?.runId || undefined,
     sessionId: sessionId || findKeyByEntry(entry),
-    engine: "yuanshu",
+    engine: observedEngine,
     source: "chat",
     message,
     signals: body.__runContext?.signal,
@@ -810,20 +822,6 @@ async function handleChat(req, res, body) {
       }
     } catch {}
   }
-  // 通道策略：主次引擎对（engine-pair）决定本轮主驾。默认仍是 pi 主驾、元枢兑底。
-  // PI_USE_AGENT=0 → 强制元枢。非 SDK 原生通道只让兼容 agent 兑底（dsh 有自己的通道）。
-  const reqProv = (typeof body.model === "string" && body.model.includes("/"))
-    ? body.model.split("/")[0]
-    : null;
-  const engineDecision = resolveLead(loadEnginePair(), {
-    forceYuanshu: process.env.PI_USE_AGENT === "0",
-    nativeChannel: !reqProv || NATIVE_PROVIDERS.has(reqProv),
-  });
-  // 恢复任务必须走带 effects ledger 的统一工具循环；SDK agent 无法在
-  // 内置 write/edit/bash 执行前可靠拦截，因此不能让恢复请求盲目重放。
-  const forceResumeUnified = body.__runContext?.resume === true;
-  const useAgent = !!defaultModel && engineDecision.lead === "pi" && !forceResumeUnified;
-  const observedEngine = forceResumeUnified ? "yuanshu" : engineDecision.lead === "dsh" ? "dsh" : useAgent ? "pi" : defaultModel ? "yuanshu" : "pi";
   try { sseWrite(res, "engine_selected", { engine: observedEngine, reason: forceResumeUnified ? "恢复任务使用元枢循环，承接已保存的步骤。" : ({ primary: "使用系统配置的主引擎。", force: "启动配置指定使用元枢引擎。", "non-native": "当前模型通道由元枢自建循环承接。", "cannot-lead": "配置主引擎无法承担此任务，由可执行的引擎接替。" }[engineDecision.reason] || "使用本轮可用的执行通道。") }); } catch {}
   if (forceResumeUnified || engineDecision.lead === "dsh" || (defaultModel && !useAgent)) {
     const hb2 = startSseHeartbeat(res);
@@ -1103,6 +1101,8 @@ async function handleChat(req, res, body) {
   try {
     // 情绪感知：更新会话情绪状态，注入行为指令（用 nextTurn 机制，不写入会话历史）
     const sessKey = sessionId || findKeyByEntry(entry) || "new";
+    // ⚠️ 必须在 updateEmotion **之前**取：它会把 lastTalk 刷成本轮，之后差值恒为 0
+    const prevTalkAt = (() => { try { return Number(emotion.getSnapshot(sessKey)?.lastTalk) || 0; } catch { return 0; } })();
     emotion.updateEmotion(sessKey, message);
     const emoPrompt = emotion.emotionPrompt(sessKey, message);
     // 自我认知：仅当用户问"你是谁/介绍自己"等身份问题时注入固定答案（不主动开场白）
@@ -1135,15 +1135,25 @@ async function handleChat(req, res, body) {
         );
       } catch {}
     }
-    // dsh time-context 借鉴：agent 管线每轮注入当前时间
+    // 时间上下文：统一由 promptTimeText 产出（含"距上次对话多久"），不再内联拼字符串
     try {
-      const t = new Date();
-      const d = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")} ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
       await entry.agent?.sendCustomMessage?.(
-        { customType: "context", content: [{ type: "text", text: `【时间上下文】当前时间：${d}（周${["日","一","二","三","四","五","六"][t.getDay()]}）。涉及时间/日期/定时/时效判断以此为准。` }] },
+        { customType: "context", content: [{ type: "text", text: `【时间上下文】${promptTimeText(new Date(), { since: prevTalkAt })}` }] },
         { deliverAs: "nextTurn" }
       );
     } catch {}
+    // AIBody 运行协调：模式策略 + 状态提供者摘要。
+    // 之前这份 directive 只进了 executionContext 给子智能体用，**主角色收不到**；
+    // 而 directiveFor 里写的正是"母体协调身份、记忆与角色治理""主角色负责综合和交付"。
+    // 用 nextTurn 注入，与情绪/时间同一个口子，不污染会话历史。
+    if (aibodyTurn?.directive) {
+      try {
+        await entry.agent?.sendCustomMessage?.(
+          { customType: "context", content: [{ type: "text", text: aibodyTurn.directive }] },
+          { deliverAs: "nextTurn" }
+        );
+      } catch {}
+    }
     // PPT 任务专用执行护栏：交付类请求不能停在“我会做/大纲已列”或伪造文件。
     // 通过 nextTurn 注入，不改人格文件，也不污染会话历史；真正的工具由 Pi SDK customTools 提供。
     if (/\b(?:pptx?|powerpoint)\b|幻灯片|演示文稿|宣传ppt/i.test(message)) {

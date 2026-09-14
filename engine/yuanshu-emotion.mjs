@@ -7,6 +7,19 @@ function sessionKey(id) {
   return String(id || "new");
 }
 
+/**
+ * 上次对话时间（毫秒），供时间上下文算"距上次对话多久"。
+ *
+ * ⚠️ 必须在本轮 updateEmotion / beginYuanshuEmotion **之前**调用：
+ * 它们会把 lastTalk 刷成当前时间，之后取到的差值恒为 0。
+ */
+export function lastTalkAt(sessionId) {
+  try {
+    const at = Number(getSnapshot(sessionKey(sessionId))?.lastTalk);
+    return Number.isFinite(at) && at > 0 ? at : 0;
+  } catch { return 0; }
+}
+
 export function beginYuanshuEmotion(sessionId, message, history = []) {
   const key = sessionKey(sessionId);
   const msg = String(message || "");

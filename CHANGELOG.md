@@ -6,6 +6,30 @@
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-09-14
+### 新增
+- **AIBody 的「土壤」接回主角色**。原先这份运行协调 directive（模式策略 + 五个状态提供者摘要）
+  只经 `executionContext` 传给**子智能体**，主角色根本收不到——而 directive 里写的正是
+  "母体协调身份、记忆与角色治理""主角色负责综合和交付"。现在 Pi 路径用 nextTurn 注入，
+  兜底路径走 `runtime` 提示区段（该区段本来就存在，只是一直没人往里传）。
+- **五个状态提供者改为真实读数**（`engine/aibody-soil.mjs`）。此前 identity / governance
+  是纯硬编码字符串，genes 的 summary 硬编码，memory 只证明文件存在——而这些摘要每轮都会
+  拼进 directive 交给模型，等于让模型读没被观测过的说法。现在：
+  identity=人格附录文件大小与更新时间、genes=条数与**真实漂移**、emotion=**本会话**快照、
+  memory=条目数与最后写入时间、governance=**待批提案真实条数**；读不到就返回 null，
+  由 policy 标 `not_observed`，不再冒充 observed。
+- **时间感**：`promptTimeText` 补上"距上次对话多久"与"本次会话已持续多久"。
+  原先三个重复实现（yuanshu-seams / time-engine.nowContext / server.mjs 内联）都只说
+  "现在几点"——是时钟，不是时间感。现在收敛成一份；`nowContext` 全仓零调用者，已删。
+
+### 变更
+- 会话写操作与 Pi 共用同一把按文件队列（`withFileMutationQueue`），并叠加跨进程锁文件；
+  元枢自己的 `edit` 是同步临界区本就原子，真窗口在**跨实现**（Pi 的 edit 走 fs/promises，
+  读写之间有真 await）。
+- AIBody 记录的 `engine` 不再硬编码 "yuanshu"——主驾是 pi 时记录会是错的；改为真实观测值。
+- 工具结果压缩：给出可执行回读指针（归档原件 + 读法）、大结果先发全文 2 次再压缩。
+  详见 `docs/NAMING.md` 第四节与 `docs/sol-pi-notes.md`。
+
 ## [2.8.0] - 2026-09-14
 ### 新增
 - **命名契约**（`docs/NAMING.md`）：产物名统一为 `{提示词摘要}_{类型}_{时间戳}-{id}_{v版本}.{扩展名}`，

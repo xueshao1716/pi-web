@@ -29,7 +29,7 @@ import { prependAssembledSystem } from "./yuanshu-prompt.mjs";
 import { assembleYuanshuSystem, registerPromptSection, promptTimeText, promptPersonaText } from "./yuanshu-seams.mjs";
 import { bindWorkmemSession, formatPlanPrompt } from "./yuanshu-workmem.mjs";
 import { persistYuanshuUser, persistYuanshuAssistant, persistYuanshuToolTrace, abortedAssistantText } from "./yuanshu-session.mjs";
-import { beginYuanshuEmotion, endYuanshuEmotion } from "./yuanshu-emotion.mjs";
+import { beginYuanshuEmotion, endYuanshuEmotion, lastTalkAt } from "./yuanshu-emotion.mjs";
 import { resolveAuth } from "./dsh-keys.mjs";
 import { runYuanshuToolRound, attachYuanshuCodeTool, toolCallLoopKey, toolCallsFromPlan } from "./yuanshu-loop.mjs";
 import { canonicalStepKey, hashArgs } from "./run-effects.mjs";
@@ -142,6 +142,17 @@ export function lastPartialAssistantText(history) {
 export function fallbackHistoryForDirectChat(history) {
   if (!Array.isArray(history)) return [];
   return history.at(-1)?.role === "user" ? history.slice(0, -1) : [...history];
+}
+
+/** 会话起始时间（毫秒）：hist 里最早一条带时间戳的消息。用于"本次会话已持续多久"。 */
+export function sessionStartedAt(hist = []) {
+  for (const item of Array.isArray(hist) ? hist : []) {
+    const ts = item?.ts;
+    if (!ts) continue;
+    const ms = typeof ts === "number" ? ts : Date.parse(String(ts));
+    if (Number.isFinite(ms) && ms > 0) return ms;
+  }
+  return 0;
 }
 
 // Rebuild an OpenAI-compatible history from the compact session projection.
@@ -618,7 +629,7 @@ export async function initEngine() {
       id: "yuanshu:prompt:time",
       name: "时间上下文",
       section: "time",
-      contribute: (ctx) => promptTimeText(ctx?.now),
+      contribute: (ctx) => promptTimeText(ctx?.now, { since: ctx?.since, sessionStart: ctx?.sessionStart }),
     });
     await registerPromptSection(nextGateway.registry, {
       id: "yuanshu:prompt:persona",
@@ -924,8 +935,13 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     todos: formatTodoPrompt(sessionId),
     hist,
     rules: loadProjectRules(),
+    // AIBody 运行协调：模式策略 + 状态提供者摘要。
+    // 之前这份 directive 只传给了子智能体（executionContext.aibodyContext），
+    // **主角色根本收不到**——而 directiveFor 里那些话（母体协调身份/记忆/角色治理）
+    // 恰恰是写给主角色的。runtime 段本来就存在，只是一直没人往里传。
+    runtime: runContext?.aibodyContext?.strategy || "",
     task: thinkOn ? "你可以调用 think 工具，在动手之前写下你的分析过程（理解、步骤、计划、可能的坑）。写完后再执行任务。think 的内容仅供调试，不展示给用户，可以放心写。" : "",
-  }, gateway?.registry, { now: new Date(), model: chatModel, sessionId, message });
+  }, gateway?.registry, { now: new Date(), model: chatModel, sessionId, message, since: lastTalkAt(sessionId), sessionStart: sessionStartedAt(hist) });
   history = prependAssembledSystem(history, sections);
   history = beginYuanshuEmotion(sessionId || "new", message, history);
   history = (await compactKeepArchive(history, (h) => maybeCompactHistory(h, chatModel))).view;

@@ -185,12 +185,6 @@ export function createTimeEngine(runner, opts = {}) {
   return { start, stop, stopRun, register, remove, list, check, pause, resume, archive, setState, runNow, find, _isDue: isDue, _file: TASKS_FILE };
 }
 
-// 时间感知文本：注入 system prompt
-export function nowContext() {
-  const n = new Date();
-  const cn = new Date(n.getTime() + 8 * 3600 * 1000);
-  const y = cn.getUTCFullYear(), m = cn.getUTCMonth() + 1, d = cn.getUTCDate();
-  const wd = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][cn.getUTCDay()];
-  const hh = String(cn.getUTCHours()).padStart(2, "0"), mm = String(cn.getUTCMinutes()).padStart(2, "0");
-  return `【当前时间】${y}年${m}月${d}日 ${wd} ${hh}:${mm}（北京时间）。涉及"现在几点/今天几号/星期几"等时间问题时直接使用以上时间。`;
-}
+// 时间感知文本：统一由 yuanshu-seams 的 promptTimeText 产出（含"过了多久"）。
+// 这里原本还有一个 nowContext()，与它是重复实现（三份时间格式化里的两份），
+// 且**全仓零调用者**，2026-09-14 删除——避免第三套时钟各说各话。
