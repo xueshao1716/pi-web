@@ -15,6 +15,28 @@ let crashTimes = []; // 最近崩溃时间戳（用于连续崩溃检测→回�
 let rollbackDone = false; // 回滚只做一次，避免无限回滚
 let lastStartAt = 0; // 最近一次启动时刻（用于分级检查频率：启动期快查，稳态慢查）
 
+// ── 崩溃归因 → 是否回滚 ───────────────────────────────────────────────
+// 回滚会把 server.mjs 换成旧的 .bak，属于「静默降级」，误判代价极高：
+// 2026-09-14 实例——全局依赖 @earendil-works/pi-coding-agent 被一次中断的安装删掉，
+// 服务启动即 ERR_UNSUPPORTED_DIR_IMPORT 崩溃。这与 server.mjs 代码无关；
+// 若当时 watchdog 在跑并触发回滚，刚修好的 server.mjs 会被 server.mjs.bak-* 覆盖。
+// 因此只回滚「能归因到 server.mjs 自身」的崩溃：语法错，或运行时 JS 错。
+// 依赖缺失 / 内存溢出 / 路径不存在 / 权限等环境类崩溃一律拒绝回滚。
+const ROLLBACK_AFTER = 3; // 5 分钟内连续崩溃达此数才考虑回滚
+const ENV_ERROR_RE = /ERR_MODULE_NOT_FOUND|ERR_UNSUPPORTED_DIR_IMPORT|ERR_UNKNOWN_FILE_EXTENSION|Cannot find (module|package)|ENOENT|EACCES|EPERM|JavaScript heap out of memory|heap limit|OOM/i;
+const CODE_ERROR_RE = /\b(ReferenceError|SyntaxError|TypeError|RangeError)\b/;
+
+function decideRollback({ syntaxOk = true, crashText = "", crashCount = 0, rollbackDone = false } = {}) {
+  if (rollbackDone) return { rollback: false, reason: "本次进程已回滚过" };
+  if (crashCount < ROLLBACK_AFTER) return { rollback: false, reason: `连续崩溃 ${crashCount} 次 < ${ROLLBACK_AFTER}` };
+  // 语法坏掉 = 文件一定有问题，无条件回滚（环境类文本不能否决这一条）
+  if (!syntaxOk) return { rollback: true, reason: "server.mjs 语法校验不通过" };
+  const text = String(crashText || "");
+  if (ENV_ERROR_RE.test(text)) return { rollback: false, reason: "环境/依赖类崩溃（非 server.mjs 代码问题），拒绝回滚" };
+  if (CODE_ERROR_RE.test(text)) return { rollback: true, reason: "server.mjs 运行时报错（ReferenceError/TypeError 等）" };
+  return { rollback: false, reason: "崩溃原因无法归因到 server.mjs，拒绝回滚" };
+}
+
 function log(msg) {
   const line = `[${new Date().toLocaleString("zh-CN")}] ${msg}`;
   console.log(line);
@@ -100,10 +122,11 @@ async function startServer() {
   // 重启限频：10 秒内最多重启 1 次，防死循环风暴
   const now = Date.now();
   if (now - lastRestartAt < 10000) {
-    // 防风暴跳过时，若连续崩溃≥3次则回滚到备份（抓运行时错误，如 ReferenceError）
+    // 防风暴跳过时，若连续崩溃达阈值且能归因到 server.mjs，则回滚备份
     crashTimes = crashTimes.filter(t => now - t < 5 * 60 * 1000);
-    if (!rollbackDone && crashTimes.length >= 3 && !serverSyntaxOk()) {
-      log("⚠️ 连续崩溃且语法异常，自动回滚备份");
+    const verdict = decideRollback({ syntaxOk: serverSyntaxOk(), crashText: "", crashCount: crashTimes.length, rollbackDone });
+    if (verdict.rollback) {
+      log(`⚠️ 连续崩溃且 ${verdict.reason}，自动回滚备份`);
       if (rollbackServer() && serverSyntaxOk()) { rollbackDone = true; log("✅ 回滚后语法校验通过"); }
     }
     log("⚠️ 重启过于频繁，跳过本轮（防风暴）");
@@ -135,20 +158,24 @@ async function startServer() {
   lastStartAt = Date.now();
   log(`已启动 server (pid ${child.pid})，累计重启 ${restartCount} 次`);
   child.on("exit", (code, sig) => {
+    const crashText = outBuf.join("").split("\n").slice(-60).join("\n");
     log(`server 退出 code=${code} signal=${sig}`);
     if (code !== 0 && outBuf.length) {
-      const tail = outBuf.join("").split("\n").slice(-60).join("\n");
-      log(`── 崩溃前最近输出 ──\n${tail}\n── 输出结束 ──`);
+      log(`── 崩溃前最近输出 ──\n${crashText}\n── 输出结束 ──`);
     }
     child = null;
     if (code !== 0) {
       restartCount++;
       crashTimes.push(Date.now());
-      // 连续崩溃≥3次（5分钟内）→ 自动回滚到最近备份（抓运行时错误如 ReferenceError）
       crashTimes = crashTimes.filter(t => Date.now() - t < 5 * 60 * 1000);
-      if (!rollbackDone && crashTimes.length >= 3) {
-        log("⚠️ 连续崩溃 3 次，自动回滚备份");
-        if (rollbackServer()) { rollbackDone = true; log("✅ 已回滚，准备重启"); }
+      if (crashTimes.length >= ROLLBACK_AFTER) {
+        const verdict = decideRollback({ syntaxOk: serverSyntaxOk(), crashText, crashCount: crashTimes.length, rollbackDone });
+        if (verdict.rollback) {
+          log(`⚠️ ${verdict.reason} → 自动回滚备份`);
+          if (rollbackServer()) { rollbackDone = true; log("✅ 已回滚，准备重启"); }
+        } else {
+          log(`ℹ️ 不自动回滚：${verdict.reason}`);
+        }
       }
       setTimeout(() => startServer(), 3000);
     }
@@ -161,7 +188,7 @@ async function startServer() {
   }, 15000);
 }
 
-(async () => {
+async function main() {
   if (!(await acquireLock())) {
     log("检测到已有 watchdog 实例（锁文件存在），本实例退出");
     process.exit(0);
@@ -192,4 +219,10 @@ async function startServer() {
     setTimeout(monitorLoop, delay);
   };
   monitorLoop();
-})();
+}
+
+module.exports = { decideRollback, serverSyntaxOk, rollbackServer, ROLLBACK_AFTER, ENV_ERROR_RE, CODE_ERROR_RE };
+
+if (require.main === module) {
+  main().catch((e) => { log("watchdog 启动失败: " + String((e && e.stack) || e)); process.exit(1); });
+}
