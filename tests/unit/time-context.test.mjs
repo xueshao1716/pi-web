@@ -78,7 +78,11 @@ test("时间格式化只剩一份：死代码 nowContext 已删，server.mjs 不
   assert.ok(!/export function nowContext/.test(timeEngine), "nowContext 是零调用者的重复实现，应已删除");
 
   const server = read("server.mjs");
-  assert.match(server, /promptTimeText\(new Date\(\), \{ since: prevTalkAt \}\)/, "Pi 路径必须用统一实现并带上 since");
+  // Pi 路径必须用统一实现，并且既带 since（距上次多久）也带 rhythm（观测到的作息）
+  assert.match(server, /promptTimeText\(new Date\(\), \{ since: prevTalkAt, rhythm \}\)/, "Pi 路径必须用统一实现并带上 since 与 rhythm");
+  assert.ok(!/getFullYear\(\)/.test(server), "server.mjs 不该再内联拼时间字符串");
+  // 作息读数必须真的从 activity-rhythm 观测得来，不能在调用点写死
+  assert.match(server, /readActivityRhythm\(CONFIG\.cwd/, "作息必须来自真实观测而不是常量");
   assert.ok(!/getFullYear\(\)/.test(server), "server.mjs 不该再内联拼时间字符串");
 
   const seams = read("engine", "yuanshu-seams.mjs");

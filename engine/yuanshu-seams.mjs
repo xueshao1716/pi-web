@@ -1,5 +1,6 @@
 // 元枢循环接缝：插件贡献能力，主聊天仍是 unifiedChat（不是 Gateway 循环）
 import { buildYuanshuSections } from "./yuanshu-prompt.mjs";
+import { rhythmPhrase } from "./activity-rhythm.mjs";
 
 export const SEAM_PROMPT = "prompt-section";
 
@@ -40,7 +41,7 @@ export function durationPhrase(ms) {
   return hours % 24 ? `${days} 天 ${hours % 24} 小时` : `${days} 天`;
 }
 
-export function promptTimeText(now = new Date(), { since = 0, sessionStart = 0 } = {}) {
+export function promptTimeText(now = new Date(), { since = 0, sessionStart = 0, rhythm = null } = {}) {
   const t = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
   const p = (n) => String(n).padStart(2, "0");
   const d = `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())} ${p(t.getHours())}:${p(t.getMinutes())}`;
@@ -57,8 +58,13 @@ export function promptTimeText(now = new Date(), { since = 0, sessionStart = 0 }
     const phrase = durationPhrase(t.getTime() - startMs);
     if (phrase) elapsed.push(`本次会话已持续 ${phrase}`);
   }
-  if (!elapsed.length) return base;
-  return `${base}\n（时间感）${elapsed.join("；")}。相隔较久时先承接上下文，不要假装刚刚还在聊。`;
+  const lines = [];
+  if (elapsed.length) lines.push(`（时间感）${elapsed.join("；")}。相隔较久时先承接上下文，不要假装刚刚还在聊。`);
+  // 作息/节律：由 activity-rhythm 从真实时间戳观测得出，观测不到就什么都不说
+  const rp = rhythmPhrase(rhythm, t);
+  if (rp) lines.push(`（作息）${rp}。`);
+  if (!lines.length) return base;
+  return `${base}\n${lines.join("\n")}`;
 }
 
 export function promptPersonaText(model) {

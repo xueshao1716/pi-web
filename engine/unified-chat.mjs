@@ -30,6 +30,8 @@ import { assembleYuanshuSystem, registerPromptSection, promptTimeText, promptPer
 import { bindWorkmemSession, formatPlanPrompt } from "./yuanshu-workmem.mjs";
 import { persistYuanshuUser, persistYuanshuAssistant, persistYuanshuToolTrace, abortedAssistantText } from "./yuanshu-session.mjs";
 import { beginYuanshuEmotion, endYuanshuEmotion, lastTalkAt } from "./yuanshu-emotion.mjs";
+import { readActivityRhythm } from "./activity-rhythm.mjs";
+import { pendingPromiseText } from "./promises.mjs";
 import { resolveAuth } from "./dsh-keys.mjs";
 import { runYuanshuToolRound, attachYuanshuCodeTool, toolCallLoopKey, toolCallsFromPlan } from "./yuanshu-loop.mjs";
 import { canonicalStepKey, hashArgs } from "./run-effects.mjs";
@@ -42,11 +44,11 @@ import {
 } from "./yuanshu-stability.mjs";
 export { toolCallLoopKey };
 
-let _executeUnifiedTool = null, _findKeyByEntry = null, _readJsonFile = null, _getModelList = () => [], _getDefaultModel = () => null, _authPath = "", _modelsPath = "", _cwd = "", _piPackage = "", _unifiedTools = [], _getAgentDir = null, _createSandboxAsk = null, _THINK_TOOL = null;
-export function initUnifiedChat({ executeUnifiedTool = null, findKeyByEntry = null, readJsonFile = null, getModelList = null, getDefaultModel = null, authPath = "", modelsPath = "", cwd = "", piPackage = "", UNIFIED_TOOLS = [], getAgentDir = null, createSandboxAsk = null, THINK_TOOL = null } = {}) {
+let _executeUnifiedTool = null, _findKeyByEntry = null, _readJsonFile = null, _getModelList = () => [], _getDefaultModel = () => null, _authPath = "", _modelsPath = "", _cwd = "", _sessionDir = "", _piPackage = "", _unifiedTools = [], _getAgentDir = null, _createSandboxAsk = null, _THINK_TOOL = null;
+export function initUnifiedChat({ executeUnifiedTool = null, findKeyByEntry = null, readJsonFile = null, getModelList = null, getDefaultModel = null, authPath = "", modelsPath = "", cwd = "", sessionDir = "", piPackage = "", UNIFIED_TOOLS = [], getAgentDir = null, createSandboxAsk = null, THINK_TOOL = null } = {}) {
   _executeUnifiedTool = executeUnifiedTool; _findKeyByEntry = findKeyByEntry; _readJsonFile = readJsonFile;
   if (getModelList) _getModelList = getModelList; if (getDefaultModel) _getDefaultModel = getDefaultModel;
-  _authPath = authPath; _modelsPath = modelsPath; _cwd = cwd; _piPackage = piPackage; _unifiedTools = UNIFIED_TOOLS;
+  _authPath = authPath; _modelsPath = modelsPath; _cwd = cwd; _sessionDir = sessionDir; _piPackage = piPackage; _unifiedTools = UNIFIED_TOOLS;
   if (getAgentDir) _getAgentDir = getAgentDir;
   _createSandboxAsk = createSandboxAsk;
   if (THINK_TOOL) _THINK_TOOL = THINK_TOOL;
@@ -629,7 +631,14 @@ export async function initEngine() {
       id: "yuanshu:prompt:time",
       name: "时间上下文",
       section: "time",
-      contribute: (ctx) => promptTimeText(ctx?.now, { since: ctx?.since, sessionStart: ctx?.sessionStart }),
+      contribute: (ctx) => promptTimeText(ctx?.now, { since: ctx?.since, sessionStart: ctx?.sessionStart, rhythm: ctx?.rhythm }),
+    });
+    // 待兑现承诺追加到 memory 段（mergeContributedSections 对同 key 是追加而非覆盖）
+    await registerPromptSection(nextGateway.registry, {
+      id: "yuanshu:prompt:promises",
+      name: "待兑现承诺",
+      section: "memory",
+      contribute: (ctx) => pendingPromiseText(ctx?.cwd, { now: ctx?.now }),
     });
     await registerPromptSection(nextGateway.registry, {
       id: "yuanshu:prompt:persona",
@@ -941,7 +950,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     // 恰恰是写给主角色的。runtime 段本来就存在，只是一直没人往里传。
     runtime: runContext?.aibodyContext?.strategy || "",
     task: thinkOn ? "你可以调用 think 工具，在动手之前写下你的分析过程（理解、步骤、计划、可能的坑）。写完后再执行任务。think 的内容仅供调试，不展示给用户，可以放心写。" : "",
-  }, gateway?.registry, { now: new Date(), model: chatModel, sessionId, message, since: lastTalkAt(sessionId), sessionStart: sessionStartedAt(hist) });
+  }, gateway?.registry, { now: new Date(), model: chatModel, sessionId, message, cwd: _cwd, rhythm: readActivityRhythm(_cwd, { now: new Date(), sessionDir: _sessionDir }), since: lastTalkAt(sessionId), sessionStart: sessionStartedAt(hist) });
   history = prependAssembledSystem(history, sections);
   history = beginYuanshuEmotion(sessionId || "new", message, history);
   history = (await compactKeepArchive(history, (h) => maybeCompactHistory(h, chatModel))).view;

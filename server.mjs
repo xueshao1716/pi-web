@@ -24,6 +24,8 @@ import { shrinkToolResult, NEEDS_PRO_RE, scavengeToolCalls } from "./engine/reas
 import { initToolResultArchive } from "./engine/tool-result-archive.mjs";
 import { initFileLock, usingSharedFileQueue } from "./engine/file-lock.mjs";
 import { promptTimeText } from "./engine/yuanshu-seams.mjs";
+import { readActivityRhythm } from "./engine/activity-rhythm.mjs";
+import { extractPromises, recordPromises, loadPromises, pendingPromises, closePromise, pendingPromiseText } from "./engine/promises.mjs";
 import { createSoilReader } from "./engine/aibody-soil.mjs";
 // ── 会话解析纯函数（拆模块）：消息/文本/图片/文件提取 ──
 import { extractMessages, extractText, extractImages, extractFiles, resolveLeafId, windowMessages } from "./engine/session-utils.mjs";
@@ -527,7 +529,7 @@ initSessionManager({ cwd: CONFIG.cwd, sessionsDir: SESSIONS_DIR, tools: CONFIG.t
 initUnifiedChat({
   executeUnifiedTool, findKeyByEntry, readJsonFile,
   getModelList: () => modelList, getDefaultModel: () => defaultModel,
-  authPath: AUTH_PATH, modelsPath: MODELS_PATH, cwd: CONFIG.cwd,
+  authPath: AUTH_PATH, modelsPath: MODELS_PATH, cwd: CONFIG.cwd, sessionDir: SESSIONS_DIR,
   piPackage: CONFIG.piPackage, UNIFIED_TOOLS, getAgentDir, THINK_TOOL,
   // 元枢沙箱升级与 pi 共用同一人工确认注册表；没有前端应答时由注册表超时并 fail-closed。
   createSandboxAsk: ({ writer, sessionId, taskId }) => async (toolName, args, reason) => {
@@ -1135,12 +1137,23 @@ async function handleChat(req, res, body) {
         );
       } catch {}
     }
-    // 时间上下文：统一由 promptTimeText 产出（含"距上次对话多久"），不再内联拼字符串
+    // 时间上下文：统一由 promptTimeText 产出（含"距上次对话多久" + 观测到的作息/节律）
     try {
+      const rhythm = readActivityRhythm(CONFIG.cwd, { now: new Date(), sessionDir: SESSIONS_DIR });
       await entry.agent?.sendCustomMessage?.(
-        { customType: "context", content: [{ type: "text", text: `【时间上下文】${promptTimeText(new Date(), { since: prevTalkAt })}` }] },
+        { customType: "context", content: [{ type: "text", text: `【时间上下文】${promptTimeText(new Date(), { since: prevTalkAt, rhythm })}` }] },
         { deliverAs: "nextTurn" }
       );
+    } catch {}
+    // 待兑现承诺：模型自己许下但没结清的事，主动交代；账上为空时不占上下文
+    try {
+      const owed = pendingPromiseText(CONFIG.cwd, { now: new Date(), limit: 5 });
+      if (owed) {
+        await entry.agent?.sendCustomMessage?.(
+          { customType: "context", content: [{ type: "text", text: owed }] },
+          { deliverAs: "nextTurn" }
+        );
+      }
     } catch {}
     // AIBody 运行协调：模式策略 + 状态提供者摘要。
     // 之前这份 directive 只进了 executionContext 给子智能体用，**主角色收不到**；
@@ -1427,6 +1440,15 @@ async function handleChat(req, res, body) {
         return "";
       })();
       mem.autoMemorize(CONFIG.cwd, { userMsg: message, assistantMsg: assistLatest });
+      // 承诺兑现：把助手自己许下的"明天/回头/下次…"落成账。
+      // 只提取入库；**结清必须显式**（台前按钮或明确证据），这里不做任何自动判定。
+      try {
+        const found = extractPromises(assistLatest, { at: new Date(), sessionId });
+        if (found.length) {
+          const rec = recordPromises(CONFIG.cwd, found);
+          if (rec?.added) console.log(`[promises] 新增 ${rec.added} 条待兑现承诺`);
+        }
+      } catch {}
       // 纠正记忆：用户纠正语气/做法时自动记录（防再犯）——只认明确纠正句式，排除口头语
       const correctMatch = message.match(/(?:别再|不要再|别总是|不要总是|不要这样|别这样|以后别|以后不要|记住(?:别|不要|要)|不要再用|别老用)([^，。,!！?？]{2,40})/);
       if (correctMatch) {
@@ -1680,7 +1702,26 @@ const API_ROUTES = [
   ["GET", "/api/emotion/feelings", (res) => json(res, 200, { feelings: emotion.getFeelings(50) })],
   ["GET", "/api/agent-status", (res) => handleAgentStatus(res)],
   // ── 记忆园丁：只报告记忆健康（重复/过时/膨胀），不自动写记忆（防污染）──
-  ["GET", "/api/memory-gardener", (res) => json(res, 200, { ...gardenMemory(WS_ROOT), report: { ...scanMemoryHealth(WS_ROOT), reviewed: reviewedKeys(WS_ROOT) } })],
+  ["GET", "/api/memory-gardener", (res) => json(res, 200, { ...gardenMemory(WS_ROOT), report: { ...scanMemoryHealth(WS_ROOT), reviewed: reviewedKeys(WS_ROOT) }, rhythm: readActivityRhythm(WS_ROOT, { now: new Date(), sessionDir: SESSIONS_DIR }) })],
+  // ── 承诺兑现：模型自己许下但没结清的事。台前与提示词读同一份账 ──
+  ["GET", "/api/promises", (res) => {
+    const now = new Date();
+    const pending = pendingPromises(WS_ROOT, { now }).map(({ id, text, at, due, sessionId, age }) => ({
+      id, text, at, due, sessionId, agePhrase: age.phrase, overdue: age.overdue,
+    }));
+    const closed = loadPromises(WS_ROOT)
+      .filter((p) => p.status !== "pending")
+      .slice(-20).reverse()
+      .map(({ id, text, at, status, evidence, closedAt }) => ({ id, text, at, status, evidence, closedAt }));
+    json(res, 200, { ok: true, pending, closed });
+  }],
+  ["POST", "/api/promises/close", async (res, req) => {
+    const b = await readBody(req);
+    if (!b?.id) return json(res, 400, { error: "缺少 id" });
+    // 结清只能由人给结论；这里不接受任何自动判定，也没有定时任务会调它
+    const r = closePromise(WS_ROOT, String(b.id), { status: b.status === "dropped" ? "dropped" : "kept", evidence: b.evidence || null });
+    json(res, r?.ok ? 200 : 400, r);
+  }],
   ["POST", "/api/memory-gardener/reviewed", async (res, req) => {
     const b = await readBody(req);
     if (!b?.kind || !b?.key) return json(res, 400, { error: "缺少 kind/key" });

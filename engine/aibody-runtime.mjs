@@ -7,6 +7,11 @@ const bounds = (value, fallback, ceiling) => Number.isFinite(Number(value)) ? Ma
 const counts = () => ({ tools: 0, subagents: 0, memoryWrites: 0, artifacts: 0, verifications: 0 })
 const publicRun = run => { if (!run) return null; const { _seen, ...value } = run; return clone(value) }
 
+// 土壤五项的显示名。此前台前拿到的 module.label 就是内部 id（identity/genes/…），
+// 而且只带一个 available 布尔——真实读数已经算出来了，却在渲染层被丢掉。
+const SOIL_LABELS = { identity: '身份', genes: '基因', emotion: '情绪', memory: '记忆', governance: '治理' }
+const SOIL_STATUS_LABELS = { observed: '已观测', not_observed: '未观测', unavailable: '读取失败' }
+
 /** Host independent coordination: it observes work, never executes tools or approves evolution. */
 export function createAIBodyRuntime({ rootDir, readState, now = () => new Date().toISOString(), maxRuns = 100, maxEvents = 40 } = {}) {
   const clock = () => new Date(now()).toISOString()
@@ -80,7 +85,7 @@ export function createAIBodyRuntime({ rootDir, readState, now = () => new Date()
     const state = providerState(readState, context)
     const layers = [
       { id: 'host', label: '宿主 / 运行层', summary: '模型、工具与运行时提供行动边界。', modules: engines.map(engine => ({ label: engine.name, path: engine.id, available: true })) },
-      { id: 'organism', label: '母体 / 进化层', summary: '身份、基因、记忆、情绪与治理形成连续性。', modules: Object.entries(state).map(([id, value]) => ({ label: id, path: `aibody:${id}`, available: value.status === 'observed' })) },
+      { id: 'organism', label: '母体 / 进化层', summary: '身份、基因、记忆、情绪与治理形成连续性。', modules: Object.entries(state).map(([id, value]) => ({ key: id, label: SOIL_LABELS[id] || id, path: `aibody:${id}`, available: value.status === 'observed', status: value.status, statusLabel: SOIL_STATUS_LABELS[value.status] || value.status, summary: value.summary, details: value.details })) },
       { id: 'expression', label: '表现 / 具身层', summary: '对话、任务与交付把系统状态呈现出来。', modules: [{ label: '主任务协调', path: 'aibody-runtime', available: runs.length > 0 }] },
     ]
     return { version: 1, observedAt: clock(), continuity: store.continuity(), state, currentRun, runs, roles, engines, totals,
