@@ -7,6 +7,8 @@ import { invalidateSessionCache, getSessionList } from "./session-files.mjs";
 import { appendSessionGroup } from "./session-groups.mjs";
 import { appendArchiveJsonl, archivePathFor } from "./yuanshu-compact.mjs";
 import { execActivateSkill } from "./context-loader.mjs";
+import { httpJsonFetch } from "./http.mjs";
+import { wsSafePath } from "./workspace-api.mjs";
 
 let _cwd = "", _sessionsDir = "", _tools = [], _getModelList = () => [], _getDefaultModel = () => null, _activeSessions = null, _createAgentSessionServices = null, _createAgentSessionFromServices = null, _getModelRuntime = () => null,
     _SessionManager = null, _SettingsManager = null, _DefaultResourceLoader = null, _getAgentDir = () => "", _readJsonFile = null, _writeJsonFile = null, _piPackage = "", _isModelBlocked = () => false,
@@ -47,7 +49,7 @@ export async function createSession(name, { group } = {}) {
 const MAX_ACTIVE_SESSIONS = 30; // 保留上限；超过后淘汰最久未用且不忙的会话
 export function evictInactiveSessions() {
   if (_activeSessions.size <= MAX_ACTIVE_SESSIONS) return;
-  const idle = [...activeSessions.entries()]
+  const idle = [..._activeSessions.entries()]
     .filter(([, e]) => !e.busy)
     .sort((a, b) => (a[1].lastUsed || 0) - (b[1].lastUsed || 0));
   for (const [id, e] of idle) {
@@ -178,7 +180,7 @@ ${inputText}`;
     let summary = "";
     let dcErr = "";
     try {
-      const _auth2 = _readJsonFile(AUTH_PATH);
+      const _auth2 = _readJsonFile(path.join(_getAgentDir(), "auth.json"));
       const _dk = _auth2["deepseek"]?.key || _auth2["opencode-go"]?.key || "";
       const _url = "https://api.deepseek.com/v1/chat/completions";
       const _rr = await httpJsonFetch(_url, { method: "POST", timeout: 90000,
@@ -302,7 +304,7 @@ export async function initSearchTool() {
         types: Type.Optional(Type.Array(Type.String({ description: "文件扩展名过滤，如 ['.png','.jpg']" }))),
       }),
       async execute(toolCallId, params, signal, onUpdate, ctx) {
-        const wsRoot = (typeof CONFIG !== "undefined" && _cwd) || process.cwd();
+        const wsRoot = _cwd || process.cwd();
         const files = fb.findFiles(wsRoot, { query: params.query || "", types: params.types || null, max: 10 });
         return {
           content: [{ type: "text", text: fb.findResultText(files, wsRoot) }],

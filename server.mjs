@@ -34,7 +34,7 @@ import { createDshTool } from "./engine/dsh-tool.mjs";
 import { handleDshChat } from "./engine/dsh-chat.mjs";
 
 // ── 模型路由层（拆模块）：429 降级 / 复杂度分类 / Auto 路由 / pro 候选 ──
-import { initModelRouter, isOcGoBlocked, isModelBlocked, markModelBlocked, markOcGoBlocked, ocGoCandidate, pickFallbackDefault, pickFallbackExcluding, resetModelHealth, isAutoModel, routeForAuto, routeProCandidate, markSticky, ROUTER_AUTO, isAuthErrorStatus } from "./engine/model-router.mjs";
+import { initModelRouter, isOcGoBlocked, isModelBlocked, markModelBlocked, markOcGoBlocked, ocGoCandidate, pickFallbackDefault, pickFallbackExcluding, resetModelHealth, isAutoModel, routeForAuto, routeProCandidate, flashCandidate, markSticky, ROUTER_AUTO, isAuthErrorStatus } from "./engine/model-router.mjs";
 // ── 模型能力探测与发现（拆模块）：能力推断 / 真实API探测(24h缓存) / 自定义 provider 发现 ──
 import { modelCapabilities, probeModelCapabilities, discoverCustomModels } from "./engine/model-probe.mjs";
 import { CONFIG } from "./config.mjs";
@@ -72,7 +72,7 @@ import { initSelfHeal, createRepairCheckpoint, handleUpdateCheck, handleUpdateAp
 import { initImproveApi, analyzeImprovements, openImprovements, getImprovementDiagnostics, setImprovementStatus } from "./engine/improve-api.mjs";
 import { initEvolutionApi, proposeEvolution, applyEvolution, listEvolution, dismissEvolution, nudgeSkill, applySkillNudge, dismissSkillNudge, listSkillNudges, evaluateProposal, proposeMemoryNudge, listMemoryNudges, applyMemoryNudge, dismissMemoryNudge, analyzeMemoryCompress, proposeMemoryCompress, listMemoryCompress, applyMemoryCompress, dismissMemoryCompress } from "./engine/evolution-api.mjs";
 import { initSessionManager, createSession, evictInactiveSessions, slimSessionImages, compactSession, openSession, initSearchTool, initShareTool, createSessionAgent, ensureAgent, isFirstTurn, deleteSession } from "./engine/session-manager.mjs";
-import { initUnifiedChat, unifiedChat, engineCurrentModel, initEngine, getCodeRuntime, getCodeMode, toolBindingDesc, toolBindingArgs, toolBindingArgsObj, handleNotices, handleUnifiedChat, touchTask, clearTask, handleAgentEventIn, handleAgentEventOut } from "./engine/unified-chat.mjs";
+import { initUnifiedChat, unifiedChat, engineCurrentModel, initEngine, getCodeRuntime, getCodeMode, toolBindingDesc, toolBindingArgs, toolBindingArgsObj, handleNotices, handleUnifiedChat, touchTask, clearTask, taskProgress, handleAgentEventIn, handleAgentEventOut } from "./engine/unified-chat.mjs";
 import { createApprovalInterceptor } from "./engine/tools/approval.mjs";
 import * as confirmRegistry from "./engine/tools/confirm-registry.mjs";
 import { initRefineApi, readRefineJson, runRefineScript, handleRefineStatus, handleRefineList, detectSkillDomain, handleRefineFeedback, handleRefineGenes, handleRefinePlan, handleRefineApprove, handleRefineReject, handleRefineRollback } from "./engine/refine-api.mjs";
@@ -259,7 +259,7 @@ initStatsApi({ getAgentDir, cwd: CONFIG.cwd, DefaultResourceLoader, openSession,
 initSessionDb({ agentDir: getAgentDir(), cwd: CONFIG.cwd, deleteSession }); // 会话数据库（编号/健康度/标签/空会话清扫）
 initRecallApi({ agentDir: getAgentDir(), chat: unifiedChat, getDefaultModel: () => defaultModel }); // 跨会话回忆（09-04，Hermes FTS5 思想）
 initModelClient({ readJsonFile, writeJsonFile, authPath: AUTH_PATH, modelsPath: MODELS_PATH, resolveAuth, getModelList: () => modelList, getDefaultModel: () => defaultModel, unifiedChat, detectMediaIntents, generateMediaAsync, extractMediaPrompt, readEntriesFromFile, createSseWriter }); // 直调模型客户端注入
-initSelfHeal({ directChat, runGit: (...args) => runGit(...args), cwd: CONFIG.cwd, getModelList: () => modelList, getDefaultModel: () => defaultModel, piPackage: CONFIG.piPackage }); // 自愈/更新/设计器注入（REPAIR_BACKUP_FILES 已随块迁入模块）
+initSelfHeal({ directChat, runGit: (...args) => runGit(...args), cwd: CONFIG.cwd, getModelList: () => modelList, getDefaultModel: () => defaultModel, piPackage: CONFIG.piPackage, SessionManager, sessionsDir: SESSIONS_DIR }); // 自愈/更新/设计器注入（REPAIR_BACKUP_FILES 已随块迁入模块）
 initImproveApi({ root: CONFIG.cwd, statsProvider: null, healProvider: null }); // 自我改进提案（2026-08-21）
 initEvolutionApi({ root: CONFIG.cwd, prompts: path.join(getAgentDir(), "prompts"), skills: path.join(__dirname, "skills"), chat: unifiedChat, getDefaultModel: () => defaultModel }); // 进化引擎（09-03，Hermes GEPA 思想：反思式进化+人工审批红线）
 // 启动时构建模型列表：原生 provider（pi 内置目录）+ store 自定义，只显示配置过 Key 的
@@ -518,7 +518,7 @@ initUnifiedChat({
   executeUnifiedTool, findKeyByEntry, readJsonFile,
   getModelList: () => modelList, getDefaultModel: () => defaultModel,
   authPath: AUTH_PATH, modelsPath: MODELS_PATH, cwd: CONFIG.cwd,
-  piPackage: CONFIG.piPackage, UNIFIED_TOOLS, getAgentDir,
+  piPackage: CONFIG.piPackage, UNIFIED_TOOLS, getAgentDir, THINK_TOOL,
   // 元枢沙箱升级与 pi 共用同一人工确认注册表；没有前端应答时由注册表超时并 fail-closed。
   createSandboxAsk: ({ writer, sessionId, taskId }) => async (toolName, args, reason) => {
     const sid = sessionId || taskId || "new";
@@ -1549,7 +1549,7 @@ process.on("unhandledRejection", (reason) => {
   console.error("[元枢] unhandledRejection:", String(reason?.stack || reason || "").slice(0, 500));
 });
 process.on("uncaughtException", (err) => {
-  try { fs.appendFileSync(path.join(WEB_DIR, "crash.log"), `[${new Date().toLocaleString("zh-CN")}] uncaughtException: ${String(err?.stack || err)}\n`); } catch {}
+  try { fs.appendFileSync(path.join(__dirname, "crash.log"), `[${new Date().toLocaleString("zh-CN")}] uncaughtException: ${String(err?.stack || err)}\n`); } catch {}
   console.error("[元枢] uncaughtException:", String(err?.stack || err || "").slice(0, 500));
   // P1 graceful shutdown：异常后不再接新请求，2s 后退出（watchdog 会拉起）
   try { server?.close?.(); } catch {}

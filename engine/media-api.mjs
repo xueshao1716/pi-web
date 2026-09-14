@@ -1,7 +1,7 @@
 // engine/media-api.mjs —— 媒体生成：图像/视频/TTS（2026-08-20 从 server.mjs 拆出）
 // 依赖注入：initMediaApi({ resolveAuth, readJsonFile, modelsPath, getModelList })
 import { json } from "./http-utils.mjs";
-import { httpJsonFetch } from "./http.mjs";
+import { httpJsonFetch, httpBufferFetch } from "./http.mjs";
 import { modelCapabilities } from "./model-probe.mjs";
 import { saveArtifact } from "./workspace-api.mjs"; // saveArtifact 定义在 workspace-api（工作空间块拆分时随走）
 import { videoCreateBody, videoPollPath, repairVideoRequest } from "./video-request.mjs";

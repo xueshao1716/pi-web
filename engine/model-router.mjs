@@ -144,7 +144,7 @@ export function classifyTaskComplexity(text) {
 
 // flash 主力候选（2026-08-27 用户定：小米太垃圾不再优先）——
 // 商汤 flash-lite（免费实测稳）→ 智谱 glm-5.3-flash（coding 套餐免费）→ 小米 mimo → ocGo flash → nvidia → ark
-function flashCandidate() {
+export function flashCandidate() {
   // 2026-09-09：3.0-flash 发布，挂在 2.5 后备位（2.5 冷却/限流时先落 3.0 再走免费通道）
   return findLive("agnes", /2\.5-flash/i)
     || findLive("agnes", /3\.0-flash/i)

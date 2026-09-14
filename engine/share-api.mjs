@@ -2,8 +2,9 @@
 // 现分享由外部分享服务器 + 隧道统一管理；此处保留兼容接口
 import fs from "node:fs";
 import path from "node:path";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { json } from "./http-utils.mjs";
+import { wsSafePath } from "./workspace-api.mjs";
 
 // ── 分享管理（LEGACY，保留兼容：现分享由外部分享服务器 node server.js + 隧道统一管理）──
 // 说明：前端已无调用入口；域名通过环境变量 PI_WEB_SHARE_HOST 配置，开源环境可留空（仅本地访问）

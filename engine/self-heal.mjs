@@ -2,15 +2,28 @@
 // 依赖注入：initSelfHeal({ directChat, runGit, cwd, getModelList, getDefaultModel, _repairFiles })
 import fs from "node:fs";
 import path from "node:path";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { json } from "./http-utils.mjs";
+import { wsSafePath } from "./workspace-api.mjs";
+import { loadProjectRules } from "./context-loader.mjs";
+import { createSessionAgent } from "./session-manager.mjs";
 
-let _directChat = null, _runGit = null, _cwd = "", _getModelList = () => [], _getDefaultModel = () => null, _repairFiles = [], _piPackage = "";
+// 修复前留底的源码清单（2026-08-20 拆模块时随块迁入本模块；路径相对 repoRoot()）
+const REPAIR_BACKUP_FILES = [
+  "server.mjs", "config.mjs", "public/index.html",
+  "engine/workshop.mjs", "engine/memory.mjs", "engine/emotion.mjs", "engine/sanitize.mjs",
+  "engine/filebox.mjs", "engine/browser.mjs", "engine/search-web.mjs",
+];
+
+let _directChat = null, _runGit = null, _cwd = "", _getModelList = () => [], _getDefaultModel = () => null, _piPackage = "";
+let _SessionManager = null, _sessionsDir = "";
 export function repoRoot() {
   return path.resolve(import.meta.dirname, "..");
 }
-export function initSelfHeal({ directChat = null, runGit = null, cwd = "", getModelList = null, getDefaultModel = null, _repairFiles = [], piPackage = "" } = {}) {
-  _directChat = directChat; _runGit = runGit; _cwd = cwd; if (getModelList) _getModelList = getModelList; if (getDefaultModel) _getDefaultModel = getDefaultModel; _repairFiles = _repairFiles; _piPackage = piPackage;
+export function initSelfHeal({ directChat = null, runGit = null, cwd = "", getModelList = null, getDefaultModel = null, piPackage = "", SessionManager = null, sessionsDir = "" } = {}) {
+  _directChat = directChat; _runGit = runGit; _cwd = cwd; if (getModelList) _getModelList = getModelList; if (getDefaultModel) _getDefaultModel = getDefaultModel; _piPackage = piPackage;
+  if (SessionManager) _SessionManager = SessionManager;
+  if (sessionsDir) _sessionsDir = sessionsDir;
 }
 
 // ══ 自愈修复 ══
@@ -20,15 +33,16 @@ let repairBusy = false;
 export function createRepairCheckpoint() {
   try {
     const ts = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
-    const dir = path.join(import.meta.dirname, "backups", "repair-" + ts);
+    const root = repoRoot();
+    const dir = path.join(root, "backups", "repair-" + ts);
     fs.mkdirSync(dir, { recursive: true });
-    for (const rel of _repairFiles) {
-      const src = path.join(import.meta.dirname, rel);
+    for (const rel of REPAIR_BACKUP_FILES) {
+      const src = path.join(root, rel);
       if (!fs.existsSync(src)) continue;
       fs.copyFileSync(src, path.join(dir, rel.replace(/[\\/]/g, "__")));
     }
     for (const sub of ["js", "css"]) {
-      const srcDir = path.join(import.meta.dirname, "public", sub);
+      const srcDir = path.join(root, "public", sub);
       if (!fs.existsSync(srcDir)) continue;
       const dstDir = path.join(dir, "public-" + sub);
       fs.mkdirSync(dstDir, { recursive: true });
@@ -135,15 +149,18 @@ export async function handleRepair(res, body) {
   if (!issue) return json(res, 400, { error: "缺少问题描述" });
   if (repairBusy) return json(res, 409, { error: "已有修复任务进行中" });
   repairBusy = true;
-  res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache", Connection: "keep-alive", "X-Accel-Buffering": "no" });
-  res.write(":\n\n");
+  // write 提到 try 外：catch 也要用它回错误事件，且 res.writeHead 抛错时不能再引用未定义变量
   const write = (event, data) => { try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch {} };
+  // 成功路径随即重启进程，无需复位；其余路径（含 writeHead 抛错）必须复位，否则 /api/repair 永久 409
+  let restartScheduled = false;
   try {
+    res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache", Connection: "keep-alive", "X-Accel-Buffering": "no" });
+    res.write(":\n\n");
     // 修复前检查点：先留底，改坏可回滚（对标 /refine 的回滚能力）
     const cp = createRepairCheckpoint();
     const cpMsg = cp.error ? `⚠️ 检查点创建失败: ${cp.error}` : `修复前检查点已保存：${cp.dir}`;
     write("delta", { text: `🛡 ${cpMsg}\n` });
-    const sm = SessionManager.create(_cwd, SESSIONS_DIR);
+    const sm = _SessionManager.create(_cwd, _sessionsDir);
     const agent = await createSessionAgent(sm, _getDefaultModel());
     write("delta", { text: "🧠 正在分析代码并修复…\n" });
     const root = repoRoot();
@@ -165,14 +182,16 @@ export async function handleRepair(res, body) {
     write("delta", { text: "\n" + String(reply || "").slice(0, 800) + "\n" });
     write("delta", { text: `\n✅ 修复完成，重启服务中…（页面会自动恢复）\n🛡 回滚方式：${cp.error ? "检查点创建失败，请用 git 恢复" : `复制 ${cp.dir} 内文件回 ${root}`}` });
     write("done", { repair: true });
+    restartScheduled = true;
     setTimeout(() => {
       console.log("[元枢] 自愈重启…");
       try { spawn(process.execPath, [process.argv[1]], { detached: true, stdio: "ignore" }); } catch {}
       setTimeout(() => { try { process.exit(0); } catch {} }, 900);
     }, 1500);
   } catch (e) {
-    repairBusy = false;
     write("error", { message: String(e?.message || e).slice(0, 300) });
+  } finally {
+    if (!restartScheduled) repairBusy = false;
   }
 }
 

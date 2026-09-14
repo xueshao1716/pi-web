@@ -1,10 +1,11 @@
 // engine/dsh-keys.mjs —— dsh 执行臂 + 双引擎密钥 + 声明式策略引擎（2026-08-20 从 server.mjs 拆出）
 // 依赖注入：initDshKeys({ dshWebPort, readJsonFile, writeJsonFile, authPath, modelsPath, ModelRuntime, refreshModelList })
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { json, readBody } from "./http-utils.mjs";
-import { probeModelCapabilities, modelCapabilities } from "./model-probe.mjs";
+import { probeModelCapabilities, modelCapabilities, discoverCustomModels } from "./model-probe.mjs";
 
 // 支持的 provider 清单（模型管理下拉）；随块从 server.mjs 迁入
 const SUPPORTED_PROVIDERS = ["deepseek", "openai", "openrouter", "anthropic", "google", "qwen", "xai", "moonshotai", "zai", "together", "mistral", "modelscope", "cloudflare-ai"];
@@ -372,7 +373,7 @@ export async function handleKeysApply(res, body) {
   let dshDone = false, dshNote = "";
   if (toDsh) {
     try {
-      execFileSync("setx", ["DEEPSEEK_API_KEY", key], { windowsHide: true, timeout: 10000 });
+      execFileSync("setx", ["DEEPSEEK_API_KEY", apiKey], { windowsHide: true, timeout: 10000 });
       dshDone = true;
       dshNote = "dsh 已同步（新开的终端/进程生效）";
     } catch (e) {

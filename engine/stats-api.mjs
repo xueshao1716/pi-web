@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
+import { execFile } from "node:child_process";
 import { json } from "./http-utils.mjs";
 import { scanSessionFiles, parseSessionFile, getSessionList, readEntriesFromFile, invalidateSessionCache } from "./session-files.mjs";
 import { extractMessages } from "./session-utils.mjs";

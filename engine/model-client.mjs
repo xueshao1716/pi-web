@@ -6,6 +6,7 @@ import { json } from "./http-utils.mjs";
 import { markModelBlocked, isAuthErrorStatus } from "./model-router.mjs";
 import { httpJsonFetch } from "./http.mjs";
 import { extractMessages } from "./session-utils.mjs";
+import { saveArtifact } from "./workspace-api.mjs";
 
 let _readJsonFile = null, _writeJsonFile = null, _authPath = "", _modelsPath = "", _resolveAuth = null, _getModelList = () => [], _getDefaultModel = () => null,
     _unifiedChat = null, _detectMediaIntents = () => [], _generateMediaAsync = async () => null, _extractMediaPrompt = () => "", _readEntriesFromFile = () => [], _createSseWriter = null;

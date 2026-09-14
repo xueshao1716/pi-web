@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { execFile } from "node:child_process";
 import { json, readBody } from "./http-utils.mjs";
 import { markModelBlocked, isAuthErrorStatus, pickFallbackDefault, pickFallbackExcluding, routeProCandidate, routeForAuto } from "./model-router.mjs";
 import { classifyAnomaly, recordReply } from "./output-guard.mjs";
@@ -40,13 +41,14 @@ import {
 } from "./yuanshu-stability.mjs";
 export { toolCallLoopKey };
 
-let _executeUnifiedTool = null, _findKeyByEntry = null, _readJsonFile = null, _getModelList = () => [], _getDefaultModel = () => null, _authPath = "", _modelsPath = "", _cwd = "", _piPackage = "", _unifiedTools = [], _getAgentDir = null, _createSandboxAsk = null;
-export function initUnifiedChat({ executeUnifiedTool = null, findKeyByEntry = null, readJsonFile = null, getModelList = null, getDefaultModel = null, authPath = "", modelsPath = "", cwd = "", piPackage = "", UNIFIED_TOOLS = [], getAgentDir = null, createSandboxAsk = null } = {}) {
+let _executeUnifiedTool = null, _findKeyByEntry = null, _readJsonFile = null, _getModelList = () => [], _getDefaultModel = () => null, _authPath = "", _modelsPath = "", _cwd = "", _piPackage = "", _unifiedTools = [], _getAgentDir = null, _createSandboxAsk = null, _THINK_TOOL = null;
+export function initUnifiedChat({ executeUnifiedTool = null, findKeyByEntry = null, readJsonFile = null, getModelList = null, getDefaultModel = null, authPath = "", modelsPath = "", cwd = "", piPackage = "", UNIFIED_TOOLS = [], getAgentDir = null, createSandboxAsk = null, THINK_TOOL = null } = {}) {
   _executeUnifiedTool = executeUnifiedTool; _findKeyByEntry = findKeyByEntry; _readJsonFile = readJsonFile;
   if (getModelList) _getModelList = getModelList; if (getDefaultModel) _getDefaultModel = getDefaultModel;
   _authPath = authPath; _modelsPath = modelsPath; _cwd = cwd; _piPackage = piPackage; _unifiedTools = UNIFIED_TOOLS;
   if (getAgentDir) _getAgentDir = getAgentDir;
   _createSandboxAsk = createSandboxAsk;
+  if (THINK_TOOL) _THINK_TOOL = THINK_TOOL;
 }
 // ══ 工具调用消毒（2026-08-22 修复 400 "`function` is not set"）：
 // 上游返回的 tool_calls 可能缺 function 字段（流式截断/非标准格式），原样回传给 API 会 400，
@@ -914,7 +916,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
   // Plan 模式（unifiedChat 兕底路径）：工具定义层过滤为只读（read/web_search）——模型只能请求只读工具，无写路径
   // 注意：thinkOn=false 时 toolDefs 为 undefined（unifiedChat 内部才默认 UNIFIED_TOOLS），必须显式构建只读集，否则拦截被短路
   const isPlanLock = !!entry.planPending;
-  const toolDefs = thinkOn ? [..._unifiedTools, THINK_TOOL] : undefined;
+  const toolDefs = thinkOn && _THINK_TOOL ? [..._unifiedTools, _THINK_TOOL] : (thinkOn ? _unifiedTools : undefined);
   if (isPlanLock) {
     const base = toolDefs || _unifiedTools;
     const locked = base.filter(t => t.function?.name === "read" || t.function?.name === "web_search");
@@ -1116,7 +1118,7 @@ const AGENT_EVENT_MAX = 200;
 
 // ── 任务进度快照：前端息屏/断线/刷新后，可查"任务是否还在跑、跑到哪一步" ──
 // 内存 Map（sessionId → 快照）；任务结束保留 60s 供前端查"刚结束"，之后自动清除
-const taskProgress = new Map();
+export const taskProgress = new Map();
 export function touchTask(sessionId, patch = {}) {
   if (!sessionId) return;
   const t = taskProgress.get(sessionId) || { sessionId, status: "running", stage: "处理中", startedAt: Date.now() };
@@ -1129,7 +1131,8 @@ export function clearTask(sessionId, status = "done") {
   if (!t) return;
   t.status = status;
   t.updatedAt = Date.now();
-  setTimeout(() => { taskProgress.delete(sessionId); }, 60000); // 60s 后清除，前端可查"刚结束"
+  // 60s 后清除，前端可查"刚结束"；unref：纯内存清理，不该阻止进程退出（也避免测试被挂 60s）
+  setTimeout(() => { taskProgress.delete(sessionId); }, 60000).unref?.();
 }
 
 export function handleAgentEventIn(req, res, body) {
