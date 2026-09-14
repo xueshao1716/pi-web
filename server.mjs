@@ -63,7 +63,7 @@ import { TODO_TOOL_SCHEMAS, todoExtraExecutors } from "./engine/yuanshu-todo.mjs
 import { PLAN_FILES_SCHEMA, planFilesExtraExecutors, initYuanshuWorkmem } from "./engine/yuanshu-workmem.mjs";
 import { DELEGATE_TASK_TOOL, execDelegateTask } from "./engine/yuanshu-delegate.mjs";
 import { initAsrApi, handleAsr } from "./engine/asr-api.mjs";
-import { gardenMemory, scanMemoryHealth, markReviewed, unmarkReviewed, dedupeLog, reviewedKeys } from "./engine/memory-gardener.mjs";
+import { gardenMemory, scanMemoryHealth, markReviewed, unmarkReviewed, dedupeLog, reviewedKeys, pruneLogBackups } from "./engine/memory-gardener.mjs";
 import { upsertMemoryFact } from "./engine/memory-facts.mjs";
 import { readSubscriptionText } from "./engine/subscription-reminder.mjs";
 import { systemInfo as buildSystemInfo, loadNetworkConfig, saveNetworkConfig, checkUpdate } from "./engine/system-panel.mjs";
@@ -2367,6 +2367,9 @@ function startServer() {
       // 旧版在每次 server 启动时无条件写一份（每份内嵌记忆日志全文），攒到 521 份 / 98.7MB 且无人读取。
       const pr = memoryApi.pruneSnapshots(CONFIG.cwd);
       if (pr?.removed) console.log(`[memory] 快照收敛：删除 ${pr.removed} 份旧快照，保留 ${pr.kept} 份 / ${(pr.bytes / 1048576).toFixed(1)}MB`);
+      // 日志 .bak 同理：每次"去重"都落一份全量日志副本，保留最近几份即可
+      const pb = pruneLogBackups(CONFIG.cwd);
+      if (pb?.removed) console.log(`[memory] 日志备份收敛：删除 ${pb.removed} 份旧 .bak，保留 ${pb.kept} 份`);
     } catch {}
     // 时间引擎：定时任务调度（触发时跑 unifiedChat + 结果落盘 文档/时间引擎日志.md）
     try {
