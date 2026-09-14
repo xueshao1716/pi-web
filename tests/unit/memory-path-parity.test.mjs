@@ -51,9 +51,14 @@ describe("两个分支都要结算", () => {
   test("dsh 按它声明的边界被排除", () => {
     const gate = server.match(/const ranUnifiedLoop = !\(engineDecision\.lead === "dsh"[^\n]*/);
     assert.ok(gate, "必须有显式的 dsh 排除闸门");
-    // 闸门与引擎目录的声明一致：dsh 明确「不接记忆 / 出图 / 规划主循环」
-    const dsh = enginePair.slice(enginePair.indexOf("dsh: {"));
-    assert.match(dsh.slice(0, 600), /不接记忆/, "dsh 的声明必须仍写着不接记忆；若改了声明，这里的闸门要一起改");
+    // 闸门要与引擎目录保持一致：dsh 不可主驾，且明确「不接记忆 / 出图 / 规划主循环」。
+    // 按条目边界切片，不写死字窗——目录文案会变长。
+    const start = enginePair.indexOf("dsh: {");
+    const end = enginePair.indexOf("\n  },", start);
+    assert.ok(start > 0 && end > start, "找不到 dsh 目录条目");
+    const entry = enginePair.slice(start, end);
+    assert.match(entry, /canLead: false/, "dsh 已定为不可主驾；若改回可主驾，这里的闸门要一起重新考虑");
+    assert.match(entry, /不接记忆/, "dsh 的声明必须仍写着不接记忆");
   });
 
   test("Pi 分支的 finally 结算，覆盖成功与降级两种情况", () => {

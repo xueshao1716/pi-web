@@ -13,8 +13,19 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 test("目录含元枢/pi/dsh，默认主驾是 pi、次席是元枢", () => {
   assert.ok(ENGINE_CATALOG.yuanshu.canLead);
   assert.ok(ENGINE_CATALOG.pi.canLead);
-  assert.ok(ENGINE_CATALOG.dsh.canLead, "dsh 对话适配器写完后应能主驾");
+  // dsh 不可主驾：原先这里断言 true，理由是"对话适配器写完后应能主驾"——那是完成度目标，
+  // 不是能力判断。实测元枢调用它的方式回两个字要 26.9s（每轮新起 headless 子进程），
+  // 且无流式、历史只能压成 8×800 字摘要。它的活是执行臂 dsh_task，与 canLead 无关。
+  assert.equal(ENGINE_CATALOG.dsh.canLead, false, "dsh 作为执行臂可用，但不作为主驾");
   assert.deepEqual(DEFAULT_PAIR, { primary: "pi", secondary: "yuanshu" });
+});
+
+test("不可主驾的引擎放在主驾位时让路，并有可见播报", () => {
+  const d = resolveLead({ primary: "dsh", secondary: "yuanshu", force: false, nativeChannel: true });
+  assert.equal(d.lead, "yuanshu", "主驾位给了不可主驾的引擎时应回落到次席");
+  assert.equal(d.deferred, "dsh");
+  assert.equal(d.reason, "cannot-lead");
+  assert.match(leadNote(d), /dsh 主驾让路/, "让路必须对用户可见，不能静默换引擎");
 });
 
 test("每份引擎必须有介绍和能力边界，不能只剩一句 desc", () => {
@@ -46,19 +57,19 @@ test("落盘后能读回，swap 对调主次", () => {
   }
 });
 
-test("resolveLead：能主驾的就走主驾，含 dsh", () => {
+test("resolveLead：能主驾的就按配置走主驾", () => {
   assert.equal(resolveLead({ primary: "pi", secondary: "yuanshu" }).lead, "pi");
   assert.equal(resolveLead({ primary: "yuanshu", secondary: "pi" }).lead, "yuanshu");
-  const dsh = resolveLead({ primary: "dsh", secondary: "yuanshu" });
-  assert.equal(dsh.lead, "dsh");
-  assert.equal(dsh.deferred, null);
+  assert.equal(resolveLead({ primary: "yuanshu", secondary: "pi" }).deferred, null);
 });
 
-test("非原生通道只逼 pi 兑底元枢；dsh 主驾不受模型下拉影响；PI_USE_AGENT=0 仍强制元枢", () => {
+test("非原生通道只逼 pi 兑底元枢；PI_USE_AGENT=0 仍强制元枢；dsh 一律让路", () => {
   assert.equal(resolveLead({ primary: "pi", secondary: "yuanshu" }, { forceYuanshu: true }).lead, "yuanshu");
   assert.equal(resolveLead({ primary: "dsh", secondary: "yuanshu" }, { forceYuanshu: true }).lead, "yuanshu");
   assert.equal(resolveLead({ primary: "pi", secondary: "yuanshu" }, { nativeChannel: false }).lead, "yuanshu");
-  assert.equal(resolveLead({ primary: "dsh", secondary: "yuanshu" }, { nativeChannel: false }).lead, "dsh");
+  // dsh 不可主驾：无论通道是否原生、次席是谁，占了主驾位都让路给能主驾的那个
+  assert.equal(resolveLead({ primary: "dsh", secondary: "yuanshu" }, { nativeChannel: false }).lead, "yuanshu");
+  assert.equal(resolveLead({ primary: "dsh", secondary: "pi" }).lead, "pi");
 });
 
 test("引擎页能对调主次并写回后台", () => {
