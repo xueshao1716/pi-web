@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import {
-  Activity, BrainCircuit, ClipboardCheck, Cpu, Database, Download, Factory, FolderKanban, GitCompare,
+  Activity, BrainCircuit, ClipboardCheck, Cpu, Database, Download, Factory, FolderKanban,
   LayoutDashboard, LayoutGrid, LogOut, MonitorCog, PackageCheck, Palette, PanelRight, Sparkles,
   TerminalSquare, X,
 } from 'lucide-react'
@@ -9,9 +9,11 @@ import { ROUTE_LABELS } from '../nav'
 
 export type UtilityPanelKey = 'workspace' | 'deliveries' | 'terminal' | 'activity' | 'tui' | 'inspect'
 
+// 手机底部栏只有 对话/会话/资产/任务/更多，工作台、创作、能力只在这里能到，不能删。
+// 但「改动验收」不再单列：它已并入工作台作为页内视图（#/review 仍是深链别名），
+// 和「工作台」并列就是同一个页面出现两次。
 const MORE_ROUTES: { route: Route; icon: typeof Sparkles; label: string }[] = [
   { route: 'board', icon: LayoutDashboard, label: ROUTE_LABELS.board },
-  { route: 'review', icon: GitCompare, label: ROUTE_LABELS.review },
   { route: 'lingxi', icon: Sparkles, label: ROUTE_LABELS.lingxi },
   { route: 'workshop', icon: Factory, label: ROUTE_LABELS.workshop },
   { route: 'models', icon: BrainCircuit, label: ROUTE_LABELS.models },
