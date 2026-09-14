@@ -8,7 +8,7 @@ import { execFile } from "node:child_process";
 import { json, readBody } from "./http-utils.mjs";
 import { markModelBlocked, isAuthErrorStatus, pickFallbackDefault, pickFallbackExcluding, routeProCandidate, routeForAuto } from "./model-router.mjs";
 import { classifyAnomaly, recordReply } from "./output-guard.mjs";
-import { shrinkToolResult, NEEDS_PRO_RE, scavengeToolCalls } from "./reasonix-tools.mjs";
+import { shrinkToolResult, NEEDS_PRO_RE, scavengeToolCalls, projectToolResult } from "./reasonix-tools.mjs";
 import { extractMessages, extractText } from "./session-utils.mjs";
 import { createSseWriter } from "./sse.mjs";
 import { httpJsonFetch, httpRawFetch } from "./http.mjs";
@@ -147,7 +147,10 @@ export function fallbackHistoryForDirectChat(history) {
 // Rebuild an OpenAI-compatible history from the compact session projection.
 // Keep assistant tool calls paired with their tool results so the next turn
 // can continue a long task instead of guessing what already happened.
-export function formatSessionHistory(hist = []) {
+// projectTool 默认是"前 N 次发全文、之后压缩"，见 reasonix-tools.mjs 的 FULL_SENDS；
+// 做成可注入是为了让测试能控制计数状态，而不是共享模块级 Map。
+export function formatSessionHistory(hist = [], { projectTool = projectToolResult } = {}) {
+  const project = typeof projectTool === "function" ? projectTool : projectToolResult;
   const out = [];
   for (const item of Array.isArray(hist) ? hist : []) {
     if (!item?.role) continue;
@@ -168,7 +171,7 @@ export function formatSessionHistory(hist = []) {
       tool_calls: tools.map(t => ({ id: String(t.id), type: "function", function: { name: String(t.name), arguments: JSON.stringify(t.args || {}) } })),
     });
     for (const tool of tools) {
-      out.push({ role: "tool", tool_call_id: String(tool.id), content: shrinkToolResult(String(tool.output || "")) });
+      out.push({ role: "tool", tool_call_id: String(tool.id), content: project(tool) });
     }
   }
   return out;

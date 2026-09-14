@@ -1,7 +1,10 @@
 // Reasonix 机制单测（2026-08-19）：工具结果压缩 / NEEDS_PRO 自报升级 / scavenge 工具调用捞回
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { shrinkToolResult, NEEDS_PRO_RE, scavengeToolCalls, TURN_END_RESULT_CAP } from "../../engine/reasonix-tools.mjs";
+import { shrinkToolResult, NEEDS_PRO_RE, scavengeToolCalls, TURN_END_RESULT_CAP, projectToolResult, countProjection, resetProjectionCounts, FULL_SENDS } from "../../engine/reasonix-tools.mjs";
+
+/** 造一个确定会长于阈值的工具结果。 */
+const longOutput = tag => `${tag}\n${"z".repeat(TURN_END_RESULT_CAP + 500)}`;
 
 const TOOLS = [
   { type: "function", function: { name: "bash", parameters: { type: "object" } } },
@@ -22,6 +25,60 @@ test("shrinkToolResult: 超长结果保留头尾+省略标记", () => {
   assert.ok(r.includes("结果过长已压缩"), "应含压缩标记");
   assert.ok(r.startsWith("x".repeat(3000)), "应保留头部");
   assert.ok(r.endsWith("x".repeat(3000)), "应保留尾部");
+});
+
+// ── ①b 大结果先发全文 N 次再压缩（借 SoL-Pi 的 FULL_SENDS）──
+// 为什么：模型可能**还在用**这个结果，一出现就砍掉会饿死正在读它的模型。
+test("长结果前 FULL_SENDS 次投影是全文，之后才压缩", () => {
+  resetProjectionCounts();
+  const tool = { id: "t-full", output: longOutput("first") };
+  for (let i = 1; i <= FULL_SENDS; i++) {
+    assert.equal(projectToolResult(tool), tool.output, `第 ${i} 次投影必须仍是全文`);
+  }
+  const shrunk = projectToolResult(tool);
+  assert.notEqual(shrunk, tool.output, `第 ${FULL_SENDS + 1} 次起必须压缩`);
+  assert.match(shrunk, /工具结果过长已压缩/);
+  assert.ok(shrunk.length < tool.output.length);
+});
+
+test("短结果不受计数影响，永远原样", () => {
+  resetProjectionCounts();
+  const tool = { id: "t-short", output: "ok" };
+  for (let i = 0; i < FULL_SENDS + 5; i++) assert.equal(projectToolResult(tool), "ok");
+  assert.equal(countProjection(tool, "ok"), 1, "短结果不该被计入投影跟踪");
+});
+
+test("计数按 tool_call_id 区分，互不影响", () => {
+  resetProjectionCounts();
+  const a = { id: "t-a", output: longOutput("A") };
+  const b = { id: "t-b", output: longOutput("B") };
+  for (let i = 1; i <= FULL_SENDS; i++) projectToolResult(a); // a 用满全文额度
+  assert.equal(projectToolResult(b), b.output, "b 是第一次投影，不该被 a 的计数牵连");
+  assert.notEqual(projectToolResult(a), a.output, "a 额度已用完，应压缩");
+});
+
+test("没有 tool_call_id 时退回内容寻址：同一份内容共享计数", () => {
+  resetProjectionCounts();
+  const text = longOutput("no-id");
+  const first = { output: text };
+  const second = { output: text };
+  for (let i = 1; i <= FULL_SENDS; i++) projectToolResult(first);
+  assert.notEqual(projectToolResult(second), text, "同一内容应是同一个计数，额度已用完");
+});
+
+test("不同内容即使都用满额度也各算各的", () => {
+  resetProjectionCounts();
+  assert.equal(projectToolResult({ id: "x1", output: longOutput("X1") }), longOutput("X1"));
+  assert.equal(projectToolResult({ id: "x2", output: longOutput("X2") }), longOutput("X2"));
+});
+
+test("resetProjectionCounts 让额度归零", () => {
+  resetProjectionCounts();
+  const tool = { id: "t-reset", output: longOutput("R") };
+  for (let i = 0; i <= FULL_SENDS; i++) projectToolResult(tool);
+  assert.notEqual(projectToolResult(tool), tool.output, "额度应用完");
+  resetProjectionCounts();
+  assert.equal(projectToolResult(tool), tool.output, "重置后应重新发全文");
 });
 
 // ── ② NEEDS_PRO 自报升级 ──

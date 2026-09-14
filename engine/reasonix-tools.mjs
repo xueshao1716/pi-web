@@ -2,7 +2,7 @@
 // 三个纯函数/常量：工具结果压缩 / NEEDS_PRO 自报升级 / scavenge 工具调用捞回。
 // 纯逻辑模块：不依赖 server.mjs 内部符号，可单测、可复用。
 
-import { archiveToolResult, countTextLines } from "./tool-result-archive.mjs";
+import { archiveToolResult, countTextLines, toolResultId } from "./tool-result-archive.mjs";
 
 // ① turn-end 工具结果压缩（P3）：超长工具结果只保留头尾+省略提示，后续轮次省 token；
 //    会话文件原文不动（审计无损），仅喂模型时压缩。
@@ -94,6 +94,54 @@ export function shrinkToolResult(text) {
   }
   parts.push("…\n\n");
   return head + parts.join("\n") + tail;
+}
+
+// ② 大结果先发全文 N 次再压缩。
+//
+// 借 NVlabs/SoL-Pi ObservationPack 的 FULL_SENDS：模型可能**还在用**这个结果，
+// 一出现就砍掉会饿死正在读它的模型。
+//
+// 元枢的语义要说清：`formatSessionHistory` 每**请求**只调用一次（多轮 agentic 循环
+// 复用同一份 history），而结果产生的那一轮里本来就是全文（新结果直接进循环的 messages，
+// 不经过压缩）。所以 FULL_SENDS=2 的实际含义是：
+//   结果产生后的**头两次请求**仍给全文，第三次起才压缩。
+// 注意这与 SoL-Pi 不完全等价——它数的是循环内的**每一次 provider 请求**，
+// 元枢这里数的是**请求数**，比它更宽松（更省不下 token，但更不容易丢证据）。
+export const FULL_SENDS = 2;
+const MAX_TRACKED_RESULTS = 4000;
+const projections = new Map();
+
+function projectionKey(tool, full) {
+  const id = String(tool?.id || "").trim();
+  // 有 tool_call_id 就用它（廉价且唯一）；没有就退回内容寻址，保证同一份内容同一个计数
+  return id ? `id:${id}` : `hash:${toolResultId(full)}`;
+}
+
+/** 记一次投影并返回这是第几次。供测试观察与重置。 */
+export function countProjection(tool, full) {
+  const key = projectionKey(tool, full);
+  const seen = (projections.get(key) || 0) + 1;
+  // 有界：长跑进程里大结果会越积越多，超了就淘汰最早的一批（Map 保持插入序）
+  if (projections.size >= MAX_TRACKED_RESULTS && !projections.has(key)) {
+    let drop = Math.ceil(MAX_TRACKED_RESULTS * 0.1);
+    for (const k of projections.keys()) { projections.delete(k); if (--drop <= 0) break; }
+  }
+  projections.set(key, seen);
+  return seen;
+}
+
+export function resetProjectionCounts() {
+  projections.clear();
+}
+
+/**
+ * 工具结果的投影策略：够短就原样；够长则**前 FULL_SENDS 次发全文**，之后压缩。
+ * `formatSessionHistory` 默认用它，测试可注入等价实现来避免共享计数状态。
+ */
+export function projectToolResult(tool) {
+  const full = String(tool?.output ?? "");
+  if (!full || full.length <= TURN_END_RESULT_CAP) return full;
+  return countProjection(tool, full) <= FULL_SENDS ? full : shrinkToolResult(full);
 }
 
 // ② NEEDS_PRO 自报升级（P3）：模型认为任务超纲时输出 <<<NEEDS_PRO[: 原因]>>> 首行

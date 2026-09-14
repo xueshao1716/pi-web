@@ -82,7 +82,9 @@ retrieve: call obs_recall with {"id":"...","offset":0}; continue with returned n
 `FULL_SENDS = 2`：大结果**前两次请求仍发全文**，之后才换占位符。
 承认模型可能**还在用**这个结果；从第 1 次投影就截断会饿死正在读它的模型。
 
-元枢目前是立即压缩。**待评估**。
+**已落地**：见 [NAMING.md 第四节](NAMING.md#四证据回读)。
+元枢数的是**请求数**（`formatSessionHistory` 每请求一次），SoL-Pi 数的是循环内
+每一次 provider 请求 —— 元枢这边更宽松，是有意的取舍。
 
 ### 4. 机械细节（都已借进归档实现）
 
