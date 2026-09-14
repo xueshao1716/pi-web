@@ -26,12 +26,17 @@ export function autoMemorize(wsRoot, { userMsg = "", assistantMsg = "", files = 
     const userText = String(userMsg || "").slice(0, 500);
     const assistText = String(assistantMsg || "").slice(0, 800);
     const notes = [];
-    // 用户偏好/约定信号
-    const prefRe = /以后|记住|我习惯|我喜欢|用这个|就按|规则|约定|偏好|改成|统一用/g;
+    // 用户偏好/约定信号（只看用户说的——助手复述"以后统一用…"不算用户偏好）
+    const prefRe = /以后|记住|我习惯|我喜欢|用这个|就按|规则|约定|偏好|改成|统一用/;
     if (prefRe.test(userText)) notes.push("用户表达了偏好/约定");
-    // 新项目/交付信号
-    const projRe = /创建|新建|交付|完成|搞定|上线|做好/g;
-    if (projRe.test(userText) || projRe.test(assistText)) notes.push("有项目/交付活动");
+    // 项目/交付信号：只认用户侧。
+    // （原实现 assistantMsg 也走同一组词，"完成/做好/搞定"在助手回复里几乎是每轮口头禅，
+    //  导致几乎每轮都追加一条流水账，日志被灌到 259KB 且大半无信息量）
+    const projRe = /创建|新建|交付|完成|搞定|上线|做好/;
+    if (projRe.test(userText)) notes.push("用户报告项目/交付活动");
+    // 助手侧只认真正的里程碑（可核查的完成态），不认同义反复的"已完成"
+    const milestoneRe = /已交付|已上线|部署完成|构建通过|测试全绿|全部通过|已合并|已发布/;
+    if (milestoneRe.test(assistText)) notes.push("本轮达成里程碑");
     // 文件产物
     if (files.length) notes.push(`交付文件: ${files.map(f => f.name).slice(0, 3).join(", ")}`);
     if (!notes.length) return { wrote: false, reason: "无重要信息" };
@@ -42,6 +47,16 @@ export function autoMemorize(wsRoot, { userMsg = "", assistantMsg = "", files = 
     const entry = `### ${stamp}\n- ${notes.join("；")}\n${head ? `- 要点：${head}\n` : ""}`;
     let log = "";
     try { log = fs.readFileSync(paths.log, "utf8"); } catch {}
+    // 写入前去重：最近 3 条已有同样要点就不重复记。
+    // 园丁的"一键去重"只是事后补救（一天能落 18 个 .bak），去重应该发生在写入侧。
+    if (head) {
+      const key = head.trim().slice(0, 40);
+      const recent = splitLogBlocks(log).blocks.slice(-3)
+        .map(b => ({ b, h: (b.match(/要点：([\s\S]*)/) || [])[1] || "" }))
+        .filter(x => x.h.trim().slice(0, 40) === key)
+        .length > 0;
+      if (recent) return { wrote: false, reason: "要点与近期重复" };
+    }
     atomicWriteText(paths.log, log + entry + "\n");
     return { wrote: true, note: entry };
   } catch { return { wrote: false }; }
@@ -283,7 +298,14 @@ export function saveSnapshot(wsRoot, reason = "manual") {
     const p = snapshotPaths(wsRoot);
     fs.mkdirSync(p.dir, { recursive: true });
     const now = new Date();
-    const id = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,"0")}${String(now.getDate()).padStart(2,"0")}_${String(now.getHours()).padStart(2,"0")}${String(now.getMinutes()).padStart(2,"0")}`;
+    const pad = (n) => String(n).padStart(2, "0");
+    // 精确到秒 + 冲突自动加序号。原实现只到分钟：同一分钟内的两次快照会静默互相覆盖，
+    // 例如回退前的 pre-restore 安全网被随后的 archive-before 盖掉，等于没有安全网。
+    const base = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    let id = base;
+    let target = path.join(p.dir, `${id}.json`);
+    let n = 1;
+    while (fs.existsSync(target)) { id = `${base}_${++n}`; target = path.join(p.dir, `${id}.json`); }
     const snap = { id, reason, timestamp: now.toISOString(), files: {} };
     const targets = [memoryPaths(wsRoot).fixed, memoryPaths(wsRoot).log, correctionPaths(wsRoot).file, relationPaths(wsRoot).file];
     for (const f of targets) {
@@ -291,7 +313,7 @@ export function saveSnapshot(wsRoot, reason = "manual") {
         if (fs.existsSync(f)) snap.files[path.basename(f)] = fs.readFileSync(f, "utf8");
       } catch {}
     }
-    atomicWriteText(path.join(p.dir, `${id}.json`), JSON.stringify(snap, null, 2));
+    atomicWriteText(target, JSON.stringify(snap, null, 2));
     return { ok: true, id };
   } catch (e) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
 }
@@ -303,6 +325,56 @@ export function listSnapshots(wsRoot) {
     if (!fs.existsSync(p.dir)) return [];
     return fs.readdirSync(p.dir).filter(f => f.endsWith(".json")).sort().reverse();
   } catch { return []; }
+}
+
+// ── 快照保留策略 ──
+// 背景：快照每份内嵌 记忆日志.md 全文，而日志只增不减 → 旧快照是"新快照日志的前缀"，
+// 信息高度冗余。此前快照在每次 server 启动时无条件写（archiveStateSections 内），
+// 攒到 521 份 / 98.7MB 且全仓没有任何读取方（restoreSnapshot 零调用）——只写不读。
+// 现在：写入改成"真要改记忆时才写"，并强制保留上限，避免无界增长。
+export const SNAPSHOT_KEEP = 30;
+export const SNAPSHOT_MAX_BYTES = 12 * 1024 * 1024;
+
+// 按保留上限清理旧快照，返回 { removed, kept, bytes }（只删 .json，不碰其它文件）
+export function pruneSnapshots(wsRoot, { keep = SNAPSHOT_KEEP, maxBytes = SNAPSHOT_MAX_BYTES } = {}) {
+  try {
+    const p = snapshotPaths(wsRoot);
+    const names = listSnapshots(wsRoot); // 新的在前
+    if (!names.length) return { ok: true, removed: 0, kept: 0, bytes: 0 };
+    const sizeOf = (n) => { try { return fs.statSync(path.join(p.dir, n)).size; } catch { return 0; } };
+    // 先按份数截断，再从最旧端按总字节数继续截断（至少保留 1 份）
+    let survivors = names.slice(0, Math.max(1, keep));
+    let bytes = survivors.reduce((s, n) => s + sizeOf(n), 0);
+    while (survivors.length > 1 && bytes > maxBytes) {
+      bytes -= sizeOf(survivors[survivors.length - 1]);
+      survivors = survivors.slice(0, -1);
+    }
+    const keepSet = new Set(survivors);
+    let removed = 0;
+    for (const n of names) {
+      if (keepSet.has(n)) continue;
+      try { fs.unlinkSync(path.join(p.dir, n)); removed++; } catch {}
+    }
+    return { ok: true, removed, kept: survivors.length, bytes };
+  } catch (e) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
+}
+
+// ── 对话轮次计数：每 N 轮存一份（原实现读 listSnapshots().length 取模，
+//    但 0 触发后份数恒为 1，1..19 都不满足 %20 → 该分支一次都进不去，是死代码）──
+export function tickSnapshot(wsRoot, every = 20, reason = "auto") {
+  try {
+    const p = snapshotPaths(wsRoot);
+    fs.mkdirSync(p.dir, { recursive: true });
+    const f = path.join(p.dir, ".tick");
+    let n = 0;
+    try { n = parseInt(fs.readFileSync(f, "utf8"), 10) || 0; } catch {}
+    n += 1;
+    if (n < every) { atomicWriteText(f, String(n)); return { ok: true, ticked: n, saved: false }; }
+    atomicWriteText(f, "0");
+    const r = saveSnapshot(wsRoot, reason);
+    pruneSnapshots(wsRoot);
+    return { ok: true, ticked: 0, saved: !!r?.ok, id: r?.id };
+  } catch (e) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
 }
 
 // ══ P3 自动提炼：从记忆日志把"跨会话仍有效"的偏好/约定提炼进固定记忆核心约定节（去重）══
@@ -331,7 +403,7 @@ export function distillMemory(wsRoot, { max = 60, scanN = 80, dryRun = false } =
     const out = distilled.slice(0, max).map(x => x.line);
     if (dryRun || !out.length) return { ok: true, distilled: out, applied: 0 };
     // 先快照再改（重要文件保护）
-    try { saveSnapshot(wsRoot, "distill-before-" + Date.now()); } catch {}
+    try { saveSnapshot(wsRoot, "distill-before"); } catch {}
     let s = fixed;
     const anchor = "## 核心约定";
     let applied = 0;
@@ -361,7 +433,6 @@ export function archiveStateSections(wsRoot, keep = 5) {
     const paths = memoryPaths(wsRoot);
     if (!fs.existsSync(paths.fixed)) return { ok: false, reason: "无固定记忆" };
     let s = fs.readFileSync(paths.fixed, "utf8");
-    try { saveSnapshot(wsRoot, "archive-before-" + Date.now()); } catch {}
     let archived = 0;
     while (true) {
       const secs = [...s.matchAll(/## 当前状态（[^）]*）/g)]
@@ -377,8 +448,14 @@ export function archiveStateSections(wsRoot, keep = 5) {
       s = s.slice(0, idx) + `## ${title}（已归档）· ${first}\n` + s.slice(endIdx);
       archived++;
     }
-    atomicWriteText(paths.fixed, s);
-    try { syncMemoryToTui(); } catch {}
+    // 只有在真的改写了固定记忆时才存快照；没有归档动作就是纯读，不该留下快照文件。
+    // （原实现在循环前无条件 saveSnapshot，server 每次启动都会落一份 → 521 份 / 98.7MB）
+    if (archived > 0) {
+      try { saveSnapshot(wsRoot, "archive-before"); } catch {}
+      atomicWriteText(paths.fixed, s);
+      try { pruneSnapshots(wsRoot); } catch {}
+      try { syncMemoryToTui(); } catch {}
+    }
     return { ok: true, archived };
   } catch (e) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
 }

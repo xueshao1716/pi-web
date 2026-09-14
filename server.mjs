@@ -1445,11 +1445,10 @@ async function handleChat(req, res, body) {
         const skip = /^(觉得|认为|感觉|想|希望|想要|打算)/;
         if (detail.length > 1 && !skip.test(detail)) mem.saveRelation(CONFIG.cwd, { aspect: "用户透露", detail });
       }
-      // 进化快照：每 20 次对话自动存一份（可回退）
-      const snapCount = mem.listSnapshots(CONFIG.cwd).length;
-      if (snapCount === 0 || snapCount % 20 === 0) {
-        mem.saveSnapshot(CONFIG.cwd, "auto");
-      }
+      // 进化快照：每 20 轮存一份（可回退）
+      // 原实现是读 listSnapshots().length 再 %20：0 触发后份数恒为 1，而 1..19 都不满足条件，
+      // 所以这个分支在第一次之后就永远进不去了（死代码）。改成落盘计数器，语义才是"每 20 轮"。
+      mem.tickSnapshot(CONFIG.cwd, 20);
     } catch {}
     clearTask(taskId, "done");
     try { await mediaDelivered; } catch {}
@@ -1695,6 +1694,38 @@ const API_ROUTES = [
   ["POST", "/api/memory/upsert", async (res, req) => {
     const b = await readBody(req);
     return json(res, 200, upsertMemoryFact(WS_ROOT, b || {}));
+  }],
+  // ── 记忆快照：此前只有写入方、没有任何读取方（restoreSnapshot 零调用、无端点、前端零引用），
+  //    攒了 98.7MB 却一份都回退不了。补上列表 + 回退，让快照真正成为可用的安全网。──
+  ["GET", "/api/memory/snapshots", (res) => {
+    const names = memoryApi.listSnapshots(WS_ROOT);
+    const dir = memoryApi.snapshotPaths(WS_ROOT).dir;
+    const items = names.slice(0, 50).map((f) => {
+      let reason = "", timestamp = "", bytes = 0;
+      try {
+        const full = path.join(dir, f);
+        bytes = fs.statSync(full).size;
+        // id/reason/timestamp 排在 JSON 最前面，读文件头即可；列表不能把上百 MB 全读进来
+        const fd = fs.openSync(full, "r");
+        const buf = Buffer.alloc(320);
+        const n = fs.readSync(fd, buf, 0, 320, 0);
+        fs.closeSync(fd);
+        const head = buf.subarray(0, n).toString("utf8");
+        reason = (head.match(/"reason"\s*:\s*"([^"]*)"/) || [])[1] || "";
+        timestamp = (head.match(/"timestamp"\s*:\s*"([^"]*)"/) || [])[1] || "";
+      } catch {}
+      return { id: f.replace(/\.json$/, ""), reason, timestamp, bytes };
+    });
+    json(res, 200, { ok: true, total: names.length, items });
+  }],
+  ["POST", "/api/memory/snapshot/restore", async (res, req) => {
+    const b = await readBody(req);
+    if (!b?.id) return json(res, 400, { error: "缺少 id" });
+    // 回退本身就是危险动作：先把现状留一份，避免"回退错了再也回不来"
+    try { memoryApi.saveSnapshot(WS_ROOT, "pre-restore"); } catch {}
+    const r = memoryApi.restoreSnapshot(WS_ROOT, String(b.id));
+    try { memoryApi.pruneSnapshots(WS_ROOT); } catch {}
+    json(res, r?.ok ? 200 : 400, r);
   }],
   ["GET", "/api/theme-prefs", (res) => json(res, 200, loadThemePrefs())],
   ["POST", "/api/theme-prefs", async (res, req) => { const b = await readBody(req, 12); return json(res, 200, saveThemePrefs(b || {})) }],
@@ -2332,6 +2363,10 @@ function startServer() {
       const a = memoryApi.archiveStateSections(CONFIG.cwd, 5);
       if (a?.archived) console.log(`[memory] 归档 ${a.archived} 个过期状态节（固定记忆瘦身）`);
       else console.log(`[memory] 固定记忆状态节 ${a?.ok ? "无需归档" : "检查失败"}`);
+      // 快照现在只在"真要改记忆"时才产生；这里再兜一次保留上限。
+      // 旧版在每次 server 启动时无条件写一份（每份内嵌记忆日志全文），攒到 521 份 / 98.7MB 且无人读取。
+      const pr = memoryApi.pruneSnapshots(CONFIG.cwd);
+      if (pr?.removed) console.log(`[memory] 快照收敛：删除 ${pr.removed} 份旧快照，保留 ${pr.kept} 份 / ${(pr.bytes / 1048576).toFixed(1)}MB`);
     } catch {}
     // 时间引擎：定时任务调度（触发时跑 unifiedChat + 结果落盘 文档/时间引擎日志.md）
     try {

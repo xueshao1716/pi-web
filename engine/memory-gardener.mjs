@@ -8,7 +8,7 @@
 // ══════════════════════════════════════════════════════════
 import { readFileSync, existsSync } from "node:fs";
 import * as fs from "node:fs";
-import { join } from "node:path";
+import { join, basename, dirname } from "node:path";
 import { memoryPaths } from "./memory.mjs";
 import { atomicWriteText } from "./atomic-io.mjs";
 import { splitLogBlocks, blockTopic, isSupersededBlock } from "./memory-facts.mjs";
@@ -196,7 +196,26 @@ export function dedupeLog(wsRoot, fsMod = fs) {
   const backup = paths.log + ".bak-" + stamp;
   fsMod.writeFileSync(backup, raw, "utf8");
   atomicWriteText(paths.log, kept.join("\n\n") + "\n", fsMod);
+  try { pruneLogBackups(wsRoot, LOG_BAK_KEEP, fsMod); } catch {}
   return { removed, backup };
+}
+
+// ══ .bak 保留上限 ══
+// 备份是"后悔药"不是归档层：每次去重落一份【全量】日志（259KB），
+// 2026-08-26 一天被调用 18 次就攒了 18 份 / 3.2MB。留最近几份足够回退，无上限只是第二种堆积。
+export const LOG_BAK_KEEP = 5;
+export function pruneLogBackups(wsRoot, keep = LOG_BAK_KEEP, fsMod = fs) {
+  try {
+    const paths = memoryPaths(wsRoot);
+    const dir = dirname(paths.log);
+    const prefix = basename(paths.log) + ".bak-";
+    const names = fsMod.readdirSync(dir).filter((f) => f.startsWith(prefix)).sort().reverse();
+    let removed = 0;
+    for (const n of names.slice(Math.max(0, keep))) {
+      try { fsMod.unlinkSync(join(dir, n)); removed++; } catch {}
+    }
+    return { ok: true, removed, kept: Math.min(names.length, keep) };
+  } catch (e) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
 }
 
 // 报告附上已核对清单（供 UI 隐藏/折叠）
