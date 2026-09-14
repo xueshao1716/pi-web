@@ -11,7 +11,22 @@ import {
   matchDenyRule, isProtectedPath, DANGEROUS_CMD_RE, PI_CMDS, INTERACTIVE_CMD_RE, safeJoin,
 } from "./security.mjs";
 import { isSensitivePath, commandTouchesSensitive, redactSecrets } from "./secrets-guard.mjs";
-import { withFileLock } from "../file-lock.mjs";
+import { withFileLock, FileLockTimeoutError } from "../file-lock.mjs";
+
+/**
+ * 写操作进锁；等锁超时（另一进程正持有）如实失败，而不是无锁硬写或抛异常带崩这一轮。
+ * 跨进程锁的价值就在于"宁可这次不写，也不能覆盖别人"。
+ */
+async function lockedWrite(targetPath, argsPath, run) {
+  try {
+    return await withFileLock(targetPath, run);
+  } catch (error) {
+    if (error instanceof FileLockTimeoutError) {
+      return { text: `⏳ 暂未写入 ${argsPath}：${error.message}。本次没有改动文件，稍后重试即可。`, isError: true };
+    }
+    throw error;
+  }
+}
 import { formatSensitiveHint } from "../media-channels.mjs";
 import { yuanshuExecutor } from "../yuanshu-loop.mjs";
 import { execFileAbortable } from "../yuanshu-stability.mjs";
@@ -287,9 +302,10 @@ export function createUnifiedToolExecutor(deps = {}) {
         if (!p) return { text: "路径越权（write 仅限工作空间与系统目录内）", isError: true };
         if (isProtectedPath(p)) return { text: `⛔ 拒绝写入 [仓库法律]：${args?.path} 是受保护文件（人格/宪法/凭据），只读不写`, isError: true };
         const content = String(args?.content ?? "");
-        // 与 Pi 的写工具共用同一把按文件队列：Pi 的 edit 是 async 的，
-        // 不共用时"元枢 edit"与"Pi edit"打同一文件会交错、后写覆盖前写。
-        return await withFileLock(p, async () => {
+        // 与 Pi 的写工具共用同一把按文件队列，外层再套跨进程锁文件：
+        // Pi 的 edit 是 async 的，不共用时"元枢 edit"与"Pi edit"打同一文件会交错；
+        // 跨进程锁则挡住 dsh 子智能体 / headless 入口 / 外部脚本。
+        return await lockedWrite(p, args?.path, async () => {
           fs.mkdirSync(path.dirname(p), { recursive: true });
           if (fs.existsSync(p)) {
             try {
@@ -310,8 +326,8 @@ export function createUnifiedToolExecutor(deps = {}) {
         const oldT = String(args?.oldText ?? "");
         const newT = String(args?.newText ?? "");
         // 读→替换→写是经典的 lost update 现场：与 Pi 的写工具共用同一把队列，
-        // 并在锁内重读，避免用锁外的陈旧内容去替换。
-        return await withFileLock(p, async () => {
+        // 外加速跨进程锁，并在锁内重读，避免用锁外的陈旧内容去替换。
+        return await lockedWrite(p, args?.path, async () => {
           if (!fs.existsSync(p)) return { text: `文件不存在或路径越权（edit 仅限工作空间与系统目录内）: ${args?.path}`, isError: true };
           const c = fs.readFileSync(p, "utf8");
           if (!c.includes(oldT)) {

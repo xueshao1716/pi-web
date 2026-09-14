@@ -14,7 +14,9 @@ import { pathToFileURL } from "node:url";
 
 import {
   initFileLock, withFileLock, canonicalFilePath, usingSharedFileQueue, activeFileLockCount,
+  withCrossProcessLock, crossProcessLockPath, FileLockTimeoutError, lockDir,
 } from "../../engine/file-lock.mjs";
+import { spawn } from "node:child_process";
 import { createUnifiedToolExecutor } from "../../engine/tools/unified-tools.mjs";
 import { safeJoin } from "../../engine/tools/security.mjs";
 import { CONFIG } from "../../config.mjs";
@@ -182,6 +184,208 @@ test("未共用队列时，同样的交错确实会丢改动（证明共用不�
 
   const { final } = await crossEngineRace({ shareQueue: false, shared, dir, file, exec });
   assert.equal(final, "A\nB1\n", `两把独立的锁挡不住跨实现交错，A1 应被覆盖，实际: ${JSON.stringify(final)}`);
+});
+
+// ── 跨进程锁 ──
+// 用真的多进程验证：每个子进程做一次非原子的 读-改-写，靠锁保证不丢计数。
+const LOCK_MODULE_URL = new URL("../../engine/file-lock.mjs", import.meta.url).href;
+
+/** 子进程脚本：在锁保护下做 读 → 睡一会儿 → 写 的非原子自增。
+ *  必须等起跑线（startAt）再动手，否则 spawn 间隔比工作窗口还长，几个进程压根不会重叠，
+ *  "对照"就证明不了任何东西（第一版正是这么失败的）。 */
+function childScript({ useLock }) {
+  return `
+import fs from 'node:fs';
+import { withFileLock, initFileLock } from ${JSON.stringify(LOCK_MODULE_URL)};
+const [counter, lockDir, startAtRaw] = process.argv.slice(1);
+initFileLock({ dir: lockDir });
+const startAt = Number(startAtRaw);
+while (Date.now() < startAt) await new Promise(r => setTimeout(r, 2));   // 等起跑线
+const bump = async () => {
+  const n = Number(fs.readFileSync(counter, 'utf8') || '0');
+  await new Promise(r => setTimeout(r, 60));   // 交错窗口
+  fs.writeFileSync(counter, String(n + 1));
+};
+if (${useLock}) await withFileLock(counter, bump);
+else await bump();
+`;
+}
+
+function runChildren(script, args, count) {
+  return Promise.all(Array.from({ length: count }, () => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ["--input-type=module", "-e", script, ...args], {
+      stdio: "ignore", windowsHide: true,
+    });
+    child.on("error", reject);
+    child.on("exit", code => (code === 0 ? resolve() : reject(new Error(`子进程退出码 ${code}`))));
+  })));
+}
+
+/** 起跑线留足时间让所有子进程都启动完并进入等待。 */
+const startLine = () => String(Date.now() + 2000);
+
+test("跨进程互斥：多个进程各做一次非原子自增，一个都不丢", async () => {
+  const dir = tmpdir("xproc");
+  try {
+    const lockRoot = path.join(dir, "locks");
+    const counter = path.join(dir, "counter.txt");
+    fs.writeFileSync(counter, "0");
+    const N = 5;
+    await runChildren(childScript({ useLock: true }), [counter, lockRoot, startLine()], N);
+    assert.equal(Number(fs.readFileSync(counter, "utf8")), N,
+      `${N} 个子进程都应成功自增；少于 ${N} 说明锁没挡住跨进程交错`);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("对照：不走锁时同样的多进程自增确实会丢（说明锁不是多余的）", async () => {
+  const dir = tmpdir("xproc-ctl");
+  try {
+    const lockRoot = path.join(dir, "locks");
+    const counter = path.join(dir, "counter.txt");
+    fs.writeFileSync(counter, "0");
+    const N = 5;
+    await runChildren(childScript({ useLock: false }), [counter, lockRoot, startLine()], N);
+    const got = Number(fs.readFileSync(counter, "utf8"));
+    assert.ok(got < N, `不加锁就该丢计数（实际 ${got}/${N}）——这正是要加跨进程锁的原因`);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("跨进程锁：同一文件的两种写法落到同一个锁文件", () => {
+  const dir = tmpdir("xproc-key");
+  try {
+    initFileLock({ dir: path.join(dir, "locks") });
+    const f = path.join(dir, "a.txt");
+    fs.writeFileSync(f, "x");
+    assert.equal(crossProcessLockPath(f), crossProcessLockPath(path.join(dir, ".", "a.txt")));
+    assert.equal(crossProcessLockPath(f), crossProcessLockPath(path.join(dir, "sub", "..", "a.txt")));
+    assert.notEqual(crossProcessLockPath(f), crossProcessLockPath(path.join(dir, "b.txt")));
+    assert.ok(crossProcessLockPath(f).startsWith(lockDir()), "锁文件必须落在锁目录里，不污染用户目录");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("跨进程锁：正常释放后锁文件被清掉", async () => {
+  const dir = tmpdir("xproc-release");
+  try {
+    initFileLock({ dir: path.join(dir, "locks") });
+    const f = path.join(dir, "a.txt");
+    const lockFile = crossProcessLockPath(f);
+    await withCrossProcessLock(f, async () => {
+      assert.ok(fs.existsSync(lockFile), "持锁期间锁文件必须存在");
+      return "done";
+    });
+    assert.ok(!fs.existsSync(lockFile), "释放后必须删掉锁文件，否则下次白等");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("跨进程锁：等不到锁就如实超时失败，绝不无锁硬写", async () => {
+  const dir = tmpdir("xproc-timeout");
+  try {
+    initFileLock({ dir: path.join(dir, "locks") });
+    const f = path.join(dir, "a.txt");
+    const lockFile = crossProcessLockPath(f);
+    // 伪造一个"活着的本进程持有者"，且足够新，不会被判为陈旧
+    fs.mkdirSync(path.dirname(lockFile), { recursive: true });
+    fs.writeFileSync(lockFile, JSON.stringify({ pid: process.pid, host: os.hostname(), at: new Date().toISOString(), target: f }));
+    let ran = false;
+    await assert.rejects(
+      () => withCrossProcessLock(f, async () => { ran = true; }, { waitMs: 250 }),
+      error => error instanceof FileLockTimeoutError && error.code === "ELOCKTIMEOUT",
+    );
+    assert.equal(ran, false, "拿不到锁时任务体绝不能被执行");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("跨进程锁：持有者进程已死时立刻接管，不必等满陈旧时间", async () => {
+  const dir = tmpdir("xproc-stale");
+  try {
+    initFileLock({ dir: path.join(dir, "locks") });
+    const f = path.join(dir, "a.txt");
+    const lockFile = crossProcessLockPath(f);
+    fs.mkdirSync(path.dirname(lockFile), { recursive: true });
+    // pid 用一个几乎不可能存在的值 → holderAlive 判定为死
+    fs.writeFileSync(lockFile, JSON.stringify({ pid: 999999, host: os.hostname(), at: new Date().toISOString(), target: f }));
+    const r = await withCrossProcessLock(f, async () => "took-over", { waitMs: 2000 });
+    assert.equal(r, "took-over", "死进程留下的锁必须能被接管，否则一个崩溃就永久卡住");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("跨进程锁：锁文件太老时按陈旧处理并被替换", async () => {
+  const dir = tmpdir("xproc-old");
+  try {
+    initFileLock({ dir: path.join(dir, "locks") });
+    const f = path.join(dir, "a.txt");
+    const lockFile = crossProcessLockPath(f);
+    fs.mkdirSync(path.dirname(lockFile), { recursive: true });
+    fs.writeFileSync(lockFile, JSON.stringify({ pid: process.pid, host: os.hostname(), at: "2000-01-01T00:00:00.000Z", target: f }));
+    const old = new Date(Date.now() - 10 * 60 * 1000);
+    fs.utimesSync(lockFile, old, old);
+    const r = await withCrossProcessLock(f, async () => "ok", { waitMs: 2000, staleMs: 1000 });
+    assert.equal(r, "ok");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("edit 工具：等锁超时时如实报错且不改动文件", async () => {
+  const dir = tmpdir("xproc-tool");
+  try {
+    initFileLock({ dir: path.join(dir, "locks"), waitMs: 300 });
+    const file = path.join(dir, "f.txt");
+    fs.writeFileSync(file, "A\nB\n");
+    const lockFile = crossProcessLockPath(file);
+    fs.mkdirSync(path.dirname(lockFile), { recursive: true });
+    fs.writeFileSync(lockFile, JSON.stringify({ pid: process.pid, host: os.hostname(), at: new Date().toISOString(), target: file }));
+
+    const exec = createUnifiedToolExecutor({ cwd: () => dir, safePath: p => safeJoin(dir, p) });
+    const r = await exec("edit", { path: "f.txt", oldText: "A", newText: "A1" });
+    assert.equal(r.isError, true, "拿不到跨进程锁时必须如实失败，不能无锁硬写");
+    assert.match(r.text, /暂未写入|等锁超时/);
+    assert.equal(r.text.includes("没有改动文件"), true, "要告诉用户文件没被动过");
+    assert.equal(fs.readFileSync(file, "utf8"), "A\nB\n", "等锁失败时文件绝不能被改动");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("write 工具：同样受跨进程锁保护", async () => {
+  const dir = tmpdir("xproc-write");
+  try {
+    initFileLock({ dir: path.join(dir, "locks"), waitMs: 300 });
+    const file = path.join(dir, "f.txt");
+    fs.writeFileSync(file, "orig");
+    const lockFile = crossProcessLockPath(file);
+    fs.mkdirSync(path.dirname(lockFile), { recursive: true });
+    fs.writeFileSync(lockFile, JSON.stringify({ pid: process.pid, host: os.hostname(), at: new Date().toISOString(), target: file }));
+
+    const exec = createUnifiedToolExecutor({ cwd: () => dir, safePath: p => safeJoin(dir, p) });
+    const r = await exec("write", { path: "f.txt", content: "clobbered" });
+    assert.equal(r.isError, true);
+    assert.equal(fs.readFileSync(file, "utf8"), "orig", "等锁失败时不能覆盖文件");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("回归：刚创建、还没写入元数据的空锁文件绝不能被当成陈旧", async () => {
+  // 加锁是先 openSync(wx) 创建、后写元数据，两步之间别的进程看到的是空文件。
+  // 第一版把"读不出元数据"当成"持有者已死"直接删锁，导致两个进程同时持锁——
+  // 多进程互斥测试当场抓到。这条把它钉死。
+  const dir = tmpdir("xproc-empty");
+  try {
+    initFileLock({ dir: path.join(dir, "locks") });
+    const f = path.join(dir, "a.txt");
+    const lockFile = crossProcessLockPath(f);
+    fs.mkdirSync(path.dirname(lockFile), { recursive: true });
+    fs.writeFileSync(lockFile, "");                 // ← 空文件，mtime 是现在
+    let ran = false;
+    await assert.rejects(
+      () => withCrossProcessLock(f, async () => { ran = true; }, { waitMs: 250 }),
+      error => error instanceof FileLockTimeoutError,
+      "空锁文件必须被当成正在初始化，等锁而不是接管",
+    );
+    assert.equal(ran, false, "接管了就说明会双持锁");
+    assert.ok(fs.existsSync(lockFile), "不能把别人的锁删掉");
+
+    // 但空文件放老了就该能接管（崩溃在写元数据之前的场景）
+    const old = new Date(Date.now() - 10 * 60 * 1000);
+    fs.utimesSync(lockFile, old, old);
+    const r = await withCrossProcessLock(f, async () => "took-over", { waitMs: 2000, staleMs: 1000 });
+    assert.equal(r, "took-over", "足够老的锁文件仍要能接管，否则崩在创建瞬间就永久卡死");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 // ── executor 侧的行为 ──

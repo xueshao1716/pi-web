@@ -131,11 +131,8 @@ if (!CONFIG.piPackage) {
 const { createAgentSession, createAgentSessionServices, createAgentSessionFromServices, SettingsManager, ModelRuntime, SessionManager, DefaultResourceLoader, getAgentDir, withFileMutationQueue } = await import(
   pathToFileURL(CONFIG.piPackage).href
 );
-// 与 Pi 的写工具共用同一把按文件队列：Pi 的 edit 走 fs/promises，读写之间有真 await，
-// 不共用时"元枢 edit"与"Pi edit"打同一文件会交错、后写覆盖前写。
-// 拿不到就退回自带实现（见 engine/file-lock.mjs 的说明）。
-initFileLock({ withFileMutationQueue });
-console.log(`  🔒 文件写队列: ${usingSharedFileQueue() ? "与 Pi 共用" : "自带实现（未拿到 Pi 的队列）"}`);
+// ⚠️ initFileLock 必须放到 AGENT_DIR 声明之后（锁目录锚在 AGENT_DIR 上），
+// 放在这里会 TDZ 崩：Cannot access 'AGENT_DIR' before initialization（2026-09-14 踩过）。
 
 // ── 会话目录：复用本机 Agent 会话文件（~/.pi/agent/sessions/<encoded-cwd>/）──
 function encodeCwdDir(cwd) {
@@ -1612,6 +1609,11 @@ const RUN_INSTANCE_ID = `${process.pid}-${Date.now().toString(36)}`;
 // 被压缩掉的工具结果原件归档到 agent 目录（与 pi-web-runs 同级）——
 // 不进用户工作区、不污染生成物，但给出的是**可执行的**回读路径。
 initToolResultArchive({ root: path.join(AGENT_DIR, "yuanshu-tool-results") });
+// 与 Pi 的写工具共用同一把按文件队列：Pi 的 edit 走 fs/promises，读写之间有真 await，
+// 不共用时"元枢 edit"与"Pi edit"打同一文件会交错、后写覆盖前写。
+// 外层再套跨进程锁文件（锚在 AGENT_DIR，所有元枢进程默认落到同一处，不 init 也一致）。
+initFileLock({ withFileMutationQueue, dir: path.join(AGENT_DIR, "yuanshu-locks") });
+console.log(`  🔒 文件写队列: ${usingSharedFileQueue() ? "与 Pi 共用" : "自带实现（未拿到 Pi 的队列）"} · 跨进程锁目录 ${path.join(AGENT_DIR, "yuanshu-locks")}`);
 const runStore = createRunStore({ rootDir: RUNS_DIR });
 const runEventLog = createRunEventLog({ rootDir: RUNS_DIR });
 const runEffects = createRunEffects({ rootDir: RUNS_DIR });
