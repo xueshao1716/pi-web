@@ -1,8 +1,9 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import useSWR from 'swr'
 import {
   MessagesSquare, Clock4, Wallet, Activity as ActivityIcon, Package,
   Play, Pause, CheckCircle2, AlertTriangle, ArrowRight,
+  LayoutDashboard, GitCompare,
 } from 'lucide-react'
 import { SessionsApi, TasksApi, StatsApi, WsApi, SubagentApi, EmotionApi, RunApi, type TimeTask, type SubagentRun } from '../api'
 import { useApp } from '../store'
@@ -13,6 +14,7 @@ import { MoodOrb } from '../components/MoodOrb'
 import { useXiaoyuEmotion } from '../lib/useXiaoyuEmotion'
 import HealthBadge from '../components/HealthBadge'
 import WorkExplanationList from '../components/WorkExplanationList'
+import { ReviewPanel } from './ReviewWorkbench'
 
 // ── 工作台（2026-09-03，Phase 1）：概览卡 ×4 + 三列泳道 + 活动时间线 ──
 // 布局借鉴 SaaS 项目看板；数据全部来自现有 API（sessions/time-tasks/stats/agent-events）
@@ -131,7 +133,17 @@ function SubagentCard({ r }: { r: SubagentRun }) {
   )
 }
 
-export default function Board() {
+type BoardView = 'overview' | 'review'
+
+// 页内多视图（沿用 Apps.tsx 的模式）：概览 = 运行态总览；改动验收 = 原独立页，
+// 因其板块与工作台重复（近期工作说明、子智能体记录）而并入，不再占独立主栏入口。
+const BOARD_VIEWS: { key: BoardView; label: string; icon: typeof MessagesSquare }[] = [
+  { key: 'overview', label: '概览', icon: LayoutDashboard },
+  { key: 'review', label: '改动验收', icon: GitCompare },
+]
+
+export default function Board({ initialView = 'overview' }: { initialView?: BoardView }) {
+  const [view, setView] = useState<BoardView>(initialView)
   const { selectSession } = useApp()
   const { data: sessData } = useSWR('board-sessions', () => SessionsApi.list(), { refreshInterval: 30_000 })
   const { data: taskData } = useSWR('board-tasks', () => TasksApi.list(), { refreshInterval: 15_000 })
@@ -175,8 +187,31 @@ export default function Board() {
       <div className="max-w-[1080px] mx-auto px-4 sm:px-6 py-5 flex flex-col gap-4">
         <PageHeader title="工作台" description="接下来做什么：接着聊、去创作、看交付" meta={<HealthBadge status={runData?.health.status || 'idle'} label={activeRuns.length ? `${activeRuns.length} 个运行中` : undefined} />} />
 
-        <WorkExplanationList data={runData} error={runError} onOpenSession={id => { selectSession(id); goChat() }} />
+        {/* 视图切换：概览 / 改动验收（移动端 select，桌面分段按钮；沿用 Apps.tsx 的页内多视图模式） */}
+        <select
+          aria-label="选择工作台视图"
+          className="input-pi min-h-11 !py-2 text-[13px] w-full md:hidden"
+          value={view}
+          onChange={event => setView(event.target.value as BoardView)}
+        >
+          {BOARD_VIEWS.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}
+        </select>
+        <nav aria-label="工作台视图" className="hidden md:flex items-center gap-1">
+          {BOARD_VIEWS.map(v => (
+            <button key={v.key} type="button" aria-current={view === v.key ? 'page' : undefined} onClick={() => setView(v.key)}
+              className={`min-h-10 px-3 rounded-pi-md inline-flex items-center gap-2 text-[13px] transition-colors ${view === v.key ? 'nav-active font-medium' : 'text-pi-dim hover:text-pi-text hover:bg-pi-bg-hover'}`}>
+              <v.icon className="w-4 h-4" strokeWidth={1.8} aria-hidden="true" />
+              <span>{v.label}</span>
+            </button>
+          ))}
+        </nav>
 
+        {view === 'review' && <ReviewPanel />}
+
+        {view === 'overview' && <>
+        {/* 近期工作说明：只在概览视图渲染一份。原先工作台与改动验收各用一个 SWR key
+            拉同一份 RunApi.overview()，改动验收那份已删除，这里保留唯一一份。 */}
+        <WorkExplanationList data={runData} error={runError} onOpenSession={id => { selectSession(id); goChat() }} />
         <div data-slot="board-next" className="panel p-3 flex flex-col gap-2">
           <div className="text-[12px] font-semibold text-pi-text px-1">接下来做什么</div>
           <div className="flex flex-wrap gap-2">
@@ -269,6 +304,7 @@ export default function Board() {
         {!sessData && !taskData && (
           <EmptyState icon={Clock4} title="工作台" hint="正在拉取会话与任务数据…" />
         )}
+        </>}
       </div>
     </div>
   )

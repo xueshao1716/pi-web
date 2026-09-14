@@ -29,7 +29,6 @@ const Apps = lazy(() => import('./pages/Apps'))
 const EnginePage = lazy(() => import('./pages/Engine'))
 const LingXiPage = lazy(() => import('./pages/LingXi'))
 const BoardPage = lazy(() => import('./pages/Board'))
-const ReviewWorkbench = lazy(() => import('./pages/ReviewWorkbench'))
 const SystemPage = lazy(() => import('./pages/System'))
 const ThemesPage = lazy(() => import('./pages/Themes'))
 const SessionDbPage = lazy(() => import('./pages/SessionDb'))
@@ -43,18 +42,25 @@ const LazyModelManager = lazy(() => import('./components/ModelManager'))
 const ActivityFeed = lazy(() => import('./components/ActivityFeed'))
 const TaskInspector = lazy(() => import('./components/TaskInspector'))
 
+// 深链别名：#/review 渲染工作台并把视图预设为「改动验收」
+function BoardReviewPage() {
+  return <BoardPage initialView="review" />
+}
+
 type PageRoute = {
   route: Exclude<Route, 'chat'>
   icon: typeof MessagesSquare
   label: string
-  Page: LazyExoticComponent<ComponentType<any>>
+  Page: ComponentType<any>
   nav?: boolean
 }
 
 // 页面注册表是路由、页面渲染和桌面导航的单一来源；移动端导航是刻意不同的信息架构。
 const PAGE_ROUTES: PageRoute[] = [
   { route: 'board', icon: LayoutDashboard, label: ROUTE_LABELS.board, Page: BoardPage },
-  { route: 'review', icon: GitCompare, label: ROUTE_LABELS.review, Page: ReviewWorkbench },
+  // 改动验收已并入工作台（页内视图）。保留 review 路由作为深链别名，
+  // 让 #/review、手机「更多」和聊天右栏的「打开验收」继续可用。
+  { route: 'review', icon: GitCompare, label: ROUTE_LABELS.review, Page: BoardReviewPage },
   { route: 'lingxi', icon: Sparkles, label: ROUTE_LABELS.lingxi, Page: LingXiPage },
   { route: 'workshop', icon: Factory, label: ROUTE_LABELS.workshop, Page: WorkshopPage },
   { route: 'story', icon: Sparkles, label: ROUTE_LABELS.story, Page: StoryWorkbench },

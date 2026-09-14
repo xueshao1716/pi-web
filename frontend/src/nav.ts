@@ -17,6 +17,8 @@ export const ROUTE_LABELS = {
 } as const
 
 // 桌面主栏只放用户每天会找的工作入口；引擎从“更多”提升为一等入口。
-export const RAIL_PRIMARY = ['chat', 'board', 'review', 'workshop', 'story', 'assets', 'tasks', 'engine'] as const
+// 改动验收不再是独立主栏项：它的板块与工作台重复（近期工作说明、子智能体记录），
+// 已并入工作台作为页内视图；#/review 仍保留为深链别名。
+export const RAIL_PRIMARY = ['chat', 'board', 'workshop', 'story', 'assets', 'tasks', 'engine'] as const
 
 export const RAIL_MORE = ['lingxi', 'apps', 'sessiondb', 'downloads', 'system'] as const

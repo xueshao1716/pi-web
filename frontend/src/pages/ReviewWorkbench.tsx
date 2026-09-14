@@ -4,10 +4,7 @@ import {
   Bot, Check, ChevronDown, ChevronRight, CircleAlert, Clock3, ExternalLink,
   FileCode2, GitBranch, GitCompare, Layers3, PackageOpen, RefreshCw, ShieldCheck,
 } from 'lucide-react'
-import { AIBodyApi, GitReviewApi, SubagentApi, RunApi, type AIBodyLayer, type GitReviewFile, type SubagentHistoryRun } from '../api'
-import PageHeader from '../components/PageHeader'
-import WorkExplanationList from '../components/WorkExplanationList'
-import { useApp } from '../store'
+import { AIBodyApi, GitReviewApi, SubagentApi, type AIBodyLayer, type GitReviewFile, type SubagentHistoryRun } from '../api'
 
 const emptyFiles: GitReviewFile[] = []
 const statusLabel = (status: GitReviewFile['status']) => ({ untracked: '未跟踪', added: '新增', deleted: '删除', renamed: '重命名', modified: '修改' }[status])
@@ -72,9 +69,10 @@ function RunRecord({ run }: { run: SubagentHistoryRun }) {
   </article>
 }
 
-export default function ReviewWorkbench() {
-  const { selectSession } = useApp()
-  const { data: runData, error: runError } = useSWR('review-run-overview', () => RunApi.overview(), { refreshInterval: 15000 })
+// 改动验收面板：已并入「工作台」（pages/Board.tsx）作为一个视图，因此不再自带 PageHeader，
+// 也不再自己拉运行概览——近期工作说明由工作台共享层统一渲染一次，
+// 避免同一接口用两个 SWR key 各拉一遍。
+export function ReviewPanel() {
   const { data: review, error, isLoading, mutate } = useSWR('git-review', () => GitReviewApi.review(), { refreshInterval: 30000, revalidateOnFocus: true })
   const { data: history } = useSWR('subagent-history', () => SubagentApi.history(), { refreshInterval: 30000, revalidateOnFocus: true })
   const { data: aibody } = useSWR('aibody-overview', () => AIBodyApi.overview(), { refreshInterval: 120000, revalidateOnFocus: true })
@@ -105,17 +103,18 @@ export default function ReviewWorkbench() {
   const toggleMission = (id: string) => setOpenMissions(previous => { const next = new Set(previous); next.has(id) ? next.delete(id) : next.add(id); return next })
   const toggleFileGroup = (group: string) => setOpenFileGroups(previous => { const next = new Set(previous); next.has(group) ? next.delete(group) : next.add(group); return next })
 
-  return <div className="flex-1 overflow-y-auto relative z-10 bg-pi-bg">
-    <div className="review-workbench max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-7">
-      <PageHeader title="改动与验收" description="把改动、验收证据和子智能体过程放在同一张可追溯的工作台上。" meta={<span className="review-meta"><GitCompare className="w-3.5 h-3.5" />{review?.branch ? `分支 ${review.branch}` : isLoading ? '正在读取仓库…' : '尚未连接仓库'}</span>} actions={<button type="button" className="btn-ghost min-h-11 inline-flex items-center gap-2" onClick={() => void mutate()} disabled={isLoading}><RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />刷新快照</button>} />
+  return <div className="review-workbench">
+    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <span className="review-meta"><GitCompare className="w-3.5 h-3.5" />{review?.branch ? `分支 ${review.branch}` : isLoading ? '正在读取仓库…' : '尚未连接仓库'}</span>
+      <button type="button" className="btn-ghost min-h-11 inline-flex items-center gap-2" onClick={() => void mutate()} disabled={isLoading}><RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />刷新快照</button>
+    </div>
 
-      <section className="review-hero-card"><div><span className="review-eyebrow">SYSTEM REVIEW / EVIDENCE</span><h2>当前项目的真实状态</h2><p>仓库改动和工作记录分开呈现，未跟踪文件会按用途折叠，避免把工作空间噪声误认为源码问题。</p></div><div className="review-project-path"><GitBranch className="w-4 h-4" /><span>{review?.root || 'D:\\pi-web'}</span></div></section>
+      <section className="review-hero-card"><div><span className="review-eyebrow">改动与验收 · SYSTEM REVIEW / EVIDENCE</span><h2>当前项目的真实状态</h2><p>仓库改动和工作记录分开呈现，未跟踪文件会按用途折叠，避免把工作空间噪声误认为源码问题。</p></div><div className="review-project-path"><GitBranch className="w-4 h-4" /><span>{review?.root || 'D:\\pi-web'}</span></div></section>
       {error && <div className="review-alert" role="alert"><CircleAlert className="w-4 h-4" />读取 Git 改动失败，请稍后重试。</div>}
       {isLoading && <div className="review-loading" role="status">正在整理文件改动…</div>}
       {!isLoading && !error && review?.error && <div className="review-alert" role="alert"><CircleAlert className="w-4 h-4" />仓库输出过大，暂时无法完整读取；请刷新后继续。</div>}
       {!isLoading && !error && review && !review.isRepo && <div className="review-empty"><GitCompare className="w-7 h-7" /><h2>这里还不是 Git 仓库</h2><p>当前工作台没有找到可验收的源码仓库。</p></div>}
 
-      <div className="my-5"><WorkExplanationList data={runData} error={runError} onOpenSession={id => { selectSession(id); location.hash = '#/chat' }} /><p className="text-xs text-pi-dim mt-2">以上证据对应各自任务，不能代替下方当前仓库的改动检查。</p></div>
       {!isLoading && !error && review?.isRepo && !review.error && <>
         <section className="review-summary" aria-label="改动摘要"><div><span className="review-summary-label">改动文件</span><strong>{files.length}</strong><small>{files.filter(file => file.status === 'untracked').length} 项未跟踪</small></div><div><span className="review-summary-label">新增行</span><strong className="text-pi-success">+{summary.additions}</strong></div><div><span className="review-summary-label">删除行</span><strong className="text-pi-danger">-{summary.deletions}</strong></div><div className="review-summary-verification"><span className="review-summary-label">验收状态</span><span className={`review-verification review-verification-${verification.state}`}><span className="review-status-dot" />{verification.state === 'passed' ? '已通过' : verification.state === 'failed' ? '有问题' : verification.state === 'running' ? '进行中' : '尚未执行'}</span><small>只显示真实执行结果</small></div></section>
 
@@ -127,6 +126,7 @@ export default function ReviewWorkbench() {
 
         <section className="review-verification-panel" aria-label="验收状态"><div><div className="review-section-head"><span>验收状态</span><span className="review-verification review-verification-unknown">只展示真实结果</span></div><p className="review-verification-copy">当前接口只读取仓库快照，尚未替你执行测试、类型检查或构建。完成检查后再把结果写回这里。</p></div><button type="button" className={`btn-ghost review-ack-button ${acknowledged ? 'is-acknowledged' : ''}`} onClick={() => setAcknowledged(true)}><Check className="w-4 h-4" />{acknowledged ? '已记录我已查看' : '记录我已查看'}</button></section>
       </>}
-    </div>
   </div>
 }
+
+export default ReviewPanel
