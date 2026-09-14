@@ -21,6 +21,7 @@ import { createSessionBus } from "./engine/session-bus.mjs";
 import { createModelSessionApi } from "./engine/model-session.mjs";
 // ── Reasonix 机制（esengine/DeepSeek-Reasonix 借鉴）：工具结果压缩 / NEEDS_PRO 自报升级 / scavenge 捞回 ──
 import { shrinkToolResult, NEEDS_PRO_RE, scavengeToolCalls } from "./engine/reasonix-tools.mjs";
+import { initToolResultArchive } from "./engine/tool-result-archive.mjs";
 // ── 会话解析纯函数（拆模块）：消息/文本/图片/文件提取 ──
 import { extractMessages, extractText, extractImages, extractFiles, resolveLeafId, windowMessages } from "./engine/session-utils.mjs";
 import { initSessionFiles, scanSessionFiles, parseSessionFile, parseSessionFileCached, readEntriesFromFile, getSessionList, invalidateSessionCache, extractMessageFiles, extractMessageImages } from "./engine/session-files.mjs";
@@ -1602,6 +1603,9 @@ function handleAgentStatus(res) {
 
 const RUNS_DIR = path.join(AGENT_DIR, "pi-web-runs");
 const RUN_INSTANCE_ID = `${process.pid}-${Date.now().toString(36)}`;
+// 被压缩掉的工具结果原件归档到 agent 目录（与 pi-web-runs 同级）——
+// 不进用户工作区、不污染生成物，但给出的是**可执行的**回读路径。
+initToolResultArchive({ root: path.join(AGENT_DIR, "yuanshu-tool-results") });
 const runStore = createRunStore({ rootDir: RUNS_DIR });
 const runEventLog = createRunEventLog({ rootDir: RUNS_DIR });
 const runEffects = createRunEffects({ rootDir: RUNS_DIR });
