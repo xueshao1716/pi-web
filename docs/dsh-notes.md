@@ -23,7 +23,16 @@
 | 调试 | `dsh --dump-config`（打印合成树并标注每行来源） |
 | 元枢实际用的 | `dsh --profile headless`，即 `dsh-base` + `dsh-headless` —— 也就是**整套 harness** |
 
-`dsh-headless\cordis.patch.yml` 只**加 3 行**（`code-runtime` / `headless-startup` / `headless-runner`）+ 覆盖 2 行 config，**没有禁用 `dsh-base` 的任何一行**。所以元枢每轮启动都带着 sqlite 会话查询、OTEL 遥测、插件清点这些它不用的东西。想瘦身不用改 dsh，建一个自己的 profile 在那个 profile 的 `cordis.patch.yml` 里 `disabled: true` 即可——**这是 patch 层"做减法"的能力，元枢目前没利用**。
+`dsh-headless\cordis.patch.yml` 只**加 3 行**（`code-runtime` / `headless-startup` / `headless-runner`）+ 覆盖 2 行 config，**没有禁用 `dsh-base` 的任何一行**。所以元枢每轮启动都带着 sqlite 会话查询、OTEL 遥测、插件清点这些它不用的东西。想瘦身不用改 dsh，建一个自己的 profile、或在现有 profile 的 `cordis.patch.yml` 里 `disabled: true` 即可——**这是 patch 层"做减法"的能力，元枢目前没利用**。
+
+**实测过（可复现，配置已还原）**：在 `~\.dsh\profiles\headless\cordis.patch.yml` 里禁用 4 行（`session-query-sqlite` / `session-telemetry-otel` / `plugin-package-inventory-deepseek` / `skill-badge`）后：
+
+| | 三轮实测 |
+|---|---|
+| 原始 | 4.4 / 4.7 / 4.68 / 4.73 / 4.76 / 5.0 s |
+| 禁用 4 行 | **3.56 / 3.47 / 3.74 s** |
+
+省约 **1.1 秒（~23%）**。但这也同时说明：**装配与模块加载不是瓶颈**——剩下的约 3.5 秒是 Node 启动 + 模型往返。想靠瘦身把 dsh 拉进"可以当主驾"的区间是做不到的。
 
 ## 二 已经有了的（**不要去"吸收"**）
 
