@@ -39,6 +39,20 @@
 .story-main > * + * { margin-top: 24px; }
 .story-steps { display: flex; gap: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--pi-border-soft); color: var(--pi-dim); font-size: 12px; }
 .story-steps .is-ready { color: var(--pi-accent); }
+/* 制作台：一键分镜 / 合成成片 / 连续性体检 */
+.story-studio { margin-top: 16px; padding: 12px; border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-md); background: var(--pi-bg1); }
+.story-studio-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.story-studio-count { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--pi-dim); }
+.story-studio-count select { width: auto; min-height: 36px; margin-top: 0; padding: 4px 8px; }
+.story-studio-idea { flex: 1 1 200px; min-width: 0; min-height: 36px; padding: 6px 10px; color: var(--pi-text); background: var(--pi-bg2); border: 1px solid var(--pi-border); border-radius: var(--pi-r-sm); font: inherit; font-size: 12px; }
+.story-studio-row button { min-height: 36px; padding: 6px 14px; font-size: 12px; }
+.story-studio-link { color: var(--pi-accent); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.story-lint { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--pi-border-soft); font-size: 12px; }
+.story-lint-head { display: block; color: var(--pi-dim); margin-bottom: 6px; }
+.story-lint-ok { color: var(--pi-success); }
+.story-lint ul { margin: 0; padding-left: 18px; }
+.story-lint-item { line-height: 1.7; color: var(--pi-dim); }
+.story-lint-item-warn { color: var(--pi-warning); }
 .story-editor-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 28px; align-items: start; }
 .story-editor > * + * { margin-top: 20px; }
 .story-section-head { margin-bottom: 16px; }

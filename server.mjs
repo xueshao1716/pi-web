@@ -50,7 +50,7 @@ import { createRunApi } from "./engine/run-api.mjs";
 import { initThemePrefs, loadThemePrefs, saveThemePrefs } from "./engine/theme-prefs.mjs";
 import { initEnginePair, loadEnginePair, saveEnginePair, swapEnginePair, resolveLead, describePair, leadNote } from "./engine/engine-pair.mjs";
 import { decorateEngineStatus, pluginFromBody, isCorePlugin } from "./engine/engine-panel.mjs";
-import { initWorkspaceApi, WS_ROOT, findWorkspaceFiles, wsSafePath, saveArtifact, handleWsTree, handleWsFile, handleWsRead, handleWsPreview, handleWsWrite, handleWsArtifacts, wsNextVersion, wsCopyDir, handleWsDeliver, handleWsPackage, handleWsDeliveries, handleWsRename, handleWsDelete, handleWsSearch, handleWsProjectCreate, handleWsConvert } from "./engine/workspace-api.mjs";
+import { initWorkspaceApi, WS_ROOT, findWorkspaceFiles, wsSafePath, saveArtifact, saveArtifactFromFile, handleWsTree, handleWsFile, handleWsRead, handleWsPreview, handleWsWrite, handleWsArtifacts, wsNextVersion, wsCopyDir, handleWsDeliver, handleWsPackage, handleWsDeliveries, handleWsRename, handleWsDelete, handleWsSearch, handleWsProjectCreate, handleWsConvert } from "./engine/workspace-api.mjs";
 import { initContextLoader, makeLoader, loadExperience, readRulesWithImports, loadContextRules, jitRulesForPath, loadProjectRules, loadSkillIndex, execActivateSkill, ACTIVATE_SKILL_TOOL, WORK_PROTOCOL, loadMemory, loadMemoryIndex, loadExperienceIndex, shouldInjectFullMemory, setLastUserQuery } from "./engine/context-loader.mjs";
 import { initMediaApi, findMediaModel, detectMediaIntents, extractMediaPrompt, mediaAwarePrompt, mediaReadyNotice, explainMediaError, generateMediaAsync, generateTTS, generateImage, handleImage, handleImageWithSave, generateVideo, handleMedia, assistantContentWithMedia } from "./engine/media-api.mjs";
 import { extractPlayableMedia } from "./engine/media-embed.mjs";
@@ -78,7 +78,7 @@ import * as confirmRegistry from "./engine/tools/confirm-registry.mjs";
 import { initRefineApi, readRefineJson, runRefineScript, handleRefineStatus, handleRefineList, detectSkillDomain, handleRefineFeedback, handleRefineGenes, handleRefinePlan, handleRefineApprove, handleRefineReject, handleRefineRollback } from "./engine/refine-api.mjs";
 import { initMcpServer, handleMcp } from "./engine/mcp-server.mjs";
 import { initMcpChat } from "./engine/mcp-chat.mjs";
-import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryAssist, handleStoryPortrait } from "./engine/story-orchestrator.mjs";
+import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryAssist, handleStoryPortrait, handleStoryLint, handleStoryStoryboard, handleStoryFilm } from "./engine/story-orchestrator.mjs";
 import { startShare, stopShareSync, handleShare, handleShareStatus, handleShareStop } from "./engine/share-api.mjs";
 import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
@@ -1622,6 +1622,12 @@ const API_ROUTES = [
   ["POST", /^\/api\/story\/projects\/([^/]+)\/assist$/, async (res, req, url, m) => handleStoryAssist({ root: WS_ROOT, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 8))],
   // 角色定妆照：产出可复用的形象参考图，写回 bible；后续镜头生成会当作真实参考图注入
   ["POST", /^\/api\/story\/projects\/([^/]+)\/portrait$/, async (res, req, url, m) => handleStoryPortrait({ root: WS_ROOT, generateImage, saveArtifact, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 8))],
+  // 连续性体检：只读，把"这次生成能不能保住人物一致性"的条件提前摊开
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/lint$/, async (res, req, url, m) => handleStoryLint({ root: WS_ROOT }, res, m[1], await readBody(req, 8))],
+  // 一键分镜：从梗概一次生成整场分镜表并追加进项目
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/storyboard$/, async (res, req, url, m) => handleStoryStoryboard({ root: WS_ROOT, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 16))],
+  // 成片合成：按分镜顺序把成功的视频片段拼成长片并落盘为正式产物
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/film$/, async (res, req, url, m) => handleStoryFilm({ root: WS_ROOT, saveArtifactFromFile }, res, m[1], await readBody(req, 8))],
   // ── 会话数据库（08-29 真落地：编号/健康度/批量清理；必须先于 :id 正则路由）──
   ["GET", "/api/sessions/db/list", (res) => handleDbList(res)],
   ["GET", "/api/sessions/db/stats", (res) => handleDbStats(res)],

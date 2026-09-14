@@ -40,10 +40,16 @@ export function validateProject(project) {
       beatIds.add(beat.id);
     }
   }
+  // 继承链校验：2026-09-14 起允许**跨场景**继承。
+  // 原先只在本场景内查 id，于是"一键分镜"产出的多场景分镜（第 2 场第 1 段承接第 1 场末段）
+  // 会被校验直接拒掉。跨场景续写本来就该成立，这里按全项目收集。
+  const allBeatIds = new Set();
+  for (const scene of scenes) for (const beat of (Array.isArray(scene.beats) ? scene.beats : [])) {
+    if (beat?.id) allBeatIds.add(beat.id);
+  }
   for (const scene of scenes) {
-    const ids = new Set((scene.beats || []).map(b => b.id));
     for (const beat of (scene.beats || [])) {
-      if (beat.inheritFromBeatId && !ids.has(beat.inheritFromBeatId)) throw new Error(`继承 beat 不存在: ${beat.inheritFromBeatId}`);
+      if (beat.inheritFromBeatId && !allBeatIds.has(beat.inheritFromBeatId)) throw new Error(`继承 beat 不存在: ${beat.inheritFromBeatId}`);
     }
   }
   return project;
@@ -51,6 +57,17 @@ export function validateProject(project) {
 
 function findBeat(scene, id) {
   return (scene.beats || []).find(b => b.id === id);
+}
+
+// 跨场景解析：先在本场景找，再在全项目找。返回 { beat, scene } 以便读对 owning scene 的产出。
+export function findBeatAnywhere(project, scene, id) {
+  const inScene = findBeat(scene, id);
+  if (inScene) return { beat: inScene, scene };
+  for (const other of (project?.scenes || [])) {
+    const hit = findBeat(other, id);
+    if (hit) return { beat: hit, scene: other };
+  }
+  return null;
 }
 
 export function mergeBeatContext(project, scene, beat) {
@@ -64,7 +81,8 @@ export function mergeBeatContext(project, scene, beat) {
     visited.add(current.id);
     if (current.prompt) prompts.unshift(String(current.prompt).trim());
     if (current.id !== beat.id) {
-      const output = [...(scene.outputs || [])].reverse().find(run => run.beatId === current.id && ['succeeded', 'degraded'].includes(run.status) && run.outputAssets?.length);
+      // 产出存在 owning scene 上：跨场景续写时前文在别的场景里，必须按 owning scene 找。
+      const output = [...(current.scene?.outputs || scene.outputs || [])].reverse().find(run => run.beatId === current.id && ['succeeded', 'degraded'].includes(run.status) && run.outputAssets?.length);
       const prose = output?.outputAssets.filter(asset => asset.type === 'text' && asset.text).map(asset => asset.text).join('\n');
       if (prose) previousOutputs.unshift(prose.slice(-12000));
     }
@@ -72,7 +90,11 @@ export function mergeBeatContext(project, scene, beat) {
       const id = typeof ref === 'string' ? ref : ref?.id;
       if (id && !references.includes(id)) references.unshift(id);
     }
-    current = current.inheritFromBeatId ? findBeat(scene, current.inheritFromBeatId) : null;
+    if (!current.inheritFromBeatId) break;
+    const next = findBeatAnywhere(project, scene, current.inheritFromBeatId);
+    if (!next) break;
+    // 把 owning scene 挂在节点上，下一轮读产出时用得到。
+    current = { ...next.beat, scene: next.scene };
   }
   return { prompt: [...prompts.filter(Boolean), ...(previousOutputs.length ? ['## 已生成前文（承接结尾，推进新情节，不重复开场）', ...previousOutputs.slice(-3)] : [])].join('\n'), referenceIds: references, bible: project?.bible || BIBLE() };
 }

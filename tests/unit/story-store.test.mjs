@@ -25,3 +25,29 @@ test('mergeBeatContext keeps ordered inherited entities and rejects cycles', () 
 test('validateProject rejects duplicate scene indexes', () => {
   assert.throws(() => validateProject({ id: 'p1', title: 'x', scenes: [{ id: 's1', index: 1 }, { id: 's2', index: 1 }] }), /index/);
 });
+
+// 一键分镜会产出多个场景，第 2 场第 1 段承接第 1 场末段。原先校验只在本场景内查 id，
+// 于是这种跨场景续写会被拒。跨场景连续性本来就该成立，这里锁住它。
+test('跨场景继承：校验通过，且前文能从 owning scene 取到', () => {
+  const project = {
+    id: 'p1', title: 'x',
+    bible: { characters: [{ id: 'c1', name: '阿宁' }], locations: [], props: [], wardrobe: [], style: {}, rules: [] },
+    scenes: [
+      { id: 's1', index: 1, beats: [{ id: 'b1', references: [{ id: 'c1', role: 'character' }], prompt: '站在河边' }], outputs: [{ beatId: 'b1', status: 'succeeded', outputAssets: [{ type: 'text', text: '他站在河边，风很大。' }] }] },
+      { id: 's2', index: 2, beats: [{ id: 'b2', references: [], inheritFromBeatId: 'b1', prompt: '转身离开' }], outputs: [] },
+    ],
+  };
+  assert.doesNotThrow(() => validateProject(project));
+  const result = mergeBeatContext(project, project.scenes[1], project.scenes[1].beats[0]);
+  assert.deepEqual(result.referenceIds, ['c1']);
+  assert.match(result.prompt, /站在河边/);
+  assert.match(result.prompt, /他站在河边，风很大。/);
+  assert.match(result.prompt, /转身离开/);
+});
+
+test('跨场景继承仍然拒绝不存在的 id', () => {
+  assert.throws(() => validateProject({ id: 'p1', title: 'x', scenes: [
+    { id: 's1', index: 1, beats: [{ id: 'b1' }] },
+    { id: 's2', index: 2, beats: [{ id: 'b2', inheritFromBeatId: 'nope' }] },
+  ] }), /继承 beat 不存在/);
+});

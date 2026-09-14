@@ -177,6 +177,12 @@ export const StoryApi = {
   assist: (id: string, idea: string, model?: { provider: string; id: string }) => api<{ assist: any; model: { provider: string; id: string } }>(`/api/story/projects/${encodeURIComponent(id)}/assist`, { method: 'POST', body: { idea, model }, timeoutMs: 100000 }),
   // 角色定妆照：生成后写回 bible.characters[].refImage，后续画面/视频会把它当作真实参考图注入
   portrait: (id: string, body: { characterId?: string; model?: { provider: string; id: string }; size?: string }) => api<{ project: StoryProject; character?: { id: string; name?: string; refImage?: string }; image?: string; status?: string; error?: string }>(`/api/story/projects/${encodeURIComponent(id)}/portrait`, { method: 'POST', body, timeoutMs: 200000 }),
+  // 连续性体检：只读，把"这次生成能不能保住人物一致性"的条件提前摊开
+  lint: (id: string, body: { kind?: StoryGenerationRun['kind']; capabilities?: Record<string, unknown> | null } = {}) => api<{ issues: { level: 'warn' | 'info'; code: string; message: string }[]; summary: { characters: number; portraits: number; scenes: number; beats: number; level: 'ok' | 'info' | 'warn' } }>(`/api/story/projects/${encodeURIComponent(id)}/lint`, { method: 'POST', body }),
+  // 一键分镜：从梗概一次生成整场分镜表并追加进项目（自动串继承链）
+  storyboard: (id: string, body: { idea?: string; count?: number; model?: { provider: string; id: string } }) => api<{ project: StoryProject; beatCount: number; sceneCount: number; characters?: number; characterNames?: string[] }>(`/api/story/projects/${encodeURIComponent(id)}/storyboard`, { method: 'POST', body, timeoutMs: 120000 }),
+  // 成片合成：按分镜顺序把成功的视频片段拼成长片
+  film: (id: string) => api<{ project: StoryProject; url: string; clipCount: number; method: string }>(`/api/story/projects/${encodeURIComponent(id)}/film`, { method: 'POST', body: {}, timeoutMs: 900000 }),
 }
 export const MessagesApi = {
   add: (sid: string, text: string) => api<{ ok: boolean; id: string }>(`/api/sessions/${encodeURIComponent(sid)}/messages`, { method: 'POST', body: { text } }),

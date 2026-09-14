@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ModelsApi, StoryApi } from '../api'
+import { ModelsApi, StoryApi, withFileToken } from '../api'
 import type { Model, StoryBeat, StoryCharacter, StoryProject } from '../types'
 import { applyStoryDraft, bibleText, editedBible } from '../lib/story-draft'
 import StoryStart from '../components/story/StoryStart'
@@ -31,6 +31,10 @@ export function StoryPanel() {
   const [promptDraft, setPromptDraft] = useState('')
   const [compiled, setCompiled] = useState('')
   const [timelineOpen, setTimelineOpen] = useState(() => window.innerWidth > 640)
+  const [storyboardIdea, setStoryboardIdea] = useState('')
+  const [storyboardCount, setStoryboardCount] = useState('6')
+  const [filmUrl, setFilmUrl] = useState('')
+  const [lint, setLint] = useState<{ issues: { level: string; code: string; message: string }[]; summary: { characters: number; portraits: number; scenes: number; beats: number; level: string } } | null>(null)
   const scene = project?.scenes.find(s => s.beats.some(b => b.id === selected)) || project?.scenes[0]
   const beat = scene?.beats.find(b => b.id === selected) || scene?.beats[0] || (scene ? emptyBeat : undefined)
   const availableModels = models.filter(m => capable(m, selectedKind))
@@ -118,8 +122,36 @@ export function StoryPanel() {
     if (r.image) setNotice(`「${r.character?.name || character.name || character.id}」的定妆照已保存；后续画面与视频会带上它作为参考图。`)
     else setError(r.error || '定妆照生成失败，请换一个图像模型再试')
   })
+  // 连续性体检：随项目/输出类型变化刷新；做完动作后再刷一次，让「缺定妆照/未继承」这类提示实时消失
+  const refreshLint = async (id = project?.id, kind = selectedKind) => {
+    if (!id) { setLint(null); return }
+    try { setLint(await StoryApi.lint(id, { kind })) } catch { setLint(null) }
+  }
+  useEffect(() => { void refreshLint(project?.id, selectedKind) }, [project?.id, selectedKind])
+  // 一键分镜：一次拿到整场分镜表，继承链由服务端串好，省掉一段一段点「从此处继续」
+  const runStoryboard = () => action(`AI 正在排 ${storyboardCount} 段分镜`, async () => {
+    if (!project) throw new Error('请先开始一个故事')
+    const r = await StoryApi.storyboard(project.id, { idea: storyboardIdea.trim(), count: Number(storyboardCount) || 6 })
+    update(r.project); hydrateBible(r.project)
+    setStoryboardIdea('')
+    const added = r.project.scenes.flatMap(scene => scene.beats).slice(-1)[0]
+    if (added) setSelected(added.id)
+    // 分镜同时把出场人物登记进设定：说清楚，否则用户不知道角色库是哪来的，
+    // 也不知道「生成定妆照」现在有对象了。
+    const cast = Array.isArray(r.characterNames) ? r.characterNames.filter(Boolean) : []
+    setNotice(`已追加 ${r.beatCount} 段分镜（${r.sceneCount} 场），继承链已自动串好，可以逐段生成。${cast.length ? `同时登记了 ${cast.length} 个角色：${cast.slice(0, 4).join('、')}${cast.length > 4 ? ' 等' : ''}——现在可以给他们生成定妆照锁定长相。` : ''}`)
+    await refreshLint(r.project.id)
+  })
+  // 成片合成：按分镜顺序把成功的视频片段拼成一条长片
+  const makeFilm = () => action('正在合成成片（按分镜顺序拼接）', async () => {
+    if (!project) throw new Error('请先开始一个故事')
+    const r = await StoryApi.film(project.id)
+    setFilmUrl(r.url)
+    setNotice(`成片已生成：${r.clipCount} 段拼接完成${r.method === 'copy' ? '（只有一段，直接落盘）' : ''}，已归档到工作空间。`)
+  })
   const currentRuns = scene?.outputs.filter(r => r.beatId === beat?.id) || []
   const hasOutput = currentRuns.some(r => r.outputAssets?.length)
+  const portraitCount = (project?.bible.characters || []).filter(c => c.refImage || (c as any).ref).length
   return <div className="story-workbench story-workbench-embedded">
     <header className="story-header"><div className="story-actions">
       <select aria-label="选择故事项目" disabled={Boolean(busy)} value={project?.id || ''} onChange={e => choose(projects.find(p => p.id === e.target.value) || null)}><option value="">开始新故事</option>{projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}</select>
@@ -134,13 +166,28 @@ export function StoryPanel() {
       })}</ol></details>
       <main className="story-main">
         <div className="story-steps"><span className="is-ready">1 想法已建立</span><span className={project.bible.characters?.length?'is-ready':''}>2 确定人物与设定</span><span className={hasOutput?'is-ready':''}>3 生成并预览</span></div>
+        <section className="story-studio" aria-label="制作台">
+          <div className="story-studio-row">
+            <label className="story-studio-count">段数<select aria-label="分镜段数" value={storyboardCount} disabled={Boolean(busy)} onChange={e=>setStoryboardCount(e.target.value)}>{['4','6','8','10','12'].map(n=><option key={n} value={n}>{n}</option>)}</select></label>
+            <input className="story-studio-idea" aria-label="分镜想法" placeholder="想讲什么（可留空，按梗概排）" value={storyboardIdea} disabled={Boolean(busy)} onChange={e=>setStoryboardIdea(e.target.value)} />
+            <button className="btn-ghost" disabled={Boolean(busy)} onClick={runStoryboard}>一键分镜</button>
+            <button className="btn-primary" disabled={Boolean(busy)} onClick={makeFilm}>合成成片</button>
+            {filmUrl && <a className="story-studio-link" href={withFileToken(filmUrl)} target="_blank" rel="noreferrer">打开成片</a>}
+          </div>
+          {lint && <div className={`story-lint story-lint-${lint.summary.level}`}>
+            <span className="story-lint-head">连续性体检 · 角色 {lint.summary.characters}（定妆照 {lint.summary.portraits}）· {lint.summary.scenes} 场 {lint.summary.beats} 段</span>
+            {lint.issues.length === 0
+              ? <span className="story-lint-ok">条件齐备，可以开始生成。</span>
+              : <ul>{lint.issues.slice(0, 6).map(i=><li key={`${i.code}-${i.message}`} className={`story-lint-item story-lint-item-${i.level}`}>{i.message}</li>)}</ul>}
+          </div>}
+        </section>
         <div className="story-editor-layout"><section className="story-editor">
           <div className="story-section-head"><h2>{scene?.title || '故事开场'}</h2><span>{beat?.inheritFromBeatId?'承接前文':'故事起点'}</span></div>
           <div className="story-form-row"><label>输出类型<select aria-label="选择输出类型" disabled={Boolean(busy)} value={selectedKind} onChange={e=>setGenerationKind(e.target.value as StoryBeat['kind'])}><option value="novel">小说段落</option><option value="image">故事画面</option><option value="video">视频片段</option></select></label><label>生成模型<select aria-label="选择模型" disabled={Boolean(busy)} value={selectedModel} onChange={e=>setSelectedModel(e.target.value)}><option value="">自动选择模型</option>{availableModels.map(m=><option key={modelKey(m)} value={modelKey(m)}>{m.name || m.id}</option>)}</select></label></div>
           <label>本段内容<textarea aria-label="本段内容" disabled={Boolean(busy)} value={promptDraft} onChange={e=>{setPromptDraft(e.target.value);setCompiled('')}} rows={6} placeholder="写下本段想发生的事，或让 AI 帮你完善" /></label>
           <div className="story-form-row"><label>构思模型<select value={planningModel} disabled={Boolean(busy)} onChange={e=>setPlanningModel(e.target.value)}><option value="">自动选择文本模型</option>{models.filter(m=>capable(m,'novel')).map(m=><option key={modelKey(m)} value={modelKey(m)}>{m.name || m.id}</option>)}</select></label><div className="story-actions"><button className="btn-ghost" disabled={Boolean(busy)} onClick={assist}>让 AI 完善本段</button></div></div>
           {assistResult && <div className="story-draft"><h3>AI 草稿 · 确认后一起保存</h3><p>{assistResult.scene?.summary}</p><p>{assistResult.beat?.prompt}</p><p className="story-hint">人物：{assistResult.characters?.map((c:any)=>[c.name,c.appearance].filter(Boolean).join(' · ')).join('；') || '沿用既有设定'}</p><div className="story-actions"><button className="btn-primary" disabled={Boolean(busy)} onClick={applyAssist}>采用并保存设定</button><button className="btn-ghost" disabled={Boolean(busy)} onClick={()=>setAssistResult(null)}>暂不采用</button></div></div>}
-          <p className="story-hint">{selectedKind==='novel'?'续写会带上已保存的设定和继承段落的实际正文。':'目前通过文字设定维持连续性，尚不能锁定人物外貌或保证镜头完全一致；请先预览每段结果。'}{selectedKind==='video'?' 每次生成一个视频片段，暂不自动拼成长片。':''}</p>
+          <p className="story-hint">{selectedKind==='novel'?'续写会带上已保存的设定和继承段落的实际正文。':`已生成的定妆照会作为真实参考图注入（画面走图生图、视频走 reference），用来锁住人物外貌；还没有定妆照的角色只能靠文字描述。当前 ${portraitCount}/${(project.bible.characters||[]).length} 个角色有定妆照。`}{selectedKind==='video'?' 每次生成一个视频片段，攒够成功的片段后用左侧「合成成片」拼成长片。':''}</p>
           <div className="story-actions"><button className="btn-primary" disabled={Boolean(busy)||!promptDraft.trim()} onClick={run}>生成当前{kindLabel[selectedKind]}</button><button className="btn-ghost" disabled={Boolean(busy)||!promptDraft.trim()} onClick={preview}>检查生成输入</button><button className="btn-ghost" disabled={Boolean(busy)||!hasOutput} onClick={continueFromBeat}>从此处继续 · AI 构思下一段</button></div>
           {!hasOutput && <p className="story-hint">先生成本段成品，再继续下一段。结果不满意时可以修改内容重新生成，旧版本会保留。</p>}
           {compiled && <details open><summary>本次生成输入</summary><div className="story-prose">{compiled}</div></details>}

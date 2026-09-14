@@ -304,6 +304,29 @@ export async function saveArtifact(artifact) {
   }
 }
 
+// 本地文件产物入库：saveArtifact 只认 data:/http 两种来源（其余原样返回），
+// 而「成片合成」这类产物本来就在磁盘上、几十 MB，走 base64 不现实。
+// 命名/落盘/sidecar/签名 URL 与 saveArtifact 保持一致，避免出现第二套产物约定。
+export async function saveArtifactFromFile({ filePath, type = "video", prompt = "" } = {}) {
+  if (!filePath || !fs.existsSync(filePath)) throw new Error("产物文件不存在");
+  const now = new Date();
+  const date = localDayStamp(now);
+  const typeDir = type === "image" ? "图片" : type === "audio" ? "音频" : "视频";
+  const dir = path.join(WS_ROOT, "生成物", typeDir, date);
+  fs.mkdirSync(dir, { recursive: true });
+  const ext = path.extname(filePath) || (type === "image" ? ".png" : type === "audio" ? ".wav" : ".mp4");
+  const target = allocateArtifactPath(dir, artifactBaseName({ prompt, now, type }), ext);
+  fs.copyFileSync(filePath, target);
+  writeArtifactSidecar(target, { prompt, type });
+  console.log(`[元枢] 本地产物已入库: ${target}`);
+  try {
+    const fb = await import("./filebox.mjs");
+    return fb.signedUrl(path.relative(WS_ROOT, target));
+  } catch {
+    return `/api/ws/file?path=${encodeURIComponent(target)}`;
+  }
+}
+
 // GET /api/ws/tree —— 工作空间目录树
 export async function handleWsTree(res, reqPath) {
   const safe = wsSafePath(reqPath || "");
