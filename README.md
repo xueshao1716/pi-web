@@ -40,24 +40,30 @@
 
 ## 🚀 一条命令安装（Windows）
 
-**最简单方式（一条命令，自动装 Node + 双引擎 + 源码 + 启动，零报错）：**
+**最简单方式（一条命令，自动装 Node + 双引擎 + 源码 + 启动）：**
 
 ```powershell
 # Gitee（国内快）
-irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-all.ps1 | iex
+irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-lite.ps1 | iex
 
 # GitHub
-irm https://raw.githubusercontent.com/xueshao1716/pi-web/main/install-all.ps1 | iex
+irm https://raw.githubusercontent.com/xueshao1716/pi-web/main/install-lite.ps1 | iex
 ```
+
+> `install-lite.ps1` 是纯 ASCII 的引导器：它先把 `install-all.ps1` 下载成文件再执行，
+> 因此不受 BOM 与 `param()` 的管道解析问题影响。直接用 `install-all.ps1 | iex` 也能装，
+> 但在 PowerShell 5.1 下会多打一行无害的 BOM 报错——想要干净输出就用上面这条。
 
 > 安装中会询问两件事，全部回车即可用默认：① 安装目录（不想装 C 盘可输 `D:\pi-web`）② 元枢兼容适配器/dsh 引擎全局包装哪个盘（输 `D:\npm-global` 可装 D 盘）。
 > 装完自动：生成访问令牌 → 启动服务 → 打开浏览器；首次打开弹窗选一家模型商填 API Key 就能开始对话。
 
 > **需要指定安装目录？**（免交互，跳过询问直接装）
 > ```powershell
-> irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-all.ps1 -OutFile $env:TEMP\piw.ps1
+> irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-lite.ps1 -OutFile $env:TEMP\piw.ps1
 > & $env:TEMP\piw.ps1 -InstallDir D:\pi-web
 > ```
+> 注意：`install-lite.ps1` 会把 `-InstallDir` 透传给 `install-all.ps1`，所以指定目录时
+> 用这条；只想交互式安装则直接用上面的 `| iex` 一行即可。
 
 **全局安装（npm，适合已装 Node 的用户）：**
 
