@@ -175,7 +175,10 @@ test("saveArtifact 同一时刻同一提示词也生成两个不同路径，旁�
       saveArtifact({ type: "image", url: data, prompt: "同一个宣传主题" }),
       saveArtifact({ type: "image", url: data, prompt: "同一个宣传主题" }),
     ]);
-    assert.notEqual(a, b);
+    // 比 .url：saveArtifact 现在返回 { url, local, reason }，直接比对象永远不等，测试会变空
+    assert.notEqual(a.url, b.url);
+    assert.equal(a.local, true);
+    assert.equal(b.local, true);
     const files = fs.readdirSync(path.join(root, "生成物", "图片", localDayStamp())).filter(n => n.endsWith(".png"));
     assert.equal(files.length, 2);
     assert.ok(files.every(n => fs.existsSync(path.join(root, "生成物", "图片", localDayStamp(), n.replace(/\.png$/, ".json")))));

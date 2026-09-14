@@ -852,9 +852,18 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
           continue;
         }
         if (!mr.url) continue;
-        if (mr.artifactUrl) mr.url = mr.artifactUrl;
+        if (mr.artifactUrl) { mr.url = mr.artifactUrl; mr.localized = true; }
         else {
-          try { mr.url = await saveArtifact(mr); } catch {}
+          // 本地化契约：外站临时链接必须先落到本地。没落成不能静默——
+          // 以前这里是 try { ... } catch {}，失败后 mr.url 仍是外站地址，
+          // 界面看起来正常，等链接过期才发现产物根本不在本地。
+          const saved = await saveArtifact(mr);
+          mr.url = saved.url;
+          mr.localized = saved.local;
+          if (!saved.local) {
+            mr.localizeError = saved.reason;
+            try { writer.push("note", { text: `⚠️ ${mr.type === "video" ? "视频" : mr.type === "audio" ? "配音" : "图片"}已生成，但没能存到本地（${saved.reason}）。当前显示的是外站临时链接，过期后会失效，请尽快下载保存。` }); } catch {}
+          }
           if (mr.__effectKey && runContext?.effects && runContext?.runId) {
             try { runContext.effects.complete(runContext.runId, mr.__effectKey, { ...mr, artifactUrl: mr.url }); } catch {}
           }

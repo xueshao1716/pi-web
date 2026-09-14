@@ -460,8 +460,10 @@ export async function handleImageWithSave(res, req, body) {
   }
   // 成功出图 → 落盘本地，覆盖返回
   if (payload && payload.code === 200 && payload.obj?.image) {
-    const saved = await saveArtifact({ type: "image", url: payload.obj.image, prompt: body?.prompt }).catch(() => null);
-    if (saved) payload.obj.image = saved;
+    const saved = await saveArtifact({ type: "image", url: payload.obj.image, prompt: body?.prompt });
+    payload.obj.image = saved.url;
+    // 没落成要如实告诉调用方——外站临时链接会过期，装作成功等于埋雷
+    if (!saved.local) payload.obj.localizeError = saved.reason;
     // 相对路径补全为绝对 URL（按实际访问 Host，本地/公网都可用）——修复"每次手动拼 127.0.0.1:8787"的坑
     if (typeof payload.obj.image === "string" && payload.obj.image.startsWith("/")) {
       const host = req?.headers?.host || "127.0.0.1:8787";
@@ -566,8 +568,9 @@ export async function handleMedia(res, body) {
   if (task_id) {
     const r = await checkVideoJob(provider, modelId, task_id);
     if (r.video) {
-      const saved = await saveArtifact({ type: "video", url: r.video, prompt }).catch(() => null);
-      return json(res, 200, { video: saved || r.video, task_id });
+      // 外站视频必须先落到本地（临时链接会过期）；没落成要如实回报，不能当成功
+      const saved = await saveArtifact({ type: "video", url: r.video, prompt });
+      return json(res, 200, { video: saved.url, task_id, ...(saved.local ? {} : { localizeError: saved.reason }) });
     }
     if (r.error && r.status !== "pending") return json(res, 500, { error: r.error, task_id });
     return json(res, 200, { status: r.status || "pending", task_id });
@@ -575,8 +578,8 @@ export async function handleMedia(res, body) {
   if (!prompt) return json(res, 400, { error: "缺少参数" });
   const r = await startVideoJob(provider, modelId, prompt, body);
   if (r.video) {
-    const saved = await saveArtifact({ type: "video", url: r.video, prompt }).catch(() => null);
-    return json(res, 200, { video: saved || r.video, task_id: r.task_id });
+    const saved = await saveArtifact({ type: "video", url: r.video, prompt });
+    return json(res, 200, { video: saved.url, task_id: r.task_id, ...(saved.local ? {} : { localizeError: saved.reason }) });
   }
   if (r.error) return json(res, 500, { error: r.error });
   return json(res, 202, { task_id: r.task_id, status: "pending" });

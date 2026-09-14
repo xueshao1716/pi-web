@@ -1,5 +1,16 @@
 function cleanModel(model) { return { provider: String(model?.provider || ''), id: String(model?.id || '') }; }
 
+// saveArtifact 的正式返回是 { url, local, reason }（见 docs/NAMING.md 产物本地化契约）。
+// 注入实现（测试替身、外部接入）可能仍返回字符串，这里统一成对象形状，
+// 免得适配器里到处判断类型。
+function normalizeStored(result, fallbackUrl) {
+  if (typeof result === 'string') return { url: result, local: true, reason: '' };
+  if (result && typeof result === 'object' && typeof result.url === 'string') {
+    return { url: result.url, local: result.local !== false, reason: String(result.reason || '') };
+  }
+  return { url: String(fallbackUrl || ''), local: false, reason: '落盘实现未返回结果' };
+}
+
 export function createImageAdapter({ generateImage, saveArtifact }) {
   return {
     async generate({ prompt, model, seed, params = {}, references = [], referenceImages = [] } = {}) {
@@ -16,8 +27,8 @@ export function createImageAdapter({ generateImage, saveArtifact }) {
       try {
         const url = await generateImage(model?.provider, model?.id, finalPrompt, params.size, ref || undefined);
         if (!url) return { status: 'failed', error: '图像模型未返回图片', model: cleanModel(model) };
-        const stored = typeof saveArtifact === 'function' ? await saveArtifact({ type: 'image', url, prompt: finalPrompt }) : url;
-        return { status: 'succeeded', model: cleanModel(model), output: { type: 'image', url: stored || url, prompt: finalPrompt } };
+        const stored = typeof saveArtifact === 'function' ? normalizeStored(await saveArtifact({ type: 'image', url, prompt: finalPrompt }), url) : { url, local: true, reason: '' };
+        return { status: 'succeeded', model: cleanModel(model), output: { type: 'image', url: stored.url || url, prompt: finalPrompt, ...(stored.local ? {} : { localizeError: stored.reason }) } };
       } catch (error) { return { status: 'failed', error: String(error?.message || error).slice(0, 200), model: cleanModel(model) }; }
     },
   };
@@ -53,8 +64,8 @@ export function createVideoAdapter({ generateVideo, saveArtifact }) {
         const body = imgs.length ? { ...params, images: imgs } : params;
         const result = await generateVideo(model?.provider, model?.id, finalPrompt, body);
         if (!result?.video) return { status: 'failed', error: result?.error || '视频模型未返回片子', model: cleanModel(model) };
-        const stored = typeof saveArtifact === 'function' ? await saveArtifact({ type: 'video', url: result.video, prompt: finalPrompt }) : result.video;
-        return { status: 'succeeded', model: cleanModel(model), output: { type: 'video', url: stored || result.video, prompt: finalPrompt } };
+        const stored = typeof saveArtifact === 'function' ? normalizeStored(await saveArtifact({ type: 'video', url: result.video, prompt: finalPrompt }), result.video) : { url: result.video, local: true, reason: '' };
+        return { status: 'succeeded', model: cleanModel(model), output: { type: 'video', url: stored.url || result.video, prompt: finalPrompt, ...(stored.local ? {} : { localizeError: stored.reason }) } };
       } catch (error) { return { status: 'failed', error: String(error?.message || error).slice(0, 200), model: cleanModel(model) }; }
     },
   };

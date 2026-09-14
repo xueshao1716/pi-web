@@ -10,8 +10,12 @@ import { httpBufferFetch } from "./http.mjs";
 import { VERSION_TAG } from "./version.mjs";
 
 let _wsRoot = "";
-export function initWorkspaceApi({ wsRoot = "" } = {}) {
+// 下载器可注入：SSRF 守卫会（正确地）拦掉 127.0.0.1，于是测试没法起个本地服务器冒充"外站"。
+// 与其为了测试放宽安全策略，不如照本仓库一贯的 DI 风格留一个正规的缝。
+let _fetchArtifact = httpBufferFetch;
+export function initWorkspaceApi({ wsRoot = "", fetchImpl = null } = {}) {
   _wsRoot = wsRoot;
+  if (typeof fetchImpl === "function") _fetchArtifact = fetchImpl;
   // ⚠️ 2026-08-22 修复：必须在 init 时赋值——原"WS_ROOT = _wsRoot || WS_ROOT"写在模块顶层，
   // 导入时 _wsRoot 还是空串且之后不再更新 → WS_ROOT 恒为 "" → 所有 ws 接口"路径越权"。
   // ESM live binding：这里赋值后，所有 import { WS_ROOT } 的模块同步拿到新值。
@@ -267,9 +271,24 @@ export function readArtifactSidecar(filePath) {
   }
 }
 
-// 媒体产物落盘：远程 URL 下载 / data URL 保存 → 返回本地可访问路径
+// 媒体产物本地化：远程 URL 下载 / data URL 保存 → 落进工作区并返回本地可访问路径。
+//
+// ── 本地化契约（docs/NAMING.md 第三节）──────────────────────────
+// 外站 API（出图/出片/配音）返回的多是**临时链接**，几小时到几天就失效。
+// 所以凡是能下载的产物，**必须先下载到本地再入库**，不能把外站 URL 当成品。
+//
+// 返回 { url, local, reason }：
+//   url    该用的地址（成功=本地签名 URL；失败=原外站 URL，让界面至少还能显示）
+//   local  是否已经落在本地工作区
+//   reason 没落盘的原因（local=false 时一定有），供上层如实告诉用户
+//
+// 这条契约是补一个**静默失败**：以前下载失败会 catch 住、悄悄把外站 URL 原样返回，
+// 调用方（还有三处直接 catch {} 吞掉）根本分不出"已落盘"和"没落盘"，
+// 界面上看起来一样，等链接过期才发现产物没了。
 export async function saveArtifact(artifact) {
   let reservedFile = "";
+  const remote = String(artifact?.url || "");
+  const unsaved = reason => ({ url: remote, local: false, reason });
   try {
     const now = new Date();
     const date = localDayStamp(now);
@@ -280,53 +299,75 @@ export async function saveArtifact(artifact) {
     const ext = artifactExtension(artifact.type) || ".mp4";
     const baseName = artifactBaseName({ prompt: artifact.prompt, now, type: artifact.type });
     let dataBuf = null;
-    if (artifact.url.startsWith("data:")) {
-      const b64 = artifact.url.split(",")[1];
+    if (remote.startsWith("data:")) {
+      const b64 = remote.split(",")[1];
       dataBuf = Buffer.from(b64, "base64");
       if (artifact.type === "image" && !looksLikeImageBytes(dataBuf)) throw new Error("data URL 不是图片");
-    } else if (artifact.url.startsWith("http")) {
-      // P0 安全修复：SSRF 防护——禁止下载内网/回环地址
-      try {
-        const u = new URL(artifact.url);
-        const host = u.hostname;
-        if (host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "0.0.0.0"
-            || host.startsWith("10.") || host.startsWith("192.168.") || /^172\.(1[6-9]|2\d|3[01])/.test(host)
-            || host.endsWith(".local") || host.endsWith(".internal")) {
-          console.log(`[saveArtifact] SSRF 拦截: ${artifact.url}`);
-          return artifact.url;
+    } else if (remote.startsWith("http")) {
+      // SSRF 防护：禁止下载内网/回环地址。拦下来是**安全上正确的**，
+      // 但不能因此假装产物已本地化——如实回报，让上层决定怎么提示。
+      let host = "";
+      try { host = new URL(remote).hostname; }
+      catch { return unsaved("外站地址无法解析"); }
+      if (host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "0.0.0.0"
+          || host.startsWith("10.") || host.startsWith("192.168.") || /^172\.(1[6-9]|2\d|3[01])/.test(host)
+          || host.endsWith(".local") || host.endsWith(".internal")) {
+        console.log(`[saveArtifact] SSRF 拦截: ${remote}`);
+        return unsaved("地址指向内网/回环，出于安全拒绝下载");
+      }
+      // 原生 fetch 下载（自动系统代理、二进制安全）。上游 CDN 抖动很常见，
+      // 失败重试一次再放弃——"没下下来"和"下不下来"是两回事。
+      let lastError = "";
+      for (let attempt = 1; attempt <= 2 && !dataBuf; attempt++) {
+        try {
+          const r = await _fetchArtifact(remote, { timeout: 60000 });
+          if (!r.ok) { lastError = `下载失败 HTTP ${r.status}`; continue; }
+          const buf = r.buffer();
+          // 响应体大小限制：50MB（防 OOM）
+          if (buf.length > 50 * 1024 * 1024) { lastError = "下载内容超过 50MB 限制"; break; }
+          if (!buf.length) { lastError = "下载内容为空"; continue; }
+          if (artifact.type === "image" && !looksLikeImageBytes(buf)) { lastError = "下载内容不是图片（可能是 HTML 错误页）"; break; }
+          dataBuf = buf;
+        } catch (e) {
+          lastError = String(e?.message || e).slice(0, 120);
+          if (attempt < 2) await new Promise(r => setTimeout(r, 800));
         }
-      } catch { return artifact.url; }
-      // 原生 fetch 下载（自动系统代理、二进制安全；替代 python urlretrieve）
-      const r = await httpBufferFetch(artifact.url, { timeout: 60000 });
-      if (!r.ok) throw new Error(`下载失败 HTTP ${r.status}`);
-      const buf = r.buffer();
-      // 响应体大小限制：50MB（防 OOM）
-      if (buf.length > 50 * 1024 * 1024) throw new Error(`下载内容超过 50MB 限制`);
-      if (artifact.type === "image" && !looksLikeImageBytes(buf)) throw new Error("下载内容不是图片（可能是 HTML 错误页）");
-      dataBuf = buf;
+      }
+      if (!dataBuf) return unsaved(lastError || "下载失败");
     } else {
-      return artifact.url;
+      // 既不是 data: 也不是 http(s)：相对路径 / 已在本地的路径。它本来就是本地的，原样返回。
+      return { url: remote, local: true, reason: "" };
     }
     reservedFile = allocateArtifactPath(dir, baseName, ext);
     fs.writeFileSync(reservedFile, dataBuf);
+    // 落盘校验：写完了不代表写对了。空文件会让"已本地化"变成另一句假话。
+    const written = fs.statSync(reservedFile).size;
+    if (!written) throw new Error("落盘后文件为空");
     writeArtifactSidecar(reservedFile, { prompt: artifact.prompt, type: artifact.type });
     console.log(`[元枢] 产物已落盘: ${reservedFile}`);
     // 用签名 URL（免鉴权，24h 有效）——img 标签可直接加载，无需带 token
+    let localUrl;
     try {
       const fb = await import("./filebox.mjs");
-      const rel = path.relative(WS_ROOT, reservedFile);
-      return fb.signedUrl(rel);
+      localUrl = fb.signedUrl(path.relative(WS_ROOT, reservedFile));
     } catch {
-      return `/api/ws/file?path=${encodeURIComponent(reservedFile)}`;
+      localUrl = `/api/ws/file?path=${encodeURIComponent(reservedFile)}`;
     }
+    return { url: localUrl, local: true, reason: "" };
   } catch (e) {
     if (reservedFile) {
       try { if (fs.existsSync(reservedFile) && fs.statSync(reservedFile).size === 0) fs.unlinkSync(reservedFile); } catch {}
       try { const sidecar = artifactSidecarPath(reservedFile); if (fs.existsSync(sidecar)) fs.unlinkSync(sidecar); } catch {}
     }
-    console.log(`[元枢] 落盘失败: ${String(e?.message || e).slice(0, 60)}`);
-    return artifact.url;
+    const reason = String(e?.message || e).slice(0, 120);
+    console.log(`[元枢] 落盘失败（产物未本地化）: ${reason}`);
+    return unsaved(reason);
   }
+}
+
+// 只关心"该用什么地址"的调用方用这个；需要知道有没有真落盘的必须用 saveArtifact 拿 local/reason。
+export async function saveArtifactUrl(artifact) {
+  return (await saveArtifact(artifact)).url;
 }
 
 // 本地文件产物入库：saveArtifact 只认 data:/http 两种来源（其余原样返回），

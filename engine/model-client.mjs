@@ -205,7 +205,11 @@ export async function handleDirectChat(res, entry, message, sessionId, writer) {
   const mediaResults = await mediaPromise;
   for (const mr of mediaResults) {
     if (!mr?.url) continue;
-    if (mr.url) mr.url = await saveArtifact(mr);  // 产物落盘 → 本地路径
+    // 产物本地化：外站临时链接必须落到本地；没落成要把原因带出去，不能装作已存
+    const saved = await saveArtifact(mr);
+    mr.url = saved.url;
+    mr.localized = saved.local;
+    if (!saved.local) mr.localizeError = saved.reason;
     writer.push("media", mr);
   }
   writer.push("done", { sessionId });

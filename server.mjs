@@ -953,7 +953,15 @@ async function handleChat(req, res, body) {
           if (!mr) continue;
           if (mr.error && !mr.url) { errors.push(mr.error); continue; }
           if (!mr.url) continue;
-          try { mr.url = await saveArtifact(mr); } catch {}
+          // 本地化契约：外站临时链接必须先落本地；没落成要标记出来，
+          // 不能再 try/catch 一吞了事——那样界面分辨不出"已存"和"没存"。
+          const saved = await saveArtifact(mr);
+          mr.url = saved.url;
+          mr.localized = saved.local;
+          if (!saved.local) {
+            mr.localizeError = saved.reason;
+            errors.push(`产物没能存到本地（${saved.reason}）：当前用的是外站临时链接，过期会失效`);
+          }
           items.push(mr);
           try { writer.push("media", mr); busEmit("media", mr); } catch {}
         }
