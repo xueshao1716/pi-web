@@ -62,17 +62,28 @@ export function saveNetworkConfig(agentDir, config, fsMod = fs) {
 
 /** 系统信息聚合（含外网配置） */
 export function systemInfo(wsRoot, agentDir, fsMod = fs) {
+  // 版本唯一来源是仓库根 version.json。
+  // 之前这里扫 package.json，读到的是壳版本 0.2.4，而看板读 APP_VERSION 是 2.7.1——
+  // 同一套系统里两个数字都叫「版本」，用户自然觉得"版本号一直不动"。
+  // 现在两边同源。version.json 找不到时才回退扫 package.json（老安装可能没这文件）。
   let version = "";
-  // AGENT_DIR 通常是 Pi 的用户目录，不一定包含工作台自身的 package.json。
-  // 优先读取运行时目录，找不到时回退到工作区/本模块所在仓库，保证系统面板展示真实版本。
-  const packageRoots = [agentDir, wsRoot, path.join(import.meta.dirname, "..")]
-    .filter(Boolean)
-    .filter((dir, i, all) => all.indexOf(dir) === i);
-  for (const root of packageRoots) {
-    try {
-      const candidate = JSON.parse(fsMod.readFileSync(path.join(root, "package.json"), "utf8"));
-      if (candidate?.version) { version = String(candidate.version); break; }
-    } catch {}
+  const versionFile = path.join(import.meta.dirname, "..", "version.json");
+  try {
+    const v = JSON.parse(fsMod.readFileSync(versionFile, "utf8"));
+    if (v?.version) version = String(v.version);
+  } catch {}
+  if (!version) {
+    // AGENT_DIR 通常是 Pi 的用户目录，不一定包含工作台自身的 package.json。
+    // 优先读取运行时目录，找不到时回退到工作区/本模块所在仓库。
+    const packageRoots = [agentDir, wsRoot, path.join(import.meta.dirname, "..")]
+      .filter(Boolean)
+      .filter((dir, i, all) => all.indexOf(dir) === i);
+    for (const root of packageRoots) {
+      try {
+        const candidate = JSON.parse(fsMod.readFileSync(path.join(root, "package.json"), "utf8"));
+        if (candidate?.version) { version = String(candidate.version); break; }
+      } catch {}
+    }
   }
   const net = loadNetworkConfig(agentDir, fsMod);
   const lanIPs = [];

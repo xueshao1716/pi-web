@@ -1,6 +1,14 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import UnoCSS from 'unocss/vite'
+import { readFileSync } from 'node:fs'
+
+// 版本唯一来源是仓库根的 version.json（契约见 docs/NAMING.md）。
+// 构建时注入成 __PRODUCT_VERSION__，前端在命名产物时同步就能拿到，不用等接口。
+const PRODUCT_VERSION = (() => {
+  try { return String(JSON.parse(readFileSync(new URL('../version.json', import.meta.url), 'utf8')).version || '') }
+  catch { return '' }
+})()
 
 // 主界面 React 前端构建配置：
 //   dev   → 产物在 frontend/dist（不污染 public/，线上 pi-web 可用）
@@ -9,6 +17,9 @@ import UnoCSS from 'unocss/vite'
 export default defineConfig({
   plugins: [react(), UnoCSS()],
   base: './',  // 相对路径，构建产物可放任意子目录（如 public/react/）
+  define: {
+    __PRODUCT_VERSION__: JSON.stringify(PRODUCT_VERSION),
+  },
   build: {
     outDir: 'dist',        // 独立输出，绝不覆盖 public/
     // 保留上一版指纹资源，避免手机/桌面端仍在运行旧主包时，懒加载模块变成 404。

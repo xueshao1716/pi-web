@@ -45,8 +45,14 @@ test('Android 首屏必须打开公网工作台，禁止探活 http://tauri.loca
 })
 
 test('元枢壳版本号必须高于 0.1.0，覆盖安装才会换原生代码', () => {
+  // 不再写死具体数字——版本唯一来源是 version.json，写死就等于每次发版都要来改测试，
+  // 以前就是这么漂的。这里只锁**功能性质**：壳版本必须 > 0.1.0，
+  // 否则安卓覆盖安装不会替换原生代码（这是当初升到 0.2.x 的原因）。
+  const { version } = JSON.parse(read('version.json'))
   const conf = JSON.parse(read('app', 'src-tauri', 'tauri.conf.json'))
   const cargo = read('app', 'src-tauri', 'Cargo.toml')
-  assert.equal(conf.version, '0.2.4')
-  assert.match(cargo, /^version = "0\.2\.4"/m)
+  assert.equal(conf.version, version, 'tauri.conf.json 必须与 version.json 同版本')
+  assert.match(cargo, new RegExp(`^version = "${version.replace(/\./g, '\\.')}"`, 'm'), 'Cargo.toml 必须与 version.json 同版本')
+  const [major, minor] = version.split('.').map(Number)
+  assert.ok(major > 0 || minor > 1, `壳版本 ${version} 必须高于 0.1.0，否则覆盖安装换不掉原生代码`)
 })

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { handleWsFile, handleWsPreview, handleWsDeliveries, handleWsRename, handleWsDelete, initWorkspaceApi, localDayStamp, artifactBaseName, artifactFileName, allocateArtifactPath, looksLikeImageBytes, writeArtifactSidecar, saveArtifact } from "../../engine/workspace-api.mjs";
+import { VERSION_TAG } from "../../engine/version.mjs";
 import { readFileSync } from "node:fs";
 
 function mockRes() {
@@ -146,7 +147,7 @@ test("artifactFileName 遵守命名契约：主题、类型、日期时间、唯
     + String(now.getSeconds()).padStart(2, "0")
     + "-" + String(now.getMilliseconds()).padStart(3, "0");
   assert.ok(name.includes(stamp), `必须带本地时分秒毫秒，实际: ${name}`);
-  assert.ok(name.endsWith("-a1b2c3.png"));
+  assert.ok(name.endsWith(`-a1b2c3_${VERSION_TAG}.png`), `必须带版本段，实际: ${name}`);
   assert.ok(!/[\\/:*?"<>|\u0000-\u001f]/.test(name));
   assert.ok(name.length <= 120);
   const cat = artifactBaseName({ prompt: "一只橘猫蹲在屋顶", now, uniqueId: "cat001" });

@@ -1,6 +1,6 @@
 {
   "name": "yuanshu",
-  "version": "0.2.4",
+  "version": "2.8.0",
   "private": true,
   "description": "元枢个人智能系统 · Web 工作台（SSE 对话与自建引擎）",
   "type": "module",
@@ -16,6 +16,7 @@
     "start": "node server.mjs",
     "test": "node --test --test-concurrency=1 tests/unit/*.test.mjs",
     "build:frontend": "npm --prefix frontend run build",
+    "version:bump": "node scripts/bump-version.mjs",
     "prune:dist": "node scripts/prune-dist.mjs",
     "sync:frontend": "node scripts/sync-frontend.mjs",
     "build:mobile:web": "npm run build:frontend && npm run sync:frontend"

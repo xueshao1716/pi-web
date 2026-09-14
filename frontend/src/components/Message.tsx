@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { TOOL_COLORS, COLOR_ERROR, COLOR_TOOL_FALLBACK } from '../theme/palettes'
 import { Brain, FileText, Check, X, Pencil, ChevronRight, Square, Info, Download, RefreshCw } from 'lucide-react'
 const Markdown = lazy(() => import('./Markdown'))
@@ -9,6 +9,7 @@ function LazyMarkdown({ text }: { text: string }) {
 
 import { downloadApiFile, withFileToken } from '../api'
 import { scrapeVideos, dedupeMediaUrls, mediaPathKey } from '../lib/media-embed'
+import { artifactName, fileNameFromUrl } from '../lib/artifact-name'
 import { fmtMsgTime } from '../lib/fmt-time'
 import type { ChatMessage, RunningTool, ToolStatus } from '../types'
 import { AgentWorkflow } from './AgentWorkflow'
@@ -97,14 +98,21 @@ function Attachments({ msg }: { msg: ChatMessage }) {
   const [failed, setFailed] = useState<Record<string, boolean>>({})
   const [downloadStatus, setDownloadStatus] = useState<Record<string, string>>({})
   const [downloadErrors, setDownloadErrors] = useState<Record<string, boolean>>({})
-  const videoName = (url: string, index: number) => {
-    try {
-      const raw = decodeURIComponent(url.split('?path=')[1]?.split('&')[0] || '')
-      const name = raw.split('/').pop()
-      if (name && /\.(mp4|webm|mov)$/i.test(name)) return name
-    } catch { /* fall back to a stable name */ }
-    return `元枢视频-${index + 1}.mp4`
-  }
+  // 下载名遵循命名契约（docs/NAMING.md）：{摘要}_{类型}_{时间戳}-{id}_v版本.mp4
+  // 以前取不到本地文件名就回退成 `元枢视频-N.mp4`，所有视频下载下来都同名、互相覆盖。
+  //
+  // 必须 memo：artifactName 每次都生成新的随机 id，若在 render 里现算，
+  // 显示的名字会每帧都变，点下载拿到的也不是刚显示的那个名字。
+  const videoKey = videos.join('|')
+  const videoNames = useMemo(() => {
+    const map = new Map<string, string>()
+    videos.forEach(url => map.set(url, fileNameFromUrl(url) || artifactName({ slug: msg.text || '', kind: 'video' })))
+    return map
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoKey, msg.text])
+  // 播放器下面显示的短标签：全名带时间戳太吵，显示层不承担契约
+  const videoLabel = (url: string, index: number) => fileNameFromUrl(url) || `视频 ${index + 1}`
+  const videoName = (url: string, index: number) => videoNames.get(url) || fileNameFromUrl(url) || `元枢_视频_${index + 1}.mp4`
   const downloadVideo = async (url: string, index: number) => {
     if (downloading) return
     setDownloading(url)
@@ -133,7 +141,7 @@ function Attachments({ msg }: { msg: ChatMessage }) {
         <div key={'vid:' + mediaPathKey(url)} className="my-2 w-full max-w-[560px]">
           <video controls playsInline preload="metadata" src={withFileToken(url)} onError={() => setFailed(state => ({ ...state, [url]: true }))} className="w-full aspect-video rounded-pi-lg border border-pi-border-soft bg-black" />
           <div className="mt-1.5 flex items-center justify-between gap-2">
-            <span className="min-w-0 truncate text-[11px] text-pi-dim2">{failed[url] ? '视频暂时无法播放，可直接下载原文件' : videoName(url, index)}</span>
+            <span className="min-w-0 truncate text-[11px] text-pi-dim2">{failed[url] ? '视频暂时无法播放，可直接下载原文件' : videoLabel(url, index)}</span>
             <button type="button" className="btn-tool inline-flex min-h-11 shrink-0 items-center gap-1.5 px-2.5" onClick={() => downloadVideo(url, index)} disabled={Boolean(downloading)} aria-label={`下载${videoName(url, index)}`} title="下载视频">
               {downloading === url ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
               <span className="text-[11px]">{downloading === url ? '保存中…' : '下载视频'}</span>

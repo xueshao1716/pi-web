@@ -3,7 +3,16 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 async function saver() {
-  const module = await import('../../frontend/src/lib/native-download.ts').catch(() => ({}))
+  // 不要 .catch(() => ({}))：导入失败会被吞成空对象，报出来的只是
+  // "expected function, got undefined"，完全指不到真因。
+  // 2026-09-14 就因为 native-download.ts 里写了省略扩展名的相对导入
+  // （Node ESM 不认、Vite 认），5 条测试全挂在这句话上，排查绕了远路。
+  let module
+  try {
+    module = await import('../../frontend/src/lib/native-download.ts')
+  } catch (error) {
+    assert.fail(`native-download.ts 必须能被 Node 直接导入（相对导入要写显式 .ts 扩展名）：${error.message}`)
+  }
   assert.equal(typeof module.saveNativeDownload, 'function', 'Android downloads need a real file-saving bridge')
   return module.saveNativeDownload
 }

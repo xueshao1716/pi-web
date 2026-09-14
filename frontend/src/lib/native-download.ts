@@ -1,5 +1,9 @@
-export interface NativeSaveResult { savedUri: string; location: string }
-interface DownloadBridge {
+// 显式写 .ts 扩展名：这个模块被 tests/unit/native-download.test.mjs 用 Node 直接 import，
+// 而 Node 的 ESM 不认省略扩展名的相对导入（Vite 认，所以别处可以省略）。
+// tsconfig 已开 allowImportingTsExtensions，两种环境都成立。
+import { PRODUCT_VERSION } from './artifact-name.ts'
+
+export interface NativeSaveResult { savedUri: string; location: string }interface DownloadBridge {
   begin(id: string, name: string, mime: string, size: number): string
   append(id: string, base64: string): string
   finish(id: string): string
@@ -23,7 +27,8 @@ export async function saveNativeDownload(
   events: EventTarget = window,
 ): Promise<NativeSaveResult | null> {
   if (!bridge) {
-    if ((globalThis as NativeWindow).YuanshuBridge) throw new Error('请先安装元枢 0.2.4 手机客户端，才能保存文件')
+    // 版本从 version.json 注入，不再写死——写死的那个数字会随着发版变成假话
+    if ((globalThis as NativeWindow).YuanshuBridge) throw new Error(`请先安装元枢 ${PRODUCT_VERSION} 手机客户端，才能保存文件`)
     return null
   }
   const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`

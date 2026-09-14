@@ -7,6 +7,7 @@ import { execFile } from "node:child_process";
 import { json } from "./http-utils.mjs";
 import { safeJoin } from "./tools/security.mjs";
 import { httpBufferFetch } from "./http.mjs";
+import { VERSION_TAG } from "./version.mjs";
 
 let _wsRoot = "";
 export function initWorkspaceApi({ wsRoot = "" } = {}) {
@@ -133,7 +134,7 @@ export function localDayStamp(now = new Date()) {
 
 function artifactSlug(prompt = "") {
   const p = String(prompt || "");
-  let slug = "产物";
+  let slug = "元枢";
   if (/小语/.test(p) && /少女|半身像/.test(p)) slug = "小语肖像";
   else {
     const cleaned = p
@@ -144,11 +145,35 @@ function artifactSlug(prompt = "") {
       .slice(0, 32);
     if (cleaned) slug = cleaned;
   }
-  return slug.slice(0, 32) || "产物";
+  // 空提示词回退「元枢」——必须与前端 artifactSlug 的兜底值一致，同一个契约不能有两个兜底
+  return slug.slice(0, 32) || "元枢";
 }
 
-function artifactTypeLabel(type = "") {
-  return type === "image" ? "图片" : type === "video" ? "视频" : type === "audio" ? "音频" : "产物";
+// ── 产物命名契约 ──────────────────────────────────────────────
+// 格式：{提示词摘要}_{类型}_{YYYYMMDD-HHmmss-mmm}-{唯一id}_{v版本}.{扩展名}
+// 例：  拳手雨夜车站_视频_20260914-181230-456-a1b2c3d4_v2.8.0.mp4
+//
+// 为什么带版本：以前产物名里没有任何版本信息，升级后产出的文件跟旧版混在一起分不清。
+// 版本进文件名后，"这个视频是哪个版本做的" 看名字就知道，也让版本号真正可观测。
+// 契约文档见 docs/NAMING.md；前端镜像实现见 frontend/src/lib/artifact-name.ts，
+// 两边的一致性由 tests/unit/naming-contract.test.mjs 钉死。
+const ARTIFACT_KIND_LABELS = {
+  image: "图片", video: "视频", audio: "音频", music: "音乐",
+  text: "文本", novel: "文本", document: "文档", doc: "文档",
+  ppt: "演示", html: "网页", code: "代码",
+};
+const ARTIFACT_KIND_EXTENSIONS = {
+  image: ".png", video: ".mp4", audio: ".wav", music: ".mp3",
+  text: ".txt", novel: ".txt", document: ".md", doc: ".md",
+  ppt: ".pptx", html: ".html", code: ".txt",
+};
+
+export function artifactKindLabel(type = "") {
+  return ARTIFACT_KIND_LABELS[String(type || "").toLowerCase()] || "产物";
+}
+
+export function artifactExtension(type = "") {
+  return ARTIFACT_KIND_EXTENSIONS[String(type || "").toLowerCase()] || "";
 }
 
 function shortArtifactId() {
@@ -163,12 +188,11 @@ export function artifactBaseName({ prompt = "", now = new Date(), uniqueId = sho
     + String(d.getSeconds()).padStart(2, "0")
     + "-" + String(d.getMilliseconds()).padStart(3, "0");
   const id = String(uniqueId || shortArtifactId()).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 16) || shortArtifactId();
-  return `${artifactSlug(prompt)}_${artifactTypeLabel(type)}_${stamp}-${id}`;
+  return `${artifactSlug(prompt)}_${artifactKindLabel(type)}_${stamp}-${id}_${VERSION_TAG}`;
 }
 
 export function artifactFileName({ prompt = "", type = "", now = new Date(), uniqueId = shortArtifactId() } = {}) {
-  const ext = type === "image" ? ".png" : type === "audio" ? ".wav" : type === "video" ? ".mp4" : "";
-  return `${artifactBaseName({ prompt, now, uniqueId, type })}${ext}`;
+  return `${artifactBaseName({ prompt, now, uniqueId, type })}${artifactExtension(type)}`;
 }
 
 // 用 wx 原子创建占位文件，避免并发生成在同一毫秒选择同一个路径。
@@ -249,10 +273,11 @@ export async function saveArtifact(artifact) {
   try {
     const now = new Date();
     const date = localDayStamp(now);
-    const typeDir = artifact.type === "image" ? "图片" : artifact.type === "audio" ? "音频" : "视频";
+    const typeDir = artifactKindLabel(artifact.type);
     const dir = path.join(WS_ROOT, "生成物", typeDir, date);
     fs.mkdirSync(dir, { recursive: true });
-    const ext = artifact.type === "image" ? ".png" : artifact.type === "audio" ? ".wav" : ".mp4";
+    // 类型表统一由 artifactExtension 提供，别在这里再写一份内联三元——两处判断迟早漂移。
+    const ext = artifactExtension(artifact.type) || ".mp4";
     const baseName = artifactBaseName({ prompt: artifact.prompt, now, type: artifact.type });
     let dataBuf = null;
     if (artifact.url.startsWith("data:")) {
@@ -311,10 +336,11 @@ export async function saveArtifactFromFile({ filePath, type = "video", prompt = 
   if (!filePath || !fs.existsSync(filePath)) throw new Error("产物文件不存在");
   const now = new Date();
   const date = localDayStamp(now);
-  const typeDir = type === "image" ? "图片" : type === "audio" ? "音频" : "视频";
+  const typeDir = artifactKindLabel(type);
   const dir = path.join(WS_ROOT, "生成物", typeDir, date);
   fs.mkdirSync(dir, { recursive: true });
-  const ext = path.extname(filePath) || (type === "image" ? ".png" : type === "audio" ? ".wav" : ".mp4");
+  // 有真实文件时以它的扩展名为准；否则查类型表（别再写内联三元）
+  const ext = path.extname(filePath) || artifactExtension(type) || ".mp4";
   const target = allocateArtifactPath(dir, artifactBaseName({ prompt, now, type }), ext);
   fs.copyFileSync(filePath, target);
   writeArtifactSidecar(target, { prompt, type });

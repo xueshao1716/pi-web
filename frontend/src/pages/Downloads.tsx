@@ -6,6 +6,7 @@ import { downloadApiFile } from '../api'
 import { clearDownloadHistory, readDownloadHistory, removeDownload, type DownloadRecord } from '../lib/downloads'
 import { isDesktopShellEnvironment, openDownloadFolder } from '../lib/download-location'
 import { canOpenNativeDownload, openNativeDownload } from '../lib/native-download'
+import { PRODUCT_VERSION } from '../lib/artifact-name'
 
 const formatSize = (size: number) => size >= 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MB` : size >= 1024 ? `${Math.round(size / 1024)} KB` : `${size} B`
 const formatTime = (value: string) => {
@@ -42,7 +43,7 @@ export default function Downloads() {
     setActionError('')
     try {
       if (!await openDownloadFolder()) setActionError('当前设备不支持打开系统下载目录，请在文件管理器中查看。')
-    } catch { setActionError('无法打开系统下载目录。请确认客户端已更新到 0.2.4，或在文件管理器中查看下载文件夹。') }
+    } catch { setActionError(`无法打开系统下载目录。请确认客户端已更新到 ${PRODUCT_VERSION}，或在文件管理器中查看下载文件夹。`) }
     finally { setFolderBusy(false) }
   }
 

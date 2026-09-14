@@ -129,7 +129,7 @@ export default function Themes() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `pi-theme-${theme}.css`
+    a.download = `yuanshu-theme-${theme}.css`
     a.click()
     URL.revokeObjectURL(url)
     toast('CSS 变量已导出')
