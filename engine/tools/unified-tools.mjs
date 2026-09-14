@@ -11,6 +11,7 @@ import {
   matchDenyRule, isProtectedPath, DANGEROUS_CMD_RE, PI_CMDS, INTERACTIVE_CMD_RE, safeJoin,
 } from "./security.mjs";
 import { isSensitivePath, commandTouchesSensitive, redactSecrets } from "./secrets-guard.mjs";
+import { withFileLock } from "../file-lock.mjs";
 import { formatSensitiveHint } from "../media-channels.mjs";
 import { yuanshuExecutor } from "../yuanshu-loop.mjs";
 import { execFileAbortable } from "../yuanshu-stability.mjs";
@@ -285,32 +286,49 @@ export function createUnifiedToolExecutor(deps = {}) {
         const p = resolveToolPath(args?.path);
         if (!p) return { text: "路径越权（write 仅限工作空间与系统目录内）", isError: true };
         if (isProtectedPath(p)) return { text: `⛔ 拒绝写入 [仓库法律]：${args?.path} 是受保护文件（人格/宪法/凭据），只读不写`, isError: true };
-        fs.mkdirSync(path.dirname(p), { recursive: true });
         const content = String(args?.content ?? "");
-        if (fs.existsSync(p)) {
-          try {
-            const current = fs.readFileSync(p, "utf8");
-            if (current === content) return { text: `✅ ${args?.path} 已是目标内容（幂等恢复）`, isError: false, idempotent: true };
-          } catch {}
-        }
-        fs.writeFileSync(p, content, "utf8");
-        return { text: `✅ 已写入 ${args?.path}（${content.length} 字符）`, isError: false };
+        // 与 Pi 的写工具共用同一把按文件队列：Pi 的 edit 是 async 的，
+        // 不共用时"元枢 edit"与"Pi edit"打同一文件会交错、后写覆盖前写。
+        return await withFileLock(p, async () => {
+          fs.mkdirSync(path.dirname(p), { recursive: true });
+          if (fs.existsSync(p)) {
+            try {
+              const current = fs.readFileSync(p, "utf8");
+              if (current === content) return { text: `✅ ${args?.path} 已是目标内容（幂等恢复）`, isError: false, idempotent: true };
+            } catch {}
+          }
+          fs.writeFileSync(p, content, "utf8");
+          return { text: `✅ 已写入 ${args?.path}（${content.length} 字符）`, isError: false };
+        });
       }
       if (name === "edit") {
         // ① 凭据防护 + 双根白名单
         if (isSensitivePath(String(args?.path || ""))) return { text: `⛔ 拒绝修改 [凭据防护]：${args?.path} 是敏感凭据文件`, isError: true };
         const p = resolveToolPath(args?.path);
-        if (!p || !fs.existsSync(p)) return { text: `文件不存在或路径越权（edit 仅限工作空间与系统目录内）: ${args?.path}`, isError: true };
+        if (!p) return { text: `文件不存在或路径越权（edit 仅限工作空间与系统目录内）: ${args?.path}`, isError: true };
         if (isProtectedPath(p)) return { text: `⛔ 拒绝修改 [仓库法律]：${args?.path} 是受保护文件（人格/宪法/凭据），只读不写`, isError: true };
-        const c = fs.readFileSync(p, "utf8");
         const oldT = String(args?.oldText ?? "");
         const newT = String(args?.newText ?? "");
-        if (!c.includes(oldT)) {
-          if (c.includes(newT)) return { text: `✅ ${args?.path} 已是目标内容（幂等恢复）`, isError: false, idempotent: true };
-          return { text: "未找到 oldText 片段（可能已修改）", isError: true };
-        }
-        fs.writeFileSync(p, c.replace(oldT, newT), "utf8");
-        return { text: `✅ 已修改 ${args?.path}`, isError: false };
+        // 读→替换→写是经典的 lost update 现场：与 Pi 的写工具共用同一把队列，
+        // 并在锁内重读，避免用锁外的陈旧内容去替换。
+        return await withFileLock(p, async () => {
+          if (!fs.existsSync(p)) return { text: `文件不存在或路径越权（edit 仅限工作空间与系统目录内）: ${args?.path}`, isError: true };
+          const c = fs.readFileSync(p, "utf8");
+          if (!c.includes(oldT)) {
+            if (c.includes(newT)) return { text: `✅ ${args?.path} 已是目标内容（幂等恢复）`, isError: false, idempotent: true };
+            return { text: "未找到 oldText 片段（可能已修改）", isError: true };
+          }
+          const next = c.replace(oldT, newT);
+          // 锁只挡得住元枢自己的写工具，挡不住外部进程。写回前再核对一次，
+          // 内容变了就如实拒绝——覆盖掉别人刚写的东西是静默数据丢失，比失败更糟。
+          try {
+            if (fs.readFileSync(p, "utf8") !== c) {
+              return { text: `⛔ 拒绝写入：${args?.path} 在本次修改期间被外部改动过，请重新读取后再试（避免覆盖他人改动）`, isError: true };
+            }
+          } catch {}
+          fs.writeFileSync(p, next, "utf8");
+          return { text: `✅ 已修改 ${args?.path}`, isError: false };
+        });
       }
       if (name === "web_search") {
         const r = await webSearchTool(args?.query, httpFetch);

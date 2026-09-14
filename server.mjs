@@ -22,6 +22,7 @@ import { createModelSessionApi } from "./engine/model-session.mjs";
 // ── Reasonix 机制（esengine/DeepSeek-Reasonix 借鉴）：工具结果压缩 / NEEDS_PRO 自报升级 / scavenge 捞回 ──
 import { shrinkToolResult, NEEDS_PRO_RE, scavengeToolCalls } from "./engine/reasonix-tools.mjs";
 import { initToolResultArchive } from "./engine/tool-result-archive.mjs";
+import { initFileLock, usingSharedFileQueue } from "./engine/file-lock.mjs";
 // ── 会话解析纯函数（拆模块）：消息/文本/图片/文件提取 ──
 import { extractMessages, extractText, extractImages, extractFiles, resolveLeafId, windowMessages } from "./engine/session-utils.mjs";
 import { initSessionFiles, scanSessionFiles, parseSessionFile, parseSessionFileCached, readEntriesFromFile, getSessionList, invalidateSessionCache, extractMessageFiles, extractMessageImages } from "./engine/session-files.mjs";
@@ -127,9 +128,14 @@ if (!CONFIG.piPackage) {
   console.error("[元枢] 修复：npm i -g @earendil-works/pi-coding-agent ；或用 PI_PACKAGE 指定其 dist/index.js，然后重启。");
   process.exit(1);
 }
-const { createAgentSession, createAgentSessionServices, createAgentSessionFromServices, SettingsManager, ModelRuntime, SessionManager, DefaultResourceLoader, getAgentDir } = await import(
+const { createAgentSession, createAgentSessionServices, createAgentSessionFromServices, SettingsManager, ModelRuntime, SessionManager, DefaultResourceLoader, getAgentDir, withFileMutationQueue } = await import(
   pathToFileURL(CONFIG.piPackage).href
 );
+// 与 Pi 的写工具共用同一把按文件队列：Pi 的 edit 走 fs/promises，读写之间有真 await，
+// 不共用时"元枢 edit"与"Pi edit"打同一文件会交错、后写覆盖前写。
+// 拿不到就退回自带实现（见 engine/file-lock.mjs 的说明）。
+initFileLock({ withFileMutationQueue });
+console.log(`  🔒 文件写队列: ${usingSharedFileQueue() ? "与 Pi 共用" : "自带实现（未拿到 Pi 的队列）"}`);
 
 // ── 会话目录：复用本机 Agent 会话文件（~/.pi/agent/sessions/<encoded-cwd>/）──
 function encodeCwdDir(cwd) {

@@ -114,14 +114,43 @@ Online Context Compact 算 breakeven：还差多少请求才回本，带安全�
 固定阈值更可预测，经济模型更讲道理但依赖"还剩多少请求"这种估计。
 **可借的是框架而非整套模型**：至少在不压缩时也记一句原因。
 
-### 7. 锁键必须 canonical
+### 7. 锁键必须 canonical —— 但真问题不是"多会话"
 
 `canonicalQueueKey` 用 `realpath()` 归一化，**并沿路径向上找最近存在的祖先**
 来处理"文件还不存在"（写入会创建它）。否则 `a.txt` 与 `./a.txt` / 符号链接会拿到不同的锁。
 
-元枢是**屏障式**互斥（`parallel:false` 工具形成屏障，同轮内绝不重叠，设计本身干净），
-但屏障只管**同一轮**；元枢支持多会话，**跨会话写同一文件没有协调** ——
-AGENTS.md 里「同一时间只允许一个会话改源码」是一条**约定，不是机制**。**待评估**。
+**这里我一开始判断错了，实测纠正：**
+
+我原以为风险是"两个会话并发 edit 同一文件会互相覆盖"。**不成立** ——
+元枢自己的 edit 是 `readFileSync → replace → writeFileSync`，中间没有 `await`，
+Node 单线程下这段临界区本来就原子。实测并发两次 edit，两个改动都在。
+
+真正的窗口在**跨实现**。Pi 的 edit 用 `fs/promises`：
+
+```js
+const buffer = await ops.readFile(absolutePath);   // ← 真 await
+...
+await ops.writeFile(absolutePath, finalContent);
+```
+
+读写之间会让出事件循环，而 Pi 有它自己的一套 `withFileMutationQueue`、元枢这边没有 ——
+两套互不相通，于是「元枢的 edit」与「Pi 的 edit」打同一个文件时可以交错，后写覆盖前写。
+
+**已落地**：不另造锁，而是**共用 Pi 已经有的那把**（`withFileMutationQueue`
+从包根可导出，已实测 `typeof === "function"`），由 `server.mjs` 注入；
+拿不到就退回自带实现。见 `engine/file-lock.mjs`。
+
+`tests/unit/file-lock.test.mjs` 用**门控**把时序钉死，给出确定性对照：
+
+| | 最终内容 |
+|---|---|
+| 共用 Pi 队列 | `A1\nB1\n` —— 两个改动都保留 |
+| 不共用（各自一把） | `A\nB1\n` —— **A1 被覆盖** |
+
+元枢的**屏障式**互斥（`parallel:false` 形成屏障）本身设计干净，同轮内绝不重叠，
+这条是补它管不到的跨实现缝隙。AGENTS.md 里「同一时间只允许一个会话改源码」
+仍然是**约定**——本进程内现在有机制了，**跨进程**（dsh 子智能体、headless 入口、
+外部编辑器）依然没有，那一层需要真正的 OS 级锁文件，尚未做。
 
 ## 不用学的
 
