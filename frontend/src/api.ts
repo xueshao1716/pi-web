@@ -609,6 +609,18 @@ export const MemoryApi = {
   markReviewed: (kind: string, key: string, unmark = false) =>
     api<{ ok: boolean }>('/api/memory-gardener/reviewed', { method: 'POST', body: { kind, key, unmark } }),
   dedupe: () => api<{ ok: boolean; removed: number; backup: string | null }>('/api/memory-gardener/dedupe', { method: 'POST' }),
+  // 记忆快照：此前只有写入方、没有读取方（98.7MB 攒着却一份都回退不了）
+  snapshots: () => api<{ ok: boolean; total: number; items: { id: string; reason: string; timestamp: string; bytes: number }[] }>('/api/memory/snapshots'),
+  restoreSnapshot: (id: string) => api<{ ok: boolean; id?: string; reason?: string; error?: string }>('/api/memory/snapshot/restore', { method: 'POST', body: { id } }),
+}
+
+// ── 承诺兑现：模型自己许下但没结清的事。结清只能人工给结论，没有自动判定 ──
+export interface PromisePending { id: string; text: string; at: string; due: string | null; sessionId: string; agePhrase: string; overdue: boolean }
+export interface PromiseClosed { id: string; text: string; at: string; status: 'kept' | 'dropped' | string; evidence: string | null; closedAt: string | null }
+export const PromiseApi = {
+  list: () => api<{ ok: boolean; pending: PromisePending[]; closed: PromiseClosed[] }>('/api/promises'),
+  close: (id: string, status: 'kept' | 'dropped' = 'kept', evidence?: string) =>
+    api<{ ok: boolean; id?: string; status?: string; reason?: string }>('/api/promises/close', { method: 'POST', body: { id, status, evidence } }),
 }
 
 // ── 系统面板：说明 / 检测更新 ──
@@ -677,7 +689,15 @@ export const GitReviewApi = {
   review: () => api<GitReview>('/api/git/review'),
 }
 
-export interface AIBodyModule { label: string; path: string; available: boolean }
+export interface AIBodyModule {
+  label: string; path: string; available: boolean
+  /** 土壤五项才有：内部 key 与真实读数（服务端已算出，台前此前只用了 available） */
+  key?: string
+  status?: 'observed' | 'not_observed' | 'unavailable' | string
+  statusLabel?: string
+  summary?: string
+  details?: Record<string, unknown> | null
+}
 export interface AIBodyLayer { id: 'host' | 'organism' | 'expression' | string; label: string; summary: string; modules: AIBodyModule[] }
 export interface AIBodyTheory { id: string; label: string; detail: string; evidence: string[] }
 export interface AIBodyOverview {

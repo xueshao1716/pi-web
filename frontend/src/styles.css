@@ -163,6 +163,15 @@ html, body, #root { height: 100%; }
 .review-module-dot { width:5px; height:5px; border-radius:99px; background:var(--pi-dim2); }
 .review-layer-module.is-available { color:var(--pi-text); }
 .review-layer-module.is-available .review-module-dot { background:var(--pi-success); box-shadow:0 0 0 3px color-mix(in oklab, var(--pi-success) 12%, transparent); }
+/* 土壤五项：点｜名称｜真实读数｜观测状态（旧布局只容得下 点｜名称 + 路径） */
+/* 单列 + 允许换行：双列时每行只剩约 230px，读数会被截成"系统人格附录 APPEND_SYS…"，
+   而被截掉的恰恰是这块唯一要给人看的内容。 */
+.review-layer-modules.is-soil { grid-template-columns:1fr; }
+.review-layer-module.is-soil { grid-template-columns:auto auto minmax(0,1fr) auto; gap:4px 8px; margin-bottom:3px; align-items:start; }
+.review-module-reading { color:var(--pi-dim2); font-size:10px; line-height:1.45; }
+.review-layer-module.is-available .review-module-reading { color:var(--pi-dim); }
+.review-module-status { padding:1px 5px; border-radius:999px; background:color-mix(in oklab, var(--pi-dim2) 16%, transparent); color:var(--pi-dim2); font-size:9px; white-space:nowrap; }
+.review-module-status.is-ok { background:color-mix(in oklab, var(--pi-success) 15%, transparent); color:var(--pi-success); }
 .review-theory-row { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin-top:11px; }
 .review-theory-row > div { padding:9px; border-radius:var(--pi-r-sm); background:var(--pi-bg3); }
 .review-theory-row strong { display:block; color:var(--pi-text); font-size:11px; }

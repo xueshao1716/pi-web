@@ -48,9 +48,20 @@ function formatDuration(ms?: number | null) {
 
 function LayerCard({ layer }: { layer: AIBodyLayer }) {
   const available = layer.modules.filter(module => module.available).length
+  const isSoil = layer.id === 'organism'
   return <article className="review-layer-card">
     <div className="review-layer-top"><span className="review-layer-index">{layer.id === 'host' ? '01' : layer.id === 'organism' ? '02' : '03'}</span><div className="min-w-0"><h3>{layer.label}</h3><p>{layer.summary}</p></div><span className="review-evidence-count">{available}/{layer.modules.length}</span></div>
-    <div className="review-layer-modules">{layer.modules.map(module => <div key={module.path} className={`review-layer-module ${module.available ? 'is-available' : ''}`}><span className="review-module-dot" /><span className="truncate">{module.label}</span><code>{module.path}</code></div>)}</div>
+    <div className={`review-layer-modules ${isSoil ? 'is-soil' : ''}`}>{layer.modules.map(module => (
+      <div key={module.path} className={`review-layer-module ${module.available ? 'is-available' : ''} ${isSoil ? 'is-soil' : ''}`} title={module.summary || module.path}>
+        <span className="review-module-dot" />
+        <span className="truncate">{module.label}</span>
+        {/* 土壤五项：显示真实读数。此前只显示"可用/不可用"，而 summary 早已算好并被丢在渲染层。 */}
+        {isSoil
+          ? <span className="review-module-reading">{module.summary || '无读数'}</span>
+          : <code>{module.path}</code>}
+        {isSoil ? <span className={`review-module-status ${module.available ? 'is-ok' : ''}`}>{module.statusLabel || (module.available ? '已观测' : '未观测')}</span> : null}
+      </div>
+    ))}</div>
   </article>
 }
 

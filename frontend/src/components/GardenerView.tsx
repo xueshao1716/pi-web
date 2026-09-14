@@ -1,12 +1,16 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Check, EyeOff, Scissors, AlertTriangle, RefreshCw, Sprout } from 'lucide-react'
+import { ChevronDown, ChevronRight, Check, EyeOff, Scissors, AlertTriangle, RefreshCw, Sprout, Archive, RotateCcw, Handshake, Moon } from 'lucide-react'
 import useSWR from 'swr'
-import { MemoryApi } from '../api'
+import { MemoryApi, PromiseApi, type PromisePending } from '../api'
 import EmptyState from '../components/EmptyState'
 
 // ── 记忆园丁视图（08-26 重做）：明细可见 + 人工核对按钮 ──
 // 原则不变：园丁只报告；「标记已核对」只记核对结论不动记忆文件；
 // 「去重」是显式人工动作——先落 .bak 备份再重写日志（每组保留最新一条）。
+//
+// 09-14 补两块台前（此前只有引擎侧、没有入口）：
+//   · 记忆快照：列表 + 回退。快照过去只写不读（98.7MB 攒着却一份都回退不了）。
+//   · 待兑现承诺：小语自己许下的「明天/回头/下次」。结清只能人工给结论。
 
 type Kind = 'dup' | 'stale'
 
@@ -15,6 +19,142 @@ function Stat({ label, value, warn }: { label: string; value: number; warn?: boo
     <div className="stat-card !p-3.5">
       <div className="text-[11px] text-pi-dim2">{label}</div>
       <div className={`text-2xl font-bold mt-1 ${warn && value > 0 ? 'text-pi-warning' : ''}`}>{value}</div>
+    </div>
+  )
+}
+
+const SNAP_REASON: Record<string, string> = {
+  manual: '手动',
+  auto: '每 20 轮自动',
+  'archive-before': '归档状态节前',
+  'distill-before': '提炼偏好前',
+  'pre-restore': '回退前自保',
+}
+// 旧版快照的 reason 带毫秒后缀（archive-before-1789395260010），归一化后再查表
+const snapReason = (r: string) => {
+  const key = String(r || '').replace(/-\d{6,}$/, '')
+  return SNAP_REASON[key] || key || '未知来源'
+}
+
+function SnapshotSection({ onRestored }: { onRestored: () => void }) {
+  const { data, mutate, isLoading } = useSWR('memory-snapshots', () => MemoryApi.snapshots(), { dedupingInterval: 15000 })
+  const [busy, setBusy] = useState('')
+  const [msg, setMsg] = useState('')
+  const items = data?.items || []
+  const totalMB = items.reduce((n, x) => n + (x.bytes || 0), 0) / 1048576
+
+  const restore = async (id: string, reason: string) => {
+    if (!confirm(`回退到快照 ${id}（${snapReason(reason)}）？\n\n当前的 记忆.md / 记忆日志.md / 纠正记忆 / 关系记忆 会被覆盖。\n回退前会自动再存一份现状，可再退回来。\n\n确定执行？`)) return
+    setBusy(id); setMsg('')
+    try {
+      const r = await MemoryApi.restoreSnapshot(id)
+      if (r.ok) { setMsg(`已回退到 ${r.id}（${snapReason(String(r.reason))}）`); await mutate(); onRestored() }
+      else setMsg(`回退失败：${r.error || r.reason || '未知原因'}`)
+    } catch (e: any) { setMsg('回退失败：' + (e?.message || e)) } finally { setBusy('') }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center mb-2">
+        <h3 className="text-[13px] font-semibold text-pi-text inline-flex items-center gap-1.5"><Archive className="w-3.5 h-3.5" />记忆快照</h3>
+        <span className="ml-auto text-[11px] text-pi-dim2">
+          {isLoading ? '读取中…' : `${data?.total ?? 0} 份 · ${totalMB.toFixed(1)}MB（上限 30 份 / 12MB）`}
+        </span>
+      </div>
+      {msg && <div className="panel !p-2.5 text-xs text-pi-accent mb-2 flex items-center gap-2"><Check className="w-3.5 h-3.5 flex-shrink-0" />{msg}</div>}
+      {items.length === 0 ? (
+        <p className="text-xs text-pi-dim2 px-1">{isLoading ? '正在读取快照…' : '还没有快照。记忆真正发生变化（归档状态节等）时会自动存一份。'}</p>
+      ) : (
+        <div className="space-y-1.5">
+          {items.slice(0, 8).map(s => (
+            <div key={s.id} className="panel !p-2.5 flex items-center gap-2.5">
+              <span className="font-mono text-[11px] text-pi-dim2 flex-shrink-0">{s.id}</span>
+              <span className="text-[11px] text-pi-dim truncate">{snapReason(s.reason)}</span>
+              <span className="ml-auto text-[10px] text-pi-dim2 flex-shrink-0">{Math.round((s.bytes || 0) / 1024)}KB</span>
+              <button className="btn-tool text-[11px] !px-2 !py-1 inline-flex items-center gap-1 flex-shrink-0"
+                disabled={busy === s.id} onClick={() => restore(s.id, s.reason)} title="把记忆回退到这份快照">
+                <RotateCcw className="w-3 h-3" />{busy === s.id ? '回退中…' : '回退'}
+              </button>
+            </div>
+          ))}
+          {items.length > 8 && <p className="text-[10px] text-pi-dim2 px-1">仅列出最近 8 份，共 {data?.total ?? items.length} 份。</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PromiseSection() {
+  const { data, mutate, isLoading } = useSWR('promises', () => PromiseApi.list(), { dedupingInterval: 15000 })
+  const [busy, setBusy] = useState('')
+  const [showClosed, setShowClosed] = useState(false)
+  const pending = data?.pending || []
+  const closed = data?.closed || []
+  const overdue = pending.filter(p => p.overdue).length
+
+  const settle = async (p: PromisePending, status: 'kept' | 'dropped') => {
+    let evidence = ''
+    if (status === 'kept') {
+      evidence = prompt(`标记「已兑现」：${p.text}\n\n写下可核查的证据（文件路径 / 测试名 / 提交号）。留空会记为「无证据」。`) || ''
+    } else if (!confirm(`把「${p.text}」标记为不再需要？`)) return
+    setBusy(p.id)
+    try { await PromiseApi.close(p.id, status, evidence); await mutate() } catch {} finally { setBusy('') }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center mb-2">
+        <h3 className="text-[13px] font-semibold text-pi-text inline-flex items-center gap-1.5"><Handshake className="w-3.5 h-3.5" />待兑现承诺</h3>
+        <span className="ml-auto text-[11px] text-pi-dim2">
+          {isLoading ? '读取中…' : pending.length ? `${pending.length} 条挂着${overdue ? ` · ${overdue} 条逾期` : ''}` : '没有挂着的事'}
+        </span>
+      </div>
+      <p className="text-[11px] text-pi-dim2 px-1 mb-2">
+        小语自己说过的「明天 / 回头 / 下次…」。下一轮对话会提醒它主动交代；结清只能由你给结论——系统不会自动判定「大概做了吧」。
+      </p>
+      {pending.length === 0 ? (
+        <EmptyState icon={Handshake} title={isLoading ? '正在读取…' : '没有待兑现的承诺'} hint={isLoading ? undefined : '它下次说「回头给你」时，会出现在这里'} />
+      ) : (
+        <div className="space-y-2">
+          {pending.map(p => (
+            <div key={p.id} className="panel !p-3 flex items-start gap-2.5">
+              <span className={`mt-0.5 flex-shrink-0 ${p.overdue ? 'text-pi-warning' : 'text-pi-dim2'}`}>
+                {p.overdue ? <AlertTriangle className="w-4 h-4" strokeWidth={1.8} /> : <Handshake className="w-4 h-4" strokeWidth={1.8} />}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] text-pi-text break-all">{p.text}</div>
+                <div className="text-[10px] text-pi-dim2 mt-0.5">
+                  {p.agePhrase}{p.due ? ` · 约定 ${String(p.due).slice(0, 10)}` : ''}{p.overdue ? ' · 已逾期' : ''}
+                </div>
+              </div>
+              <span className="flex gap-1.5 flex-shrink-0">
+                <button className="btn-tool text-[11px] !px-2 !py-1 inline-flex items-center gap-1" disabled={busy === p.id}
+                  onClick={() => settle(p, 'kept')} title="给出可核查的证据，结清这条账"><Check className="w-3 h-3" />已兑现</button>
+                <button className="btn-tool text-[11px] !px-2 !py-1 inline-flex items-center gap-1 hover:!text-pi-red" disabled={busy === p.id}
+                  onClick={() => settle(p, 'dropped')} title="不打算做了，销账">不再需要</button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {closed.length > 0 && (
+        <div className="mt-2">
+          <button onClick={() => setShowClosed(v => !v)} className="text-[11px] text-pi-dim2 hover:text-pi-text inline-flex items-center gap-1">
+            {showClosed ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}已结清 {closed.length} 条
+          </button>
+          {showClosed && (
+            <div className="mt-1.5 space-y-1">
+              {closed.map(c => (
+                <div key={c.id} className="flex items-start gap-2 text-[11px] px-1 opacity-70">
+                  <span className={`flex-shrink-0 ${c.status === 'kept' ? 'text-pi-success' : 'text-pi-dim2'}`}>{c.status === 'kept' ? '✓' : '—'}</span>
+                  <span className="text-pi-dim break-all">{c.text}</span>
+                  <span className="ml-auto text-[10px] text-pi-dim2 flex-shrink-0">{c.evidence ? c.evidence.slice(0, 40) : '无证据'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -33,6 +173,10 @@ export default function GardenerView() {
   const dups = rep.duplicates || []
   const staleSections = rep.staleSections?.sections || []
   const dupEntries = dups.reduce((n: number, g: any) => n + g.count, 0)
+  // 注意：rhythm 在响应顶层（与 report 平级），不在 report 里面
+  const rhythm = (data as any)?.rhythm || null
+  const rhythmMax = rhythm ? Math.max(1, ...(rhythm.hours || [1])) : 1
+  const pad2 = (n: number) => String(n).padStart(2, '0')
 
   const isDismissed = (kind: Kind, key: string) => reviewed.has(`${kind}:${key}`)
   const visibleDups = showReviewed ? dups : dups.filter((g: any) => !isDismissed('dup', g.key))
@@ -150,6 +294,32 @@ export default function GardenerView() {
           </div>
         )}
       </div>
+
+      {/* 观测到的作息：由 activity-rhythm 从真实时间戳读出；观测不到（样本不足）就不显示，不编 */}
+      {rhythm && (
+        <div className="panel !p-3">
+          <h3 className="text-[13px] font-semibold text-pi-text mb-1.5 inline-flex items-center gap-1.5"><Moon className="w-3.5 h-3.5" />观测到的作息</h3>
+          <p className="text-[12px] text-pi-dim">
+            通常 <span className="text-pi-text font-medium">{pad2(rhythm.activeStart)}:00–{pad2((rhythm.activeEnd + 1) % 24)}:00</span> 活跃，
+            近 {rhythm.spanDays} 天 {rhythm.samples} 条记录（覆盖 {Math.round((rhythm.coverage || 0) * 100)}%）。
+            今天已聊 {rhythm.todayCount} 轮{rhythm.lateNightRatio > 0 ? `，其中 ${(rhythm.lateNightRatio * 100).toFixed(0)}% 在凌晨` : ''}。
+          </p>
+          <div className="mt-2 flex items-end gap-[3px] h-9">
+            {(rhythm.hours || []).map((n: number, h: number) => (
+              <span key={h} title={`${pad2(h)}:00 · ${n} 条`}
+                className={`flex-1 rounded-sm ${n > 0 ? 'bg-pi-accent/30' : 'bg-pi-border-soft/40'}`}
+                style={{ height: `${Math.max(6, (n / rhythmMax) * 100)}%` }} />
+            ))}
+          </div>
+          <p className="text-[10px] text-pi-dim2 mt-1.5">这份读数会随「时间感」一起进提示词：深夜时它先确认你还在忙什么，而不是当成正常工作时间。</p>
+        </div>
+      )}
+
+      {/* 待兑现承诺：小语自己许下的「明天/回头/下次」，结清只能由人给结论 */}
+      <PromiseSection />
+
+      {/* 记忆快照：可回退（此前只写不读） */}
+      <SnapshotSection onRestored={() => mutate()} />
 
       {/* 建议 */}
       {(rep.recommendations?.length || 0) > 0 && (
