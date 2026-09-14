@@ -14,7 +14,7 @@ test("目录含元枢/pi/dsh，默认主驾是 pi、次席是元枢", () => {
   assert.ok(ENGINE_CATALOG.yuanshu.canLead);
   assert.ok(ENGINE_CATALOG.pi.canLead);
   // dsh 不可主驾：原先这里断言 true，理由是"对话适配器写完后应能主驾"——那是完成度目标，
-  // 不是能力判断。实测元枢调用它的方式回两个字要 26.9s（每轮新起 headless 子进程），
+  // 不是能力判断。实测元枢调用它的方式预热后约 4.7s/轮（每轮新起 headless 子进程），冷启动约 27s，
   // 且无流式、历史只能压成 8×800 字摘要。它的活是执行臂 dsh_task，与 canLead 无关。
   assert.equal(ENGINE_CATALOG.dsh.canLead, false, "dsh 作为执行臂可用，但不作为主驾");
   assert.deepEqual(DEFAULT_PAIR, { primary: "pi", secondary: "yuanshu" });
