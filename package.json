@@ -16,6 +16,7 @@
     "start": "node server.mjs",
     "test": "node --test --test-concurrency=1 tests/unit/*.test.mjs",
     "build:frontend": "npm --prefix frontend run build",
+    "prune:dist": "node scripts/prune-dist.mjs",
     "sync:frontend": "node scripts/sync-frontend.mjs",
     "build:mobile:web": "npm run build:frontend && npm run sync:frontend"
   },
