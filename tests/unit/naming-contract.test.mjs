@@ -118,6 +118,14 @@ test("前端镜像实现的类型表/扩展名/格式必须与后端一致（两
   }
 });
 
+test("CHANGELOG 必须留一个空的 [Unreleased] 给下次收版，且当前版本有条目", () => {
+  const cl = read("CHANGELOG.md");
+  // 收版时如果把 [Unreleased] 换掉却没留新的，下一次 bump 就无处可收——
+  // 2026-09-14 收 2.8.0 时正是这么漏的，靠 bump 时才发现。
+  assert.match(cl, /^## \[Unreleased\]\s*$/m, "CHANGELOG 顶部必须保留一个空的 ## [Unreleased]");
+  assert.ok(cl.includes(`## [${META.version}]`), `CHANGELOG 必须有当前版本 ## [${META.version}] 的条目`);
+});
+
 test("前端源码不得硬编码版本号（文案里的版本必须来自注入）", () => {
   // 原先两条用户可见文案写死了壳版本：「请先安装元枢 0.2.4 手机客户端」、
   // 「请确认客户端已更新到 0.2.4」。版本一升，这些话就变成假话——

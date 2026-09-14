@@ -97,11 +97,16 @@ if (isSync) {
   const unreleasedRe = /^## \[Unreleased\][^\n]*$/m;
   if (unreleasedRe.test(changelog)) {
     changelog = changelog.replace(unreleasedRe, `## [Unreleased]\n\n## [${next}] - ${today}`);
-    if (!dry) fs.writeFileSync(CHANGELOG, changelog, "utf8");
-    results.push({ file: "CHANGELOG.md", from: "## [Unreleased]", changed: true });
   } else {
-    console.log("⚠️ CHANGELOG.md 里没有 ## [Unreleased]，未收版——请手动确认");
+    // 自愈：收版时若忘了留 [Unreleased]，下一次 bump 就会无处可收。
+    // 直接在最新版本条目上方补一个空的，别让契约烂在这里。
+    const firstVersionRe = /^## \[/m;
+    if (!firstVersionRe.test(changelog)) fail("CHANGELOG.md 里既没有 ## [Unreleased] 也没有任何 ## [x.y.z] 条目");
+    changelog = changelog.replace(firstVersionRe, `## [Unreleased]\n\n## [${next}] - ${today}\n\n## [`);
+    console.log("⚠️ CHANGELOG.md 原本没有 ## [Unreleased]，已自动补上并收版");
   }
+  if (!dry) fs.writeFileSync(CHANGELOG, changelog, "utf8");
+  results.push({ file: "CHANGELOG.md", from: "## [Unreleased]", changed: true });
 }
 
 for (const r of results) {
