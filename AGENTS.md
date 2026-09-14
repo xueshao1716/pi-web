@@ -14,7 +14,7 @@
 1. **TDD 先红后绿**：核心逻辑先写测试再实现；JSX/组件用源码契约断言（按行查找+行内包含，不依赖正则转义）
 2. **验证后才说"已验证"**：tsc / 全量测试 / build / Impeccable detect 四件套，没跑过不许声称
 3. **小步提交**：不写大文件，超 ~200 行拆模块；commit 前自查 diff 有无夹带无关改动
-4. **Git 双推**：push origin main → GitHub(xueshao1716/pi-web) + Gitee(linxinyu520xue/pi-web)；push 前探活代理 127.0.0.1:7890
+4. **Git 双推**：push origin main → GitHub(xueshao1716/yuanshu) + Gitee(linxinyu520xue/yuanshu)；push 前探活代理 127.0.0.1:7890
 5. **交付必通报**：完成调 `python D:/pi-workspace/工程/notify.py "内容"`（活动流+微信）
 6. **研究结论当日归档**：现行事实走 `upsertMemoryFact`（`section` + 可选 `topic`），同 topic 旧条作废；禁止只往记忆日志追加一条对打的现行。流水账仍可 `autoMemorize`
 

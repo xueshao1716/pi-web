@@ -3,6 +3,15 @@
 > 每次发版：bump `engine/unified-chat.mjs` 的 `APP_VERSION` → 这里加一条 → 构建 `frontend/dist` → 双推。
 
 ## [Unreleased] - 2026-09-12
+### 变更
+- **仓库改名**：`pi-web` → `yuanshu`（GitHub `xueshao1716/yuanshu`、Gitee `linxinyu520xue/yuanshu`）。
+  旧地址实测仍可跳转（网页 301/302，raw 与 git 端点跟随重定向后 200），旧安装命令不会失效；
+  但仓库内所有链接已改为新地址，不再依赖跳转。历史条目保留旧地址作为当时的记录。
+- **环境变量前缀**：`PI_WEB_*` → `YUANSHU_*`。旧名继续被读取（新名优先），老安装无需改动。
+  环境变量表见 README；实现见 `engine/env.mjs`。
+- 计划任务 `pi-web-watchdog` → `yuanshu-watchdog`；`autostart.ps1` 原先写的任务名与机器上
+  实际注册的完全不符（重跑会多出一个 watchdog 抢 8787），已按真实配置重写。
+
 ### 新增
 - 系统级 AIBody 运行协调：主聊天统一记录规划、工具、子智能体、记忆、产物与治理状态，验收页只作为观察入口。
 - 子智能体持久台账：关联父任务与会话，记录角色、状态、证据、失败、取消和重启恢复，不保存原始提示词或隐藏推理。

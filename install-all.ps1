@@ -2,7 +2,7 @@
 #  元枢全自动安装（一条命令完成兼容适配器 + dsh + 元枢）
 #  自动检查/安装：git → Node.js → 兼容适配器 → dsh 引擎 → 源码 → 令牌 → 启动
 #  用法（任意 Windows PowerShell，一条命令，先下载再执行，零报错）：
-#    irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-all.ps1 -OutFile $env:TEMP\piw.ps1; & $env:TEMP\piw.ps1
+#    irm https://gitee.com/linxinyu520xue/yuanshu/raw/main/install-all.ps1 -OutFile $env:TEMP\piw.ps1; & $env:TEMP\piw.ps1
 #  指定目录：& $env:TEMP\piw.ps1 -InstallDir D:\pi-web
 #  （irm | iex 管道也可用，但 PS5.1 下会显示一行无害 BOM 报错）
 #  界面美化 v2（2026-08）——框线横幅 / 步骤卡片 / 状态图标 / 对齐完成面
@@ -118,13 +118,13 @@ if (Test-Path (Join-Path $DEST 'server.mjs')) {
   if (Get-Command git -ErrorAction SilentlyContinue) {
     Info '用 git clone（Gitee 国内源）...'
     # cmd /c 包装：git 进度走 stderr，避免 PowerShell 误判为错误中断
-    cmd /c "git clone --depth 1 https://gitee.com/linxinyu520xue/pi-web.git `"$DEST`" 2>nul"
+    cmd /c "git clone --depth 1 https://gitee.com/linxinyu520xue/yuanshu.git `"$DEST`" 2>nul"
     if (Test-Path (Join-Path $DEST 'server.mjs')) { $cloned = $true }
   }
   if (-not $cloned) {
     Info '改用 zip 下载（Gitee）...'
     $zip = "$env:TEMP\pi-web.zip"
-    curl.exe -sL --connect-timeout 8 --max-time 120 -o $zip 'https://gitee.com/linxinyu520xue/pi-web/repository/archive/main.zip'
+    curl.exe -sL --connect-timeout 8 --max-time 120 -o $zip 'https://gitee.com/linxinyu520xue/yuanshu/repository/archive/main.zip'
     if (-not (Test-Path $zip) -or (Get-Item $zip).Length -lt 100KB) { Err '源码下载失败！'; exit 1 }
     Expand-Archive -Path $zip -DestinationPath "$env:TEMP\pi-web-extract" -Force
     $src = Get-ChildItem "$env:TEMP\pi-web-extract" -Directory | Select-Object -First 1

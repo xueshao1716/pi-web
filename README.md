@@ -44,10 +44,10 @@
 
 ```powershell
 # Gitee（国内快）
-irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-lite.ps1 | iex
+irm https://gitee.com/linxinyu520xue/yuanshu/raw/main/install-lite.ps1 | iex
 
 # GitHub
-irm https://raw.githubusercontent.com/xueshao1716/pi-web/main/install-lite.ps1 | iex
+irm https://raw.githubusercontent.com/xueshao1716/yuanshu/main/install-lite.ps1 | iex
 ```
 
 > `install-lite.ps1` 是纯 ASCII 的引导器：它先把 `install-all.ps1` 下载成文件再执行，
@@ -59,7 +59,7 @@ irm https://raw.githubusercontent.com/xueshao1716/pi-web/main/install-lite.ps1 |
 
 > **需要指定安装目录？**（免交互，跳过询问直接装）
 > ```powershell
-> irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install-lite.ps1 -OutFile $env:TEMP\piw.ps1
+> irm https://gitee.com/linxinyu520xue/yuanshu/raw/main/install-lite.ps1 -OutFile $env:TEMP\piw.ps1
 > & $env:TEMP\piw.ps1 -InstallDir D:\pi-web
 > ```
 > 注意：`install-lite.ps1` 会把 `-InstallDir` 透传给 `install-all.ps1`，所以指定目录时
@@ -68,7 +68,7 @@ irm https://raw.githubusercontent.com/xueshao1716/pi-web/main/install-lite.ps1 |
 **全局安装（npm，适合已装 Node 的用户）：**
 
 ```powershell
-npm i -g git+https://gitee.com/linxinyu520xue/pi-web.git
+npm i -g git+https://gitee.com/linxinyu520xue/yuanshu.git
 yuanshu
 ```
 
@@ -133,9 +133,9 @@ yuanshu
 
 ```bash
 # Gitee（国内快）
-git clone https://gitee.com/linxinyu520xue/pi-web.git
+git clone https://gitee.com/linxinyu520xue/yuanshu.git
 # 或 GitHub
-git clone https://github.com/xueshao1716/pi-web.git
+git clone https://github.com/xueshao1716/yuanshu.git
 cd pi-web
 node setup.mjs --install
 ```

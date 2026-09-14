@@ -3,7 +3,7 @@
 #  只需要 Node 一个软件，其余全自动：
 #  下载源码 → 装兼容适配器 → 装 dsh 引擎 → 模型模板 → 令牌 → 后台启动
 #  用法（任意 Windows PowerShell，一条命令，先下载再执行，零报错）：
-#    irm https://gitee.com/linxinyu520xue/pi-web/raw/main/install.ps1 -OutFile $env:TEMP\piw.ps1; & $env:TEMP\piw.ps1
+#    irm https://gitee.com/linxinyu520xue/yuanshu/raw/main/install.ps1 -OutFile $env:TEMP\piw.ps1; & $env:TEMP\piw.ps1
 #  指定目录：& $env:TEMP\piw.ps1 -InstallDir D:\pi-web
 #  （irm | iex 管道也可用，但 PS5.1 下会显示一行无害 BOM 报错）
 #  界面美化 v2（2026-08）——与 install-all 同风格
@@ -83,10 +83,10 @@ if (Test-Path "$DEST\server.mjs") {
 } else {
   Info '下载源码（Gitee → GitHub → 镜像依次尝试）...'
   $ZIP_URLS = @(
-    'https://gitee.com/linxinyu520xue/pi-web/repository/archive/main.zip',
-    'https://github.com/xueshao1716/pi-web/archive/refs/heads/main.zip',
-    'https://ghproxy.net/https://github.com/xueshao1716/pi-web/archive/refs/heads/main.zip',
-    'https://gh-proxy.com/https://github.com/xueshao1716/pi-web/archive/refs/heads/main.zip'
+    'https://gitee.com/linxinyu520xue/yuanshu/repository/archive/main.zip',
+    'https://github.com/xueshao1716/yuanshu/archive/refs/heads/main.zip',
+    'https://ghproxy.net/https://github.com/xueshao1716/yuanshu/archive/refs/heads/main.zip',
+    'https://gh-proxy.com/https://github.com/xueshao1716/yuanshu/archive/refs/heads/main.zip'
   )
   $downloaded = $false
   foreach ($u in $ZIP_URLS) {

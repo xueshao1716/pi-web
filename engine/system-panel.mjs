@@ -101,9 +101,9 @@ export async function checkUpdate(repoDir, fsMod = fs) {
   try { localShaFull = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoDir, timeout: 5000 }).toString().trim(); } catch {}
   const localSha = localShaFull.slice(0, 7);
   const sources = [
-    { name: "github", url: "https://api.github.com/repos/xueshao1716/pi-web/commits/main",
+    { name: "github", url: "https://api.github.com/repos/xueshao1716/yuanshu/commits/main",
       pick: (d) => ({ sha: String(d.sha || "").slice(0, 7), message: String(d.commit?.message || "").split("\n")[0], date: d.commit?.author?.date }) },
-    { name: "gitee", url: "https://gitee.com/api/v5/repos/linxinyu520xue/pi-web/branches/main",
+    { name: "gitee", url: "https://gitee.com/api/v5/repos/linxinyu520xue/yuanshu/branches/main",
       pick: (d) => ({ sha: String(d.commit?.id || "").slice(0, 7), message: String(d.commit?.message || "").split("\n")[0], date: undefined }) },
   ];
   let lastErr = null;
