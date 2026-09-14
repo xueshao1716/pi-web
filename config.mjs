@@ -26,7 +26,10 @@ function loadToken() {
 
 // 外置兼容适配器路径：env 优先，其次本地/全局 node_modules 推导（跨平台，不硬编码）
 function resolvePiPackage() {
-  if (process.env.PI_PACKAGE) return process.env.PI_PACKAGE;
+  // PI_PACKAGE 可能被设成纯空白（cmd 里 `set VAR= && ...` 会写入一个空格）→ 视同未设置，
+  // 否则会返回 " " 并让 server.mjs 报 Cannot find module 'D:\pi-web\ '
+  const fromEnv = String(process.env.PI_PACKAGE || "").trim();
+  if (fromEnv) return fromEnv;
   try {
     // 本地安装（开发模式）
     return require.resolve("@earendil-works/pi-coding-agent/dist/index.js");
@@ -36,7 +39,16 @@ function resolvePiPackage() {
   const { execSync } = require("node:child_process");
   const rel = path.join("@earendil-works", "pi-coding-agent", "dist", "index.js");
   const roots = [];
-  try { roots.push(execSync("npm root -g", { encoding: "utf8" }).trim()); } catch {}
+  // node.exe 同级的 node_modules：NPM_CONFIG_PREFIX 指向 node 安装目录时的全局落点。
+  // 2026-09-14 事故：本机 NPM_CONFIG_PREFIX=C:\Program Files\nodejs，全局包装在这里；
+  // 但 watchdog 由计划任务启动，它的 env 里没有 NPM_CONFIG_PREFIX →
+  // 「npm root -g」会随 cwd 漂移到 <cwd>\node_modules → 全部探测 miss → piPackage=""
+  // → server.mjs 的 import(pathToFileURL("")) 解析成目录导入，启动即
+  // ERR_UNSUPPORTED_DIR_IMPORT 崩溃，且 watchdog 永远拉不起来。
+  // 这条探测不依赖任何环境变量，放最前面。
+  roots.push(path.join(path.dirname(process.execPath), "node_modules"));
+  // cwd 固定到仓库根：npm root -g 在无 prefix 时会按 cwd 的 package 上下文漂移
+  try { roots.push(execSync("npm root -g", { encoding: "utf8", cwd: __dirname }).trim()); } catch {}
   if (process.platform === "win32" && process.env.APPDATA) {
     roots.push(path.join(process.env.APPDATA, "npm", "node_modules"));
   }

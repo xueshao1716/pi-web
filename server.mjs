@@ -116,6 +116,16 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 let timeEngine = null;
 
 // ── 加载兼容适配器 SDK ─────────────────────────────────────────────
+// piPackage 为空时 pathToFileURL("") 会解析成启动目录，报出
+// "Directory import 'D:\pi-web' is not supported" 这种完全不指向真因的错误
+// （2026-09-14 事故：NPM_CONFIG_PREFIX 缺失导致全局包探测全 miss，排查耗时很久）。
+// 这里显式拦截，并给出可执行指引；错误信息里带 "Cannot find module" 特征串，
+// 好让 watchdog 的回滚归因把它判为环境类崩溃而不是 server.mjs 的锅。
+if (!CONFIG.piPackage) {
+  console.error("[元枢] 未能解析兼容适配器引擎：Cannot find module '@earendil-works/pi-coding-agent'。");
+  console.error("[元枢] 修复：npm i -g @earendil-works/pi-coding-agent ；或用 PI_PACKAGE 指定其 dist/index.js，然后重启。");
+  process.exit(1);
+}
 const { createAgentSession, createAgentSessionServices, createAgentSessionFromServices, SettingsManager, ModelRuntime, SessionManager, DefaultResourceLoader, getAgentDir } = await import(
   pathToFileURL(CONFIG.piPackage).href
 );
