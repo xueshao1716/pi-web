@@ -1533,7 +1533,13 @@ function sendError(res, error) { const status = Number(error?.statusCode) || (er
 export async function handleStoryProjects(ctx, res, body) {
   try {
     const api = createStoryOrchestrator(ctx);
-    if (body === undefined) return json(res, 200, { projects: await api.list() });
+    // 列表也带 flow：界面打开时是**先拉列表再选项目**的（不是逐个拉详情），
+    // 只在详情里给 flow，状态条在首屏就是空的——真机验收时正是这么发现的。
+    // flow 是纯函数算出来的，给整列加上不产生额外 IO。
+    if (body === undefined) {
+      const projects = await api.list();
+      return json(res, 200, { projects: projects.map(p => ({ ...p, flow: storyFlow(p) })) });
+    }
     return json(res, 201, { project: await api.create(bodyOrEmpty(body)) });
   } catch (e) { return sendError(res, e); }
 }
