@@ -148,7 +148,21 @@ export function explainMediaError(err) {
   const msg = String(err?.message || err || "");
   if (/fetch failed|Failed to fetch/i.test(msg)) return "上游网络失败（常见是代理不通或出图/模型接口超时）";
   if (/timeout/i.test(msg)) return "出图超时";
-  return msg.slice(0, 80) || "出图失败";
+  return msg.slice(0, 300) || "出图失败";
+}
+
+// ── seed 的取值范围是**上游接口契约**，不是可以随便猜的 ──
+// 2026-09-16 真机报错原文：`seed must be between -1 and 999`（Agnes 图像接口）。
+// 而 story-orchestrator 的 randomSeed() 掷的是 0..2^31-1 —— 于是**每一张画面都被上游 400 拒掉**，
+// 界面上只看到一句"图像模型未返回图片"。这是"seed 真的上送"那次改动带出来的回归，
+// 单测不可能发现（测试替身不校验取值范围），只有真机调用才会报。
+// -1 是上游的"随机"约定，我们不使用；可用区间取 [0, 999]。
+export const SEED_RANGE = { min: 0, max: 999 };
+export function clampSeed(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return { seed: undefined, clamped: false };
+  const seed = Math.min(SEED_RANGE.max, Math.max(SEED_RANGE.min, Math.round(n)));
+  return { seed, clamped: seed !== Math.round(n), asked: Math.round(n) };
 }
 // 异步生成媒体（与主模型并行）
 export async function generateMediaAsync(intent, prompt) {
@@ -222,7 +236,9 @@ export async function generateTTS(text) {
 // 声称支持、实际一次都没生效的能力。参数要么真的生效，要么别说。
 export async function generateImage(provider, modelId, prompt, size, image, opts = {}) {
   const resolved = _resolveAuth(provider);
-  if (!resolved) return null;
+  // 配置问题也要说清是哪一种：以前这里 return null，界面只剩一句
+  // "图像模型未返回图片"，跟"上游拒绝了参数"长得一模一样。
+  if (!resolved) throw new Error(`${provider} 未配置 API Key（在模型管理里加上再试）`);
   // 参考图同样要落地：上游只认公网 http(s) 或 base64，元枢的 /api/ws/file 地址会被拒。
   // 落不下来就**明确报错**，不要悄悄退化成纯文生图——那等于把"锁定人物"变成一句假话。
   let refImage = image;
@@ -250,16 +266,35 @@ export async function generateImage(provider, modelId, prompt, size, image, opts
     }),
     timeout: 180000,
   });
-  let r = await mkReq(`${baseNoV1}/v1/images/generations`);
-  if (!r.ok) r = await mkReq(`${baseNoV1}/images/generations`);
-  if (!r.ok) r = await mkReq(`${baseNoV1}/v3/images/generations`); // 火山方舟规划版等 v3 endpoint
-  if (!r.ok) return null;
-  const data = await r.json();
-  const item = data.data?.[0];
-  if (!item) return null;
-  if (item.b64_json) return `data:image/png;base64,${item.b64_json}`;
-  if (item.url) return item.url;
-  return null;
+  // 上游失败必须带上**状态码与响应体**。以前这里是 `if (!r.ok) return null`，
+  // 于是界面上只有一句"图像模型未返回图片"——Key 无效、模型名不对、参数不认、被限流，
+  // 四种完全不同的原因长得一模一样，用户没法处理，我也没法排查
+  //（2026-09-16 真机批量两段画面全失败，零线索，就是这条把它变成瞎猜）。
+  //
+  // 另外：**400/401/403/429 不换地址重试**。这些是"请求或账号"的问题，换 endpoint 一样被拒，
+  // 白白多打两次上游还把真正的错误挤出了错误信息。只有 404/405/501（地址不对）才继续试下一个。
+  const RETRY_STATUS = new Set([404, 405, 501]);
+  const attempts = [];
+  for (const endpoint of [`${baseNoV1}/v1/images/generations`, `${baseNoV1}/images/generations`, `${baseNoV1}/v3/images/generations`]) {
+    const r = await mkReq(endpoint);
+    const text = await r.text().catch(() => "");
+    if (r.ok) {
+      let data = null;
+      try { data = JSON.parse(text) } catch { /* 非 JSON，下面按"没有图片数据"报 */ }
+      const item = data?.data?.[0];
+      if (item?.b64_json) return `data:image/png;base64,${item.b64_json}`;
+      if (item?.url) return item.url;
+      throw new Error(`上游 ${r.status} 但没有图片数据（模型 ${modelId}）：${text.replace(/\s+/g, " ").slice(0, 200)}`);
+    }
+    attempts.push({ path: endpoint.slice(baseNoV1.length), status: r.status, text: text.replace(/\s+/g, " ").slice(0, 200) });
+    if (!RETRY_STATUS.has(r.status)) break;
+  }
+  const first = attempts[0];
+  const sameStatus = attempts.every(a => a.status === first.status);
+  const detail = sameStatus && attempts.length > 1
+    ? `${first.status}（${attempts.length} 个地址都一样）：${first.text}`
+    : attempts.map(a => `${a.path} → ${a.status} ${a.text}`).join(" ｜ ");
+  throw new Error(`绘图接口失败（模型 ${modelId}）：${detail}`);
 }
 
 export async function handleImage(res, body) {

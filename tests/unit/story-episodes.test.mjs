@@ -6,7 +6,7 @@
 // - 一集一条场次/段落/进度账（界面与批量生成共用同一个数，不各算一遍）。
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeEpisodes, createEpisode, nextEpisodeNo, groupScenesByEpisode, episodeOf, episodeStats, assignSceneToEpisode, removeEpisode, renumberEpisodes, EPISODE_MAX } from '../../engine/story-episodes.mjs';
+import { normalizeEpisodes, createEpisode, cleanEpisodeTitle, nextEpisodeNo, groupScenesByEpisode, episodeOf, episodeStats, assignSceneToEpisode, removeEpisode, renumberEpisodes, EPISODE_MAX } from '../../engine/story-episodes.mjs';
 import { projectToElements, renderScript } from '../../engine/story-screenplay.mjs';
 
 const project = () => ({
@@ -45,6 +45,15 @@ test('建集：不传编号就接着最后一个编号排，标题自动叫「�
   const ep2 = createEpisode({ targetSeconds: 45, episodes: [{ id: 'x', no: 4 }] }, { id: () => 'ep10' });
   assert.equal(ep2.no, 5);
   assert.equal(ep2.targetSeconds, 45);
+});
+
+test('标题里写过的「第 N 集」不重复存：集号是独立字段，界面和导出都会再加一遍', () => {
+  // 真机上出现过「第 1 集 · 第 1 集 · 站台」——标题里带了集号，前缀又加了一次
+  assert.equal(createEpisode({ title: '第 1 集 · 站台' }).title, '站台');
+  assert.equal(createEpisode({ title: '第12集：钥匙' }).title, '钥匙');
+  assert.equal(createEpisode({ title: '第 3 集' }).title, '第 1 集', '只剩集号时退回按编号生成的标题——集号以 no 字段为准');
+  assert.equal(normalizeEpisodes([{ id: 'a', no: 2, title: '第 2 集 - 旧楼道' }])[0].title, '旧楼道');
+  assert.equal(cleanEpisodeTitle('第十道雷与躺平协议', 1), '第十道雷与躺平协议', '正常标题一个字都不动');
 });
 
 test('分组：按集归组，"未分集"永远排在最后，而不是被塞进某一集', () => {

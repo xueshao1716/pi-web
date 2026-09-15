@@ -13,6 +13,7 @@ import StoryScript from '../components/story/StoryScript'
 import StoryPlayground from '../components/story/StoryPlayground'
 import StoryEpisodes from '../components/story/StoryEpisodes'
 import StoryAdapt from '../components/story/StoryAdapt'
+import StoryMethod from '../components/story/StoryMethod'
 import StoryBatch from '../components/story/StoryBatch'
 import { defaultRefStrategy, normalizeRefStrategy, refStrategyLabel, recipeBeatPatch } from '../lib/story-ref'
 import type { StoryBeatInput } from '../types'
@@ -380,6 +381,7 @@ export function StoryPanel() {
           />
           <StoryScript project={project} busy={Boolean(busy)} onPatchProject={() => void load()} />
           <StoryEpisodes project={project} busy={Boolean(busy)} onDone={update} onPickScene={setSelected} />
+          <StoryMethod project={project} busy={Boolean(busy)} onDone={update} />
           <StoryAdapt project={project} busy={Boolean(busy)} onDone={update} />
           <StoryBatch project={project} selectedSceneId={scene?.id} busy={Boolean(busy)} onDone={update} />
           {scene && beat && <StoryPlayground

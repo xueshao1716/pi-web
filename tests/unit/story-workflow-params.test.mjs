@@ -80,13 +80,37 @@ test('一次出 N 版：seed 依次递增，每版一条独立 run，全部落�
     getModelList: () => [{ provider: 'p', id: 'img-1', capabilities: { image: true, reference: true, seed: true } }],
     adapters: { image: { generate: async ({ seed }) => { seeds.push(seed); return { status: 'succeeded', output: { type: 'image', url: `/i-${seed}.png` } } } } },
   });
-  const r = await api.runGeneration('p1', { sceneId: 's1', beatId: 'b1', kind: 'image', model: { provider: 'p', id: 'img-1' }, seed: 1000, variants: 3 });
-  assert.deepEqual(seeds, [1000, 1001, 1002], '变体靠 seed 递增，不是随便掷三个');
+  const r = await api.runGeneration('p1', { sceneId: 's1', beatId: 'b1', kind: 'image', model: { provider: 'p', id: 'img-1' }, seed: 100, variants: 3 });
+  assert.deepEqual(seeds, [100, 101, 102], '变体靠 seed 递增，不是随便掷三个');
   assert.equal(r.runs.length, 3);
   const stored = (await api.get('p1')).scenes[0].outputs;
   assert.equal(stored.length, 3, '三版都要留在产物历史里，用户才能挑');
-  assert.deepEqual(stored.map(x => x.seed), [1000, 1001, 1002]);
+  assert.deepEqual(stored.map(x => x.seed), [100, 101, 102]);
   assert.equal(r.run.id, r.runs[2].id, '返回的 run 是最新那一版');
+});
+
+// 这条是 2026-09-16 真机打出来的：旧断言写的是 [1000, 1001, 1002]——
+// 那个范围上游根本不收（Agnes 图像接口原文：seed must be between -1 and 999），
+// 于是"一次出 N 版"在真实调用里每一版都 400。测试替身不校验取值范围，
+// 所以它一直是绿的：**测试绿不等于功能可用**。
+test('变体 seed 不许越出上游区间：到顶绕回开头，也不能靠 400 换来一批失败', async t => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'yuanshu-story-batch-range-'));
+  t.after(() => fs.promises.rm(root, { recursive: true, force: true }));
+  const project = createProject({ title: 'batch', scenes: [{ id: 's1', index: 1, title: '一', summary: '', beats: [{ id: 'b1', kind: 'image', prompt: 'x', references: [] }], outputs: [] }] }, { id: () => 'p1' });
+  await writeProject(root, project);
+  const seeds = [];
+  const api = createStoryOrchestrator({
+    root,
+    getModelList: () => [{ provider: 'p', id: 'img-1', capabilities: { image: true, reference: true, seed: true } }],
+    adapters: { image: { generate: async ({ seed }) => { seeds.push(seed); return { status: 'succeeded', output: { type: 'image', url: `/i-${seed}.png` } } } } },
+  });
+  await api.runGeneration('p1', { sceneId: 's1', beatId: 'b1', kind: 'image', model: { provider: 'p', id: 'img-1' }, seed: 998, variants: 4 });
+  assert.deepEqual(seeds, [998, 999, 0, 1], '到 999 就该绕回 0，不能发出 1000/1001/1002');
+  assert.ok(seeds.every(s => s >= 0 && s <= 999), '每一个发出去的 seed 都要在上游区间内');
+  // 用户自己填了个越界的 seed：**夹进区间并说清楚**，run.seed 记的是实际发出去的那个
+  const r2 = await api.runGeneration('p1', { sceneId: 's1', beatId: 'b1', kind: 'image', model: { provider: 'p', id: 'img-1' }, seed: 123456 });
+  assert.equal(r2.run.seed, 999, '记的是实际发出去的值——不然"填 123456 能复现"就是假话');
+  assert.match(r2.run.degradation.join(''), /只接受 0–999 的 seed.*123456.*999/);
 });
 
 test('变体数要有上限：批量不该变成手滑烧钱', async t => {

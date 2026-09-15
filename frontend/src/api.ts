@@ -1,4 +1,4 @@
-import type { Model, Session, ChatMessage, SessionMessages, Artifact, AssetDelivery, SkillSummary, StoryProject, StoryGenerationRun, StoryFilm, StoryPlanStep, StoryRecipe, StoryEpisode, StoryEpisodeGroup, StoryAdaptResult } from './types'
+import type { Model, Session, ChatMessage, SessionMessages, Artifact, AssetDelivery, SkillSummary, StoryProject, StoryGenerationRun, StoryFilm, StoryPlanStep, StoryRecipe, StoryEpisode, StoryEpisodeGroup, StoryAdaptResult, StoryMethod } from './types'
 import { parseSseBlocks, type RunEvent, type RunStatus } from './lib/run-events'
 import { rememberDownload } from './lib/downloads'
 import { saveNativeDownload } from './lib/native-download'
@@ -176,6 +176,9 @@ export const StoryApi = {
   run: (id: string, body: { sceneId: string; beatId: string; kind: StoryGenerationRun['kind']; model?: StoryGenerationRun['model']; params?: Record<string, unknown>; seed?: number; variants?: number; negative?: string; reference?: { images: number; prefer: string }; inputAssets?: StoryGenerationRun['inputAssets'] }) => api<{ project: StoryProject; run: StoryGenerationRun; runs?: StoryGenerationRun[]; context: { prompt: string; referenceIds: string[] }; plan?: StoryPlanStep[]; pollWindowMs?: number }>(`/api/story/projects/${encodeURIComponent(id)}/run`, { method: 'POST', body, timeoutMs: 240000 }),
   // 收尾一次：查上游任务号（视频是异步的，创建与收尾必须分开）
   checkRun: (id: string, body: { sceneId: string; runId: string }) => api<{ project: StoryProject; run: StoryGenerationRun; status: string; settled: boolean; upstream?: string; waitedMs?: number }>(`/api/story/projects/${encodeURIComponent(id)}/run-check`, { method: 'POST', body, timeoutMs: 60000 }),
+  // 一次收尾多个运行：批量生成挂着 N 个视频任务号，逐个查就是 N 个请求 + N 轮上游问答。
+  // 合并成一次（一次读盘、一次写盘），也不容易撞限流。
+  checkRuns: (id: string, body: { runIds: string[] }) => api<{ project: StoryProject; results: { runId: string; sceneId: string; kind?: string; status: string; settled: boolean; upstream?: string; waitedMs?: number; degradation?: string[] }[]; pending: string[]; missing: string[] }>(`/api/story/projects/${encodeURIComponent(id)}/run-check-many`, { method: 'POST', body, timeoutMs: 120000 }),
   assist: (id: string, idea: string, model?: { provider: string; id: string }) => api<{ assist: any; model: { provider: string; id: string } }>(`/api/story/projects/${encodeURIComponent(id)}/assist`, { method: 'POST', body: { idea, model }, timeoutMs: 100000 }),
   // 角色定妆照：生成后写回 bible.characters[].refImage，后续画面/视频会把它当作真实参考图注入
   portrait: (id: string, body: { characterId?: string; model?: { provider: string; id: string }; size?: string }) => api<{ project: StoryProject; character?: { id: string; name?: string; refImage?: string }; image?: string; status?: string; error?: string }>(`/api/story/projects/${encodeURIComponent(id)}/portrait`, { method: 'POST', body, timeoutMs: 200000 }),
@@ -199,6 +202,12 @@ export const StoryApi = {
   // 原著改编：小说原文（粘贴）或小说工坊的章节 → 分集大纲（集+场+段）一次落进项目。
   // preview=true 只读书、只报字数，不调模型：先看清要花多少钱再决定。
   adapt: (id: string, body: { sourceText?: string; bookId?: string; chapterFiles?: string[]; episodes?: number; secondsPerEpisode?: number; idea?: string; preview?: boolean; model?: { provider: string; id: string } }) => api<StoryAdaptResult>(`/api/story/projects/${encodeURIComponent(id)}/adapt`, { method: 'POST', body, timeoutMs: 300000 }),
+  // 创作方法包（Skill）：跨项目共用的"怎么做"，与配方（工艺参数）刻意分开
+  methods: () => api<{ methods: StoryMethod[] }>('/api/story/methods'),
+  saveMethod: (body: Partial<StoryMethod> & { name: string }) => api<{ method: StoryMethod; methods: StoryMethod[] }>('/api/story/methods', { method: 'POST', body }),
+  deleteMethod: (id: string) => api<{ ok: boolean; methods: StoryMethod[] }>(`/api/story/methods/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  captureMethod: (id: string, body: { name?: string }) => api<{ method: StoryMethod; methods: StoryMethod[]; capturedFrom: { id: string; title: string } }>(`/api/story/projects/${encodeURIComponent(id)}/method-capture`, { method: 'POST', body }),
+  applyMethod: (id: string, body: { methodId: string }) => api<{ project: StoryProject; method: StoryMethod | null; applied: { episodes: number; style: boolean } }>(`/api/story/projects/${encodeURIComponent(id)}/method`, { method: 'POST', body }),
   // 剧本要素与导出（Laper 的地基：能出图出片，还要能拿出一个能给人看的剧本文件）
   scriptStats: (id: string) => api<{ scenes: number; actions: number; dialogueLines: number; transitions: number; speakers: string[] }>(`/api/story/projects/${encodeURIComponent(id)}/script-stats`),
   exportScript: (id: string, body: { format: string }) => api<{ format: string; ext: string; mime: string; body: string; filename: string; stats: { scenes: number; dialogueLines: number; speakers: string[] } }>(`/api/story/projects/${encodeURIComponent(id)}/script-export`, { method: 'POST', body }),

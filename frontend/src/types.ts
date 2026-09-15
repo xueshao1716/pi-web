@@ -173,7 +173,27 @@ export interface StoryAdaptResult {
   characters?: number
   characterNames?: string[]
 }
-export interface StoryProject { id: string; title: string; logline?: string; bible: StoryBible; scenes: StoryScene[]; films?: StoryFilm[]; episodes?: StoryEpisode[]; adaptations?: StoryAdaptation[]; activeSceneId?: string; defaultRecipeId?: string; createdAt: string; updatedAt: string }
+// 创作方法包（Skill：程序性知识）。照 Lovart 的做法：封装的是"完成一个创作任务的整套方法"，
+// 而不是一种视觉效果——配方管工艺参数，方法包管"该怎么拍"。
+export interface StoryMethodStep { title?: string; detail?: string; text?: string }
+export interface StoryMethod {
+  id: string
+  name: string
+  goal: string
+  source: 'builtin' | 'project' | 'user'
+  targetSeconds: number
+  scenesPerEpisode: number
+  beatsPerScene: number
+  reasoning: 'fast' | 'thinking'
+  styleHint?: string
+  reference?: { images: number; prefer: 'material' | 'portrait' }
+  steps: StoryMethodStep[]
+  rules: (string | StoryMethodStep)[]
+  checklist: (string | StoryMethodStep)[]
+  deliverables: (string | StoryMethodStep)[]
+  createdAt?: string
+}
+export interface StoryProject { id: string; title: string; logline?: string; bible: StoryBible; scenes: StoryScene[]; films?: StoryFilm[]; episodes?: StoryEpisode[]; adaptations?: StoryAdaptation[]; methodId?: string; activeSceneId?: string; defaultRecipeId?: string; createdAt: string; updatedAt: string }
 
 // 交付物（/api/ws/deliveries）条目
 export interface AssetDelivery {

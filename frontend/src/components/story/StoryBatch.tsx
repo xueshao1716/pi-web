@@ -6,15 +6,21 @@ import type { StoryProject } from '../../types'
 //
 // 对照 LibTV 的「批量脚本 → 分镜图 → 视频片段」与 PINNGOO 的「批量生成分集剧本」：
 // 元枢此前只能一段一段点「生成当前画面/视频」，一集十几段就是十几轮点击 + 十几轮等待。
-// 这里把"逐段提交 → 统一等上游"做成一次操作，但有三条底线：
+// 这里把"逐段提交 → 统一等上游"做成一次操作，但有几条底线：
 // - **逐段串行提交**，不并发轰炸上游（视频任务本来就慢，并发只会一起排队一起超时）；
 // - 视频创建成功只算"排上队"，随后统一短轮询；超窗**不算失败**，任务号留着可以「查一次」；
 // - 每一段的成败都写进这张表，失败的**如实列出来**，不把整批说成"完成"。
+//
+// 2026-09-16 照 Lovart 的 API 设计补两处（它把这两件事当接口级约定，不是界面细节）：
+// - **高消耗操作先 confirm**：视频段或 4 段以上时先摊开"这次会真实调用什么"，确认了才跑；
+// - **收尾查询合并 + 退避**：一次请求查全部待收尾的运行（读操作比写操作该宽松），
+//   间隔按剩余数量退避——N 个任务号各问一遍是最容易把上游问毛的用法。
 const POLL_MS = 5000
+const POLL_MAX_MS = 30000
 const WINDOW_MS = 10 * 60 * 1000
 
 type Scope = 'scene' | 'episode' | 'pending' | 'all'
-interface Target { sceneId: string; beatId: string; kind: 'novel' | 'image' | 'video'; label: string }
+interface Target { sceneId: string; beatId: string; kind: 'novel' | 'image' | 'video'; label: string; seconds?: number }
 interface Row { key: string; label: string; kind: string; status: 'pending' | 'submitted' | 'waiting' | 'done' | 'failed' | 'skipped'; note?: string }
 
 const kindLabel: Record<string, string> = { novel: '文字', image: '画面', video: '视频' }
@@ -28,7 +34,7 @@ export default function StoryBatch({ project, selectedSceneId, busy, onDone }: {
 }) {
   const [open, setOpen] = useState(false)
   const [scope, setScope] = useState<Scope>('pending')
-  const [running, setRunning] = useState(false)
+  const [stage, setStage] = useState<'idle' | 'confirm' | 'running'>('idle')
   const [rows, setRows] = useState<Row[]>([])
   const [msg, setMsg] = useState('')
   const stopRef = useRef(false)
@@ -38,6 +44,7 @@ export default function StoryBatch({ project, selectedSceneId, busy, onDone }: {
   const beatsOf = (list: typeof project.scenes): Target[] => list.flatMap(s => (s.beats || []).map(b => ({
     sceneId: s.id, beatId: b.id, kind: b.kind,
     label: `${s.title || s.id} · ${(b.prompt || b.dialogue || b.id).replace(/\s+/g, ' ').slice(0, 24)}`,
+    seconds: Number((b as any).params?.seconds) > 0 ? Number((b as any).params.seconds) : undefined,
   })))
   const hasOutput = (sceneId: string, beatId: string) => (project.scenes.find(s => s.id === sceneId)?.outputs || [])
     .some(o => o.beatId === beatId && o.status === 'succeeded')
@@ -50,11 +57,22 @@ export default function StoryBatch({ project, selectedSceneId, busy, onDone }: {
   }
   const targets = targetsFor(scope)
   const nowDone = targets.filter(t => hasOutput(t.sceneId, t.beatId)).length
+  const tally = (list: Target[]) => ({
+    novel: list.filter(t => t.kind === 'novel').length,
+    image: list.filter(t => t.kind === 'image').length,
+    video: list.filter(t => t.kind === 'video').length,
+    videoSeconds: list.filter(t => t.kind === 'video').reduce((n, t) => n + (t.seconds || 5), 0),
+  })
+  const plan = tally(targets)
+  // 只有真的贵才拦一道：有视频（上游要排队出片），或一次要跑 4 段以上。
+  // 别的都直接跑——每次都弹确认，确认就会变成闭眼点掉的东西。
+  const needConfirm = stage === 'idle' && targets.length > 0 && (plan.video > 0 || targets.length >= 4)
+  const running = stage === 'running'
 
-  const run = async () => {
+  const start = async () => {
     if (!targets.length) { setMsg('这个范围里没有段落'); return }
     stopRef.current = false
-    setRunning(true); setMsg('')
+    setStage('running'); setMsg('')
     const list = [...targets]
     setRows(list.map(t => ({ key: t.beatId, label: t.label, kind: t.kind, status: 'pending' })))
     const patch = (key: string, next: Partial<Row>) => setRows(prev => prev.map(r => r.key === key ? { ...r, ...next } : r))
@@ -88,27 +106,40 @@ export default function StoryBatch({ project, selectedSceneId, busy, onDone }: {
       }
     }
     if (!waiting.length) {
-      setRunning(false)
+      setStage('idle')
       setMsg(`提交完成：${settled} 段已返回${failed ? `，${failed} 段失败（见下表）` : ''}${stopRef.current ? '（已按停止中断）' : ''}`)
       return
     }
     // 阶段二：统一等上游出片。超窗不是失败：任务号还在，可以逐条「查一次」。
     setMsg(`已提交完毕，正在等上游出片（${waiting.length} 个任务号）……`)
     const deadline = Date.now() + WINDOW_MS
+    let interval = POLL_MS
     while (waiting.length && Date.now() < deadline && !stopRef.current) {
-      await sleep(POLL_MS)
+      await sleep(interval)
+      let res
+      try { res = await StoryApi.checkRuns(project.id, { runIds: waiting.map(w => w.runId) }) }
+      catch { interval = Math.min(interval * 2, POLL_MAX_MS); continue }
+      if (res.project) onDone(res.project)
+      const byId = new Map<string, (typeof res.results)[number]>((res.results || []).map(r => [r.runId, r] as [string, (typeof res.results)[number]]))
       for (const item of [...waiting]) {
-        let res
-        try { res = await StoryApi.checkRun(project.id, { sceneId: item.sceneId, runId: item.runId }) } catch { continue }
-        if (res.project) onDone(res.project)
-        if (!res.settled) continue
+        const one = byId.get(item.runId)
+        if (!one) {
+          // 查不到这个运行（项目被改过？）：如实说，不能让它把整批拖到超窗
+          waiting.splice(waiting.indexOf(item), 1)
+          failed += 1
+          patch(item.key, { status: 'failed', note: '查不到这次运行了（项目可能被改过）' })
+          continue
+        }
+        if (!one.settled) continue
         waiting.splice(waiting.indexOf(item), 1)
-        if (res.status === 'failed') { failed += 1; patch(item.key, { status: 'failed', note: res.run?.degradation?.join('；') || '上游返回失败' }) }
-        else { settled += 1; patch(item.key, { status: 'done', note: res.status === 'degraded' ? '到了，但有降级项' : '已落盘' }) }
+        if (one.status === 'failed') { failed += 1; patch(item.key, { status: 'failed', note: one.degradation?.join('；') || '上游返回失败' }) }
+        else { settled += 1; patch(item.key, { status: 'done', note: one.status === 'degraded' ? `到了，但有降级项：${(one.degradation || []).join('；')}` : '已落盘' }) }
       }
+      // 读接口不该问得比写接口还勤：剩得越少问得越稀（Lovart 把查询单独分一档限流就是这个道理）
+      interval = waiting.length > 4 ? POLL_MS : Math.min(Math.round(interval * 1.5), POLL_MAX_MS)
       setMsg(`等待上游：还剩 ${waiting.length} 个任务号（已出 ${settled} 段${failed ? `，失败 ${failed} 段` : ''}）`)
     }
-    setRunning(false)
+    setStage('idle')
     if (waiting.length) setMsg(`等满 ${Math.round(WINDOW_MS / 60000)} 分钟还有 ${waiting.length} 个没出片。任务号还在，**这不是失败**——在上方对应段落点「查一次」继续问，或再点一次批量。`)
     else setMsg(`这一批结束：${settled} 段出片${failed ? `，${failed} 段失败（见下表）` : ''}${stopRef.current ? '（已按停止中断，未提交的段落保持原样）' : ''}`)
   }
@@ -129,8 +160,21 @@ export default function StoryBatch({ project, selectedSceneId, busy, onDone }: {
         <label><input type="radio" name="story-batch-scope" disabled={running} checked={scope === 'pending'} onChange={() => setScope('pending')} />全项目未出片（{beatsOf(project.scenes).filter(t => !hasOutput(t.sceneId, t.beatId)).length} 段）</label>
         <label><input type="radio" name="story-batch-scope" disabled={running} checked={scope === 'all'} onChange={() => setScope('all')} />全项目（{beatsOf(project.scenes).length} 段）</label>
       </div>
+      {stage === 'confirm' && <div className="story-batch-confirm" role="alertdialog" aria-label="确认这次批量生成">
+        <p>这次会<strong>真实调用</strong>：{[
+          plan.novel ? `${plan.novel} 段文字续写` : '',
+          plan.image ? `${plan.image} 张画面` : '',
+          plan.video ? `${plan.video} 段视频（合计约 ${plan.videoSeconds} 秒）` : '',
+        ].filter(Boolean).join(' + ')}</p>
+        <p className="story-hint">视频要等上游出片，通常几分钟；额度由各平台各自计费，元枢不代扣也不退。跑之前可以先用「检查生成输入」看单段的实际提示词。</p>
+        <div className="story-actions">
+          <button className="btn-primary" onClick={start}>确认，跑这 {targets.length} 段</button>
+          <button className="btn-ghost" onClick={() => { setStage('idle'); setMsg('已取消，什么都没提交。') }}>取消</button>
+        </div>
+      </div>}
       <div className="story-actions">
-        <button className="btn-primary" disabled={busy || running || !targets.length} onClick={run}>{running ? '批量进行中…' : `开始批量生成（${targets.length} 段）`}</button>
+        {needConfirm && <button className="btn-primary" disabled={busy || !targets.length} onClick={() => { setStage('confirm'); setMsg('') }}>{`开始批量生成（${targets.length} 段）`}</button>}
+        {stage === 'idle' && !needConfirm && <button className="btn-primary" disabled={busy || !targets.length} onClick={start}>{`开始批量生成（${targets.length} 段）`}</button>}
         {running && <button className="btn-ghost" onClick={() => { stopRef.current = true; setMsg('已请求停止：当前这一段提交完就停，剩下的不会提交。') }}>停止</button>}
       </div>
       {msg && <p role="status" className="story-notice">{msg}</p>}

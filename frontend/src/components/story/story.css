@@ -221,6 +221,27 @@
 .story-batch-failed { border-left: 2px solid var(--pi-danger, #bf616a); }
 .story-batch-failed .story-batch-note { color: var(--pi-danger, #bf616a); }
 .story-batch-done { border-left: 2px solid var(--pi-ok, #a3be8c); }
+/* 高消耗先确认：跑之前把"这次真的要调什么"摊开 */
+.story-batch-confirm { margin: 8px 0; padding: 10px 12px; border: 1px solid var(--pi-warn, #d08770); border-radius: var(--pi-r-sm); background: var(--pi-bg2); }
+.story-batch-confirm p { margin: 0 0 6px; font-size: 12px; color: var(--pi-text); }
+.story-batch-confirm .story-actions { margin-top: 8px; }
+/* 创作方法包（Skill）：方法管"怎么拍"，配方管"怎么生成" */
+.story-method { border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-md); padding: 10px 12px; background: var(--pi-bg1); }
+.story-method-body { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--pi-border-soft); }
+.story-method-pick { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.story-method-pick select { flex: 1 1 200px; min-height: 32px; font-size: 12px; }
+.story-method-card { padding: 10px 12px; border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-sm); background: var(--pi-bg2); margin-bottom: 10px; }
+.story-method-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; font-size: 11px; color: var(--pi-dim2); }
+.story-method-title strong { font-size: 13px; color: var(--pi-text); }
+.story-method-goal { margin: 6px 0 0; font-size: 12px; line-height: 1.7; color: var(--pi-text); }
+.story-method-steps { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; font-size: 12px; line-height: 1.7; color: var(--pi-dim); }
+.story-method-steps strong { color: var(--pi-text); }
+.story-method-block { margin-top: 8px; font-size: 11px; color: var(--pi-dim2); }
+.story-method-block > span { display: block; margin-bottom: 2px; }
+.story-method-block ul { margin: 0; padding-left: 18px; display: grid; gap: 3px; line-height: 1.7; color: var(--pi-dim); }
+.story-method-card .story-actions { margin-top: 10px; }
+.story-method-save { display: flex; flex-wrap: wrap; gap: 8px; }
+.story-method-save input { flex: 1 1 220px; min-height: 32px; font-size: 12px; }
 /* 风格预设：把画风从自由发挥变成可选的统一项 */
 .story-style-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
 .story-style-presets label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--pi-dim); }

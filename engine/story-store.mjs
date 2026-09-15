@@ -25,6 +25,9 @@ export function createProject(input = {}, clock = {}) {
     // 改编史：项目是从哪本小说/哪段原文改出来的、上次改出了哪些集。
     // 同一条铁律：新字段必须在这里登记，否则写进去读不回来。
     ...(Array.isArray(input.adaptations) && input.adaptations.length ? { adaptations: input.adaptations } : {}),
+    // 这一部戏用的方法包（创作方法，不是工艺参数——工艺参数在配方里）。
+    // 同样必须显式登记：不登记就写不回来，一键分镜/改编会悄悄退回"没有方法"。
+    ...(input.methodId ? { methodId: String(input.methodId) } : {}),
     activeSceneId: input.activeSceneId,
     createdAt: now,
     updatedAt: now,

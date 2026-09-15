@@ -14,16 +14,26 @@
 export const EPISODE_MAX = 200;
 const makeId = () => `ep-${Math.random().toString(36).slice(2, 10)}`;
 
+// 标题里已经写了「第 N 集」就不再存一遍：界面和三种剧本导出都会在前面加集号，
+// 存进去会变成「第 1 集 · 第 1 集 · 站台」（2026-09-16 真机跑批量时界面就是这个）。
+// 集号是独立字段，标题只该写"这一集叫什么"。
+const EPISODE_PREFIX_RE = /^\s*第\s*\d+\s*集\s*[·:：\-—、.．]?\s*/;
+export function cleanEpisodeTitle(title, no) {
+  const raw = String(title || '').replace(EPISODE_PREFIX_RE, '').trim().slice(0, 60);
+  return raw || `第 ${no} 集`;
+}
+
 export function normalizeEpisodes(value) {
   if (!Array.isArray(value)) return [];
   const out = [];
   for (const item of value.slice(0, EPISODE_MAX)) {
     if (!item || typeof item !== 'object') continue;
     const no = Number(item.no);
+    const numbered = Number.isFinite(no) && no > 0 ? Math.round(no) : out.length + 1;
     out.push({
       id: String(item.id || makeId()),
-      no: Number.isFinite(no) && no > 0 ? Math.round(no) : out.length + 1,
-      title: String(item.title || '').trim().slice(0, 60) || `第 ${Number.isFinite(no) && no > 0 ? Math.round(no) : out.length + 1} 集`,
+      no: numbered,
+      title: cleanEpisodeTitle(item.title, numbered),
       summary: String(item.summary || '').trim().slice(0, 600),
       // 目标时长（秒）：短剧按单集时长规划，有这个数才算"按目标排集"
       targetSeconds: Number.isFinite(Number(item.targetSeconds)) && Number(item.targetSeconds) > 0 ? Math.round(Number(item.targetSeconds)) : undefined,
@@ -45,7 +55,7 @@ export function createEpisode(input = {}, clock = {}) {
   return {
     id: String(input.id || (clock.id || makeId)()),
     no,
-    title: String(input.title || '').trim().slice(0, 60) || `第 ${no} 集`,
+    title: cleanEpisodeTitle(input.title, no),
     summary: String(input.summary || '').trim().slice(0, 600),
     ...(Number.isFinite(Number(input.targetSeconds)) && Number(input.targetSeconds) > 0 ? { targetSeconds: Math.round(Number(input.targetSeconds)) } : {}),
     createdAt: now,

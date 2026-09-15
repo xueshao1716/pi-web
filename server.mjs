@@ -88,7 +88,7 @@ import * as confirmRegistry from "./engine/tools/confirm-registry.mjs";
 import { initRefineApi, readRefineJson, runRefineScript, handleRefineStatus, handleRefineList, detectSkillDomain, handleRefineFeedback, handleRefineGenes, handleRefinePlan, handleRefineApprove, handleRefineReject, handleRefineRollback } from "./engine/refine-api.mjs";
 import { initMcpServer, handleMcp } from "./engine/mcp-server.mjs";
 import { initMcpChat } from "./engine/mcp-chat.mjs";
-import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryRunCheck, handleStoryAssist, handleStoryPortrait, handleStoryAssetRef, handleStoryLint, handleStoryStoryboard, handleStoryAdapt, handleStoryFilm, handleStoryEpisodes, handleStoryEpisodeAdd, handleStoryEpisodeUpdate, handleStoryEpisodeRemove, handleStorySceneAssign, handleStoryScriptStats, handleStoryExportScript, handleStoryPlayground, handleStoryPlaygroundClear, handleStoryRecipes, handleStoryRecipesExport, handleStoryRecipesImport, handleStoryRecipeDelete } from "./engine/story-orchestrator.mjs";
+import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryRunCheck, handleStoryRunCheckMany, handleStoryAssist, handleStoryPortrait, handleStoryAssetRef, handleStoryLint, handleStoryStoryboard, handleStoryAdapt, handleStoryFilm, handleStoryEpisodes, handleStoryEpisodeAdd, handleStoryEpisodeUpdate, handleStoryEpisodeRemove, handleStorySceneAssign, handleStoryScriptStats, handleStoryExportScript, handleStoryPlayground, handleStoryPlaygroundClear, handleStoryMethods, handleStoryMethodDelete, handleStoryMethodCapture, handleStoryMethodApply, handleStoryRecipes, handleStoryRecipesExport, handleStoryRecipesImport, handleStoryRecipeDelete } from "./engine/story-orchestrator.mjs";
 import { startShare, stopShareSync, handleShare, handleShareStatus, handleShareStop } from "./engine/share-api.mjs";
 import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
@@ -1698,6 +1698,9 @@ const API_ROUTES = [
   ["POST", /^\/api\/story\/projects\/([^/]+)\/run$/, async (res, req, url, m) => handleStoryRun({ root: WS_ROOT, generateImage, generateVideo, startVideoJob, checkVideoJob, saveArtifact, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 8))],
   // 收尾一次（查上游任务号）：视频是异步的，创建与收尾必须分开，不能让一个请求干等
   ["POST", /^\/api\/story\/projects\/([^/]+)\/run-check$/, async (res, req, url, m) => handleStoryRunCheck({ root: WS_ROOT, startVideoJob, checkVideoJob, saveArtifact }, res, m[1], await readBody(req, 8))],
+  // 一次收尾多个运行：批量生成挂着 N 个视频任务号，逐个查就是 N 个请求 + N 轮上游问答。
+  // 读接口本该比写接口宽松（Lovart 就是这么分档的），合并成一次最省事也最不容易撞限流。
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/run-check-many$/, async (res, req, url, m) => handleStoryRunCheckMany({ root: WS_ROOT, startVideoJob, checkVideoJob, saveArtifact }, res, m[1], await readBody(req, 8))],
   ["POST", /^\/api\/story\/projects\/([^/]+)\/assist$/, async (res, req, url, m) => handleStoryAssist({ root: WS_ROOT, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 8))],
   // 角色定妆照 / 场景参考图 / 道具参考图：产出可复用的形象与场景资产，写回 bible 对应条目；
   // 后续镜头生成会按"名字出现在提示词里"把参考图当作真实输入注入。
@@ -1724,6 +1727,13 @@ const API_ROUTES = [
   // 与角色对台词（Laper 的 Playground）：检验台词像不像这个人
   ["POST", /^\/api\/story\/projects\/([^/]+)\/playground$/, async (res, req, url, m) => handleStoryPlayground({ root: WS_ROOT, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 8))],
   ["POST", /^\/api\/story\/projects\/([^/]+)\/playground-clear$/, async (res, req, url, m) => handleStoryPlaygroundClear({ root: WS_ROOT }, res, m[1], await readBody(req, 4))],
+  // 创作方法包（Skill）：程序性知识，跨项目共用（与配方同级，所以挂在 /api/story/methods）
+  ["GET", "/api/story/methods", (res) => handleStoryMethods({ root: WS_ROOT }, res)],
+  ["POST", "/api/story/methods", async (res, req) => handleStoryMethods({ root: WS_ROOT }, res, await readBody(req, 16))],
+  ["DELETE", /^\/api\/story\/methods\/([^/]+)$/, (res, req, url, m) => handleStoryMethodDelete({ root: WS_ROOT }, res, m[1])],
+  // 把这个项目跑通的打法存成方法包 / 把某个方法包套用到项目
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/method-capture$/, async (res, req, url, m) => handleStoryMethodCapture({ root: WS_ROOT }, res, m[1], await readBody(req, 16))],
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/method$/, async (res, req, url, m) => handleStoryMethodApply({ root: WS_ROOT }, res, m[1], await readBody(req, 8))],
   // 生成配方（可存/可套用/可导出导入的生成设置）——挂在 /api/story/recipes，与项目平级，因为它跨项目
   ["GET", "/api/story/recipes", (res) => handleStoryRecipes({ root: WS_ROOT }, res)],
   ["GET", "/api/story/recipes/export", (res) => handleStoryRecipesExport({ root: WS_ROOT }, res)],

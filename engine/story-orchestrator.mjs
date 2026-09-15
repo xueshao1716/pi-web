@@ -9,11 +9,16 @@ import { buildStoryAssistPrompt, parseStoryAssist, buildStoryboardPrompt, parseS
 import { lintStoryProject } from './story-lint.mjs';
 import { collectFilmClips, concatClips } from './story-film.mjs';
 import { materializeMedia } from './media-inline.mjs';
+// seed 的合法区间由上游接口决定（Agnes 图像是 -1..999），权威定义在 media-api 里——
+// 编排层不许自己猜一个范围：上一版就是自己掷了个 2^31 的数，把画面生成全线打挂。
+import { SEED_RANGE, clampSeed } from './media-api.mjs';
 import { listRecipes, saveRecipe, deleteRecipe, importRecipes, exportRecipes, normalizeRefStrategy } from './story-recipes.mjs';
 import { buildStorySoFar, contextBudget } from './story-context.mjs';
 import { renderScript, scriptStats, SCRIPT_FORMATS } from './story-screenplay.mjs';
 import { runRoleplay, normalizePlayground } from './story-playground.mjs';
 import { normalizeEpisodes, createEpisode, groupScenesByEpisode, episodeStats, assignSceneToEpisode, removeEpisode, renumberEpisodes } from './story-episodes.mjs';
+// 创作方法包（Skill）：程序性知识，跨项目复用。见 engine/story-methods.mjs 开头的研究结论。
+import { listMethods, methodOf, saveMethod, deleteMethod, captureFromProject, methodBrief, reasoningBudget } from './story-methods.mjs';
 import { json } from './http-utils.mjs';
 
 const makeId = () => crypto.randomUUID();
@@ -216,7 +221,6 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
   // 单次生成能出几个变体（ComfyUI 的 batch_size）。上限刻意压到 4：
   // 每多一版就是一次真实计费调用，批量不该变成手滑烧钱。
   const VARIANT_MAX = 4;
-  const randomSeed = () => crypto.randomInt(0, 2 ** 31 - 1);
   const kindLabel = { novel: '文字段落', image: '画面', video: '视频片段' };
 
   // 一次生成要做的事，全部在这里算清楚。**预览与实跑共用它**：
@@ -243,7 +247,16 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
     const compiled = compileStoryPrompt({ bible: project.bible, scene, beat, inherited: context, negative });
     // seed 不再靠运气：用户没指定就现掷一个**并记下来**，这条 run 因此可复现。
     // 以前 run.seed 恒为 undefined，而能力声明却写着支持固定 seed——声称支持却从未生效。
-    const seed = Number.isFinite(Number(input?.seed)) ? Number(input.seed) : randomSeed();
+    //
+    // 取值范围必须落在上游认的区间里（SEED_RANGE，Agnes 图像接口是 -1..999）：
+    // 上一版 randomSeed() 掷的是 0..2^31-1，于是**每一张画面都被 400 拒掉**，
+    // 界面只报"图像模型未返回图片"。超出范围时**夹到区间内并如实告诉用户**——
+    // 悄悄改掉用户填的 seed 会砸掉"填 42 就能复现"这句话，所以 run.seed 记的是实际发出去的那个。
+    const asked = Number(input?.seed);
+    const resolvedSeed = Number.isFinite(asked) && input?.seed !== null && input?.seed !== ''
+      ? clampSeed(asked)
+      : { seed: crypto.randomInt(SEED_RANGE.min, SEED_RANGE.max + 1), clamped: false };
+    const seed = resolvedSeed.seed;
     const variants = Math.max(1, Math.min(VARIANT_MAX, Number(input?.variants) || Number(defaultRecipe?.variants) || 1));
     // 参考图策略：显式 > 段落 > 项目默认配方 > 按类型的默认（见 story-recipes.defaultRefStrategy）
     const refStrategy = normalizeRefStrategy(input.reference ?? beat.reference ?? defaultRecipe?.reference, kind);
@@ -259,6 +272,7 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
     const orderedImages = refStrategy.images > 0 ? [...new Set(pool)].slice(0, refStrategy.images) : [];
     const usedRefs = orderedImages;
     const notes = [];
+    if (resolvedSeed.clamped) notes.push(`上游只接受 ${SEED_RANGE.min}–${SEED_RANGE.max} 的 seed，你填的 ${resolvedSeed.asked} 已按 ${resolvedSeed.seed} 上送`);
     const upstreamImages = [];
     for (const ref of orderedImages) {
       const r = materializeMedia(ref, { wsRoot: root });
@@ -314,6 +328,36 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       || available.find(m => m?.capabilities?.chat && !m.reasoning)
       || (typeof getDefaultModel === 'function' ? getDefaultModel() : null);
   };
+  // 收尾共用逻辑：**只此一份**。单条「查一次」与批量收尾必须走同一段判定，
+  // 否则两条路的"出片/还在排队/真失败"迟早会给出不一样的说法。
+  // 就地改 run（调用方决定何时落盘——批量收尾只写一次盘）。
+  const settleRun = async (run) => {
+    if (!run.taskId) {
+      // 没有任务号就没得查：这一版是创建阶段就断了的孤儿，如实标失败
+      run.status = 'failed'; run.finishedAt = (clock.now || nowIso)();
+      run.degradation = [...(run.degradation || []), '这一版没有任务号，无法查询上游（多半是创建阶段就断了）'];
+      return { status: 'failed', settled: true, degradation: run.degradation };
+    }
+    const adapter = resolvedAdapters[run.kind] || resolvedAdapters.video;
+    const result = typeof adapter?.settle === 'function'
+      ? await adapter.settle({ taskId: run.taskId, model: run.model, promptText: run.promptText })
+      : { status: 'failed', error: '视频引擎未接入（缺 checkVideoJob）' };
+    if (result?.status === 'running') {
+      // 还在排队：**什么也不改**，把上游状态带回去让界面说清楚
+      return { status: 'running', settled: false, upstream: result.upstream || 'pending', waitedMs: waitedMs(run, clock) };
+    }
+    if (result?.output) {
+      run.outputAssets = [{ id: `${run.id}-output`, role: 'output', ...result.output }];
+      const reported = Array.isArray(result.output.degradation) ? result.output.degradation.filter(Boolean).map(String) : [];
+      if (reported.length) run.degradation = [...(run.degradation || []), ...reported];
+      run.status = run.degradation?.length ? 'degraded' : 'succeeded';
+    } else {
+      run.status = 'failed';
+      run.degradation = [...(run.degradation || []), result?.error || '上游返回失败'];
+    }
+    run.finishedAt = (clock.now || nowIso)();
+    return { status: run.status, settled: true, waitedMs: waitedMs(run, clock), ...(run.degradation?.length ? { degradation: run.degradation } : {}) };
+  };
   const resolvedAdapters = {
     image: adapters.image || createImageAdapter({ generateImage, saveArtifact }),
     novel: adapters.novel || createNovelAdapter({ directChat }),
@@ -365,7 +409,9 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       // 批量变体（ComfyUI 的 batch_size）：一次点击出 N 版，seed 依次递增，
       // 每版都是一条独立 run，于是天然落进「本段结果」和「作品列表」——不需要新的展示概念。
       for (let i = 0; i < plan.variants; i++) {
-        const seed = plan.seed + i;
+        // 变体 seed 依次递增，但**不许越过上游区间**：999 + 变体数会直接换来一个 400。
+        // 到头了就绕回区间开头（宁可两版撞 seed，也不能因为"第 4 版"整批失败）。
+        const seed = (plan.seed + i) % (SEED_RANGE.max + 1);
         const run = createGenerationRun({
           ...input, kind: plan.kind, model: plan.model, projectId: id, sceneId: scene.id, beatId: beat.id,
           beatNo, sceneTitle: scene.title, seed, params: plan.params,
@@ -443,33 +489,40 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       const run = (scene?.outputs || []).find(r => r.id === input.runId);
       if (!scene || !run) throw Object.assign(new Error('sceneId 或 runId 不存在'), { statusCode: 400 });
       if (run.status !== 'running') return { project, run, status: run.status, settled: false };
-      if (!run.taskId) {
-        // 没有任务号就没得查：这一版是创建阶段就断了的孤儿，如实标失败
-        run.status = 'failed'; run.finishedAt = (clock.now || nowIso)();
-        run.degradation = [...(run.degradation || []), '这一版没有任务号，无法查询上游（多半是创建阶段就断了）'];
-        await writeProject(root, project);
-        return { project, run, status: 'failed', settled: true };
-      }
-      const adapter = resolvedAdapters[run.kind] || resolvedAdapters.video;
-      const result = typeof adapter?.settle === 'function'
-        ? await adapter.settle({ taskId: run.taskId, model: run.model, promptText: run.promptText })
-        : { status: 'failed', error: '视频引擎未接入（缺 checkVideoJob）' };
-      if (result?.status === 'running') {
-        // 还在排队：**什么也不改**，把上游状态带回去让界面说清楚
-        return { project, run, status: 'running', settled: false, upstream: result.upstream || 'pending', waitedMs: waitedMs(run, clock) };
-      }
-      if (result?.output) {
-        run.outputAssets = [{ id: `${run.id}-output`, role: 'output', ...result.output }];
-        const reported = Array.isArray(result.output.degradation) ? result.output.degradation.filter(Boolean).map(String) : [];
-        if (reported.length) run.degradation = [...(run.degradation || []), ...reported];
-        run.status = run.degradation?.length ? 'degraded' : 'succeeded';
-      } else {
-        run.status = 'failed';
-        run.degradation = [...(run.degradation || []), result?.error || '上游返回失败'];
-      }
-      run.finishedAt = (clock.now || nowIso)();
+      const outcome = await settleRun(run);
       await writeProject(root, project);
-      return { project, run, status: run.status, settled: true, waitedMs: waitedMs(run, clock) };
+      return { project, run, status: outcome.status, ...outcome };
+    },
+    // 一次收尾**多个**运行：批量生成会同时挂 N 个视频任务号，逐个查就是 N 个请求、
+    // N 次读盘写盘、N 轮上游问答（Lovart 把"查询"单独分一档限流，并规定同一 thread 同时只跑一个生成；
+    // 我们创建已经是串行的，但收尾查询必须合并：一次读盘、一轮问答、一次写盘）。
+    checkRuns: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const wanted = new Set((Array.isArray(input.runIds) ? input.runIds : []).map(String));
+      if (!wanted.size) throw Object.assign(new Error('要给 runIds（要收尾哪些运行）'), { statusCode: 400 });
+      const results = [];
+      let touched = false;
+      for (const scene of project.scenes || []) {
+        for (const run of scene.outputs || []) {
+          if (!wanted.has(String(run.id))) continue;
+          if (run.status !== 'running') {
+            results.push({ runId: run.id, sceneId: scene.id, status: run.status, settled: false });
+            continue;
+          }
+          const outcome = await settleRun(run);
+          if (outcome.settled) touched = true;
+          results.push({ runId: run.id, sceneId: scene.id, kind: run.kind, ...outcome });
+        }
+      }
+      if (touched) await writeProject(root, project);
+      const known = new Set(results.map(r => r.runId));
+      return {
+        project,
+        results,
+        pending: results.filter(r => !r.settled && r.status === 'running').map(r => r.runId),
+        // 找不到的运行 id 如实回报：可能项目被改过，不能假装查过了
+        missing: [...wanted].filter(runId => !known.has(runId)),
+      };
     },
     pollWindowMs: () => videoPollWindowMs(),
     // ── 分集：短剧/系列内容的组织单位（PINNGOO 的"分集短剧"、LibTV 的"按集拆镜头"都是这个）──
@@ -524,6 +577,46 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       return { project: next };
     },
     scriptStats: async (id) => scriptStats(await readProject(root, id)),
+    // ── 创作方法包（Skill）──
+    // 内置 + 自己存的，跨项目共用（所以和配方一样落在项目目录之外）。
+    methods: () => listMethods(root),
+    saveMethod: (input) => saveMethod(root, input, clock),
+    deleteMethod: (id) => deleteMethod(root, id),
+    // 把"这个项目跑通的打法"存成方法包：结构照抄，内容不抄（方法要能跨项目用）。
+    captureMethod: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const captured = captureFromProject(project, { name: input.name, clock });
+      const saved = await saveMethod(root, captured, clock);
+      return { ...saved, capturedFrom: { id: project.id, title: project.title } };
+    },
+    // 套用到项目：只写**结构性**的东西。
+    // 已有目标时长的集**不动**（用户自己排过的时长不该被方法包覆盖），
+    // 已有画风时也不覆盖（人工调好的视觉基调优先）——方法包是建议，不是接管。
+    applyMethod: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const methodId = String(input.methodId || '');
+      if (!methodId) {
+        const next = withUpdated({ ...project });
+        delete next.methodId;
+        validateProject(next);
+        await writeProject(root, next);
+        return { project: next, method: null, applied: { episodes: 0, style: false } };
+      }
+      const method = await methodOf(root, methodId);
+      if (!method) throw Object.assign(new Error('这个方法包不存在'), { statusCode: 404 });
+      let episodesTouched = 0;
+      const episodes = normalizeEpisodes(project.episodes).map(e => {
+        if (e.targetSeconds || !method.targetSeconds) return e;
+        episodesTouched += 1;
+        return { ...e, targetSeconds: method.targetSeconds };
+      });
+      const styleEmpty = !String(project.bible?.style?.visual || '').trim();
+      const bible = styleEmpty && method.styleHint ? { ...project.bible, style: { ...(project.bible?.style || {}), visual: method.styleHint } } : project.bible;
+      const next = withUpdated({ ...project, methodId, ...(episodes.length ? { episodes } : {}), bible });
+      validateProject(next);
+      await writeProject(root, next);
+      return { project: next, method, applied: { episodes: episodesTouched, style: styleEmpty && Boolean(method.styleHint) } };
+    },
     // ── 剧本导出（Laper 的地基：能出图出片，还要能拿出一个能给人看的剧本文件）──
     exportScript: async (id, input = {}) => {
       const project = await readProject(root, id);
@@ -649,14 +742,23 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       const idea = String(input.idea || '').trim().slice(0, 2000);
       const count = Math.max(2, Math.min(12, Number(input.count) || 6));
       const model = pickJsonModel(input.model);
-      const basePrompt = buildStoryboardPrompt({ title: project.title, logline: project.logline, idea, current: project.bible, count });
+      // 方法包（Skill）：项目上挂着就用它的方法与推理档位。
+      // 这是 Lovart 那条"方法包决定怎么做，用户不必每次重新交代"的落点。
+      const method = await methodOf(root, project.methodId);
+      const brief = methodBrief(method);
+      const budget = reasoningBudget(method?.reasoning, 'storyboard');
+      const methodScenes = method?.scenesPerEpisode && method?.beatsPerScene
+        ? `\n\n【本片方法】按每场约 ${method.beatsPerScene} 段组织，整场同一种 kind 更连贯。`
+        : '';
+      const basePrompt = buildStoryboardPrompt({ title: project.title, logline: project.logline, idea, current: project.bible, count })
+        + (brief ? `\n\n${brief}` : '') + methodScenes;
       // 少于一半才算"明显不足"：模型偶尔给 count-1 段是正常波动，不该为它多烧一次调用。
       const short = n => n < Math.max(2, Math.ceil(count / 2));
       let storyboard = null, attempts = 0, retried = false, firstCount = 0;
       let prompt = basePrompt;
       while (attempts < 2) {
         attempts += 1;
-        const result = await directChat(model, prompt, [], { maxTokens: 3000, timeout: 90000 });
+        const result = await directChat(model, prompt, [], budget);
         if (!result?.text) {
           if (attempts === 1) { prompt = basePrompt; continue; }   // 没返回内容也值得再要一次
           throw new Error('分镜模型没有返回内容');
@@ -730,8 +832,12 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
     adapt: async (id, input = {}) => {
       const project = await readProject(root, id);
       const source = await collectAdaptSource(input, readNovelBook);
+      // 方法包决定"怎么改"：单集时长与集数优先照方法包来（用户显式填的优先），
+      // 推理档位决定这次调用的预算（thinking 要多给输出余量，否则分集大纲会被截在半路）。
+      const method = await methodOf(root, project.methodId);
+      const budget = reasoningBudget(method?.reasoning, 'adapt');
       const episodeWish = Math.max(1, Math.min(60, Number(input.episodes) || 4));
-      const secondsPerEpisode = Math.max(15, Math.min(1800, Number(input.secondsPerEpisode) || 90));
+      const secondsPerEpisode = Math.max(15, Math.min(1800, Number(input.secondsPerEpisode) || method?.targetSeconds || 90));
       const cap = 60000;
       const usedChars = Math.min(source.text.length, cap);
       const sourceBrief = {
@@ -754,12 +860,12 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       const basePrompt = buildAdaptPrompt({
         title: project.title, sourceText: source.text, episodes: episodeWish,
         secondsPerEpisode, idea: String(input.idea || '').trim().slice(0, 500),
-      });
+      }) + (methodBrief(method) ? `\n\n${methodBrief(method)}` : '');
       let parsed = null, attempts = 0, retried = false, firstEpisodes = 0;
       let prompt = basePrompt;
       while (attempts < 2) {
         attempts += 1;
-        const result = await directChat(model, prompt, [], { maxTokens: 8000, timeout: 180000 });
+        const result = await directChat(model, prompt, [], budget);
         if (!result?.text) {
           if (attempts === 1) continue;
           throw new Error('改编模型没有返回内容');
@@ -923,6 +1029,10 @@ export async function handleStoryRunCheck(ctx, res, id, body) {
   try { return json(res, 200, await createStoryOrchestrator(ctx).checkRun(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
 }
 
+export async function handleStoryRunCheckMany(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).checkRuns(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
 export async function handleStoryEpisodes(ctx, res, id) {
   try { return json(res, 200, await createStoryOrchestrator(ctx).episodes(id)); } catch (e) { return sendError(res, e); }
 }
@@ -979,6 +1089,29 @@ export async function handleStoryStoryboard(ctx, res, id, body) {
 
 export async function handleStoryAdapt(ctx, res, id, body) {
   try { return json(res, 200, await createStoryOrchestrator(ctx).adapt(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryMethods(ctx, res, body) {
+  try {
+    const api = createStoryOrchestrator(ctx);
+    if (body === undefined) return json(res, 200, { methods: await api.methods() });
+    return json(res, 201, await api.saveMethod(bodyOrEmpty(body)));
+  } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryMethodDelete(ctx, res, id) {
+  try {
+    const r = await createStoryOrchestrator(ctx).deleteMethod(id);
+    return json(res, r.ok ? 200 : 404, r);
+  } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryMethodCapture(ctx, res, id, body) {
+  try { return json(res, 201, await createStoryOrchestrator(ctx).captureMethod(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryMethodApply(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).applyMethod(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
 }
 
 export async function handleStoryFilm(ctx, res, id, body) {

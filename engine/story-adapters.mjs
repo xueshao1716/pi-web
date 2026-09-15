@@ -57,7 +57,38 @@ export function createNovelAdapter({ directChat }) {
   };
 }
 
-export function createVideoAdapter({ generateVideo, startVideoJob, checkVideoJob, saveArtifact }) {
+// 上游"忙"和上游"拒绝"是两件事，处理方式也该是两回事。
+// 2026-09-16 真机批量撞到：`video_queue_full 503 — video queue is full, please retry later`。
+// 这句是上游自己让我们稍后再试的，而当时的实现把它当成终局失败直接报给用户——
+// 用户看到的是"失败"，实际上只是那一秒队列满了。
+// 照 Lovart 的公开约定：网络/瞬时错误自动重试并退避，**限流与计费错误直接返回**（重试也白搭）。
+const TRANSIENT_RE = /queue is full|queue_full|please retry|too many requests|rate ?limit|\b(429|500|502|503|504)\b|timeout|timed out|ECONNRESET|socket hang up|fetch failed/i;
+const FATAL_RE = /insufficient|balance|quota|unauthor|forbidden|invalid|not ?found|billing|payment/i;
+const RETRY_DELAYS = [2000, 5000];   // 两次重试，最多多等 7 秒——再久就该让用户自己决定
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// 只对"创建"这一步重试：它是幂等语义最清楚的一步（要么拿到任务号，要么没拿到）。
+// 收尾查询不重试——查一次就是查一次，等多久由人/轮询决定。
+async function startWithRetry(run, label, delays = RETRY_DELAYS) {
+  let last = null;
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      const r = await run();
+      const text = `${r?.error || ''}`;
+      if (r?.task_id || r?.video) return r;
+      if (!text || FATAL_RE.test(text) || !TRANSIENT_RE.test(text)) return r;
+      last = r;
+    } catch (error) {
+      const text = String(error?.message || error);
+      if (FATAL_RE.test(text) || !TRANSIENT_RE.test(text)) throw error;
+      last = { error: text };
+    }
+    if (attempt < delays.length) await sleep(delays[attempt]);
+  }
+  return { ...(last || {}), error: `${label}（上游忙，已重试 ${delays.length} 次）：${last?.error || '未知原因'}` };
+}
+
+export function createVideoAdapter({ generateVideo, startVideoJob, checkVideoJob, saveArtifact, retryDelays = RETRY_DELAYS }) {
   // 提示词与创建体只在这里组一遍：同步路径（generate）与"只创建"路径（start）必须完全一致，
   // 否则两条路会各自漂移——那种不一致很难被发现，只会在某一条路上出结果。
   const build = ({ prompt, model, seed, params = {}, references = [], referenceImages = [] } = {}) => {
@@ -87,7 +118,7 @@ export function createVideoAdapter({ generateVideo, startVideoJob, checkVideoJob
       if (typeof generateVideo !== 'function') return { status: 'failed', error: '视频引擎未接入' };
       const { finalPrompt, body } = build({ prompt, model, seed, params, references, referenceImages });
       try {
-        const result = await generateVideo(model?.provider, model?.id, finalPrompt, body);
+        const result = await startWithRetry(() => generateVideo(model?.provider, model?.id, finalPrompt, body), '视频生成失败', retryDelays);
         if (!result?.video) return { status: 'failed', error: result?.error || '视频模型未返回片子', model: clean(model) };
         const stored = typeof saveArtifact === 'function' ? normalizeStored(await saveArtifact({ type: 'video', url: result.video, prompt: finalPrompt }), result.video) : { url: result.video, local: true, reason: '' };
         const notes = adapterNotes(result);
@@ -101,7 +132,7 @@ export function createVideoAdapter({ generateVideo, startVideoJob, checkVideoJob
       if (typeof startVideoJob !== 'function') return { status: 'failed', error: '视频引擎未接入（缺 startVideoJob）' };
       const { finalPrompt, body } = build({ prompt, model, seed, params, references, referenceImages });
       try {
-        const r = await startVideoJob(model?.provider, model?.id, finalPrompt, body);
+        const r = await startWithRetry(() => startVideoJob(model?.provider, model?.id, finalPrompt, body), '视频任务创建失败', retryDelays);
         const notes = adapterNotes(r);
         // 少数上游会在创建响应里直接给成品
         if (r?.video) return { status: 'succeeded', model: clean(model), video: r.video, prompt: finalPrompt, ...(notes.length ? { degradation: notes } : {}) };

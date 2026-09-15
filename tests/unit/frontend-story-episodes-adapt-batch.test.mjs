@@ -78,7 +78,9 @@ test('批量生成：逐段串行提交 + 统一等上游；超窗不算失败�
   assert.match(workbench, /selectedSceneId=\{scene\?\.id\}/, '批量要拿到真正的场 id');
   assert.match(batch, /for \(const \[i, t\] of list\.entries\(\)\)/, '必须逐段串行提交');
   assert.ok(!/Promise\.all/.test(batch), '不能并发轰炸上游：视频任务本来就要排队，并发只会一起超窗');
-  assert.match(batch, /StoryApi\.checkRun/);
+  assert.match(batch, /StoryApi\.checkRuns/, '收尾查询要合并成一次请求（照 Lovart 的读写分档）');
+  assert.ok(!/StoryApi\.checkRun\(/.test(batch), '不能再逐个 run 去问：N 个任务号就是 N 个请求 + N 轮上游问答');
+  assert.match(batch, /POLL_MAX_MS/, '轮询间隔要退避，不能一直按最短间隔问');
   assert.match(batch, /逐段串行提交/, '界面上要说清它是串行的');
   assert.match(batch, /这不是失败/, '超窗必须说清不是失败（任务号还在）');
   assert.match(batch, /只算「排上队」/, '创建成功只是排队，不能报成"出片了"');
@@ -87,6 +89,52 @@ test('批量生成：逐段串行提交 + 统一等上游；超窗不算失败�
   assert.match(batch, /aria-label|当前场|当前集/, '范围要能选：这一场 / 这一集 / 全项目');
   assert.match(batch, /scope === 'episode'/, '要能"这一集全部生成"');
   assert.match(css, /\.story-batch/);
+});
+
+test('高消耗操作先确认（照 Lovart 的 confirm）：跑之前摊开"这次要真实调用什么"', () => {
+  // 有视频段（上游要排队出片）或一次 4 段以上，才拦一道——每次都弹确认，确认就会被闭眼点掉
+  assert.match(batch, /const needConfirm = stage === 'idle' && targets\.length > 0 && \(plan\.video > 0 \|\| targets\.length >= 4\)/);
+  assert.match(batch, /'idle' \| 'confirm' \| 'running'/);
+  assert.match(batch, /这次会<strong>真实调用<\/strong>/);
+  assert.match(batch, /合计约 \$\{plan\.videoSeconds\} 秒/);
+  assert.match(batch, /确认，跑这 \{targets\.length\} 段/);
+  assert.match(batch, /已取消，什么都没提交/, '取消要说清"什么都没提交"，不能让人以为已经跑了');
+  // 不编造单价：只报"会真实调用多少次、要等多久"，额度归各平台各自计费
+  assert.match(batch, /额度由各平台各自计费，元枢不代扣也不退/);
+  assert.ok(!/[¥$€]\s?\d|credits|积分/.test(batch), '不许自己编价格或积分（我们没有单价数据，编一个数就是骗人）');
+  assert.match(css, /\.story-batch-confirm/);
+  const api = read('frontend/src/api.ts');
+  assert.match(api, /run-check-many/);
+  assert.match(server, /run-check-many/);
+  assert.match(orchestrator, /checkRuns: async \(id, input = \{\}\)/);
+});
+
+test('创作方法包：界面要能选、能套用、能把项目跑通的打法存下来（照 Lovart 的 Skill）', () => {
+  const method = read('frontend/src/components/story/StoryMethod.tsx')
+  assert.match(workbench, /StoryMethod/, '方法包面板要挂在制作台里');
+  assert.match(method, /StoryApi\.methods/);
+  assert.match(method, /StoryApi\.applyMethod/);
+  assert.match(method, /StoryApi\.captureMethod/, '要能把当前项目跑通的打法存成方法包');
+  assert.match(method, /StoryApi\.deleteMethod/);
+  assert.match(method, /复制成我的（内置不可改）/, '内置方法包要能复制成自己的再改');
+  assert.match(method, /aria-label="选择方法包"/);
+  assert.match(method, /aria-label="方法包名字"/);
+  assert.match(method, /不会把你这个项目的提示词和台词抄进去/, '要说清存的是结构不是内容');
+  assert.match(method, /方法包管<strong>怎么拍<\/strong>/, '要说清方法与配方的分工');
+  assert.match(method, /深思档|快档/, '推理档位要看得见');
+  assert.match(api, /\/api\/story\/methods/);
+  assert.match(api, /method-capture/);
+  assert.match(api, /captureMethod/);
+  assert.match(server, /\/api\/story\/methods/);
+  assert.match(server, /method-capture/);
+  assert.match(orchestrator, /captureMethod: async/);
+  assert.match(orchestrator, /applyMethod: async/);
+  // 方法必须真的进提示词与预算，否则它只是一段没人读的说明
+  assert.match(orchestrator, /methodBrief\(method\)/);
+  assert.match(orchestrator, /reasoningBudget\(method\?\.reasoning/);
+  assert.match(types, /methodId\?: string/);
+  assert.match(types, /export interface StoryMethod/);
+  assert.match(css, /\.story-method/);
 });
 
 test('风格预设：是可选的统一画风，不是又一句自由发挥', () => {
