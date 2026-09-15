@@ -87,7 +87,7 @@ export default function StoryRecipes({ current, busy, onApply, onApplyToProject,
       <button className="btn-ghost" disabled={busy} onClick={() => setOpen(o => !o)}>{open ? '收起' : '配方'}</button>
     </div>
     {open && <div className="story-recipes-body">
-      <p className="story-hint">配方只存**工艺**（类型 / 模型 / 尺寸 / 负向 / seed / 变体数），不存提示词与台词——换配方不会动你的故事。</p>
+      <p className="story-hint">配方只存<strong>工艺</strong>（类型 / 模型 / 尺寸 / 负向 / seed / 变体数），不存提示词与台词——换配方不会动你的故事。</p>
       {recipes.length > 0 && <ul className="story-recipe-list">
         {recipes.map(r => <li key={r.id} className={`story-recipe-item${r.id === defaultRecipeId ? ' is-default' : ''}`}>
           <div className="story-recipe-meta">

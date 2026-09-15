@@ -137,6 +137,42 @@ test('创作方法包：界面要能选、能套用、能把项目跑通的打�
   assert.match(css, /\.story-method/);
 });
 
+test('删掉不要的那几版：确认块 + 「文件留不留」必须给用户选', () => {
+  const results = read('frontend/src/components/story/StoryResults.tsx')
+  assert.match(workbench, /onDelete=\{deleteRun\}/, '删除要接回编排层');
+  assert.match(workbench, /StoryApi\.deleteRun/, '要真的调用删除通路');
+  assert.match(results, /删除这一版/);
+  assert.match(results, /role="alertdialog"/, '不可逆操作要有明确的确认块，不能点一下就没了');
+  assert.match(results, /只从列表里移除，文件留着/, '文件留不留要让用户选');
+  assert.match(results, /只要还有别的地方（别的段、别的项目）在用它，就会自动保留/, '要说清文件什么时候会被保留');
+  assert.match(results, /上游出的片子删掉后就收不回来了/, '排队中的版本要提示后果');
+  assert.match(css, /\.story-confirm/);
+  assert.match(api, /run-delete/);
+  assert.match(server, /run-delete\$/);
+  assert.match(orchestrator, /deleteRun: async/);
+});
+
+test('挑片段合成：默认还是原来那套，改了才按你的；挑不出来要逐条说明', () => {
+  const film = read('frontend/src/components/story/StoryFilm.tsx')
+  assert.match(workbench, /StoryFilm/, '挑片段面板要挂在制作台里');
+  assert.match(film, /StoryApi\.filmPlan/, '要先拿到候选清单');
+  assert.match(film, /StoryApi\.film\(project\.id, \{ clips: picks \}\)/, '合成时把挑好的版本与顺序送上去');
+  assert.match(film, /默认就是原来那套/, '不改也能一键合成——不能为了新功能把老路堵掉');
+  assert.match(film, /aria-label=\{`第 \$\{b\.beatNo\} 段用哪一版`\}/, '每一段要能换版本');
+  assert.match(film, /上移|下移/, '顺序就是成片里的先后，要能调');
+  assert.match(film, /整段不要/, '要能整段排除');
+  assert.match(film, /按这个顺序合成/, '按钮要说清"按这个顺序"');
+  assert.match(film, /没拼进去/, '拼不进去的段要如实回报，不能静默少一段');
+  assert.match(film, /本地都找不到片子了|先给它生成一段视频/, '文件不在/没生成要给不同的说法');
+  assert.match(film, /记下用了哪几段的哪一版/, '成片要能追溯用了哪一版镜头');
+  assert.match(css, /\.story-film-pick/);
+  assert.match(api, /film-plan/);
+  assert.match(server, /film-plan\$/);
+  assert.match(orchestrator, /filmPlan: async/);
+  assert.match(types, /StoryFilmPlan/);
+  assert.match(types, /picks\?: \{ beatId: string; runId: string \}\[\]/);
+});
+
 test('风格预设：是可选的统一画风，不是又一句自由发挥', () => {
   const ids = [...styles.matchAll(/^    id: '([a-z0-9-]+)'/gm)].map(m => m[1]);
   assert.equal(ids.length, 10, '预置 10 种画风');

@@ -7,7 +7,7 @@ import { compileStoryPrompt, buildPortraitPrompt, buildAssetPrompt } from './sto
 import { createImageAdapter, createNovelAdapter, createVideoAdapter } from './story-adapters.mjs';
 import { buildStoryAssistPrompt, parseStoryAssist, buildStoryboardPrompt, parseStoryboard, buildAdaptPrompt, parseAdapt } from './story-assist.mjs';
 import { lintStoryProject } from './story-lint.mjs';
-import { collectFilmClips, concatClips } from './story-film.mjs';
+import { collectFilmClips, concatClips, filmPlan, videoFileOf, localPathFromArtifactUrl } from './story-film.mjs';
 import { materializeMedia } from './media-inline.mjs';
 // seed 的合法区间由上游接口决定（Agnes 图像是 -1..999），权威定义在 media-api 里——
 // 编排层不许自己猜一个范围：上一版就是自己掷了个 2^31 的数，把画面生成全线打挂。
@@ -965,11 +965,44 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
           : {}),
       };
     },
+    // 合成前的候选清单（只读）：每段有哪些版本能进片子、各自什么状态。
+    // 用户常常同一段生成好几版镜头，只让他"按分镜顺序自动拼"等于把挑片子的权利拿走了。
+    filmPlan: async (id) => filmPlan(await readProject(root, id), root),
     // 成片合成：按分镜顺序把**成功**的视频片段拼成一条长片，并落盘为正式产物。
     // 界面此前明确写着「暂不自动拼成长片」，这里把它做掉。
+    //
+    // 2026-09-16 补「挑版本」：`clips: [{ beatId, runId }]` 指定**每一段用哪一版、什么顺序**；
+    // 不传就退回原行为（每段取最后一次成功、按分镜顺序）。挑不出来的段不静默丢掉——
+    // 逐条进 skipped 回报（文件不在了 / 这一版已被删除 / 这一版不属于这一段）。
     assembleFilm: async (id, input = {}) => {
       const project = await readProject(root, id);
-      const clips = collectFilmClips(project, root);
+      const clips = [];
+      const skipped = [];
+      const picks = Array.isArray(input.clips) ? input.clips : null;
+      if (picks) {
+        for (const [i, pick] of picks.entries()) {
+          const runId = String(pick?.runId || '');
+          const beatId = String(pick?.beatId || '');
+          if (!runId || !beatId) { skipped.push({ index: i, beatId, runId, reason: '这一条没写清是哪一段的哪一版' }); continue; }
+          let hit = null;
+          for (const scene of project.scenes || []) {
+            const run = (scene.outputs || []).find(r => String(r.id) === runId);
+            if (run) { hit = { scene, run }; break; }
+          }
+          if (!hit) { skipped.push({ index: i, beatId, runId, reason: '这一版已经不在了（可能刚被删掉）' }); continue; }
+          if (String(hit.run.beatId) !== beatId) { skipped.push({ index: i, beatId, runId, reason: '这一版不属于这一段' }); continue; }
+          if (!['succeeded', 'degraded'].includes(hit.run.status)) { skipped.push({ index: i, beatId, runId, reason: `这一版状态是「${hit.run.status}」，没有成品可拼` }); continue; }
+          const { asset, file, exists } = videoFileOf(hit.run, root);
+          // 外部链接（http/data）落不到本地就拼不进去：ffmpeg 要读文件，如实说而不是悄悄跳过
+          if (!exists) { skipped.push({ index: i, beatId, runId, reason: asset?.url ? '这一版的片子不在本地（外链或文件已被移走）' : '这一版没有视频成品' }); continue; }
+          clips.push({ sceneId: hit.scene.id, beatId, runId, file, url: asset.url, index: i });
+        }
+        if (!clips.length) {
+          throw Object.assign(new Error(`挑出来的片段一个都拼不了：${skipped.map(s => s.reason).join('；') || '没有选中任何片段'}`), { statusCode: 400, skipped });
+        }
+      } else {
+        clips.push(...collectFilmClips(project, root));
+      }
       if (!clips.length) throw Object.assign(new Error('还没有成功的视频片段可合成：先在某个段落里生成视频'), { statusCode: 400 });
       if (typeof saveArtifactFromFile !== 'function') throw Object.assign(new Error('产物入库未接入'), { statusCode: 503 });
       const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'story-film-'));
@@ -984,16 +1017,101 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
           method: result.method,
           // 记下这一版成片用了哪些段：重排分镜后仍能还原"这版成片是什么时候、由哪些片段拼的"
           beatIds: clips.map(c => c.beatId),
+          // 挑版本时还要记住**用的是哪一版**：否则事后分不清这版成片用的是第 2 版还是第 5 版的镜头
+          ...(picks ? { picks: clips.map(c => ({ beatId: c.beatId, runId: c.runId })) } : {}),
           createdAt: (clock.now || nowIso)(),
         };
         const next = withUpdated({ ...project, films: [...(project.films || []), film] });
         await writeProject(root, next);
-        return { project: next, film, url, clipCount: result.clipCount, method: result.method, beatIds: film.beatIds };
+        return { project: next, film, url, clipCount: result.clipCount, method: result.method, beatIds: film.beatIds, skipped };
       } finally {
         try { await fsp.rm(dir, { recursive: true, force: true }); } catch {}
       }
     },
+    // 删掉某一版产出（以及它的文件）。
+    // 用户会同一段生成好几版镜头，留着占地方、挑片子时也碍眼——但**删是不可逆的**，
+    // 所以三件事必须做对：
+    // 1) 文件还被别处引用（别的运行/设定里的参考图/别段挂的素材）时**不删文件**，只移除记录并说明；
+    // 2) 还在排队的版本默认不删（上游那个任务我们还在等，删了记录就永远收不回来了），要删得明说 force；
+    // 3) 外链（http/data）永远不碰本地磁盘。
+    deleteRun: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const scene = findScene(project, input.sceneId);
+      const run = (scene?.outputs || []).find(r => String(r.id) === String(input.runId));
+      if (!scene || !run) throw Object.assign(new Error('sceneId 或 runId 不存在（可能已经被删掉了）'), { statusCode: 404 });
+      if (run.status === 'running' && !input.force) {
+        throw Object.assign(new Error(`这一版还在排队（任务号 ${String(run.taskId || '无').slice(0, 14)}）。先「查一次」把它收尾，或点「强制删除」——删掉之后上游出的片子就再也收不回来了。`), { statusCode: 409 });
+      }
+      const urls = (run.outputAssets || []).map(a => String(a.url || '')).filter(Boolean);
+      const nextScene = { ...scene, outputs: (scene.outputs || []).filter(r => String(r.id) !== String(run.id)) };
+      if (String(nextScene.activeRunId || '') === String(run.id)) delete nextScene.activeRunId;
+      const next = withUpdated({ ...project, scenes: project.scenes.map(s => s.id === scene.id ? nextScene : s) });
+      validateProject(next);
+      // 先落盘再删文件：万一删文件这一步出错，至少记录已经是"已移除"，
+      // 不会留下一条指向空文件的运行（那种状态比"文件还在"难查得多）。
+      await writeProject(root, next);
+
+      const fileResults = [];
+      if (input.keepFiles === true) {
+        for (const url of urls) fileResults.push({ url, deleted: false, reason: '你选了只移除记录、保留文件' });
+      } else {
+        for (const url of urls) {
+          const file = localPathFromArtifactUrl(url, root);
+          if (!file) { fileResults.push({ url, deleted: false, reason: '不是本地文件（外链或数据），不碰磁盘' }); continue; }
+          // 生成物目录是共享的：同一个文件可能仍被**别的项目**引用。
+          // 只在本项目里查就会把别人还指着的那张图删掉——所以扫全部项目文件（本项目已写成不含它的样子）。
+          const referenced = await referencedElsewhere(root, file);
+          if (referenced) { fileResults.push({ url, deleted: false, reason: `同一个文件还被「${referenced}」引用，只移除记录、保留文件` }); continue; }
+          try { await fsp.rm(file, { force: true }); fileResults.push({ url, deleted: true }); }
+          catch (error) { fileResults.push({ url, deleted: false, reason: `删除文件失败：${String(error?.message || error).slice(0, 80)}` }); }
+        }
+      }
+      return {
+        project: next, deletedRunId: run.id, kind: run.kind, status: run.status,
+        files: fileResults,
+        fileDeleted: fileResults.filter(f => f.deleted).length,
+        fileKept: fileResults.filter(f => !f.deleted).length,
+        remaining: nextScene.outputs.filter(r => r.beatId === run.beatId).length,
+      };
+    },
   };
+}
+
+// 一个项目里所有"指向文件"的地址：运行产出、段落挂的素材、设定里的参考图、成片。
+// 删文件前用它来判断"这个文件还有没有人要"。
+function urlsInProject(project) {
+  const urls = [];
+  for (const scene of project?.scenes || []) {
+    for (const run of scene?.outputs || []) for (const asset of run?.outputAssets || []) if (asset?.url) urls.push(String(asset.url));
+    for (const beat of scene?.beats || []) for (const input of beat?.inputs || []) if (input?.url) urls.push(String(input.url));
+  }
+  for (const key of ['characters', 'locations', 'props', 'wardrobe']) {
+    for (const item of project?.bible?.[key] || []) if (item?.refImage) urls.push(String(item.refImage));
+  }
+  for (const film of project?.films || []) if (film?.url) urls.push(String(film.url));
+  return urls;
+}
+
+// 这个文件是不是还被别的项目引用（生成物目录是所有项目共享的）。
+// 返回引用它的项目文件名（不含扩展名），没有就返回空串。
+// 为什么值得扫全部项目：只查当前项目，就会在别的项目还指着这张图的时候把它删掉——
+// 那是用户**没法恢复**的损失，宁可留着文件（几 MB）也不要删错。
+async function referencedElsewhere(root, file) {
+  const target = String(file).replace(/\\/g, '/').toLowerCase();
+  const dir = path.join(root, 'story-projects');
+  let names = [];
+  try { names = (await fsp.readdir(dir)).filter(n => n.endsWith('.json')); } catch { return ''; }
+  for (const name of names) {
+    let project = null;
+    try { project = JSON.parse(await fsp.readFile(path.join(dir, name), 'utf8')); } catch { continue; }
+    // 成片文件与素材文件也在同一套判断里：宁可多留，不可删错
+    for (const url of urlsInProject(project)) {
+      if (!url) continue;
+      const path0 = localPathFromArtifactUrl(url, root);
+      if (path0 && path0.replace(/\\/g, '/').toLowerCase() === target) return name.replace(/\.json$/, '');
+    }
+  }
+  return '';
 }
 
 function bodyOrEmpty(body) { return body && typeof body === 'object' ? body : {}; }
@@ -1116,6 +1234,14 @@ export async function handleStoryMethodApply(ctx, res, id, body) {
 
 export async function handleStoryFilm(ctx, res, id, body) {
   try { return json(res, 200, await createStoryOrchestrator(ctx).assembleFilm(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryFilmPlan(ctx, res, id) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).filmPlan(id)); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryRunDelete(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).deleteRun(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
 }
 
 export async function handleStoryRecipes(ctx, res, body) {

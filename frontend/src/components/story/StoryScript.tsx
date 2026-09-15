@@ -39,7 +39,7 @@ export default function StoryScript({ project, busy, onPatchProject }: {
     </div>
     {open && <div className="story-script-body">
       <p className="story-hint">
-        导出用的是**剧本要素**：场景标题（场景设定里的内外景/地点/时间）、动作（「本段动作」留空则用画面描述）、
+        导出用的是<strong>剧本要素</strong>：场景标题（场景设定里的内外景/地点/时间）、动作（「本段动作」留空则用画面描述）、
         角色与台词（从「本段台词」按「角色名：台词」拆出来）、转场（「转场」字段）。
       </p>
       {stats && <div className="story-script-stats">
@@ -55,7 +55,7 @@ export default function StoryScript({ project, busy, onPatchProject }: {
         <button className="btn-ghost" disabled={busy || saving} onClick={exportIt}>{saving ? '导出中…' : '导出剧本'}</button>
         {onPatchProject && <button className="btn-ghost" disabled={busy} onClick={onPatchProject}>刷新</button>}
       </div>
-      <p className="story-hint">FDX 结构按公开约定生成（Scene Heading / Action / Character / Parenthetical / Dialogue / Transition）；本机没有 Final Draft，所以**没有真机打开验证过**。</p>
+      <p className="story-hint">FDX 结构按公开约定生成（Scene Heading / Action / Character / Parenthetical / Dialogue / Transition）；本机没有 Final Draft，所以<strong>没有真机打开验证过</strong>。</p>
       {msg && <p role="status" className="story-notice">{msg}</p>}
     </div>}
   </div>

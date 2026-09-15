@@ -14,6 +14,7 @@ import StoryPlayground from '../components/story/StoryPlayground'
 import StoryEpisodes from '../components/story/StoryEpisodes'
 import StoryAdapt from '../components/story/StoryAdapt'
 import StoryMethod from '../components/story/StoryMethod'
+import StoryFilm from '../components/story/StoryFilm'
 import StoryBatch from '../components/story/StoryBatch'
 import { defaultRefStrategy, normalizeRefStrategy, refStrategyLabel, recipeBeatPatch } from '../lib/story-ref'
 import type { StoryBeatInput } from '../types'
@@ -228,7 +229,7 @@ export function StoryPanel() {
   const preview = () => action('正在检查生成输入', async () => {
     const saved = await persist()
     const r = await StoryApi.previewRun(saved.project.id, {sceneId:saved.sceneId,beatId:saved.beatId,kind:selectedKind,model:selectedModelInfo || {provider:'auto',id:'auto'}, ...runExtras()})
-    setCompiled(r.context.prompt); setPlan(r.plan || []); setNotice('以下是**实际将执行**的完整链路与提示词；尚未调用生成模型。')
+    setCompiled(r.context.prompt); setPlan(r.plan || []); setNotice('以下是「实际将执行」的完整链路与提示词；尚未调用生成模型。')
   })
   // 照这一版重跑：同模型 / 同 seed / 同负向 / 同参数。ComfyUI 里这是"再跑一次同样的图"，
   // 有了它，一次偶然的好结果才算真的可复现。
@@ -303,6 +304,21 @@ export function StoryPanel() {
     if (r.project) update(r.project)
     setFilmUrl(r.film?.url || r.url)
     setNotice(`成片已生成：${r.clipCount} 段拼接完成${r.method === 'copy' ? '（只有一段，直接落盘）' : ''}，已归档到工作空间并记入项目，共 ${(r.project?.films || project.films || []).length} 版。`)
+  })
+  // 删掉不要的那几版：同一段常常生成好几版镜头。
+  // 删是不可逆的，所以结果必须说清"发生了什么"——记录删了没有、文件删了没有、为什么保留。
+  const deleteRun = (target: StoryGenerationRun, opts: { keepFiles: boolean }) => action('正在删除这一版', async () => {
+    if (!project || !scene) return
+    try {
+      const r = await StoryApi.deleteRun(project.id, { sceneId: scene.id, runId: target.id, ...(opts.keepFiles ? { keepFiles: true } : {}) })
+      update(r.project)
+      const kept = r.files.filter(f => !f.deleted && f.reason && !/你选了/.test(f.reason))
+      setNotice(`已删除这一版（该段还剩 ${r.remaining} 版）。${r.fileDeleted ? `文件也删了 ${r.fileDeleted} 个。` : ''}${kept.length ? `保留文件：${kept.map(f => f.reason).join('；')}` : ''}${opts.keepFiles ? '文件按你的选择留着。' : ''}`)
+    } catch (e: any) {
+      // 409 = 还在排队的版本：给出"强制删除"这条路，而不是只说一句失败
+      setError(`${e?.message || '删除失败'}`)
+      throw e
+    }
   })
   const currentRuns = scene?.outputs.filter(r => r.beatId === beat?.id) || []
   const hasOutput = currentRuns.some(r => r.outputAssets?.length)
@@ -382,6 +398,7 @@ export function StoryPanel() {
           <StoryScript project={project} busy={Boolean(busy)} onPatchProject={() => void load()} />
           <StoryEpisodes project={project} busy={Boolean(busy)} onDone={update} onPickScene={setSelected} />
           <StoryMethod project={project} busy={Boolean(busy)} onDone={update} />
+          <StoryFilm project={project} busy={Boolean(busy)} onDone={update} onNotice={setNotice} onError={setError} />
           <StoryAdapt project={project} busy={Boolean(busy)} onDone={update} />
           <StoryBatch project={project} selectedSceneId={scene?.id} busy={Boolean(busy)} onDone={update} />
           {scene && beat && <StoryPlayground
@@ -405,7 +422,7 @@ export function StoryPanel() {
             </div>}
             <details><summary>编译后的提示词全文</summary><div className="story-prose">{compiled}</div></details>
           </details>}
-        </section>{scene && beat && <StoryResults scene={scene} beat={beat} busy={Boolean(busy)} onRerun={rerun} onCheck={checkOne} />}</div>
+        </section>{scene && beat && <StoryResults scene={scene} beat={beat} busy={Boolean(busy)} onRerun={rerun} onCheck={checkOne} onDelete={deleteRun} />}</div>
         <StorySettings values={bibleDraft} busy={Boolean(busy)} characters={project.bible.characters || []} locations={(project.bible.locations || []) as any} props={(project.bible.props || []) as any} onPortrait={portrait} onAssetRef={assetRef} onChange={setBibleDraft} onSave={saveBible} />
         <StoryProducts project={project} onPick={setSelected} />
       </main>

@@ -140,7 +140,23 @@ export interface StoryBeat { id: string; kind: 'novel' | 'image' | 'video'; prom
 export interface StoryEpisode { id: string; no: number; title: string; summary: string; targetSeconds?: number; createdAt?: string; stats?: { scenes: number; beats: number; withOutput: number; pending: number; failed: number; running: number } }
 export interface StoryEpisodeGroup { episode: StoryEpisode | null; scenes: { id: string; title: string; beats: number }[] }
 export interface StoryScene { id: string; index: number; title: string; summary: string; beats: StoryBeat[]; outputs: StoryGenerationRun[]; activeRunId?: string; slug?: StorySceneSlug; episodeId?: string }
-export interface StoryFilm { id: string; url: string; clipCount: number; method: string; beatIds: string[]; createdAt: string }
+export interface StoryFilm { id: string; url: string; clipCount: number; method: string; beatIds: string[]; picks?: { beatId: string; runId: string }[]; createdAt: string }
+// 合成前的候选清单：同一段可能生成过好几版镜头，用户要能挑哪一版、要哪几段、什么顺序。
+export interface StoryFilmCandidate { runId: string; status: string; seed: number | null; createdAt?: string; url: string; exists: boolean; degradation?: string[] }
+export interface StoryFilmBeat {
+  beatId: string; sceneId: string; sceneTitle: string; beatNo: number
+  kind: string; title: string
+  candidates: StoryFilmCandidate[]
+  usableCount: number
+  recommendedRunId: string
+}
+export interface StoryFilmPlan { beats: StoryFilmBeat[]; usable: number; total: number }
+export interface StoryRunDeleteResult {
+  project: StoryProject
+  deletedRunId: string; kind: string; status: string
+  files: { url: string; deleted: boolean; reason?: string }[]
+  fileDeleted: number; fileKept: number; remaining: number
+}
 // 原著改编：一次「小说原文 → 分集大纲（集+场+段）」的留档。
 // 存在的意义是刷新之后仍能回答两个问题：这个项目是从哪本小说、哪几章改出来的；上次改出了哪几集。
 export interface StoryAdaptChapter { file: string; title: string; chars: number }

@@ -53,6 +53,47 @@ export function collectFilmClips(project, wsRoot) {
   return clips;
 }
 
+// 某个运行产出里可用的视频文件（合成用）。一段可能一次出好几版，
+// 用户要能**挑第几版进片子**——只认"最后一次成功"等于把其余几版白生成了。
+export function videoFileOf(run, wsRoot) {
+  const asset = list(run?.outputAssets).find(a => a?.type === 'video' && a.url);
+  const file = localPathFromArtifactUrl(asset?.url, wsRoot);
+  return { asset, file: file && fs.existsSync(file) ? file : '', exists: Boolean(file && fs.existsSync(file)) };
+}
+
+// 合成前的**候选清单**：按分镜顺序列出每一段，以及这一段生成过的所有可用版本。
+// 界面拿它做"选哪一版、要哪几段、什么顺序"。它只读，不改任何东西。
+export function filmPlan(project, wsRoot, { localPathOf = localPathFromArtifactUrl } = {}) {
+  const beats = [];
+  let beatNo = 0;
+  for (const scene of list(project?.scenes)) {
+    for (const beat of list(scene?.beats)) {
+      beatNo += 1;
+      const runs = list(scene?.outputs).filter(r => r?.beatId === beat.id);
+      const candidates = runs
+        .filter(r => ['succeeded', 'degraded'].includes(r.status))
+        .map(r => {
+          const asset = list(r.outputAssets).find(a => a?.type === 'video' && a.url);
+          const file = localPathOf(asset?.url, wsRoot);
+          const exists = Boolean(file && fs.existsSync(file));
+          return { runId: r.id, status: r.status, seed: r.seed ?? null, createdAt: r.createdAt, url: asset?.url || '', exists, degradation: r.degradation || [] };
+        })
+        // 只把**真能拼进去**的版本算作候选：文件不在的排到最后也不行，得如实标出来
+        .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+      const usable = candidates.filter(c => c.exists);
+      beats.push({
+        beatId: beat.id, sceneId: scene.id, sceneTitle: scene.title || '', beatNo,
+        kind: beat.kind, title: (beat.prompt || beat.dialogue || beat.id).replace(/\s+/g, ' ').slice(0, 60),
+        candidates, usableCount: usable.length,
+        // 默认推荐：最新的一个可用版本（与"快速合成"一致，用户不改就是原来那版）
+        recommendedRunId: usable.length ? usable[usable.length - 1].runId : '',
+      });
+    }
+  }
+  return { beats, usable: beats.filter(b => b.usableCount > 0).length, total: beats.length };
+}
+
+
 export function runFfmpeg(args, { timeout = 900000 } = {}) {
   return new Promise((resolve, reject) => {
     execFile('ffmpeg', args, { timeout, windowsHide: true, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {

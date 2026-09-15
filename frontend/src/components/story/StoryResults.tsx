@@ -31,10 +31,14 @@ function Assets({ run, saving, onSave }: { run: StoryGenerationRun; saving: bool
   </>
 }
 
-export default function StoryResults({ scene, beat, busy, onRerun, onCheck }: { scene: StoryScene; beat: StoryBeat; busy?: boolean; onRerun?: (run: StoryGenerationRun) => void; onCheck?: (run: StoryGenerationRun) => void }) {
+export default function StoryResults({ scene, beat, busy, onRerun, onCheck, onDelete }: { scene: StoryScene; beat: StoryBeat; busy?: boolean; onRerun?: (run: StoryGenerationRun) => void; onCheck?: (run: StoryGenerationRun) => void; onDelete?: (run: StoryGenerationRun, opts: { keepFiles: boolean }) => void }) {
   const runs = (scene.outputs || []).filter(run => run.beatId === beat.id).slice().reverse()
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
+  // 删除是不可逆的：先点「删除」进确认态，确认里还要说清"这一次会不会连文件一起删"。
+  // 同一段生成好几版镜头之后，用户要的正是"这几版不要了"——但不能点一下就没了。
+  const [confirming, setConfirming] = useState('')
+  const [keepFiles, setKeepFiles] = useState(false)
   const save = async (url: string, name: string) => {
     setSaving(true)
     try { setMessage(await downloadApiFile(url, name, setMessage)) }
@@ -59,7 +63,18 @@ export default function StoryResults({ scene, beat, busy, onRerun, onCheck }: { 
         {onCheck && run.status === 'running' && run.taskId && <button className="btn-ghost" disabled={busy} onClick={() => onCheck(run)}>查一次（任务号 {String(run.taskId).slice(0, 12)}）</button>}
         {/* 同参重跑：有了它，一次偶然的好结果才算真的可复现（ComfyUI 里就是"再跑一次同样的图"） */}
         {onRerun && <button className="btn-ghost" disabled={busy} onClick={() => onRerun(run)}>照这版重跑 · 同 seed{run.seed != null ? ` ${run.seed}` : '（这一版没记 seed）'}</button>}
+        {/* 删掉不要的那几版：同一段常常生成好几版镜头，留着占地方、挑片段时也碍眼 */}
+        {onDelete && confirming !== run.id && <button className="btn-ghost" disabled={busy} onClick={() => { setConfirming(run.id); setKeepFiles(false) }}>删除这一版</button>}
       </div>
+      {onDelete && confirming === run.id && <div className="story-confirm" role="alertdialog" aria-label={`确认删除第 ${runs.length - idx} 版`}>
+        <p>要删掉<strong>第 {runs.length - idx} 版</strong>（{labels[run.status] || run.status}{run.outputAssets?.length ? ` · ${run.outputAssets.length} 个成品` : ''}）。删记录不可恢复。</p>
+        <label><input type="checkbox" checked={keepFiles} disabled={busy} onChange={e => setKeepFiles(e.target.checked)} /> 只从列表里移除，文件留着</label>
+        <p className="story-hint">{keepFiles ? '文件会留在工作空间里，可以从「资产」里找回来。' : <>文件也会一起删——但<strong>只要还有别的地方（别的段、别的项目）在用它，就会自动保留</strong>，并告诉你原因。</>}{run.status === 'running' ? ' 这一版还在排队，上游出的片子删掉后就收不回来了。' : ''}</p>
+        <div className="story-actions">
+          <button className="btn-primary" disabled={busy} onClick={() => { onDelete(run, { keepFiles }); setConfirming('') }}>确认删除</button>
+          <button className="btn-ghost" disabled={busy} onClick={() => setConfirming('')}>取消</button>
+        </div>
+      </div>}
     </article>)}
     {message && <p role="status" className="story-notice">{message}</p>}
   </section>

@@ -140,7 +140,7 @@ export default function StoryBatch({ project, selectedSceneId, busy, onDone }: {
       setMsg(`等待上游：还剩 ${waiting.length} 个任务号（已出 ${settled} 段${failed ? `，失败 ${failed} 段` : ''}）`)
     }
     setStage('idle')
-    if (waiting.length) setMsg(`等满 ${Math.round(WINDOW_MS / 60000)} 分钟还有 ${waiting.length} 个没出片。任务号还在，**这不是失败**——在上方对应段落点「查一次」继续问，或再点一次批量。`)
+    if (waiting.length) setMsg(`等满 ${Math.round(WINDOW_MS / 60000)} 分钟还有 ${waiting.length} 个没出片。任务号还在，「这不是失败」——在上方对应段落点「查一次」继续问，或再点一次批量。`)
     else setMsg(`这一批结束：${settled} 段出片${failed ? `，${failed} 段失败（见下表）` : ''}${stopRef.current ? '（已按停止中断，未提交的段落保持原样）' : ''}`)
   }
 
