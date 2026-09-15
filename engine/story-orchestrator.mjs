@@ -5,6 +5,7 @@ import path from 'node:path';
 import { createProject, listProjects, readProject, writeProject, validateProject, mergeBeatContext, trashProject } from './story-store.mjs';
 import { compileStoryPrompt, buildPortraitPrompt, buildAssetPrompt } from './story-prompts.mjs';
 import { compileShotPrompt, shotFieldsFromBeat, assetRefsForShot, splitRefs, resolveStyle } from './story-shot-prompt.mjs';
+import { storyFlow } from './story-flow.mjs';
 import { createImageAdapter, createNovelAdapter, createVideoAdapter } from './story-adapters.mjs';
 import { buildStoryAssistPrompt, parseStoryAssist, buildStoryboardPrompt, parseStoryboard, buildAdaptPrompt, parseAdapt, extractJsonObjects } from './story-assist.mjs';
 // 台词与深度构思的"手艺"：机检规则 + 提示词 + 宽容解析（见 story-craft.mjs 开头的研究结论）
@@ -1538,7 +1539,11 @@ export async function handleStoryProjects(ctx, res, body) {
 }
 
 export async function handleStoryProject(ctx, res, id) {
-  try { return json(res, 200, { project: await createStoryOrchestrator(ctx).get(id) }); } catch (e) { return sendError(res, e); }
+  try {
+    const project = await createStoryOrchestrator(ctx).get(id);
+    // 状态机随项目一起下发（不落盘，是算出来的）：界面照它渲染"现在能干什么、为什么不能"。
+    return json(res, 200, { project: { ...project, flow: storyFlow(project) } });
+  } catch (e) { return sendError(res, e); }
 }
 
 export async function handleStoryProjectDelete(ctx, res, id, body) {

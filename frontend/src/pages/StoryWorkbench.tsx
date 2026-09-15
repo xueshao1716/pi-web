@@ -19,6 +19,7 @@ import StoryProjects from '../components/story/StoryProjects'
 import StoryCraft from '../components/story/StoryCraft'
 import StoryDialogue from '../components/story/StoryDialogue'
 import StoryBatch from '../components/story/StoryBatch'
+import StoryFlowBar from '../components/story/StoryFlowBar'
 import { defaultRefStrategy, normalizeRefStrategy, refStrategyLabel, recipeBeatPatch } from '../lib/story-ref'
 import type { StoryBeatInput } from '../types'
 import '../components/story/story.css'
@@ -352,6 +353,38 @@ export function StoryPanel() {
     else setNotice(`已把 ${r.localized} 个外站产物下载到本地并写回项目——外站链接失效也不影响了。（挂载素材不重复落盘：它引用的是别的工作台的产物。）`)
   })
   const currentRuns = scene?.outputs.filter(r => r.beatId === beat?.id) || []
+  // ── 状态条上的动作：复用已有处理器，做完**重新取一次项目** ──
+  // patch/run 这些接口返回的项目里没有 flow（那是服务端算出来的），不重取就会一直显示旧状态，
+  // 于是"刚做完还提示你做同一件事"——比没有状态条更让人困惑。
+  const refreshFlow = async () => {
+    if (!project) return
+    try { const r = await StoryApi.getProject(project.id); update(r.project) } catch { /* 刷新失败不影响刚才那步 */ }
+  }
+  const flowAction = (target: string) => {
+    const allRuns = (project?.scenes || []).flatMap(s => s.outputs || [])
+    const cast = project?.bible.characters || []
+    const firstNoPortrait = cast.find(c => !((c as any).refImage || (c as any).ref || (c as any).portrait))
+    const locations = project?.bible.locations || []
+    const props = project?.bible.props || []
+    const firstNoRef = [...locations, ...props].find((a: any) => !(a.refImage || a.ref || a.anchor))
+    const handlers: Record<string, () => void | Promise<void>> = {
+      edit_outline: () => { setNotice('在右栏「人物与设定」里补梗概与人物，保存后这条状态会跟着变。') },
+      generate_storyboard: () => runStoryboard(),
+      next_beat: () => continueFromBeat(),
+      generate_portrait: () => (firstNoPortrait ? portrait(firstNoPortrait) : setNotice('所有角色都有定妆照了')),
+      generate_asset_ref: () => (firstNoRef
+        ? assetRef(locations.includes(firstNoRef as any) ? 'location' : 'prop', firstNoRef as any)
+        : setNotice('场景与道具的参考图都齐了')),
+      generate_shot: () => run(),
+      retry_failed: () => { const f = allRuns.find(r => r.status === 'failed'); return f ? rerun(f) : setNotice('没有失败的段落') },
+      check_running: () => { const r = allRuns.find(x => x.status === 'running'); return r ? checkOne(r) : setNotice('没有进行中的任务') },
+      localize_external: () => localizeAll(),
+      compose_film: () => makeFilm(),
+    }
+    const fn = handlers[target]
+    if (!fn) { setNotice(`这个动作还没接上：${target}`); return }
+    void Promise.resolve(fn()).then(refreshFlow).catch(() => {})
+  }
   const hasOutput = currentRuns.some(r => r.outputAssets?.length)
   // 成片链接来自**项目里存的成片历史**，不是一次性的本地状态——
   // 之前只 setFilmUrl，刷新页面链接就没了，用户以为合成失败了。
@@ -389,6 +422,8 @@ export function StoryPanel() {
     <div aria-live="polite">{busy && <p role="status" className="story-notice">{busy}…</p>}{notice && <p role="status" className="story-notice">{notice}</p>}</div>
     {error && <p role="alert" className="story-notice story-error">{error}</p>}
     {!project ? <StoryStart busy={Boolean(busy)} onStart={start}><label className="story-model-select">构思模型<select value={planningModel} disabled={Boolean(busy)} onChange={e=>setPlanningModel(e.target.value)}><option value="">自动选择文本模型</option>{models.filter(m=>capable(m,'novel')).map(m=><option key={modelKey(m)} value={modelKey(m)}>{m.name || m.id}</option>)}</select></label></StoryStart> : <div className="story-layout">
+      {/* 流水线状态条：现在该干什么、哪些动作做不了、为什么——判断全在服务端（engine/story-flow.mjs） */}
+      <StoryFlowBar flow={project.flow} busy={Boolean(busy)} onAction={flowAction} />
       <details open={timelineOpen} onToggle={e=>setTimelineOpen(e.currentTarget.open)} className="story-timeline"><summary>分镜时间线 · {project.scenes.reduce((n,s)=>n+s.beats.length,0)} 段</summary><ol>{project.scenes.flatMap(s=>(s.beats.length?s.beats:[emptyBeat]).map(b=>({s,b}))).map(({s,b},i)=>{
         const latest=s.outputs?.filter(r=>r.beatId===b.id).slice(-1)[0]
         return <li key={b.id}><button disabled={Boolean(busy)} aria-current={beat?.id===b.id?'step':undefined} onClick={()=>setSelected(b.id)}><span>第 {i+1} 段 · {kindLabel[b.kind]}{b.dialogue?' · 有台词':''}{b.inputs?.length?` · 素材 ${b.inputs.length}`:''}</span><strong>{b.prompt?.slice(0,48) || b.dialogue?.split('\n')[0]?.slice(0,48) || '等待开场'}</strong><span>{latest?.status==='failed'?'生成失败':latest?.outputAssets?.length?'已有成品':latest?.status==='running'?'正在生成':'待生成'}{b.inheritFromBeatId?' · 承接前文':''}</span></button></li>

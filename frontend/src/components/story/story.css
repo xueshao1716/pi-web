@@ -378,3 +378,24 @@
   .story-start > .story-actions { align-items: stretch; }
   .story-start > .story-actions > * { flex: 1 1 100%; }
 }
+
+/* ── 流水线状态条（engine/story-flow.mjs 下发的状态机）──
+   四步胶囊 + 一句人话总状态 + 推荐动作；被挡住的动作折进 details，点开才看原因。
+   为什么不做成一排灰按钮：灰按钮不解释原因，用户只能猜；这里必须给出话。 */
+.story-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 14px; margin-bottom: 14px; border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-md); background: var(--pi-bg1); }
+.story-flow-steps { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.story-flow-step { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; color: var(--pi-dim); background: var(--pi-bg2); }
+.story-flow-step b { font-weight: 600; opacity: .75; }
+.story-flow-step.is-done { color: var(--pi-success); }
+.story-flow-step.is-current { color: var(--pi-text); background: var(--pi-accent-soft); }
+.story-flow-chevron { font-style: normal; color: var(--pi-dim); margin-left: 4px; }
+.story-flow-body { flex: 1 1 260px; min-width: 0; }
+.story-flow-headline { margin: 0; font-size: 13px; color: var(--pi-text); }
+.story-flow-progress { margin: 2px 0 0; font-size: 12px; color: var(--pi-dim); }
+.story-flow-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.story-flow-blocked { flex: 1 1 100%; font-size: 12px; color: var(--pi-dim); }
+.story-flow-blocked summary { cursor: pointer; }
+.story-flow-blocked ul { margin: 6px 0 0; padding-left: 18px; }
+.story-flow-blocked li { margin: 2px 0; }
+.story-flow-blocked code { margin-left: 6px; padding: 1px 4px; border-radius: 4px; background: var(--pi-bg2); font-size: 11px; }
+@media (max-width: 640px) { .story-flow { align-items: flex-start; } .story-flow-actions { width: 100%; } }

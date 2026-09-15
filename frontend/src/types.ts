@@ -263,7 +263,28 @@ export interface StoryCraftEngine {
   }
 }
 export interface StoryCraftAudit { issues: { code: string; level: 'warn' | 'info'; message: string; name?: string; episode?: number; unit?: number; text?: string }[]; level: string }
-export interface StoryProject { id: string; title: string; logline?: string; bible: StoryBible; scenes: StoryScene[]; films?: StoryFilm[]; episodes?: StoryEpisode[]; adaptations?: StoryAdaptation[]; methodId?: string; craft?: StoryCraftEngine; activeSceneId?: string; defaultRecipeId?: string; createdAt: string; updatedAt: string }
+// 流水线状态机（服务端下发）：界面不自己猜"哪些按钮该亮、为什么灰着"——
+// 照 allowed/blocked 渲染，blocked 还带 reason_code + 人话。见 engine/story-flow.mjs。
+export interface StoryFlowStep { id: string; label: string; hint: string; done: boolean }
+export interface StoryFlowAction { action: string; label: string; panel: string; reason_code?: string; message?: string }
+export interface StoryFlowProgress {
+  beats: { total: number; done: number; failed: number; running: number }
+  assets: { characters: number; portraits: number; locations: number; props: number; missingRefs: number }
+  clips: { usable: number }
+  films: number
+  external: number
+}
+export interface StoryFlow {
+  current_step: string
+  steps: StoryFlowStep[]
+  progress: StoryFlowProgress
+  allowed_actions: StoryFlowAction[]
+  blocked_actions: StoryFlowAction[]
+  recommended_actions: string[]
+  failed_recovery_actions: string[] | null
+  headline: string
+}
+export interface StoryProject { id: string; title: string; logline?: string; bible: StoryBible; scenes: StoryScene[]; films?: StoryFilm[]; episodes?: StoryEpisode[]; adaptations?: StoryAdaptation[]; methodId?: string; craft?: StoryCraftEngine; activeSceneId?: string; defaultRecipeId?: string; createdAt: string; updatedAt: string; flow?: StoryFlow }
 
 // 交付物（/api/ws/deliveries）条目
 export interface AssetDelivery {
