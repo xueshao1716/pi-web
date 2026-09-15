@@ -19,8 +19,21 @@ test('story workbench exposes timeline and a guided primary flow', () => {
   assert.ok(!/<select/.test(resultsCode), '版本不能再藏进下拉里');
 });
 
-test('作品列表：段号取生成时的定格值、失败可见、成片落回项目', () => {
-  const products = fs.readFileSync('frontend/src/components/story/StoryProducts.tsx', 'utf8');
+test('台词与跨工作台素材必须留在界面上（这是台前的入口，掉了就等于功能没了）', () => {
+  assert.match(source, /aria-label="本段台词"/, '台词要有独立的可编辑字段');
+  assert.match(source, /StoryMaterials/, '素材挂载面板要挂在制作台里');
+  assert.match(source, /dialogue:dialogueDraft/, '台词要跟着段一起存盘');
+  assert.match(source, /inputs:inputDrafts/, '素材要跟着段一起存盘');
+  const materials = fs.readFileSync('frontend/src/components/story/StoryMaterials.tsx', 'utf8');
+  assert.match(materials, /WsApi\.artifacts/, '素材来源之一：别的工作台的产物（生成物）');
+  assert.match(materials, /NovelApi\.chapter/, '素材来源之二：小说工坊的正文');
+  assert.match(materials, /text: '文本'/, '文本素材要能挂进来');
+  const types = fs.readFileSync('frontend/src/types.ts', 'utf8');
+  assert.match(types, /dialogue\?: string/);
+  assert.match(types, /inputs\?: StoryBeatInput\[\]/);
+});
+
+test('作品列表：段号取生成时的定格值、失败可见、成片落回项目', () => {  const products = fs.readFileSync('frontend/src/components/story/StoryProducts.tsx', 'utf8');
   // 段号优先用 run.beatNo（生成时刻定格），只在旧数据上按当前分镜顺序回退
   assert.match(products, /run\.beatNo/);
   assert.match(products, /run\.sceneTitle/);

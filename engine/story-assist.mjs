@@ -1,5 +1,5 @@
 export function buildStoryAssistPrompt({ title = '', logline = '', idea = '', current = {} } = {}) {
-  return `你是元枢连续创作的故事设定助手。请根据用户想法生成一份“可编辑草稿”，由人类确认后才会保存。不要改写既有设定，只补充空缺。\n\n项目：${String(title).trim() || '未命名故事'}\n梗概：${String(logline).trim() || '暂无'}\n用户想法：${String(idea).trim() || '请补齐一个可拍摄的开端'}\n已有状态：${JSON.stringify(current).slice(0, 5000)}\n\n只返回 JSON，不要 Markdown：{"characters":[{"name":"","appearance":""}],"locations":[{"name":"","description":""}],"props":[{"name":"","description":""}],"wardrobe":[{"name":"","description":""}],"style":{"visual":"","tone":""},"rules":[{"text":""}],"scene":{"title":"","summary":""},"beat":{"kind":"image","prompt":""}}。内容要具体、可执行；kind 只能是 novel/image/video。`;
+  return `你是元枢连续创作的故事设定助手。请根据用户想法生成一份“可编辑草稿”，由人类确认后才会保存。不要改写既有设定，只补充空缺。\n\n项目：${String(title).trim() || '未命名故事'}\n梗概：${String(logline).trim() || '暂无'}\n用户想法：${String(idea).trim() || '请补齐一个可拍摄的开端'}\n已有状态：${JSON.stringify(current).slice(0, 5000)}\n\n要求：\n1. **重视对话**：beat.dialogue 写这一段的实际台词，要具体、有语气和潜台词，能看出说话人是谁；不要写“他们交谈了几句”这种概述。\n2. beat.prompt 只写画面与动作（构图、光线、人物动作），不要把台词塞进画面描述。\n3. 内容要具体、可执行；kind 只能是 novel/image/video。\n\n只返回 JSON，不要 Markdown：{"characters":[{"name":"","appearance":""}],"locations":[{"name":"","description":""}],"props":[{"name":"","description":""}],"wardrobe":[{"name":"","description":""}],"style":{"visual":"","tone":""},"rules":[{"text":""}],"scene":{"title":"","summary":""},"beat":{"kind":"image","prompt":"","dialogue":""}}。`;
 }
 
 function cleanEntry(item) {
@@ -8,6 +8,23 @@ function cleanEntry(item) {
   const out = {};
   for (const key of allowed) if (item[key] != null && String(item[key]).trim()) out[key] = String(item[key]).trim();
   return Object.keys(out).length ? out : null;
+}
+
+// 台词（对白）：与画面提示词分开存。
+// 为什么要分开：`prompt` 是发给图像/视频模型的**画面描述**，把台词写进去会被生图模型
+// 当画面内容画出来（或者稀释掉真正的视觉指令）。台词本身是要留下来的剧作内容——
+// 它决定这段戏成不成立，也决定后续配音/口播有没有东西可念。
+export const DIALOGUE_KEYS = ['dialogue', 'dialog', 'lines', 'line', 'script', '台词', '对白'];
+export function cleanDialogue(value) {
+  if (value == null) return '';
+  // 数组要逐个复用同一套处理：直接 String(element) 会把 [{name,text}] 变成 "[object Object]"
+  if (Array.isArray(value)) return value.map(v => cleanDialogue(v)).filter(Boolean).join('\n').slice(0, 2000);
+  if (typeof value === 'object') {
+    const name = String(value.name || value.speaker || value.who || '').trim();
+    const text = String(value.text || value.line || value.content || '').trim();
+    return (name && text) ? `${name}：${text}` : (text || name);
+  }
+  return String(value).trim().slice(0, 2000);
 }
 
 // 设定块清洗：assist（补一段）与 storyboard（一键分镜）共用，避免两处形状判断漂移。
@@ -23,17 +40,31 @@ export function parseStoryAssist(raw) {
   let parsed;
   try { parsed = JSON.parse(text); } catch { throw new Error('智能填充返回的内容不是有效 JSON'); }
   const scene = parsed.scene && typeof parsed.scene === 'object' ? { title: String(parsed.scene.title || '').trim(), summary: String(parsed.scene.summary || '').trim() } : {};
-  const beat = parsed.beat && typeof parsed.beat === 'object' ? { kind: ['novel', 'image', 'video'].includes(parsed.beat.kind) ? parsed.beat.kind : 'image', prompt: String(parsed.beat.prompt || '').trim() } : {};
+  const beat = parsed.beat && typeof parsed.beat === 'object'
+    ? {
+      kind: ['novel', 'image', 'video'].includes(parsed.beat.kind) ? parsed.beat.kind : 'image',
+      prompt: String(parsed.beat.prompt || '').trim(),
+      dialogue: cleanDialogue(firstDialogue(parsed.beat)),
+    }
+    : {};
   return { ...cleanBible(parsed), scene, beat };
+}
+
+export function firstDialogue(source) {
+  if (!source || typeof source !== 'object') return '';
+  for (const key of DIALOGUE_KEYS) if (source[key] != null) return source[key];
+  return '';
 }
 
 // ── 一键分镜：从梗概一次生成整场分镜表（多段），而不是只给一段 ──
 // 之前 assist 只产出 1 个 beat，用户得一段一段点「从此处继续」。
 // 2026-09-14：分镜同时登记设定（characters/locations/props/wardrobe）。
 // 只出段落不建角色库的话，「定妆照」和「参考图锁定」都拿不到数据——功能在界面上存在却用不了。
+// 2026-09-15：每段必须带**台词**。此前提示词只要求"动作/构图/镜头/光线"，
+// 出来的是一串漂亮的画面说明、一句人话都没有——戏不成戏，后续配音也没东西可念。
 export function buildStoryboardPrompt({ title = '', logline = '', idea = '', current = {}, count = 6 } = {}) {
   const n = Math.max(2, Math.min(12, Number(count) || 6));
-  return `你是元枢连续创作的**分镜师**。请把故事拆成 ${n} 段可直接生成的分镜，并登记其中出现的人物与场景。
+  return `你是元枢连续创作的**编剧兼分镜师**。请把故事拆成 ${n} 段可直接生成的分镜，并登记其中出现的人物与场景。
 
 项目：${String(title).trim() || '未命名故事'}
 梗概：${String(logline).trim() || '暂无'}
@@ -41,14 +72,17 @@ export function buildStoryboardPrompt({ title = '', logline = '', idea = '', cur
 已有设定：${JSON.stringify(current).slice(0, 4000)}
 
 要求：
-1. 每段都要是**可执行的生成指令**（写清动作、构图、镜头、光线），不要写文学评论。
-2. 段与段之间必须接得上：第 2 段起承接上一段结尾，推进新事件，不重复开场。
-3. kind 只能是 novel（文字段落）/ image（画面）/ video（视频片段）；整场同一种 kind 更连贯。
-4. bible 里登记**本片真正出场**的人物与场景：characters 的 appearance 要写清年龄、体型、发型、服装、辨识特征（供后续生成定妆照锁定长相）；已在「已有设定」里的角色按原名原样重复一遍，不要改名，也不要凭空新增没出场的角色。
-5. 段落提示词里要**写出角色姓名**，后续靠姓名把定妆照挂到对应段落上。
+1. **重视对话创作**：每段都要写 dialogue——这一段**真正说出来**的台词，一行一句，写成「角色名：台词」。
+   台词是这个故事的骨头：要有具体用词、语气和潜台词，让人不看画面也知道说话人是谁、在图什么。
+   禁止"两人交谈了几句""她表达了不满"这类概述，也禁止把台词写成旁白解说。
+2. prompt 只写**画面与动作**（动作、构图、镜头、光线），不要写文学评论，也不要把台词塞进画面描述。
+3. 段与段之间必须接得上：第 2 段起承接上一段结尾，推进新事件，不重复开场。
+4. kind 只能是 novel（文字段落）/ image（画面）/ video（视频片段）；整场同一种 kind 更连贯。
+5. bible 里登记**本片真正出场**的人物与场景：characters 的 appearance 要写清年龄、体型、发型、服装、辨识特征（供后续生成定妆照锁定长相）；已在「已有设定」里的角色按原名原样重复一遍，不要改名，也不要凭空新增没出场的角色。
+6. 段落提示词里要**写出角色姓名**，后续靠姓名把定妆照挂到对应段落上。
 
 只返回 JSON，不要 Markdown：
-{"bible":{"characters":[{"name":"","appearance":""}],"locations":[{"name":"","description":""}],"props":[{"name":"","description":""}],"style":{"visual":"","tone":""}},"scenes":[{"title":"","summary":"","beats":[{"kind":"video","prompt":""}]}]}`;
+{"bible":{"characters":[{"name":"","appearance":""}],"locations":[{"name":"","description":""}],"props":[{"name":"","description":""}],"style":{"visual":"","tone":""}},"scenes":[{"title":"","summary":"","beats":[{"kind":"video","prompt":"","dialogue":"角色名：台词"}]}]}`;
 }
 
 // 收集文本里**所有**配平的 JSON 对象。
@@ -109,14 +143,17 @@ const cleanBeat = (item) => {
   if (typeof item === 'string') return item.trim() ? { kind: 'image', prompt: item.trim() } : null;
   if (!item || typeof item !== 'object') return null;
   const prompt = firstString(item, PROMPT_KEYS);
-  if (!prompt) return null;
+  const dialogue = cleanDialogue(firstDialogue(item));
+  // 只有台词、没有画面描述时也算一段：台词是硬内容，画面可以后补；
+  // 反过来把整段丢掉，等于把编剧刚写的对白扔了。
+  if (!prompt && !dialogue) return null;
   let kind = ['novel', 'image', 'video'].includes(item.kind) ? item.kind
     : ['novel', 'image', 'video'].includes(item.type) ? item.type : '';
   if (!kind) {
     const hit = KIND_HINT.find(([re]) => re.test(String(item.kind || item.type || '')));
     kind = hit ? hit[1] : 'image';
   }
-  return { kind, prompt };
+  return { kind, prompt, ...(dialogue ? { dialogue } : {}) };
 };
 
 function beatsOf(scene) {

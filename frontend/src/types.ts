@@ -64,7 +64,7 @@ export interface Artifact {
   mtimeMs?: number
 }
 
-export interface StoryAssetRef { id: string; role?: string; weight?: number; type?: string; url?: string; text?: string; prompt?: string }
+export interface StoryAssetRef { id: string; role?: string; weight?: number; type?: string; url?: string; text?: string; prompt?: string; name?: string }
 export interface StoryCharacter { id: string; name: string; refImage?: string; appearance?: string; wardrobe?: string; [key: string]: unknown }
 export interface StoryLocation { id: string; name: string; [key: string]: unknown }
 export interface StoryBible {
@@ -94,10 +94,15 @@ export interface StoryGenerationRun {
   // 旧数据没有这两个字段，界面回退到"按当前分镜顺序现算"。
   beatNo?: number
   sceneTitle?: string
+  // 这一趟实际用了哪些原始引用（定妆照 / 挂载素材）。记的是原始地址，不是内联后的 base64。
+  referenceImages?: string[]
   createdAt: string
   finishedAt?: string
 }
-export interface StoryBeat { id: string; kind: 'novel' | 'image' | 'video'; prompt: string; references: StoryAssetRef[]; inheritFromBeatId?: string; activeRunId?: string }
+// 挂在某一段上的素材：别的工作台（AI 绘画 / 视频工坊 / 小说工坊）的产出。
+// 与 `references`（指向 bible 实体的 id）刻意分开：这类素材是**已经存在的成品文件**，自带地址。
+export interface StoryBeatInput { id: string; type: 'image' | 'video' | 'text'; name?: string; url?: string; text?: string; path?: string }
+export interface StoryBeat { id: string; kind: 'novel' | 'image' | 'video'; prompt: string; references: StoryAssetRef[]; inheritFromBeatId?: string; activeRunId?: string; dialogue?: string; inputs?: StoryBeatInput[] }
 export interface StoryScene { id: string; index: number; title: string; summary: string; beats: StoryBeat[]; outputs: StoryGenerationRun[]; activeRunId?: string }
 export interface StoryFilm { id: string; url: string; clipCount: number; method: string; beatIds: string[]; createdAt: string }
 export interface StoryProject { id: string; title: string; logline?: string; bible: StoryBible; scenes: StoryScene[]; films?: StoryFilm[]; activeSceneId?: string; createdAt: string; updatedAt: string }

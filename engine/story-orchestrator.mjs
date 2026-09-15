@@ -197,16 +197,38 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       const run = createGenerationRun({ ...input, kind, model, projectId: id, sceneId: scene.id, beatId: beat.id, beatNo, sceneTitle: scene.title, inputAssets: input.inputAssets || compiled.referenceIds.map(assetId => ({ id: assetId, role: 'reference' })) }, clock);
       // 参考图只在模型声明支持时注入：不支持的模型塞图会 400，反而掩盖真实的降级原因。
       const picked = run.capabilities.reference ? pickReferenceImages(project, compiled.text) : [];
-      if (picked.length) run.referenceImages = picked;
+      // 挂载素材（别的工作台产出的图/视频/文本，见 story-store.normalizeBeatInputs）。
+      // 图片和定妆照走同一条通路（图生图 / reference 模式）；视频走 video-request 的 videos[]；
+      // 文本素材已经在 compileStoryPrompt 里作为创作依据写进提示词了。
+      const materials = Array.isArray(context.materials) ? context.materials : [];
+      const materialImages = run.capabilities.reference ? materials.filter(m => m.type === 'image' && m.url).map(m => m.url) : [];
+      const materialVideos = materials.filter(m => m.type === 'video' && m.url).map(m => m.url);
+      // 参考图的顺序按用途定，而且**要跟真实能力对齐**（适配器用不到的不许假装用到了）：
+      //  - 画面（图生图）只有一张入口 → 用户显式挂的素材优先，定妆照退居其次；
+      //    反过来会让"挂了素材却什么都没发生"，那是最坏的一种静默失败。
+      //  - 视频（reference 模式）能吃多张 → 定妆照在前（保人物），素材在后（给场景/构图依据）。
+      const orderedImages = kind === 'image'
+        ? [...materialImages, ...picked].slice(0, 1)
+        : [...picked, ...materialImages].slice(0, 4);
       // 上送用的那份要和**记录下来的那份**分开：run.referenceImages 会写进项目 JSON，
       // 内联后的 base64 一张就是 2MB 级，存进产物历史会把项目文件撑爆。
-      // 记录保留原始引用（可追溯引用了哪张定妆照），只有真正发给上游时才换成 base64。
+      // 记录保留原始引用（可追溯引用了哪张定妆照/哪张素材），只有真正发给上游时才换成 base64。
+      const usedRefs = [...new Set([...picked, ...materialImages])].slice(0, 4);
       const upstreamImages = [];
-      for (const ref of picked) {
+      for (const ref of orderedImages) {
         const r = materializeMedia(ref, { wsRoot: root });
         if (r.value) upstreamImages.push(r.value);
         else if (r.note) run.degradation = [...(run.degradation || []), `参考图未上送：${r.note}`];
       }
+      const upstreamVideos = [];
+      for (const ref of materialVideos.slice(0, 2)) {
+        const r = materializeMedia(ref, { wsRoot: root });
+        if (r.value) upstreamVideos.push(r.value);
+        else if (r.note) run.degradation = [...(run.degradation || []), `视频素材未上送：${r.note}`];
+      }
+      // 挂载了素材就要在产物历史里留下痕迹：没有它，"这一段用过哪些素材"事后无从对账
+      const materialAssets = materials.map((m, i) => ({ id: m.id || `material-${i + 1}`, role: m.type === 'text' ? 'source-text' : 'reference', type: m.type, ...(m.url ? { url: m.url } : {}), ...(m.name ? { name: m.name } : {}) }));
+      if (usedRefs.length) run.referenceImages = usedRefs;
       run.status = 'running';
       appendRun(scene, run);
       project.updatedAt = (clock.now || nowIso)();
@@ -217,10 +239,13 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
         await writeProject(root, project);
         return { project, run, context: compiled };
       }
+      const params = upstreamVideos.length ? { ...run.params, videos: upstreamVideos } : run.params;
       let result;
-      try { result = await adapter.generate({ prompt: compiled.text, model, seed: run.seed, params: run.params, references: compiled.referenceIds, referenceImages: upstreamImages }); }
+      try { result = await adapter.generate({ prompt: compiled.text, model, seed: run.seed, params, references: compiled.referenceIds, referenceImages: upstreamImages }); }
       catch (error) { result = { status: 'failed', error: String(error?.message || error).slice(0, 300) }; }
       if (result?.output) run.outputAssets = [{ id: `${run.id}-output`, role: 'output', ...result.output }];
+      // 产物历史里记下**原始引用**（不记内联后的 base64）：事后要能对账"这一段用过哪些素材"
+      if (materialAssets.length) run.inputAssets = [...(run.inputAssets || []), ...materialAssets];
       // 适配器如实上报的降级（例如上游把参考图摘掉了）必须并进来，否则这一趟看起来是"成功"
       const reported = Array.isArray(result?.output?.degradation) ? result.output.degradation.filter(Boolean).map(String) : [];
       if (reported.length) run.degradation = [...(run.degradation || []), ...reported];
@@ -284,7 +309,12 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       storyboard.scenes.forEach((scene, index) => {
         const beats = scene.beats.map((beat, beatIndex) => {
           const id = `beat-${stamp}-${index}-${beatIndex}`;
-          const item = { id, kind: beat.kind, prompt: beat.prompt, references: pickBeatReferences(cast, beat.prompt), ...(previousId ? { inheritFromBeatId: previousId } : {}) };
+          const item = {
+            id, kind: beat.kind, prompt: beat.prompt,
+            ...(beat.dialogue ? { dialogue: String(beat.dialogue).slice(0, 2000) } : {}),
+            references: pickBeatReferences(cast, beat.prompt),
+            ...(previousId ? { inheritFromBeatId: previousId } : {}),
+          };
           previousId = id;
           return item;
         });

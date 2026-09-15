@@ -73,9 +73,39 @@ export function findBeatAnywhere(project, scene, id) {
   return null;
 }
 
+// 挂载素材的形状（beat.inputs）。别的工作台产出的图/视频/文本挂到某一段上时用这个结构。
+// 刻意和 `references`（指向 bible 实体的 id）分开：references 靠名字/id 去设定里查，
+// inputs 是**已经存在的成品文件**，自带地址，不需要在设定里登记。
+// 文本素材把内容直接存在这里（选材时截断到 4000 字）：项目因此是自足的，
+// 素材源文件被移走/删掉也不影响已经挂好的这一段。
+export const INPUT_TYPES = ['image', 'video', 'text'];
+export function normalizeBeatInputs(value) {
+  if (!Array.isArray(value)) return [];
+  const out = [];
+  for (const item of value.slice(0, 12)) {
+    if (!item || typeof item !== 'object') continue;
+    const type = INPUT_TYPES.includes(item.type) ? item.type : '';
+    if (!type) continue;
+    const url = String(item.url || '').trim();
+    const text = String(item.text || '').trim().slice(0, 4000);
+    if (type !== 'text' && !url) continue;
+    if (type === 'text' && !text) continue;
+    out.push({
+      id: String(item.id || `in-${out.length + 1}`),
+      type,
+      name: String(item.name || '').trim().slice(0, 200),
+      ...(url ? { url } : {}),
+      ...(text ? { text } : {}),
+      ...(item.path ? { path: String(item.path).trim().slice(0, 400) } : {}),
+    });
+  }
+  return out;
+}
+
 export function mergeBeatContext(project, scene, beat) {
   const prompts = [];
   const references = [];
+  const materials = [];
   const visited = new Set();
   const previousOutputs = [];
   let current = beat;
@@ -89,6 +119,12 @@ export function mergeBeatContext(project, scene, beat) {
       const prose = output?.outputAssets.filter(asset => asset.type === 'text' && asset.text).map(asset => asset.text).join('\n');
       if (prose) previousOutputs.unshift(prose.slice(-12000));
     }
+    // 挂载素材同样沿继承链累积：续写要看得见上一段挂的素材，否则"承接"只是接了个句子，
+    // 画面和人物的依据在下一段就断了。
+    // 顺序与 referenceIds 保持一致（先祖先后自己）：unshift 传数组会把整组放到最前，
+    // 组内顺序仍是各自 beat 里的顺序。
+    const own = normalizeBeatInputs(current.inputs).filter(input => !materials.some(m => `${m.type}:${m.url || m.name}` === `${input.type}:${input.url || input.name}`));
+    if (own.length) materials.unshift(...own);
     for (const ref of (current.references || [])) {
       const id = typeof ref === 'string' ? ref : ref?.id;
       if (id && !references.includes(id)) references.unshift(id);
@@ -99,7 +135,7 @@ export function mergeBeatContext(project, scene, beat) {
     // 把 owning scene 挂在节点上，下一轮读产出时用得到。
     current = { ...next.beat, scene: next.scene };
   }
-  return { prompt: [...prompts.filter(Boolean), ...(previousOutputs.length ? ['## 已生成前文（承接结尾，推进新情节，不重复开场）', ...previousOutputs.slice(-3)] : [])].join('\n'), referenceIds: references, bible: project?.bible || BIBLE() };
+  return { prompt: [...prompts.filter(Boolean), ...(previousOutputs.length ? ['## 已生成前文（承接结尾，推进新情节，不重复开场）', ...previousOutputs.slice(-3)] : [])].join('\n'), referenceIds: references, materials, bible: project?.bible || BIBLE() };
 }
 
 function projectRoot(root) { return path.join(root, 'story-projects'); }

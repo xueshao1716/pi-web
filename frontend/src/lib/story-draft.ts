@@ -18,7 +18,7 @@ export function applyStoryDraft(project: StoryProject, draft: any, sceneId: stri
   const scenes = project.scenes.map(scene => {
     if (scene.id !== sceneId) return scene
     const old = scene.beats.find(beat => beat.id === beatId) || { id: beatId, kind: 'image' as const, prompt: '', references: [] }
-    const beat = { ...old, kind: ['novel', 'image', 'video'].includes(draft.beat?.kind) ? draft.beat.kind : old.kind, prompt: draft.beat?.prompt?.trim() || old.prompt }
+    const beat = { ...old, kind: ['novel', 'image', 'video'].includes(draft.beat?.kind) ? draft.beat.kind : old.kind, prompt: draft.beat?.prompt?.trim() || old.prompt, dialogue: draft.beat?.dialogue?.trim() || old.dialogue }
     return { ...scene, title: draft.scene?.title?.trim() || scene.title, summary: draft.scene?.summary?.trim() || scene.summary, beats: scene.beats.some(b => b.id === beatId) ? scene.beats.map(b => b.id === beatId ? beat : b) : [...scene.beats, beat] }
   })
   return { bible, scenes }

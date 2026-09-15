@@ -104,6 +104,22 @@
 .story-product-card .story-actions :is(.btn-ghost) { padding: 6px 10px; font-size: 11px; }
 .story-product-card .story-actions a { font-size: 11px; }
 .story-settings { border-top: 1px solid var(--pi-border-soft); padding-top: 12px; }
+/* 素材挂载：把别的工作台（绘画/视频/小说）的产出接到这一段上 */
+.story-materials { border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-md); padding: 10px 12px; background: var(--pi-bg1); }
+.story-materials-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--pi-dim); }
+.story-materials-head .btn-ghost { padding: 6px 10px; font-size: 11px; }
+.story-material-chips { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; padding: 0; }
+.story-material-chip { display: flex; align-items: center; gap: 8px; max-width: 100%; padding: 4px 8px; border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-sm); background: var(--pi-bg2); }
+.story-material-chip img { width: 32px; height: 32px; object-fit: cover; border-radius: var(--pi-r-sm); flex: none; }
+.story-material-name { font-size: 11px; color: var(--pi-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+.story-material-chip .btn-ghost { padding: 2px 6px; font-size: 11px; }
+.story-material-picker { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--pi-border-soft); }
+.story-material-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.story-material-tabs button { padding: 4px 10px; font-size: 11px; border-radius: var(--pi-r-sm); background: var(--pi-bg2); color: var(--pi-dim); }
+.story-material-tabs button.is-active { background: var(--pi-accent); color: #fff; }
+.story-material-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.story-material-row select { min-height: 32px; max-width: 100%; font-size: 12px; }
+.story-material-picker .story-hint { margin: 8px 0 0; }
 .story-settings summary { cursor: pointer; font-size: 14px; line-height: 1.7; padding-block: 10px; }
 .story-settings summary span { font-size: 12px; color: var(--pi-dim); margin-left: 8px; }
 .story-settings-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; margin: 16px 0; }

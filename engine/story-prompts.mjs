@@ -34,6 +34,21 @@ function section(label, values) {
   return lines.length ? `## ${label}\n${lines.map(v => `- ${v}`).join('\n')}` : '';
 }
 
+// 对话优先：台词单独成块，**不混进画面描述**。
+// 为什么较这个真：`prompt` 会整段发给生成模型。台词写进画面描述，生图模型会试着把字画出来
+// （或者把真正的视觉指令稀释掉）；而台词本身是这个故事真正的骨头——
+// 一段戏站着不站着，看的是人物说了什么，不是镜头怎么推。
+// 所以：文字段落（novel）以对白推进；画面（image）不出现在提示词里；视频（video）作为台词上送。
+export function dialogueBlock(beat, kind) {
+  const raw = String(beat?.dialogue || '').trim();
+  if (!raw) return '';
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean).slice(0, 40).map(l => `- ${l}`).join('\n');
+  if (!lines) return '';
+  if (kind === 'image') return '';
+  const head = kind === 'video' ? '## 本段台词（画外/口播，不要当成画面内容去画）' : '## 本段台词（必须按这些台词写成戏，不要改写成旁白）';
+  return `${head}\n${lines}`;
+}
+
 export function compileStoryPrompt({ bible, scene, beat, inherited } = {}) {
   const b = normalizeBible(bible);
   const refs = [];
@@ -53,9 +68,26 @@ export function compileStoryPrompt({ bible, scene, beat, inherited } = {}) {
     scene?.title ? `## 当前场景\n- 标题: ${scene.title}\n- 摘要: ${scene.summary || '无'}` : '',
     inherited?.prompt ? `## 继承镜头上下文\n${inherited.prompt}` : '',
     beat?.prompt ? `## 当前镜头要求\n${beat.prompt}` : '',
+    dialogueBlock(beat, beat?.kind),
+    // 素材：别的工作台产出的图/视频/文本被挂到这一段上时，正文里要能看见它们是什么，
+    // 否则模型只知道"有素材"，写出来的东西对不上。
+    materialBlock(inherited?.materials),
     refs.length ? `## 参考资产\n${refs.map(id => `- ${id}`).join('\n')}` : '',
   ].filter(Boolean);
   return { text: blocks.join('\n\n'), referenceIds: refs };
+}
+
+// 挂载素材的文本说明。图/视频只说"有什么"，正文素材直接把内容给模型看（截断）。
+export function materialBlock(materials) {
+  const list = Array.isArray(materials) ? materials.filter(m => m && (m.text || m.name || m.url)) : [];
+  if (!list.length) return '';
+  const lines = [];
+  for (const m of list) {
+    const kind = m.type === 'image' ? '画面' : m.type === 'video' ? '视频' : '文本';
+    if (m.type === 'text' && m.text) lines.push(`### 素材（文本）：${m.name || '未命名'}\n${String(m.text).trim().slice(0, 4000)}`);
+    else lines.push(`- ${kind}素材：${m.name || m.url}`);
+  }
+  return `## 本段已挂载素材\n- 这些素材是创作依据，请与之保持一致（人物长相、场景、已发生的事）。\n${lines.join('\n')}`;
 }
 
 // 角色定妆照提示词：产出「后续所有镜头可复用的形象参考」，不是一张插画。

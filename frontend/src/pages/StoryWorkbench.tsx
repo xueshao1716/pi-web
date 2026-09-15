@@ -6,6 +6,8 @@ import StoryStart from '../components/story/StoryStart'
 import StorySettings from '../components/story/StorySettings'
 import StoryResults from '../components/story/StoryResults'
 import StoryProducts from '../components/story/StoryProducts'
+import StoryMaterials from '../components/story/StoryMaterials'
+import type { StoryBeatInput } from '../types'
 import '../components/story/story.css'
 
 const emptyBeat: StoryBeat = { id: 'beat-1', kind: 'novel', prompt: '', references: [] }
@@ -30,6 +32,10 @@ export function StoryPanel() {
   const [planningModel, setPlanningModel] = useState('')
   const [selectedKind, setSelectedKind] = useState<StoryBeat['kind']>('novel')
   const [promptDraft, setPromptDraft] = useState('')
+  // 台词（对白）与画面描述分开：台词是要留下来的剧作内容，画面描述是发给生成模型的指令。
+  // 混在一起写，生图模型会试着把字画出来，而真正决定这段戏成不成立的对白反而没人看。
+  const [dialogueDraft, setDialogueDraft] = useState('')
+  const [inputDrafts, setInputDrafts] = useState<StoryBeatInput[]>([])
   const [compiled, setCompiled] = useState('')
   const [timelineOpen, setTimelineOpen] = useState(() => window.innerWidth > 640)
   const [storyboardIdea, setStoryboardIdea] = useState('')
@@ -44,7 +50,7 @@ export function StoryPanel() {
   const update = (p: StoryProject) => { setProject(p); setProjects(items => [p, ...items.filter(item => item.id !== p.id)]) }
   const choose = (p: StoryProject | null) => { setProject(p); setSelected(p?.scenes[0]?.beats[0]?.id || ''); if (p) hydrateBible(p); setAssistResult(null); setCompiled(''); setError(''); setNotice('') }
   const setGenerationKind = (kind: StoryBeat['kind']) => { setSelectedKind(kind); setSelectedModel(''); setCompiled('') }
-  useEffect(() => { if (beat) { setSelectedKind(beat.kind); setPromptDraft(beat.prompt) } setAssistResult(null); setCompiled('') }, [project?.id, beat?.id, beat?.kind, beat?.prompt])
+  useEffect(() => { if (beat) { setSelectedKind(beat.kind); setPromptDraft(beat.prompt); setDialogueDraft(beat.dialogue || ''); setInputDrafts(beat.inputs || []) } setAssistResult(null); setCompiled('') }, [project?.id, beat?.id, beat?.kind, beat?.prompt, beat?.dialogue, beat?.inputs])
   useEffect(() => { if (selectedModel && !availableModels.some(m => modelKey(m) === selectedModel)) setSelectedModel('') }, [selectedKind, models, selectedModel])
   const load = async () => {
     setBusy('正在加载故事'); setError('')
@@ -72,7 +78,7 @@ export function StoryPanel() {
     if (!project) throw new Error('请先开始一个故事')
     const scenes = project.scenes.length ? project.scenes : [{id:'scene-1',index:1,title:'开场',summary:project.logline || '',beats:[],outputs:[]}]
     const target = scene || scenes[0]
-    const nextBeat = { ...(beat || emptyBeat), kind:selectedKind, prompt:promptDraft.trim() }
+    const nextBeat = { ...(beat || emptyBeat), kind:selectedKind, prompt:promptDraft.trim(), dialogue:dialogueDraft.trim(), inputs:inputDrafts }
     const r = await StoryApi.patchProject(project.id, { bible: editedBible(project.bible, bibleDraft), scenes: scenes.map(s => s.id !== target.id ? s : {...s,beats:s.beats.some(b => b.id === nextBeat.id) ? s.beats.map(b => b.id === nextBeat.id ? nextBeat : b) : [...s.beats,nextBeat]}) })
     update(r.project); hydrateBible(r.project)
     return { project:r.project, sceneId:target.id, beatId:nextBeat.id }
@@ -170,7 +176,7 @@ export function StoryPanel() {
     {!project ? <StoryStart busy={Boolean(busy)} onStart={start}><label className="story-model-select">构思模型<select value={planningModel} disabled={Boolean(busy)} onChange={e=>setPlanningModel(e.target.value)}><option value="">自动选择文本模型</option>{models.filter(m=>capable(m,'novel')).map(m=><option key={modelKey(m)} value={modelKey(m)}>{m.name || m.id}</option>)}</select></label></StoryStart> : <div className="story-layout">
       <details open={timelineOpen} onToggle={e=>setTimelineOpen(e.currentTarget.open)} className="story-timeline"><summary>分镜时间线 · {project.scenes.reduce((n,s)=>n+s.beats.length,0)} 段</summary><ol>{project.scenes.flatMap(s=>(s.beats.length?s.beats:[emptyBeat]).map(b=>({s,b}))).map(({s,b},i)=>{
         const latest=s.outputs?.filter(r=>r.beatId===b.id).slice(-1)[0]
-        return <li key={b.id}><button disabled={Boolean(busy)} aria-current={beat?.id===b.id?'step':undefined} onClick={()=>setSelected(b.id)}><span>第 {i+1} 段 · {kindLabel[b.kind]}</span><strong>{b.prompt?.slice(0,48) || '等待开场'}</strong><span>{latest?.status==='failed'?'生成失败':latest?.outputAssets?.length?'已有成品':latest?.status==='running'?'正在生成':'待生成'}{b.inheritFromBeatId?' · 承接前文':''}</span></button></li>
+        return <li key={b.id}><button disabled={Boolean(busy)} aria-current={beat?.id===b.id?'step':undefined} onClick={()=>setSelected(b.id)}><span>第 {i+1} 段 · {kindLabel[b.kind]}{b.dialogue?' · 有台词':''}{b.inputs?.length?` · 素材 ${b.inputs.length}`:''}</span><strong>{b.prompt?.slice(0,48) || b.dialogue?.split('\n')[0]?.slice(0,48) || '等待开场'}</strong><span>{latest?.status==='failed'?'生成失败':latest?.outputAssets?.length?'已有成品':latest?.status==='running'?'正在生成':'待生成'}{b.inheritFromBeatId?' · 承接前文':''}</span></button></li>
       })}</ol></details>
       <main className="story-main">
         <div className="story-steps"><span className="is-ready">1 想法已建立</span><span className={project.bible.characters?.length?'is-ready':''}>2 确定人物与设定</span><span className={hasOutput?'is-ready':''}>3 生成并预览</span></div>
@@ -193,6 +199,8 @@ export function StoryPanel() {
           <div className="story-section-head"><h2>{scene?.title || '故事开场'}</h2><span>{beat?.inheritFromBeatId?'承接前文':'故事起点'}</span></div>
           <div className="story-form-row"><label>输出类型<select aria-label="选择输出类型" disabled={Boolean(busy)} value={selectedKind} onChange={e=>setGenerationKind(e.target.value as StoryBeat['kind'])}><option value="novel">小说段落</option><option value="image">故事画面</option><option value="video">视频片段</option></select></label><label>生成模型<select aria-label="选择模型" disabled={Boolean(busy)} value={selectedModel} onChange={e=>setSelectedModel(e.target.value)}><option value="">自动选择模型</option>{availableModels.map(m=><option key={modelKey(m)} value={modelKey(m)}>{m.name || m.id}</option>)}</select></label></div>
           <label>本段内容<textarea aria-label="本段内容" disabled={Boolean(busy)} value={promptDraft} onChange={e=>{setPromptDraft(e.target.value);setCompiled('')}} rows={6} placeholder="写下本段想发生的事，或让 AI 帮你完善" /></label>
+          <label>本段台词 · 对白<textarea aria-label="本段台词" disabled={Boolean(busy)} value={dialogueDraft} onChange={e=>{setDialogueDraft(e.target.value);setCompiled('')}} rows={4} placeholder={'一行一句，写成「角色名：台词」。这是故事的骨头——人物说了什么，比镜头怎么推更重要。'} /></label>
+          <StoryMaterials materials={inputDrafts} busy={Boolean(busy)} onChange={next => { setInputDrafts(next); setCompiled('') }} />
           <div className="story-form-row"><label>构思模型<select value={planningModel} disabled={Boolean(busy)} onChange={e=>setPlanningModel(e.target.value)}><option value="">自动选择文本模型</option>{models.filter(m=>capable(m,'novel')).map(m=><option key={modelKey(m)} value={modelKey(m)}>{m.name || m.id}</option>)}</select></label><div className="story-actions"><button className="btn-ghost" disabled={Boolean(busy)} onClick={assist}>让 AI 完善本段</button></div></div>
           {assistResult && <div className="story-draft"><h3>AI 草稿 · 确认后一起保存</h3><p>{assistResult.scene?.summary}</p><p>{assistResult.beat?.prompt}</p><p className="story-hint">人物：{assistResult.characters?.map((c:any)=>[c.name,c.appearance].filter(Boolean).join(' · ')).join('；') || '沿用既有设定'}</p><div className="story-actions"><button className="btn-primary" disabled={Boolean(busy)} onClick={applyAssist}>采用并保存设定</button><button className="btn-ghost" disabled={Boolean(busy)} onClick={()=>setAssistResult(null)}>暂不采用</button></div></div>}
           <p className="story-hint">{selectedKind==='novel'?'续写会带上已保存的设定和继承段落的实际正文。':`已生成的定妆照会作为真实参考图注入（画面走图生图、视频走 reference），用来锁住人物外貌；还没有定妆照的角色只能靠文字描述。当前 ${portraitCount}/${(project.bible.characters||[]).length} 个角色有定妆照。`}{selectedKind==='video'?' 每次生成一个视频片段，攒够成功的片段后用左侧「合成成片」拼成长片。':''}</p>
