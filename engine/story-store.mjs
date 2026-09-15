@@ -180,34 +180,39 @@ export async function listProjects(root) {
 // 界面上会一直显示「正在生成」，而它既不会成功也不会失败（真实案例：2026-09-15 用户的项目里
 // 就挂着一条 07:40:12 的 running，被我重启服务时打断）。启动这一刻，凡是 running 的必然是孤儿，
 // 这个判据是确定的，不需要超时猜测，也不会误杀正在跑的任务（正在跑的那个进程已经死了）。
+//
+// **例外：带 taskId 的 running 不动**。那是上游异步任务的号，任务还在上游跑着，
+// 我们随时能拿这个号去问一次——把它标成"失败"才是真的丢东西。这类留给界面上的「查一次」。
 export const INTERRUPTED_REASON = '生成被中断：服务在生成过程中重启，这一版没有产出';
 export function sweepInterruptedRunsInProject(project, now) {
-  let hit = 0;
+  let hit = 0, resumable = 0;
   for (const scene of project?.scenes || []) {
     for (const run of scene.outputs || []) {
       if (run?.status !== 'running' || run.finishedAt) continue;
+      if (run.taskId) { resumable += 1; continue; }
       run.status = 'failed';
       run.finishedAt = now;
       run.degradation = [...(run.degradation || []), INTERRUPTED_REASON];
       hit += 1;
     }
   }
-  return hit;
+  return { swept: hit, resumable };
 }
 
 export async function sweepInterruptedRuns(root, clock = {}) {
   const now = (clock.now || (() => new Date().toISOString()))();
   const projects = await listProjects(root);
-  let scanned = 0, swept = 0;
+  let scanned = 0, swept = 0, resumable = 0;
   const touched = [];
   for (const project of projects) {
     scanned += project.scenes?.reduce((n, s) => n + (s.outputs?.length || 0), 0) || 0;
-    const hit = sweepInterruptedRunsInProject(project, now);
+    const { swept: hit, resumable: keep } = sweepInterruptedRunsInProject(project, now);
+    resumable += keep;
     if (!hit) continue;
     await writeProject(root, { ...project, updatedAt: now });
     swept += hit;
     touched.push({ id: project.id, runs: hit });
   }
-  return { projects: projects.length, scanned, swept, touched };
+  return { projects: projects.length, scanned, swept, resumable, touched };
 }
 

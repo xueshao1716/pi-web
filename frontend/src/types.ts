@@ -100,6 +100,11 @@ export interface StoryGenerationRun {
   negative?: string
   // 这一趟用的参考图策略（几张、谁优先、实际用了几张）——事后要能回答"为什么这张图没带定妆照"
   reference?: { images: number; prefer: string; used: number }
+  // 异步生成的凭据：视频是"创建 + 收尾"两段式，靠任务号回来问一次；
+  // queuedAt 用来算"已经等了多久"（超窗不算失败，只是不再自动等）。
+  taskId?: string
+  queuedAt?: string
+  promptText?: string
   createdAt: string
   finishedAt?: string
 }

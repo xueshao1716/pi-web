@@ -62,7 +62,7 @@ import { initEnginePair, loadEnginePair, saveEnginePair, swapEnginePair, resolve
 import { decorateEngineStatus, pluginFromBody, isCorePlugin } from "./engine/engine-panel.mjs";
 import { initWorkspaceApi, WS_ROOT, findWorkspaceFiles, wsSafePath, saveArtifact, saveArtifactFromFile, handleWsTree, handleWsFile, handleWsRead, handleWsPreview, handleWsWrite, handleWsArtifacts, wsNextVersion, wsCopyDir, handleWsDeliver, handleWsPackage, handleWsDeliveries, handleWsRename, handleWsDelete, handleWsSearch, handleWsProjectCreate, handleWsConvert } from "./engine/workspace-api.mjs";
 import { initContextLoader, makeLoader, loadExperience, readRulesWithImports, loadContextRules, jitRulesForPath, loadProjectRules, loadSkillIndex, execActivateSkill, ACTIVATE_SKILL_TOOL, WORK_PROTOCOL, loadMemory, loadMemoryIndex, loadExperienceIndex, shouldInjectFullMemory, setLastUserQuery } from "./engine/context-loader.mjs";
-import { initMediaApi, findMediaModel, detectMediaIntents, extractMediaPrompt, mediaAwarePrompt, mediaReadyNotice, explainMediaError, generateMediaAsync, generateTTS, generateImage, handleImage, handleImageWithSave, generateVideo, handleMedia, assistantContentWithMedia } from "./engine/media-api.mjs";
+import { initMediaApi, findMediaModel, detectMediaIntents, extractMediaPrompt, mediaAwarePrompt, mediaReadyNotice, explainMediaError, generateMediaAsync, generateTTS, generateImage, handleImage, handleImageWithSave, generateVideo, startVideoJob, checkVideoJob, handleMedia, assistantContentWithMedia } from "./engine/media-api.mjs";
 import { extractPlayableMedia } from "./engine/media-embed.mjs";
 import { MEDIA_TOOL_SCHEMAS, mediaExtraExecutors, formatSensitiveHint, listHostChannels } from "./engine/media-channels.mjs";
 import { TODO_TOOL_SCHEMAS, todoExtraExecutors } from "./engine/yuanshu-todo.mjs";
@@ -88,7 +88,7 @@ import * as confirmRegistry from "./engine/tools/confirm-registry.mjs";
 import { initRefineApi, readRefineJson, runRefineScript, handleRefineStatus, handleRefineList, detectSkillDomain, handleRefineFeedback, handleRefineGenes, handleRefinePlan, handleRefineApprove, handleRefineReject, handleRefineRollback } from "./engine/refine-api.mjs";
 import { initMcpServer, handleMcp } from "./engine/mcp-server.mjs";
 import { initMcpChat } from "./engine/mcp-chat.mjs";
-import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryAssist, handleStoryPortrait, handleStoryLint, handleStoryStoryboard, handleStoryFilm, handleStoryRecipes, handleStoryRecipesExport, handleStoryRecipesImport, handleStoryRecipeDelete } from "./engine/story-orchestrator.mjs";
+import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryRunCheck, handleStoryAssist, handleStoryPortrait, handleStoryLint, handleStoryStoryboard, handleStoryFilm, handleStoryRecipes, handleStoryRecipesExport, handleStoryRecipesImport, handleStoryRecipeDelete } from "./engine/story-orchestrator.mjs";
 import { startShare, stopShareSync, handleShare, handleShareStatus, handleShareStop } from "./engine/share-api.mjs";
 import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
@@ -1675,7 +1675,9 @@ const API_ROUTES = [
   ["GET", /^\/api\/story\/projects\/([^/]+)$/, (res, req, url, m) => handleStoryProject({ root: WS_ROOT }, res, m[1])],
   ["PATCH", /^\/api\/story\/projects\/([^/]+)$/, async (res, req, url, m) => handleStoryProjectPatch({ root: WS_ROOT }, res, m[1], await readBody(req, 8))],
   ["POST", /^\/api\/story\/projects\/([^/]+)\/run-preview$/, async (res, req, url, m) => handleStoryRunPreview({ root: WS_ROOT, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 8))],
-  ["POST", /^\/api\/story\/projects\/([^/]+)\/run$/, async (res, req, url, m) => handleStoryRun({ root: WS_ROOT, generateImage, generateVideo, saveArtifact, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 8))],
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/run$/, async (res, req, url, m) => handleStoryRun({ root: WS_ROOT, generateImage, generateVideo, startVideoJob, checkVideoJob, saveArtifact, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 8))],
+  // 收尾一次（查上游任务号）：视频是异步的，创建与收尾必须分开，不能让一个请求干等
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/run-check$/, async (res, req, url, m) => handleStoryRunCheck({ root: WS_ROOT, startVideoJob, checkVideoJob, saveArtifact }, res, m[1], await readBody(req, 8))],
   ["POST", /^\/api\/story\/projects\/([^/]+)\/assist$/, async (res, req, url, m) => handleStoryAssist({ root: WS_ROOT, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 8))],
   // 角色定妆照：产出可复用的形象参考图，写回 bible；后续镜头生成会当作真实参考图注入
   ["POST", /^\/api\/story\/projects\/([^/]+)\/portrait$/, async (res, req, url, m) => handleStoryPortrait({ root: WS_ROOT, generateImage, saveArtifact, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 8))],
@@ -2472,6 +2474,8 @@ function startServer() {
       // 不清理就会永远显示「正在生成」（既不会成功也不会失败）。启动这一刻判它，是确定的。
       const sw = await sweepInterruptedRuns(WS_ROOT);
       if (sw?.swept) console.log(`[story] 清理 ${sw.swept} 条被中断的运行（${sw.touched.map(t => `${t.id.slice(0, 8)}×${t.runs}`).join(', ')}）`);
+      // 带任务号的 running 留着：上游任务还在跑，随时能用任务号问一次（界面上的「查一次」）
+      if (sw?.resumable) console.log(`[story] 保留 ${sw.resumable} 条可续查的运行（有上游任务号，可在连续创作里点「查一次」）`);
     } catch {}
     // 时间引擎：定时任务调度（触发时跑 unifiedChat + 结果落盘 文档/时间引擎日志.md）
     try {

@@ -9,11 +9,24 @@ import { buildStoryAssistPrompt, parseStoryAssist, buildStoryboardPrompt, parseS
 import { lintStoryProject } from './story-lint.mjs';
 import { collectFilmClips, concatClips } from './story-film.mjs';
 import { materializeMedia } from './media-inline.mjs';
-import { listRecipes, saveRecipe, deleteRecipe, importRecipes, exportRecipes, normalizeRefStrategy } from './story-recipes.mjs';
-import { json } from './http-utils.mjs';
+import { listRecipes, saveRecipe, deleteRecipe, importRecipes, exportRecipes, normalizeRefStrategy } from './story-recipes.mjs';import { json } from './http-utils.mjs';
 
 const makeId = () => crypto.randomUUID();
 const nowIso = () => new Date().toISOString();
+
+// 视频轮询窗口（多长之后前端**不再自动等**）。可配：`STORY_VIDEO_POLL_MS`，默认 10 分钟。
+// 注意它**不是失败判据**：超窗只是"不再自动等"，任务在上游是死是活要靠「查一次」问出来。
+// 以前的 180 秒硬超时是把"还没好"直接说成"超时失败"，那是两件事。
+const DEFAULT_VIDEO_POLL_MS = 10 * 60 * 1000;
+export function videoPollWindowMs(env = process.env) {
+  const raw = Number(env?.STORY_VIDEO_POLL_MS);
+  return Number.isFinite(raw) && raw >= 5000 ? raw : DEFAULT_VIDEO_POLL_MS;
+}
+function waitedMs(run, clock) {
+  const from = Date.parse(run?.queuedAt || run?.createdAt || '');
+  const now = Date.parse((clock.now || nowIso)());
+  return Number.isFinite(from) && Number.isFinite(now) ? Math.max(0, now - from) : 0;
+}
 
 export function negotiateCapabilities(required = {}, supported = {}) {
   const degradation = [];
@@ -128,7 +141,7 @@ function pickCapableModel(models, kind) {
   return hits.sort((a, b) => rank(a) - rank(b))[0] || null;
 }
 
-export function createStoryOrchestrator({ root, clock = {}, adapters = {}, generateImage = null, generateVideo = null, saveArtifact = null, saveArtifactFromFile = null, directChat = null, getDefaultModel = null, getModelList = null }) {
+export function createStoryOrchestrator({ root, clock = {}, adapters = {}, generateImage = null, generateVideo = null, startVideoJob = null, checkVideoJob = null, saveArtifact = null, saveArtifactFromFile = null, directChat = null, getDefaultModel = null, getModelList = null }) {
   if (!root) throw new Error('story orchestrator 缺少 root');
   const withUpdated = project => ({ ...project, updatedAt: (clock.now || nowIso)() });
   // 前端模型下拉只能给出 {provider, id}，capabilities 会整个丢掉；而 negotiateCapabilities
@@ -246,7 +259,7 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
   const resolvedAdapters = {
     image: adapters.image || createImageAdapter({ generateImage, saveArtifact }),
     novel: adapters.novel || createNovelAdapter({ directChat }),
-    video: adapters.video || createVideoAdapter({ generateVideo, saveArtifact }),
+    video: adapters.video || createVideoAdapter({ generateVideo, startVideoJob, checkVideoJob, saveArtifact }),
   };
   // 项目级默认配方：段落自己没说的地方由它兜底（模型/参数/负向/变体数/参考图策略）。
   // 找不到（被删了）就当没有——**不报错**：一条配方被删不该让整个项目生成不了。
@@ -308,11 +321,15 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
         // 只在真有话说时才写 degradation——空数组会让"没有降级"变成另一种形状，
         // 也白白撑大项目 JSON。
         if (plan.notes.length) run.degradation = [...(run.degradation || []), ...plan.notes];
+        // 记下这次到底发了什么（截断）。视频要异步收尾，得靠它把当时的提示词带回来；
+        // 顺带让"产物是历史"这句话在文本层面也成立。
+        run.promptText = String(plan.compiled.text).slice(0, 8000);
         run.status = 'running';
         appendRun(scene, run);
         project.updatedAt = (clock.now || nowIso)();
         await writeProject(root, project);
-        if (!adapter?.generate) {
+        const useAsync = plan.kind === 'video' && typeof adapter?.start === 'function';
+        if (!adapter?.generate && !useAsync) {
           run.status = 'failed'; run.degradation = [...(run.degradation || []), `${plan.kind}: 当前未接入生成适配器`];
           run.finishedAt = (clock.now || nowIso)();
           await writeProject(root, project);
@@ -321,11 +338,30 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
         }
         let result;
         try {
-          result = await adapter.generate({
-            prompt: plan.compiled.text, model: plan.model, seed,
-            params: plan.adapterParams, references: plan.compiled.referenceIds, referenceImages: plan.upstreamImages,
-          });
+          // 视频走"只创建、立刻返回任务号"：上游排队常常好几分钟，让一个 HTTP 请求干等，
+          // 既会被网关掐断（工坊早就因此改成短轮询），也会让用户以为卡死。
+          // 图像/文字是同步的，照旧一次拿结果。
+          result = useAsync
+            ? await adapter.start({
+              prompt: plan.compiled.text, model: plan.model, seed,
+              params: plan.adapterParams, references: plan.compiled.referenceIds, referenceImages: plan.upstreamImages,
+            })
+            : await adapter.generate({
+              prompt: plan.compiled.text, model: plan.model, seed,
+              params: plan.adapterParams, references: plan.compiled.referenceIds, referenceImages: plan.upstreamImages,
+            });
         } catch (error) { result = { status: 'failed', error: String(error?.message || error).slice(0, 300) }; }
+        // 只创建成功：这一版仍是 running，等 checkRun 或前端轮询来收尾
+        if (result?.status === 'running' && result.taskId && !result.output) {
+          run.taskId = result.taskId;
+          run.queuedAt = (clock.now || nowIso)();
+          const notes = Array.isArray(result.degradation) ? result.degradation.filter(Boolean).map(String) : [];
+          if (notes.length) run.degradation = [...(run.degradation || []), ...notes];
+          if (plan.materialAssets.length) run.inputAssets = [...(run.inputAssets || []), ...plan.materialAssets];
+          await writeProject(root, project);
+          runs.push(run);
+          continue;
+        }
         if (result?.output) run.outputAssets = [{ id: `${run.id}-output`, role: 'output', ...result.output }];
         // 产物历史里记下**原始引用**（不记内联后的 base64）：事后要能对账"这一段用过哪些素材"
         if (plan.materialAssets.length) run.inputAssets = [...(run.inputAssets || []), ...plan.materialAssets];
@@ -338,8 +374,46 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
         await writeProject(root, project);
         runs.push(run);
       }
-      return { project, run: runs[runs.length - 1], runs, context: plan.compiled, plan: describeRunPlan(plan, runs[0]) };
+      return { project, run: runs[runs.length - 1], runs, context: plan.compiled, plan: describeRunPlan(plan, runs[0]), ...(plan.kind === 'video' ? { pollWindowMs: videoPollWindowMs() } : {}) };
     },
+    // 收尾一次：查上游任务号，出片就落盘、真失败就记失败，还在排队就原样返回。
+    // **一次调用只查一次**——等多久由前端轮询或人类点「查一次」决定，
+    // 不在一次请求里干等（那正是原来 180s 超时的成因）。
+    checkRun: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const scene = findScene(project, input.sceneId);
+      const run = (scene?.outputs || []).find(r => r.id === input.runId);
+      if (!scene || !run) throw Object.assign(new Error('sceneId 或 runId 不存在'), { statusCode: 400 });
+      if (run.status !== 'running') return { project, run, status: run.status, settled: false };
+      if (!run.taskId) {
+        // 没有任务号就没得查：这一版是创建阶段就断了的孤儿，如实标失败
+        run.status = 'failed'; run.finishedAt = (clock.now || nowIso)();
+        run.degradation = [...(run.degradation || []), '这一版没有任务号，无法查询上游（多半是创建阶段就断了）'];
+        await writeProject(root, project);
+        return { project, run, status: 'failed', settled: true };
+      }
+      const adapter = resolvedAdapters[run.kind] || resolvedAdapters.video;
+      const result = typeof adapter?.settle === 'function'
+        ? await adapter.settle({ taskId: run.taskId, model: run.model, promptText: run.promptText })
+        : { status: 'failed', error: '视频引擎未接入（缺 checkVideoJob）' };
+      if (result?.status === 'running') {
+        // 还在排队：**什么也不改**，把上游状态带回去让界面说清楚
+        return { project, run, status: 'running', settled: false, upstream: result.upstream || 'pending', waitedMs: waitedMs(run, clock) };
+      }
+      if (result?.output) {
+        run.outputAssets = [{ id: `${run.id}-output`, role: 'output', ...result.output }];
+        const reported = Array.isArray(result.output.degradation) ? result.output.degradation.filter(Boolean).map(String) : [];
+        if (reported.length) run.degradation = [...(run.degradation || []), ...reported];
+        run.status = run.degradation?.length ? 'degraded' : 'succeeded';
+      } else {
+        run.status = 'failed';
+        run.degradation = [...(run.degradation || []), result?.error || '上游返回失败'];
+      }
+      run.finishedAt = (clock.now || nowIso)();
+      await writeProject(root, project);
+      return { project, run, status: run.status, settled: true, waitedMs: waitedMs(run, clock) };
+    },
+    pollWindowMs: () => videoPollWindowMs(),
     // 角色定妆照：按角色设定出一张可复用的形象参考图，写回 bible.characters[].refImage。
     // 这张图随后会被 runGeneration 当成真实参考图注入（图像走图生图、视频走 reference 模式），
     // 这是"锁定人物外貌"的入口——在此之前 story 层只有文字描述，产品自己也在界面上承认做不到。
@@ -516,6 +590,10 @@ export async function handleStoryRun(ctx, res, id, body) {
   try {
     return json(res, 200, await createStoryOrchestrator(ctx).runGeneration(id, bodyOrEmpty(body)));
   } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryRunCheck(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).checkRun(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
 }
 
 export async function handleStoryPortrait(ctx, res, id, body) {

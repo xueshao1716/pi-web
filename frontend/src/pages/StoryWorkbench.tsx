@@ -162,9 +162,14 @@ export function StoryPanel() {
       update(r.project)
       setPlan(r.plan || [])
       const n = r.runs?.length || 1
+      const pending = (r.runs || [r.run]).filter(x => x.status === 'running' && x.taskId)
       const failed = (r.runs || [r.run]).filter(x => x.status === 'failed')
       const degraded = (r.runs || [r.run]).filter(x => x.status === 'degraded')
-      if (failed.length) setError(failed.map(x => x.degradation?.join('；')).join(' ／ ') || '生成失败，请更换模型重试')
+      if (pending.length) {
+        // 视频是异步的：创建成功只是"排上队了"，**不是"出片了"**。要说清区别并开始短轮询。
+        setNotice(`已排上队（${pending.length} 个任务号），正在等上游出片——期间可以继续做别的事，也可以随时点「查一次」。`)
+        void pollRuns(saved.project.id, saved.sceneId, pending, r.pollWindowMs || 600000)
+      } else if (failed.length) setError(failed.map(x => x.degradation?.join('；')).join(' ／ ') || '生成失败，请更换模型重试')
       else if (degraded.length) setNotice(`${n > 1 ? `${n} 版已返回` : '本段结果已返回'}，但有降级项要看（见下方执行链的「注意」）。`)
       else setNotice(n > 1 ? `${n} 版已返回，都是同参换 seed 的变体，挑一版用。` : '本段结果已返回，请预览核对，再从此处继续。')
     } catch (e) {
@@ -172,6 +177,36 @@ export function StoryPanel() {
       if (latest) update(latest.project)
       throw e
     }
+  })
+  // 短轮询收尾：每 5 秒问一次上游状态，问到出片/真失败就停。
+  // **超过 pollWindowMs 就停下、保留 running 与任务号**，让用户点「查一次」继续——
+  // 「还没好」不是「失败」，这是以前 180s 硬超时最大的错。
+  const pollRuns = async (projectId: string, sceneId: string, runs: StoryGenerationRun[], windowMs: number) => {
+    const ids = new Set(runs.map(r => r.id))
+    const deadline = Date.now() + windowMs
+    while (ids.size && Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 5000))
+      for (const runId of [...ids]) {
+        let res
+        try { res = await StoryApi.checkRun(projectId, { sceneId, runId }) } catch { continue }
+        if (res.project) update(res.project)
+        if (res.settled) {
+          ids.delete(runId)
+          if (res.status === 'failed') setError(res.run?.degradation?.join('；') || '上游返回失败')
+          else setNotice(res.status === 'degraded' ? '片子到了，但有降级项（见该版本上的说明）。' : '片子到了，已落盘。')
+        }
+      }
+    }
+    if (ids.size) setNotice(`等满 ${Math.round(windowMs / 60000)} 分钟还没出片——任务号还在，可以点该版本的「查一次」继续问。`)
+  }
+  // 手动查一次：给排队中的版本、也给"超窗后还想再问一句"的场景
+  const checkOne = (runItem: StoryGenerationRun) => action('正在向上游问一次', async () => {
+    if (!project || !scene) return
+    const res = await StoryApi.checkRun(project.id, { sceneId: scene.id, runId: runItem.id })
+    update(res.project)
+    if (!res.settled) setNotice(`还在排队（上游状态：${res.upstream || 'pending'}）${res.waitedMs ? `，已等 ${Math.round(res.waitedMs / 60000)} 分钟` : ''}——不是失败，可以过会儿再点。`)
+    else if (res.status === 'failed') setError(res.run?.degradation?.join('；') || '上游返回失败')
+    else setNotice('片子到了，已落盘。')
   })
   const preview = () => action('正在检查生成输入', async () => {
     const saved = await persist()
@@ -320,7 +355,7 @@ export function StoryPanel() {
             </div>}
             <details><summary>编译后的提示词全文</summary><div className="story-prose">{compiled}</div></details>
           </details>}
-        </section>{scene && beat && <StoryResults scene={scene} beat={beat} busy={Boolean(busy)} onRerun={rerun} />}</div>
+        </section>{scene && beat && <StoryResults scene={scene} beat={beat} busy={Boolean(busy)} onRerun={rerun} onCheck={checkOne} />}</div>
         <StorySettings values={bibleDraft} busy={Boolean(busy)} characters={project.bible.characters || []} onPortrait={portrait} onChange={setBibleDraft} onSave={saveBible} />
         <StoryProducts project={project} onPick={setSelected} />
       </main>

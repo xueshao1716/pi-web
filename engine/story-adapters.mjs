@@ -57,32 +57,71 @@ export function createNovelAdapter({ directChat }) {
   };
 }
 
-export function createVideoAdapter({ generateVideo, saveArtifact }) {
+export function createVideoAdapter({ generateVideo, startVideoJob, checkVideoJob, saveArtifact }) {
+  // 提示词与创建体只在这里组一遍：同步路径（generate）与"只创建"路径（start）必须完全一致，
+  // 否则两条路会各自漂移——那种不一致很难被发现，只会在某一条路上出结果。
+  const build = ({ prompt, model, seed, params = {}, references = [], referenceImages = [] } = {}) => {
+    // 真参考图：把角色定妆照作为 images[] 传给上游，videoCreateBody 见到 images 会自动
+    // 把 mode 落成 "reference"（见 video-request.mjs），这是人物一致的真正开关。
+    const imgs = (Array.isArray(referenceImages) ? referenceImages : []).filter(Boolean).slice(0, 3);
+    const marker = [
+      references.join(','),
+      imgs.length ? `已附 ${imgs.length} 张角色定妆照参考图（reference 模式锁定）` : '无参考图，仅文字描述，人物一致性有限',
+    ].filter(Boolean).join('；');
+    const finalPrompt = `${String(prompt || '').trim()}\n[连续性参考] ${marker}`;
+    return {
+      imgs,
+      finalPrompt,
+      // seed 同样要真的进创建体（video-request 见到 src.seed 才会写 body.seed）：
+      // 以前适配器压根没解构 seed，video-request 那条转发分支永远走不到。
+      body: {
+        ...params,
+        ...(Number.isFinite(seed) ? { seed } : {}),
+        ...(imgs.length ? { images: imgs } : {}),
+      },
+    };
+  };
+  const clean = cleanModel;
   return {
-    async generate({ prompt, model, seed, params = {}, references = [], referenceImages = [] } = {}) {
+    async generate({ prompt, model, seed, params, references, referenceImages } = {}) {
       if (typeof generateVideo !== 'function') return { status: 'failed', error: '视频引擎未接入' };
-      // 真参考图：把角色定妆照作为 images[] 传给上游，videoCreateBody 见到 images 会自动
-      // 把 mode 落成 "reference"（见 video-request.mjs），这是人物一致的真正开关。
-      const imgs = (Array.isArray(referenceImages) ? referenceImages : []).filter(Boolean).slice(0, 3);
-      const marker = [
-        references.join(','),
-        imgs.length ? `已附 ${imgs.length} 张角色定妆照参考图（reference 模式锁定）` : '无参考图，仅文字描述，人物一致性有限',
-      ].filter(Boolean).join('；');
-      const finalPrompt = `${String(prompt || '').trim()}\n[连续性参考] ${marker}`;
+      const { finalPrompt, body } = build({ prompt, model, seed, params, references, referenceImages });
       try {
-        // seed 同样要真的进创建体（video-request 见到 src.seed 才会写 body.seed）：
-        // 以前适配器压根没解构 seed，video-request 那条转发分支永远走不到。
-        const body = {
-          ...params,
-          ...(Number.isFinite(seed) ? { seed } : {}),
-          ...(imgs.length ? { images: imgs } : {}),
-        };
         const result = await generateVideo(model?.provider, model?.id, finalPrompt, body);
-        if (!result?.video) return { status: 'failed', error: result?.error || '视频模型未返回片子', model: cleanModel(model) };
+        if (!result?.video) return { status: 'failed', error: result?.error || '视频模型未返回片子', model: clean(model) };
         const stored = typeof saveArtifact === 'function' ? normalizeStored(await saveArtifact({ type: 'video', url: result.video, prompt: finalPrompt }), result.video) : { url: result.video, local: true, reason: '' };
         const notes = adapterNotes(result);
-        return { status: 'succeeded', model: cleanModel(model), output: { type: 'video', url: stored.url || result.video, prompt: finalPrompt, ...(notes.length ? { degradation: notes } : {}), ...(stored.local ? {} : { localizeError: stored.reason }) } };
-      } catch (error) { return { status: 'failed', error: String(error?.message || error).slice(0, 200), model: cleanModel(model) }; }
+        return { status: 'succeeded', model: clean(model), output: { type: 'video', url: stored.url || result.video, prompt: finalPrompt, ...(notes.length ? { degradation: notes } : {}), ...(stored.local ? {} : { localizeError: stored.reason }) } };
+      } catch (error) { return { status: 'failed', error: String(error?.message || error).slice(0, 200), model: clean(model) }; }
+    },
+    // 只创建、立刻返回任务号。**连续创作走这条**：上游排队常常几分钟，
+    // 让一个 HTTP 请求干等那么久，既会被网关掐断（工坊早就因此改成短轮询），
+    // 也会让用户以为卡死了。
+    async start({ prompt, model, seed, params, references, referenceImages } = {}) {
+      if (typeof startVideoJob !== 'function') return { status: 'failed', error: '视频引擎未接入（缺 startVideoJob）' };
+      const { finalPrompt, body } = build({ prompt, model, seed, params, references, referenceImages });
+      try {
+        const r = await startVideoJob(model?.provider, model?.id, finalPrompt, body);
+        const notes = adapterNotes(r);
+        // 少数上游会在创建响应里直接给成品
+        if (r?.video) return { status: 'succeeded', model: clean(model), video: r.video, prompt: finalPrompt, ...(notes.length ? { degradation: notes } : {}) };
+        if (r?.task_id) return { status: 'running', model: clean(model), taskId: String(r.task_id), prompt: finalPrompt, ...(notes.length ? { degradation: notes } : {}) };
+        return { status: 'failed', model: clean(model), error: r?.error || '视频任务没有返回任务号' };
+      } catch (error) { return { status: 'failed', model: clean(model), error: String(error?.message || error).slice(0, 200) }; }
+    },
+    // 查一次并落盘。**不在这里等**：等多久由调用方（前端轮询 / 人类点「查一次」）决定。
+    async settle({ taskId, model, promptText } = {}) {
+      if (typeof checkVideoJob !== 'function') return { status: 'failed', error: '视频引擎未接入（缺 checkVideoJob）' };
+      if (!taskId) return { status: 'failed', error: '这一版没有任务号，无法查询' };
+      try {
+        const q = await checkVideoJob(model?.provider, model?.id, taskId);
+        if (q?.video) {
+          const stored = typeof saveArtifact === 'function' ? normalizeStored(await saveArtifact({ type: 'video', url: q.video, prompt: promptText || '' }), q.video) : { url: q.video, local: true, reason: '' };
+          return { status: 'succeeded', model: clean(model), output: { type: 'video', url: stored.url || q.video, prompt: promptText || '', ...(stored.local ? {} : { localizeError: stored.reason }) } };
+        }
+        if (q?.error && q.status !== 'pending') return { status: 'failed', model: clean(model), error: String(q.error) };
+        return { status: 'running', taskId, upstream: q?.status || 'pending' };
+      } catch (error) { return { status: 'failed', model: clean(model), error: String(error?.message || error).slice(0, 200) }; }
     },
   };
 }

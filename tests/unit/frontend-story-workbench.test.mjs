@@ -84,6 +84,21 @@ test('参考图策略与项目默认配方必须留在界面上', () => {
   assert.match(types, /reference: \{ images: number; prefer: 'material' \| 'portrait' \}/);
 });
 
+test('视频异步：创建与收尾分开，超窗不等于失败', () => {
+  assert.match(source, /StoryApi\.checkRun/, '要有收尾查询的调用');
+  assert.match(source, /pollRuns/, '启动后要短轮询');
+  assert.match(source, /pollWindowMs/, '轮询窗口用后端给的值，前端不自己写常量');
+  assert.match(source, /查一次/, '排队中的版本要有人工「查一次」的入口');
+  assert.match(source, /排上队/, '创建成功只是排队，不能报成"出片了"');
+  const results = fs.readFileSync('frontend/src/components/story/StoryResults.tsx', 'utf8');
+  assert.match(results, /onCheck/, '结果卡片要把「查一次」接出去');
+  assert.match(results, /run\.taskId/, '只有带任务号的运行才谈得上查');
+  const api = fs.readFileSync('frontend/src/api.ts', 'utf8');
+  assert.match(api, /run-check/);
+  // 不再用"一条请求干等三分钟"的长超时
+  assert.doesNotMatch(api, /run: \(id[^\n]*timeoutMs: 900000/, '创建不该再阻塞几分钟');
+});
+
 test('作品列表：段号取生成时的定格值、失败可见、成片落回项目', () => {  const products = fs.readFileSync('frontend/src/components/story/StoryProducts.tsx', 'utf8');
   // 段号优先用 run.beatNo（生成时刻定格），只在旧数据上按当前分镜顺序回退
   assert.match(products, /run\.beatNo/);

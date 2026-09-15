@@ -572,19 +572,33 @@ export async function checkVideoJob(provider, modelId, taskId) {
   }
 }
 
+// 同步等待上游出片的轮询次数/间隔。可配：`VIDEO_POLL_ATTEMPTS` / `VIDEO_POLL_INTERVAL_MS`。
+// 注意这是**同步路径**（聊天旁路 / 工坊的兼容入口）。连续创作不再走它——那边改成
+// "创建 + 短轮询"，因为把一个 HTTP 请求挂几分钟既会被网关掐断，也让人以为卡死。
+export function videoPollPlan(env = process.env) {
+  const attempts = Number(env?.VIDEO_POLL_ATTEMPTS);
+  const interval = Number(env?.VIDEO_POLL_INTERVAL_MS);
+  return {
+    attempts: Number.isFinite(attempts) && attempts >= 1 && attempts <= 600 ? Math.round(attempts) : 36,
+    intervalMs: Number.isFinite(interval) && interval >= 500 && interval <= 60000 ? Math.round(interval) : 5000,
+  };
+}
+
 export async function generateVideo(provider, modelId, prompt, body = {}) {
   const started = await startVideoJob(provider, modelId, prompt, body);
   if (started.error || started.video) return started;
   const taskId = started.task_id;
   // 创建阶段摘掉过参考图的话，这个问题要跟着结果一路传回来，不能在这里丢掉
   const notes = Array.isArray(started.notes) ? started.notes : [];
-  for (let i = 0; i < 36; i++) {
-    await new Promise(r => setTimeout(r, 5000));
+  const { attempts, intervalMs } = videoPollPlan();
+  for (let i = 0; i < attempts; i++) {
+    await new Promise(r => setTimeout(r, intervalMs));
     const q = await checkVideoJob(provider, modelId, taskId);
     if (q.video) return { video: q.video, task_id: taskId, notes };
     if (q.error && q.status !== "pending") return { error: q.error, task_id: taskId, notes };
   }
-  return { error: "视频生成超时（180s）", task_id: taskId, notes };
+  // 「还没等到」不是「失败」：任务号带回去，调用方还能接着查
+  return { error: `等上游出片超时（${Math.round(attempts * intervalMs / 1000)}s 内没等到，任务号 ${taskId} 仍可继续查）`, timedOut: true, task_id: taskId, notes };
 }
 
 // POST /api/media —— 工坊短请求：无 task_id 只创建；有 task_id 只查一次

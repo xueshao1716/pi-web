@@ -31,7 +31,7 @@ function Assets({ run, saving, onSave }: { run: StoryGenerationRun; saving: bool
   </>
 }
 
-export default function StoryResults({ scene, beat, busy, onRerun }: { scene: StoryScene; beat: StoryBeat; busy?: boolean; onRerun?: (run: StoryGenerationRun) => void }) {
+export default function StoryResults({ scene, beat, busy, onRerun, onCheck }: { scene: StoryScene; beat: StoryBeat; busy?: boolean; onRerun?: (run: StoryGenerationRun) => void; onCheck?: (run: StoryGenerationRun) => void }) {
   const runs = (scene.outputs || []).filter(run => run.beatId === beat.id).slice().reverse()
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
@@ -54,10 +54,12 @@ export default function StoryResults({ scene, beat, busy, onRerun }: { scene: St
       </div>
       {run.degradation?.length ? <div role={run.status === 'failed' ? 'alert' : 'note'} className="story-notice">{run.degradation.join('；')}{run.status === 'failed' ? '。可以更换模型后重试，已有版本仍保留。' : ''}</div> : null}
       <Assets run={run} saving={saving} onSave={save} />
-      {/* 同参重跑：有了它，一次偶然的好结果才算真的可复现（ComfyUI 里就是"再跑一次同样的图"） */}
-      {onRerun && <div className="story-actions">
-        <button className="btn-ghost" disabled={busy} onClick={() => onRerun(run)}>照这版重跑 · 同 seed{run.seed != null ? ` ${run.seed}` : '（这一版没记 seed）'}</button>
-      </div>}
+      <div className="story-actions">
+        {/* 排队中的版本：给一个人工问一句的入口。「还没好」不是「失败」 */}
+        {onCheck && run.status === 'running' && run.taskId && <button className="btn-ghost" disabled={busy} onClick={() => onCheck(run)}>查一次（任务号 {String(run.taskId).slice(0, 12)}）</button>}
+        {/* 同参重跑：有了它，一次偶然的好结果才算真的可复现（ComfyUI 里就是"再跑一次同样的图"） */}
+        {onRerun && <button className="btn-ghost" disabled={busy} onClick={() => onRerun(run)}>照这版重跑 · 同 seed{run.seed != null ? ` ${run.seed}` : '（这一版没记 seed）'}</button>}
+      </div>
     </article>)}
     {message && <p role="status" className="story-notice">{message}</p>}
   </section>
