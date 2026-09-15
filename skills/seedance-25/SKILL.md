@@ -1,6 +1,6 @@
 ---
 name: seedance-25
-description: "船长AI视界出品的 Seedance 2.5 视频创作技能。Create, improve, extend, edit, or troubleshoot Seedance 2.5 videos and paste-ready prompts, especially on 即梦/Dreamina. Use for text/image/video/audio/reference-to-video, first/last frame, 4–30s clips, 30–180s ultra-long video, native video extension, timestamp control, smart/advanced/video editing, BGM removal, green-screen compositing, creative transfer, viewpoint change, voice reference, multi-person consistency, white-model rendering, seamless transitions, multi-panel storyboards, or Seedance 2.0-to-2.5 prompt migration. Also use when a beginner describes a video idea without knowing modes or prompt terminology. Do not use for non-Seedance models or image-only generation."
+description: 船长AI视界 Seedance 2.5 视频创作：文/图/视频/音频生视频、首尾帧、超长续写、时间戳控制、编辑与绿幕合成、视角切换、音色参考、多人一致性。当用户要生成、改写或排错 Seedance 2.5 视频与提示词时使用。
 ---
 
 # 船长AI视界 · Seedance 2.5 OS

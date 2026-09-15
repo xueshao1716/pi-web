@@ -171,10 +171,13 @@ export function loadSkillIndex() {
         try {
           const f = path.join(dir, name, "SKILL.md");
           const raw = fs.readFileSync(f, "utf8");
-          const fm = raw.match(/^---\n([\s\S]*?)\n---/);
+          // frontmatter 必须容 CRLF：2026-09-16 实测有两个技能整份是 CRLF，
+          // 而这里原来只认 `\n`——于是它们的 description 一个都没读到，
+          // 目录里显示的是"正文第一行"（一个文件的行尾不该决定它的说明读不读得到）。
+          const fm = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
           let desc = "";
-          if (fm) { const dm = fm[1].match(/description:\s*(.+)/); if (dm) desc = dm[1].trim(); }
-          if (!desc) desc = (raw.split("\n").find(l => l.trim() && !l.startsWith("#")) || "").trim();
+          if (fm) { const dm = fm[1].match(/description:\s*(.+)/); if (dm) desc = dm[1].trim().replace(/^["']|["']$/g, ""); }
+          if (!desc) desc = (raw.split(/\r?\n/).find(l => l.trim() && !l.startsWith("#")) || "").trim();
           list.push({ name, desc: desc.slice(0, 120) });
         } catch {}
       }

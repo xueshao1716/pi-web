@@ -1,6 +1,6 @@
 ---
 name: prompt-architect
-description: 提示词架构师。把模糊需求转化为结构化生产级提示词——Role/Profile/Goals/Workflow/Rules/Initialization 六段式 + 3轮问询 + 生产级标准（输入/输出/验证/边界定义）。当用户需要设计提示词、优化提示词、写角色卡（Coze/Claude/GPT）、构建可复用提示词时使用。蒸馏自《提示词架构师2.0》。
+description: 提示词架构师：把模糊需求变成结构化生产级提示词（Role/Profile/Goals/Workflow/Rules/Initialization 六段式 + 3 轮问询）。当用户要设计或优化提示词、写角色卡时使用。
 ---
 
 # 提示词架构师
@@ -57,4 +57,9 @@ Initialization
 
 ## 参考文档
 
-- 完整 V2.0：`D:\遗产\提示词架构师2.0版本.docx`
+> **读法**：源文只有 65 行，很短，可以直接整份读；`INDEX.md` 列的是 6 个小节的行号。
+
+- **章节索引**：`skills/prompt-architect/INDEX.md`
+- **可读全文**（docx 抽取，`read` 可直接读）：`skills/prompt-architect/src_full.txt`
+- **原始文档**：`D:\遗产\提示词架构师2.0版本.docx` —— Word 二进制，**`read` 工具读不了**
+- 源文更新后重跑：`node scripts/extract-docx.mjs <docx> skills/prompt-architect/src_full.txt` → `node scripts/gen-skill-index.mjs`

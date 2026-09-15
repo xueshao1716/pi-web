@@ -1,6 +1,6 @@
 ---
 name: multi-ai-roleplay
-description: 多AI角色扮演系统（创世版）。多角色协作框架——COORD协调者 + IDEA/EXEC/ORCHE/CHALLENGE 等角色装配 + 三维决策矩阵 + 一键启动模板。任何任务（创作/视频/小说/分析/法律）自动组装最优角色团队协作，质量 +75%。当用户要求深度协作、多视角、高质量产出时使用。蒸馏自《多AI角色扮演系统V20.0》10万字技术文档。
+description: 多AI角色扮演系统（创世版）：COORD 协调者 + IDEA/EXEC/ORCHE/CHALLENGE 角色装配 + 三维决策矩阵，按任务自动组队协作。当用户要深度协作、多视角、高质量产出时使用。
 ---
 
 # 多AI角色扮演系统（创世版）
@@ -77,5 +77,9 @@ AI 自动决策：任务类型（创作/视频/小说/分析）→ 复杂度 →
 
 ## 参考文档
 
-- 完整 V20.0：`D:\遗产\多AI角色扮演系统V20.0.docx`（10 万字）
-- 技能内提取：`skills/multi-ai-roleplay/多AI角色扮演-完整.txt`
+> **读法**：源文 3926 行 / 10 万字，整份读进来要七万多 token。按 `INDEX.md` 的行号只 read 你要的那一章。
+
+- **章节索引**（10 章 → 行号，附源文缺陷说明）：`skills/multi-ai-roleplay/INDEX.md`
+- **可读全文**（docx 抽取，`read` 可直接读）：`skills/multi-ai-roleplay/src_full.txt`
+- **原始文档**：`D:\遗产\多AI角色扮演系统V20.0.docx` —— Word 二进制，**`read` 工具读不了**；只在逐字核对原文措辞时用
+- 源文更新后重跑：`node scripts/extract-docx.mjs <docx> skills/multi-ai-roleplay/src_full.txt` → `node scripts/gen-skill-index.mjs`

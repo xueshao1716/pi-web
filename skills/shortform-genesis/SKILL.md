@@ -1,6 +1,6 @@
 ---
 name: shortform-genesis
-description: SHORTFORM-GENESIS 工业化视频脚本生成系统。爆款短视频脚本（10秒情绪核爆+电影级视听）——12柱石战术 + 10+3角色装配 + 八阶工作流 + 三平台适配（SeaDance/可灵/即梦）+ 积分保护。当用户要求生成短视频脚本/视频脚本/爆款视频/口播文案时使用。蒸馏自《SHORTFORM-GENESIS-PRO V4.3》。
+description: SHORTFORM-GENESIS 工业化短视频脚本系统：12 柱石战术 + 10+3 角色装配 + 八阶工作流 + 三平台适配。当用户要生成短视频脚本/爆款视频/口播文案时使用。
 ---
 
 # SHORTFORM-GENESIS 工业化视频脚本系统
@@ -90,5 +90,9 @@ S1 任务解构 → S2 三维决策（S1核心）→ S3 角色装配 → S4 脚�
 
 ## 参考文档
 
-- 完整 V4.3 系统：`D:\遗产\SHORTFORM-GENESv4.3.docx`
-- 技能内提取文本：`skills/shortform-genesis/SHORTFORM-完整.txt`
+> **读法**：源文 750 行，按 `INDEX.md` 的行号 read 你要的那一节，别整份灌进来。
+
+- **章节索引**（9 章 → 行号）：`skills/shortform-genesis/INDEX.md`
+- **可读全文**（docx 抽取，`read` 可直接读）：`skills/shortform-genesis/src_full.txt`
+- **原始文档**：`D:\遗产\SHORTFORM-GENESv4.3.docx` —— Word 二进制，**`read` 工具读不了**
+- 源文更新后重跑：`node scripts/extract-docx.mjs <docx> skills/shortform-genesis/src_full.txt` → `node scripts/gen-skill-index.mjs`

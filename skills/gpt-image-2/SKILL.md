@@ -1,6 +1,6 @@
 ---
 name: gpt-image-2
-description: GPT-Image-2 精选提示词库（929+ 案例，7 类）+ 与万像/图像生成联动。当用户要做海报、UI/mockup、电商主图、广告创意、角色设计、效果对比类图片时，从本库取提示词并走 pi-web 图像生成；人像/人物写真默认走 wanxiang-portrait（万像基座，红线性）。基于 tigerowo/awesome-gpt-image-2-prompts 精选库。
+description: GPT-Image-2 精选提示词库（929+ 案例 7 类）：海报/UI与mockup/电商主图/广告创意/角色设计/效果对比。当用户要这几类图的提示词时使用；人像写真默认走 wanxiang-portrait。
 ---
 
 # GPT-Image-2 提示词库 + 图像生成联动
@@ -10,15 +10,16 @@ description: GPT-Image-2 精选提示词库（929+ 案例，7 类）+ 与万像/
 ## 提示词库位置（clone 到本地）
 
 - 仓库根：`D:/pi-workspace/工程/awesome-gpt-image-2-prompts/`
-- 分类案例文件（**中文**，含成品图引用）：
-  - 人像/摄影：`cases/portrait_zh-CN.md`
-  - 海报/插画：`cases/poster_zh-CN.md`
-  - UI/社媒 mockup：`cases/ui_zh-CN.md`
-  - 电商主图/场景：`cases/ecommerce_zh-CN.md`
-  - 广告创意：`cases/ad-creative_zh-CN.md`
-  - 角色设计/角色卡：`cases/character_zh-CN.md`
-  - 对比/社区实验：`cases/comparison_zh-CN.md`
-- 每条案例的成品图：`images/<category>_case<NNN>/output.jpg`
+- 分类案例文件（**中文**，含成品图引用；**都在上面那个外部仓库里，不在本技能目录**）：
+  - 人像/摄影：`D:/pi-workspace/工程/awesome-gpt-image-2-prompts/cases/portrait_zh-CN.md`
+  - 海报/插画：`D:/pi-workspace/工程/awesome-gpt-image-2-prompts/cases/poster_zh-CN.md`
+  - UI/社媒 mockup：`D:/pi-workspace/工程/awesome-gpt-image-2-prompts/cases/ui_zh-CN.md`
+  - 电商主图/场景：`D:/pi-workspace/工程/awesome-gpt-image-2-prompts/cases/ecommerce_zh-CN.md`
+  - 广告创意：`D:/pi-workspace/工程/awesome-gpt-image-2-prompts/cases/ad-creative_zh-CN.md`
+  - 角色设计/角色卡：`D:/pi-workspace/工程/awesome-gpt-image-2-prompts/cases/character_zh-CN.md`
+  - 对比/社区实验：`D:/pi-workspace/工程/awesome-gpt-image-2-prompts/cases/comparison_zh-CN.md`
+- 每条案例的成品图：`D:/pi-workspace/工程/awesome-gpt-image-2-prompts/images/<category>_case<NNN>/output.jpg`
+- **文件不存在怎么办**：上面那个目录没 clone 到本地时，本库就只是"分类导航"，按分类 + 下面的改写要点直接写提示词，不要去 read 不存在的文件。
 
 > 选提示词时用 read 读对应分类案例文件，按需求挑案例、复制/改写提示词。案例文件较大，按需分段读。
 
