@@ -23,11 +23,15 @@ export function negotiateCapabilities(required = {}, supported = {}) {
   return { supported: { reference: !!supported.reference, keyframe: !!supported.keyframe, seed: !!supported.seed }, degradation };
 }
 
+export function capabilitiesFor(kind, model) {
+  const required = { reference: kind !== 'novel', keyframe: kind === 'video', seed: kind !== 'novel' };
+  return negotiateCapabilities(required, model?.capabilities || {});
+}
+
 export function createGenerationRun(input, clock = {}) {
   const now = (clock.now || nowIso)();
   const kind = ['novel', 'image', 'video'].includes(input?.kind) ? input.kind : 'image';
-  const required = { reference: kind !== 'novel', keyframe: kind === 'video', seed: kind !== 'novel' };
-  const capabilities = negotiateCapabilities(required, input?.model?.capabilities || {});
+  const capabilities = capabilitiesFor(kind, input?.model);
   return {
     id: (clock.id || makeId)(),
     projectId: input.projectId,
@@ -142,6 +146,81 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
     const candidates = typeof getModelList === 'function' ? getModelList() : [];
     return (isExplicit ? withCatalogCapabilities(explicit) : null) || pickCapableModel(candidates, kind) || (typeof getDefaultModel === 'function' ? getDefaultModel() : fallback);
   };
+  // 单次生成能出几个变体（ComfyUI 的 batch_size）。上限刻意压到 4：
+  // 每多一版就是一次真实计费调用，批量不该变成手滑烧钱。
+  const VARIANT_MAX = 4;
+  const randomSeed = () => crypto.randomInt(0, 2 ** 31 - 1);
+  const kindLabel = { novel: '文字段落', image: '画面', video: '视频片段' };
+
+  // 一次生成要做的事，全部在这里算清楚。**预览与实跑共用它**：
+  // 两边各算一遍的话，「检查生成输入」显示的就不是真正会发出去的东西。
+  // （ComfyUI 把整张工作流摆在画布上，人看得见每一步；元枢此前只能给一段提示词文本。）
+  const buildRunPlan = (project, scene, beat, input = {}) => {
+    const kind = ['novel', 'image', 'video'].includes(input.kind) ? input.kind : beat.kind;
+    const model = resolveModel(input.model, kind, input.model);
+    const context = mergeBeatContext(project, scene, beat);
+    // 负向提示词（段落级）。先写进提示词块（所有通道都吃、都看得见），
+    // 再作为 negative 传给图像通道——上游认不认那个字段是另一回事，但请求里必须看得见。
+    const negative = String(input.negative ?? beat.negative ?? '').trim();
+    const compiled = compileStoryPrompt({ bible: project.bible, scene, beat, inherited: context, negative });
+    // seed 不再靠运气：用户没指定就现掷一个**并记下来**，这条 run 因此可复现。
+    // 以前 run.seed 恒为 undefined，而能力声明却写着支持固定 seed——声称支持却从未生效。
+    const seed = Number.isFinite(Number(input?.seed)) ? Number(input.seed) : randomSeed();
+    const variants = Math.max(1, Math.min(VARIANT_MAX, Number(input?.variants) || 1));
+    const caps = capabilitiesFor(kind, model);
+    const materials = Array.isArray(context.materials) ? context.materials : [];
+    const picked = caps.supported.reference ? pickReferenceImages(project, compiled.text) : [];
+    const materialImages = caps.supported.reference ? materials.filter(m => m.type === 'image' && m.url).map(m => m.url) : [];
+    const materialVideos = materials.filter(m => m.type === 'video' && m.url).map(m => m.url);
+    // 参考图的顺序按用途定，而且**要跟真实能力对齐**（适配器用不到的不许假装用到了）：
+    //  - 画面（图生图）只有一张入口 → 用户显式挂的素材优先，定妆照退居其次；
+    //    反过来会让"挂了素材却什么都没发生"，那是最坏的一种静默失败。
+    //  - 视频（reference 模式）能吃多张 → 定妆照在前（保人物），素材在后（给场景/构图依据）。
+    const orderedImages = kind === 'image'
+      ? [...materialImages, ...picked].slice(0, 1)
+      : [...picked, ...materialImages].slice(0, 4);
+    const usedRefs = [...new Set([...picked, ...materialImages])].slice(0, 4);
+    const notes = [];
+    const upstreamImages = [];
+    for (const ref of orderedImages) {
+      const r = materializeMedia(ref, { wsRoot: root });
+      if (r.value) upstreamImages.push(r.value);
+      else if (r.note) notes.push(`参考图未上送：${r.note}`);
+    }
+    const upstreamVideos = [];
+    for (const ref of materialVideos.slice(0, 2)) {
+      const r = materializeMedia(ref, { wsRoot: root });
+      if (r.value) upstreamVideos.push(r.value);
+      else if (r.note) notes.push(`视频素材未上送：${r.note}`);
+    }
+    // 挂载了素材就要在产物历史里留下痕迹：没有它，"这一段用过哪些素材"事后无从对账
+    const materialAssets = materials.map((m, i) => ({ id: m.id || `material-${i + 1}`, role: m.type === 'text' ? 'source-text' : 'reference', type: m.type, ...(m.url ? { url: m.url } : {}), ...(m.name ? { name: m.name } : {}) }));
+    const params = input.params && typeof input.params === 'object' ? { ...input.params } : {};
+    const adapterParams = {
+      ...params,
+      ...(negative ? { negative } : {}),
+      ...(upstreamVideos.length ? { videos: upstreamVideos } : {}),
+    };
+    return { kind, model, context, compiled, negative, seed, variants, caps, usedRefs, upstreamImages, params, adapterParams, materialAssets, notes };
+  };
+
+  // 把 plan 摊成「这次到底会做什么」的清单给界面看。步骤可见，是 ComfyUI 那种画布的核心价值。
+  const describeRunPlan = (plan, run) => {
+    const steps = [
+      { label: '输出类型', detail: kindLabel[plan.kind] || plan.kind },
+      { label: '模型', detail: plan.model?.provider ? `${plan.model.provider}/${plan.model.id}` : '（未指定，交给上游默认）' },
+      { label: 'seed', detail: plan.variants > 1 ? `${plan.seed} ~ ${plan.seed + plan.variants - 1}（${plan.variants} 个变体）` : String(plan.seed) },
+      { label: '参考图', detail: plan.usedRefs.length ? `${plan.usedRefs.length} 张` : plan.caps.supported.reference ? '无（没有可用定妆照/素材）' : '未注入（模型未声明支持参考资产）' },
+      { label: '参考图清单', detail: plan.usedRefs.map((u, i) => `${i + 1}. ${String(u).slice(0, 90)}`).join('\n') || '—' },
+      { label: '挂载素材', detail: plan.materialAssets.length ? plan.materialAssets.map(a => `${a.type}:${a.name || a.url || a.id}`).join('、') : '无' },
+      { label: '负向提示词', detail: plan.negative || '未设置' },
+      { label: '上送参数', detail: JSON.stringify(plan.adapterParams).slice(0, 300) || '—' },
+    ];
+    const warn = [...(plan.caps.degradation || []), ...(plan.notes || []), ...(run?.degradation || [])].filter(Boolean);
+    if (warn.length) steps.push({ label: '注意', detail: [...new Set(warn)].join('；') });
+    return steps;
+  };
+
   // 结构化 JSON 任务优先用**非推理**模型：推理模型的思考会混进 content，把 JSON 淹没。
   // handleStoryAssist 早就这么做，storyboard 一开始漏了 —— 2026-09-14 真实调用即踩到：
   // 返回的 content 是"我们需要回答用户。要求只返回 JSON…"的思路，解析自然失败。
@@ -174,86 +253,72 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       const scene = findScene(project, input?.sceneId);
       const beat = findBeat(scene, input?.beatId);
       if (!scene || !beat) throw Object.assign(new Error('sceneId 或 beatId 不存在'), { statusCode: 400 });
-      const context = mergeBeatContext(project, scene, beat);
-      const run = createGenerationRun({ ...input, model: withCatalogCapabilities(input?.model), projectId: id, sceneId: scene.id, beatId: beat.id, inputAssets: input?.inputAssets || context.referenceIds.map(assetId => ({ id: assetId, role: 'reference' })) }, clock);
-      const compiled = compileStoryPrompt({ bible: project.bible, scene, beat, inherited: context });
-      return { project, run, context: { ...compiled, prompt: compiled.text } };
+      // 预览与实跑**共用同一个 plan**：两边各算一次的话，
+      // 「检查生成输入」显示的就不是真正会发出去的东西了（这正是它以前只敢显示提示词的原因）。
+      const plan = buildRunPlan(project, scene, beat, input);
+      const run = createGenerationRun({ ...input, kind: plan.kind, model: withCatalogCapabilities(plan.model), projectId: id, sceneId: scene.id, beatId: beat.id, seed: plan.seed, params: plan.params, inputAssets: input?.inputAssets || plan.compiled.referenceIds.map(assetId => ({ id: assetId, role: 'reference' })) }, clock);
+      return { project, run, context: { ...plan.compiled, prompt: plan.compiled.text }, plan: describeRunPlan(plan, run) };
     },
     runGeneration: async (id, input = {}) => {
       const project = await readProject(root, id);
       const scene = findScene(project, input.sceneId);
       const beat = findBeat(scene, input.beatId);
       if (!scene || !beat) throw Object.assign(new Error('sceneId 或 beatId 不存在'), { statusCode: 400 });
-      const kind = ['novel', 'image', 'video'].includes(input.kind) ? input.kind : beat.kind;
-      const model = resolveModel(input.model, kind, input.model);
-      const context = mergeBeatContext(project, scene, beat);
-      const compiled = compileStoryPrompt({ bible: project.bible, scene, beat, inherited: context });
+      const plan = buildRunPlan(project, scene, beat, input);
       // 段号（跨场景连续）在生成时定格，随产物一起存下来——见 createGenerationRun 里的说明
       const beatNo = (() => {
         let n = 0;
         for (const s of project.scenes || []) for (const b of s.beats || []) { n += 1; if (b.id === beat.id) return n; }
         return undefined;
       })();
-      const run = createGenerationRun({ ...input, kind, model, projectId: id, sceneId: scene.id, beatId: beat.id, beatNo, sceneTitle: scene.title, inputAssets: input.inputAssets || compiled.referenceIds.map(assetId => ({ id: assetId, role: 'reference' })) }, clock);
-      // 参考图只在模型声明支持时注入：不支持的模型塞图会 400，反而掩盖真实的降级原因。
-      const picked = run.capabilities.reference ? pickReferenceImages(project, compiled.text) : [];
-      // 挂载素材（别的工作台产出的图/视频/文本，见 story-store.normalizeBeatInputs）。
-      // 图片和定妆照走同一条通路（图生图 / reference 模式）；视频走 video-request 的 videos[]；
-      // 文本素材已经在 compileStoryPrompt 里作为创作依据写进提示词了。
-      const materials = Array.isArray(context.materials) ? context.materials : [];
-      const materialImages = run.capabilities.reference ? materials.filter(m => m.type === 'image' && m.url).map(m => m.url) : [];
-      const materialVideos = materials.filter(m => m.type === 'video' && m.url).map(m => m.url);
-      // 参考图的顺序按用途定，而且**要跟真实能力对齐**（适配器用不到的不许假装用到了）：
-      //  - 画面（图生图）只有一张入口 → 用户显式挂的素材优先，定妆照退居其次；
-      //    反过来会让"挂了素材却什么都没发生"，那是最坏的一种静默失败。
-      //  - 视频（reference 模式）能吃多张 → 定妆照在前（保人物），素材在后（给场景/构图依据）。
-      const orderedImages = kind === 'image'
-        ? [...materialImages, ...picked].slice(0, 1)
-        : [...picked, ...materialImages].slice(0, 4);
-      // 上送用的那份要和**记录下来的那份**分开：run.referenceImages 会写进项目 JSON，
-      // 内联后的 base64 一张就是 2MB 级，存进产物历史会把项目文件撑爆。
-      // 记录保留原始引用（可追溯引用了哪张定妆照/哪张素材），只有真正发给上游时才换成 base64。
-      const usedRefs = [...new Set([...picked, ...materialImages])].slice(0, 4);
-      const upstreamImages = [];
-      for (const ref of orderedImages) {
-        const r = materializeMedia(ref, { wsRoot: root });
-        if (r.value) upstreamImages.push(r.value);
-        else if (r.note) run.degradation = [...(run.degradation || []), `参考图未上送：${r.note}`];
-      }
-      const upstreamVideos = [];
-      for (const ref of materialVideos.slice(0, 2)) {
-        const r = materializeMedia(ref, { wsRoot: root });
-        if (r.value) upstreamVideos.push(r.value);
-        else if (r.note) run.degradation = [...(run.degradation || []), `视频素材未上送：${r.note}`];
-      }
-      // 挂载了素材就要在产物历史里留下痕迹：没有它，"这一段用过哪些素材"事后无从对账
-      const materialAssets = materials.map((m, i) => ({ id: m.id || `material-${i + 1}`, role: m.type === 'text' ? 'source-text' : 'reference', type: m.type, ...(m.url ? { url: m.url } : {}), ...(m.name ? { name: m.name } : {}) }));
-      if (usedRefs.length) run.referenceImages = usedRefs;
-      run.status = 'running';
-      appendRun(scene, run);
-      project.updatedAt = (clock.now || nowIso)();
-      await writeProject(root, project);
-      const adapter = resolvedAdapters[kind];
-      if (!adapter?.generate) {
-        run.status = 'failed'; run.degradation = [...(run.degradation || []), `${kind}: 当前未接入生成适配器`];
+      const adapter = resolvedAdapters[plan.kind];
+      const runs = [];
+      // 批量变体（ComfyUI 的 batch_size）：一次点击出 N 版，seed 依次递增，
+      // 每版都是一条独立 run，于是天然落进「本段结果」和「作品列表」——不需要新的展示概念。
+      for (let i = 0; i < plan.variants; i++) {
+        const seed = plan.seed + i;
+        const run = createGenerationRun({
+          ...input, kind: plan.kind, model: plan.model, projectId: id, sceneId: scene.id, beatId: beat.id,
+          beatNo, sceneTitle: scene.title, seed, params: plan.params,
+          inputAssets: input.inputAssets || plan.compiled.referenceIds.map(assetId => ({ id: assetId, role: 'reference' })),
+        }, clock);
+        if (plan.usedRefs.length) run.referenceImages = plan.usedRefs;
+        if (plan.negative) run.negative = plan.negative;
+        // 上送用的那份和记录下来的那份分开：记录存原始引用，上送才内联（见 plan.materialize）
+        // 只在真有话说时才写 degradation——空数组会让"没有降级"变成另一种形状，
+        // 也白白撑大项目 JSON。
+        if (plan.notes.length) run.degradation = [...(run.degradation || []), ...plan.notes];
+        run.status = 'running';
+        appendRun(scene, run);
+        project.updatedAt = (clock.now || nowIso)();
         await writeProject(root, project);
-        return { project, run, context: compiled };
+        if (!adapter?.generate) {
+          run.status = 'failed'; run.degradation = [...(run.degradation || []), `${plan.kind}: 当前未接入生成适配器`];
+          run.finishedAt = (clock.now || nowIso)();
+          await writeProject(root, project);
+          runs.push(run);
+          continue;
+        }
+        let result;
+        try {
+          result = await adapter.generate({
+            prompt: plan.compiled.text, model: plan.model, seed,
+            params: plan.adapterParams, references: plan.compiled.referenceIds, referenceImages: plan.upstreamImages,
+          });
+        } catch (error) { result = { status: 'failed', error: String(error?.message || error).slice(0, 300) }; }
+        if (result?.output) run.outputAssets = [{ id: `${run.id}-output`, role: 'output', ...result.output }];
+        // 产物历史里记下**原始引用**（不记内联后的 base64）：事后要能对账"这一段用过哪些素材"
+        if (plan.materialAssets.length) run.inputAssets = [...(run.inputAssets || []), ...plan.materialAssets];
+        // 适配器如实上报的降级（例如上游把参考图摘掉了）必须并进来，否则这一趟看起来是"成功"
+        const reported = Array.isArray(result?.output?.degradation) ? result.output.degradation.filter(Boolean).map(String) : [];
+        if (reported.length) run.degradation = [...(run.degradation || []), ...reported];
+        if (result?.status === 'succeeded') run.status = run.degradation?.length ? 'degraded' : 'succeeded';
+        else { run.status = 'failed'; run.degradation = [...(run.degradation || []), result?.error || '生成失败']; }
+        run.finishedAt = (clock.now || nowIso)();
+        await writeProject(root, project);
+        runs.push(run);
       }
-      const params = upstreamVideos.length ? { ...run.params, videos: upstreamVideos } : run.params;
-      let result;
-      try { result = await adapter.generate({ prompt: compiled.text, model, seed: run.seed, params, references: compiled.referenceIds, referenceImages: upstreamImages }); }
-      catch (error) { result = { status: 'failed', error: String(error?.message || error).slice(0, 300) }; }
-      if (result?.output) run.outputAssets = [{ id: `${run.id}-output`, role: 'output', ...result.output }];
-      // 产物历史里记下**原始引用**（不记内联后的 base64）：事后要能对账"这一段用过哪些素材"
-      if (materialAssets.length) run.inputAssets = [...(run.inputAssets || []), ...materialAssets];
-      // 适配器如实上报的降级（例如上游把参考图摘掉了）必须并进来，否则这一趟看起来是"成功"
-      const reported = Array.isArray(result?.output?.degradation) ? result.output.degradation.filter(Boolean).map(String) : [];
-      if (reported.length) run.degradation = [...(run.degradation || []), ...reported];
-      if (result?.status === 'succeeded') run.status = run.degradation?.length ? 'degraded' : 'succeeded';
-      else { run.status = 'failed'; run.degradation = [...(run.degradation || []), result?.error || '生成失败']; }
-      run.finishedAt = (clock.now || nowIso)();
-      await writeProject(root, project);
-      return { project, run, context: compiled };
+      return { project, run: runs[runs.length - 1], runs, context: plan.compiled, plan: describeRunPlan(plan, runs[0]) };
     },
     // 角色定妆照：按角色设定出一张可复用的形象参考图，写回 bible.characters[].refImage。
     // 这张图随后会被 runGeneration 当成真实参考图注入（图像走图生图、视频走 reference 模式），

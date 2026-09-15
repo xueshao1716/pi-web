@@ -32,7 +32,9 @@ export function createImageAdapter({ generateImage, saveArtifact }) {
       ].filter(Boolean).join('；');
       const finalPrompt = marker ? `${String(prompt || '').trim()}\n[连续性参数] ${marker}` : String(prompt || '').trim();
       try {
-        const url = await generateImage(model?.provider, model?.id, finalPrompt, params.size, ref || undefined);
+        // seed 真的上送（2026-09-15 修）：此前它只被拼进提示词文本，模型不认，
+        // 而能力声明却写着"支持固定 seed"——声称支持却从未生效。
+        const url = await generateImage(model?.provider, model?.id, finalPrompt, params.size, ref || undefined, { seed, negative: params.negative });
         if (!url) return { status: 'failed', error: '图像模型未返回图片', model: cleanModel(model) };
         const stored = typeof saveArtifact === 'function' ? normalizeStored(await saveArtifact({ type: 'image', url, prompt: finalPrompt }), url) : { url, local: true, reason: '' };
         return { status: 'succeeded', model: cleanModel(model), output: { type: 'image', url: stored.url || url, prompt: finalPrompt, ...(stored.local ? {} : { localizeError: stored.reason }) } };
@@ -57,7 +59,7 @@ export function createNovelAdapter({ directChat }) {
 
 export function createVideoAdapter({ generateVideo, saveArtifact }) {
   return {
-    async generate({ prompt, model, params = {}, references = [], referenceImages = [] } = {}) {
+    async generate({ prompt, model, seed, params = {}, references = [], referenceImages = [] } = {}) {
       if (typeof generateVideo !== 'function') return { status: 'failed', error: '视频引擎未接入' };
       // 真参考图：把角色定妆照作为 images[] 传给上游，videoCreateBody 见到 images 会自动
       // 把 mode 落成 "reference"（见 video-request.mjs），这是人物一致的真正开关。
@@ -68,7 +70,13 @@ export function createVideoAdapter({ generateVideo, saveArtifact }) {
       ].filter(Boolean).join('；');
       const finalPrompt = `${String(prompt || '').trim()}\n[连续性参考] ${marker}`;
       try {
-        const body = imgs.length ? { ...params, images: imgs } : params;
+        // seed 同样要真的进创建体（video-request 见到 src.seed 才会写 body.seed）：
+        // 以前适配器压根没解构 seed，video-request 那条转发分支永远走不到。
+        const body = {
+          ...params,
+          ...(Number.isFinite(seed) ? { seed } : {}),
+          ...(imgs.length ? { images: imgs } : {}),
+        };
         const result = await generateVideo(model?.provider, model?.id, finalPrompt, body);
         if (!result?.video) return { status: 'failed', error: result?.error || '视频模型未返回片子', model: cleanModel(model) };
         const stored = typeof saveArtifact === 'function' ? normalizeStored(await saveArtifact({ type: 'video', url: result.video, prompt: finalPrompt }), result.video) : { url: result.video, local: true, reason: '' };

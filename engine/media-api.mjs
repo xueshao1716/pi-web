@@ -216,9 +216,11 @@ export async function generateTTS(text) {
 
 // 绘图：返回图片数据（供 handleChat 绘图模型通道复用）
 // image 参数为可选的参考图（URL 或 data URI）→ 图生图/参考锁定。
-// 通用路径本就把 image 转发给上游（见 handleImage），这里补齐函数签名，
-// 好让故事编排等调用方也能用上真正的参考图，而不是只把 id 拼进提示词。
-export async function generateImage(provider, modelId, prompt, size, image) {
+// opts.seed / opts.negative 是 2026-09-15 补的：在此之前 seed **根本没有上送**——
+// story-adapters 只在提示词里插了一句 `seed=123` 文本，模型不认那个东西，
+// 而 model-probe 却对每个图/视频模型声明 caps.seed=true，于是界面上"固定 seed"是一项
+// 声称支持、实际一次都没生效的能力。参数要么真的生效，要么别说。
+export async function generateImage(provider, modelId, prompt, size, image, opts = {}) {
   const resolved = _resolveAuth(provider);
   if (!resolved) return null;
   // 参考图同样要落地：上游只认公网 http(s) 或 base64，元枢的 /api/ws/file 地址会被拒。
@@ -229,6 +231,8 @@ export async function generateImage(provider, modelId, prompt, size, image) {
     if (!r.value) throw new Error(r.note || `参考图无法上送：${String(image).slice(0, 80)}`);
     refImage = r.value;
   }
+  const seed = Number.isFinite(opts?.seed) ? Number(opts.seed) : null;
+  const negative = String(opts?.negative || '').trim();
   const baseUrl = resolved.baseUrl || (_readJsonFile(_modelsPath)[provider]?.models || []).find(m => m.id === modelId)?.baseUrl;
   const key = resolved.key;
   const base = (baseUrl || "").replace(/\/+$/, "");
@@ -236,7 +240,14 @@ export async function generateImage(provider, modelId, prompt, size, image) {
   const mkReq = (u) => httpJsonFetch(u, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model: modelId, prompt, n: 1, size: size || "1024x1024", ...(refImage ? { image: refImage } : {}) }),
+    // negative_prompt 只有在调用方真的给了才带：不赌每家上游都认这个字段，
+    // 空的时候带上反而可能被拒。
+    body: JSON.stringify({
+      model: modelId, prompt, n: 1, size: size || "1024x1024",
+      ...(seed != null ? { seed } : {}),
+      ...(negative ? { negative_prompt: negative } : {}),
+      ...(refImage ? { image: refImage } : {}),
+    }),
     timeout: 180000,
   });
   let r = await mkReq(`${baseNoV1}/v1/images/generations`);

@@ -33,6 +33,21 @@ test('台词与跨工作台素材必须留在界面上（这是台前的入口�
   assert.match(types, /inputs\?: StoryBeatInput\[\]/);
 });
 
+test('产线参数必须留在界面上：负向 / seed / 变体数 / 执行链 / 同参重跑', () => {
+  assert.match(source, /aria-label="本段负向提示词"/, '负向提示词要有输入框');
+  assert.match(source, /aria-label="seed"/, 'seed 要能填（留空=现掷并记下）');
+  assert.match(source, /aria-label="变体数量"/, '一次出几版要有选择');
+  assert.match(source, /seed:negativeDraft|negative:negativeDraft/, '负向要跟着段一起存盘');
+  assert.match(source, /StoryApi\.previewRun\([^)]*runExtras/, '预览必须带上和实跑同一套参数');
+  assert.match(source, /setPlan\(r\.plan/, '执行链要显示出来');
+  const results = fs.readFileSync('frontend/src/components/story/StoryResults.tsx', 'utf8');
+  assert.match(results, /照这版重跑/, '同参重跑要有入口');
+  assert.match(results, /onRerun/, '重跑要接回编排层');
+  const types = fs.readFileSync('frontend/src/types.ts', 'utf8');
+  assert.match(types, /negative\?: string/);
+  assert.match(types, /StoryPlanStep/);
+});
+
 test('作品列表：段号取生成时的定格值、失败可见、成片落回项目', () => {  const products = fs.readFileSync('frontend/src/components/story/StoryProducts.tsx', 'utf8');
   // 段号优先用 run.beatNo（生成时刻定格），只在旧数据上按当前分镜顺序回退
   assert.match(products, /run\.beatNo/);

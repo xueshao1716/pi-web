@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ModelsApi, StoryApi, withFileToken } from '../api'
-import type { Model, StoryBeat, StoryCharacter, StoryProject } from '../types'
+import type { Model, StoryBeat, StoryCharacter, StoryGenerationRun, StoryPlanStep, StoryProject } from '../types'
 import { applyStoryDraft, bibleText, editedBible } from '../lib/story-draft'
 import StoryStart from '../components/story/StoryStart'
 import StorySettings from '../components/story/StorySettings'
@@ -36,6 +36,12 @@ export function StoryPanel() {
   // 混在一起写，生图模型会试着把字画出来，而真正决定这段戏成不成立的对白反而没人看。
   const [dialogueDraft, setDialogueDraft] = useState('')
   const [inputDrafts, setInputDrafts] = useState<StoryBeatInput[]>([])
+  // ComfyUI 那套产线纪律里最该补的三样：负向提示词、可复现的 seed、一次出多版。
+  const [negativeDraft, setNegativeDraft] = useState('')
+  const [seedDraft, setSeedDraft] = useState('')
+  const [variantsDraft, setVariantsDraft] = useState('1')
+  // 「这次到底会做什么」——预览与实跑共用同一个 plan，界面照它显示，而不是只给一段提示词
+  const [plan, setPlan] = useState<StoryPlanStep[]>([])
   const [compiled, setCompiled] = useState('')
   const [timelineOpen, setTimelineOpen] = useState(() => window.innerWidth > 640)
   const [storyboardIdea, setStoryboardIdea] = useState('')
@@ -50,7 +56,7 @@ export function StoryPanel() {
   const update = (p: StoryProject) => { setProject(p); setProjects(items => [p, ...items.filter(item => item.id !== p.id)]) }
   const choose = (p: StoryProject | null) => { setProject(p); setSelected(p?.scenes[0]?.beats[0]?.id || ''); if (p) hydrateBible(p); setAssistResult(null); setCompiled(''); setError(''); setNotice('') }
   const setGenerationKind = (kind: StoryBeat['kind']) => { setSelectedKind(kind); setSelectedModel(''); setCompiled('') }
-  useEffect(() => { if (beat) { setSelectedKind(beat.kind); setPromptDraft(beat.prompt); setDialogueDraft(beat.dialogue || ''); setInputDrafts(beat.inputs || []) } setAssistResult(null); setCompiled('') }, [project?.id, beat?.id, beat?.kind, beat?.prompt, beat?.dialogue, beat?.inputs])
+  useEffect(() => { if (beat) { setSelectedKind(beat.kind); setPromptDraft(beat.prompt); setDialogueDraft(beat.dialogue || ''); setInputDrafts(beat.inputs || []); setNegativeDraft(beat.negative || ''); setSeedDraft('') } setAssistResult(null); setCompiled('') }, [project?.id, beat?.id, beat?.kind, beat?.prompt, beat?.dialogue, beat?.inputs, beat?.negative])
   useEffect(() => { if (selectedModel && !availableModels.some(m => modelKey(m) === selectedModel)) setSelectedModel('') }, [selectedKind, models, selectedModel])
   const load = async () => {
     setBusy('正在加载故事'); setError('')
@@ -78,7 +84,7 @@ export function StoryPanel() {
     if (!project) throw new Error('请先开始一个故事')
     const scenes = project.scenes.length ? project.scenes : [{id:'scene-1',index:1,title:'开场',summary:project.logline || '',beats:[],outputs:[]}]
     const target = scene || scenes[0]
-    const nextBeat = { ...(beat || emptyBeat), kind:selectedKind, prompt:promptDraft.trim(), dialogue:dialogueDraft.trim(), inputs:inputDrafts }
+    const nextBeat = { ...(beat || emptyBeat), kind:selectedKind, prompt:promptDraft.trim(), dialogue:dialogueDraft.trim(), inputs:inputDrafts, negative:negativeDraft.trim() }
     const r = await StoryApi.patchProject(project.id, { bible: editedBible(project.bible, bibleDraft), scenes: scenes.map(s => s.id !== target.id ? s : {...s,beats:s.beats.some(b => b.id === nextBeat.id) ? s.beats.map(b => b.id === nextBeat.id ? nextBeat : b) : [...s.beats,nextBeat]}) })
     update(r.project); hydrateBible(r.project)
     return { project:r.project, sceneId:target.id, beatId:nextBeat.id }
@@ -92,13 +98,25 @@ export function StoryPanel() {
     const r = await StoryApi.patchProject(project.id, applyStoryDraft(project, assistResult, scene.id, beat.id))
     update(r.project); hydrateBible(r.project); setAssistResult(null); setNotice('人物、服装、风格和本段内容已一起保存，现在可以生成。')
   })
+  // 这一次要带的参数：seed（留空=每版现掷并记下来）、变体数、负向提示词。
+  // 以前这三样一个都没有——seed 界面上根本不存在，能力声明却写着支持。
+  const runExtras = () => ({
+    ...(seedDraft.trim() && Number.isFinite(Number(seedDraft.trim())) ? { seed: Number(seedDraft.trim()) } : {}),
+    ...(Number(variantsDraft) > 1 ? { variants: Number(variantsDraft) } : {}),
+    ...(negativeDraft.trim() ? { negative: negativeDraft.trim() } : {}),
+  })
   const run = () => action(`正在生成${kindLabel[selectedKind]}，请稍候`, async () => {
     const saved = await persist()
     try {
-      const r = await StoryApi.run(saved.project.id, { sceneId:saved.sceneId, beatId:saved.beatId, kind: selectedKind, ...(selectedModelInfo ? {model:selectedModelInfo} : {}) })
+      const r = await StoryApi.run(saved.project.id, { sceneId:saved.sceneId, beatId:saved.beatId, kind: selectedKind, ...(selectedModelInfo ? {model:selectedModelInfo} : {}), ...runExtras() })
       update(r.project)
-      if (r.run.status === 'failed') setError(r.run.degradation?.join('；') || '生成失败，请更换模型重试')
-      else setNotice('本段结果已返回，请预览核对，再从此处继续。')
+      setPlan(r.plan || [])
+      const n = r.runs?.length || 1
+      const failed = (r.runs || [r.run]).filter(x => x.status === 'failed')
+      const degraded = (r.runs || [r.run]).filter(x => x.status === 'degraded')
+      if (failed.length) setError(failed.map(x => x.degradation?.join('；')).join(' ／ ') || '生成失败，请更换模型重试')
+      else if (degraded.length) setNotice(`${n > 1 ? `${n} 版已返回` : '本段结果已返回'}，但有降级项要看（见下方执行链的「注意」）。`)
+      else setNotice(n > 1 ? `${n} 版已返回，都是同参换 seed 的变体，挑一版用。` : '本段结果已返回，请预览核对，再从此处继续。')
     } catch (e) {
       const latest = await StoryApi.getProject(saved.project.id).catch(() => null)
       if (latest) update(latest.project)
@@ -107,8 +125,23 @@ export function StoryPanel() {
   })
   const preview = () => action('正在检查生成输入', async () => {
     const saved = await persist()
-    const r = await StoryApi.previewRun(saved.project.id, {sceneId:saved.sceneId,beatId:saved.beatId,kind:selectedKind,model:selectedModelInfo || {provider:'auto',id:'auto'}})
-    setCompiled(r.context.prompt); setNotice('以下是实际将使用的设定与要求；尚未调用生成模型。')
+    const r = await StoryApi.previewRun(saved.project.id, {sceneId:saved.sceneId,beatId:saved.beatId,kind:selectedKind,model:selectedModelInfo || {provider:'auto',id:'auto'}, ...runExtras()})
+    setCompiled(r.context.prompt); setPlan(r.plan || []); setNotice('以下是**实际将执行**的完整链路与提示词；尚未调用生成模型。')
+  })
+  // 照这一版重跑：同模型 / 同 seed / 同负向 / 同参数。ComfyUI 里这是"再跑一次同样的图"，
+  // 有了它，一次偶然的好结果才算真的可复现。
+  const rerun = (prev: StoryGenerationRun) => action('正在照这一版重跑（同模型 · 同 seed）', async () => {
+    if (!project || !scene || !beat) return
+    const r = await StoryApi.run(project.id, {
+      sceneId: scene.id, beatId: beat.id, kind: prev.kind,
+      ...(prev.model?.id ? { model: prev.model } : {}),
+      ...(Number.isFinite(prev.seed as number) ? { seed: Number(prev.seed) } : {}),
+      ...(prev.negative ? { negative: prev.negative } : {}),
+      ...(prev.params && Object.keys(prev.params).length ? { params: prev.params } : {}),
+    })
+    update(r.project); setPlan(r.plan || [])
+    if (r.run?.status === 'failed') setError(r.run.degradation?.join('；') || '重跑失败')
+    else setNotice(`已照第 ${(scene.outputs.filter(x => x.beatId === beat.id).length)} 版重跑（seed ${prev.seed ?? '未记录'}）。`)
   })
   const continueFromBeat = () => action('AI 正在构思下一段', async () => {
     const saved = await persist()
@@ -201,13 +234,24 @@ export function StoryPanel() {
           <label>本段内容<textarea aria-label="本段内容" disabled={Boolean(busy)} value={promptDraft} onChange={e=>{setPromptDraft(e.target.value);setCompiled('')}} rows={6} placeholder="写下本段想发生的事，或让 AI 帮你完善" /></label>
           <label>本段台词 · 对白<textarea aria-label="本段台词" disabled={Boolean(busy)} value={dialogueDraft} onChange={e=>{setDialogueDraft(e.target.value);setCompiled('')}} rows={4} placeholder={'一行一句，写成「角色名：台词」。这是故事的骨头——人物说了什么，比镜头怎么推更重要。'} /></label>
           <StoryMaterials materials={inputDrafts} busy={Boolean(busy)} onChange={next => { setInputDrafts(next); setCompiled('') }} />
+          <label>本段负向提示词 · 不要出现什么<textarea aria-label="本段负向提示词" disabled={Boolean(busy)} value={negativeDraft} onChange={e=>{setNegativeDraft(e.target.value);setCompiled('')}} rows={2} placeholder="一行一条，例如：多余的手指、文字水印、现代服装" /></label>
+          <div className="story-form-row">
+            <label>seed（留空=每版现掷并记下来）<input aria-label="seed" disabled={Boolean(busy)} value={seedDraft} onChange={e=>setSeedDraft(e.target.value.replace(/[^0-9]/g,''))} placeholder="填数字即锁定，可复现" /></label>
+            <label>一次出几版<select aria-label="变体数量" value={variantsDraft} disabled={Boolean(busy)} onChange={e=>setVariantsDraft(e.target.value)}>{['1','2','3','4'].map(n=><option key={n} value={n}>{n} 版</option>)}</select></label>
+          </div>
           <div className="story-form-row"><label>构思模型<select value={planningModel} disabled={Boolean(busy)} onChange={e=>setPlanningModel(e.target.value)}><option value="">自动选择文本模型</option>{models.filter(m=>capable(m,'novel')).map(m=><option key={modelKey(m)} value={modelKey(m)}>{m.name || m.id}</option>)}</select></label><div className="story-actions"><button className="btn-ghost" disabled={Boolean(busy)} onClick={assist}>让 AI 完善本段</button></div></div>
           {assistResult && <div className="story-draft"><h3>AI 草稿 · 确认后一起保存</h3><p>{assistResult.scene?.summary}</p><p>{assistResult.beat?.prompt}</p><p className="story-hint">人物：{assistResult.characters?.map((c:any)=>[c.name,c.appearance].filter(Boolean).join(' · ')).join('；') || '沿用既有设定'}</p><div className="story-actions"><button className="btn-primary" disabled={Boolean(busy)} onClick={applyAssist}>采用并保存设定</button><button className="btn-ghost" disabled={Boolean(busy)} onClick={()=>setAssistResult(null)}>暂不采用</button></div></div>}
           <p className="story-hint">{selectedKind==='novel'?'续写会带上已保存的设定和继承段落的实际正文。':`已生成的定妆照会作为真实参考图注入（画面走图生图、视频走 reference），用来锁住人物外貌；还没有定妆照的角色只能靠文字描述。当前 ${portraitCount}/${(project.bible.characters||[]).length} 个角色有定妆照。`}{selectedKind==='video'?' 每次生成一个视频片段，攒够成功的片段后用左侧「合成成片」拼成长片。':''}</p>
           <div className="story-actions"><button className="btn-primary" disabled={Boolean(busy)||!promptDraft.trim()} onClick={run}>生成当前{kindLabel[selectedKind]}</button><button className="btn-ghost" disabled={Boolean(busy)||!promptDraft.trim()} onClick={preview}>检查生成输入</button><button className="btn-ghost" disabled={Boolean(busy)||!hasOutput} onClick={continueFromBeat}>从此处继续 · AI 构思下一段</button></div>
           {!hasOutput && <p className="story-hint">先生成本段成品，再继续下一段。结果不满意时可以修改内容重新生成，旧版本会保留。</p>}
-          {compiled && <details open><summary>本次生成输入</summary><div className="story-prose">{compiled}</div></details>}
-        </section>{scene && beat && <StoryResults scene={scene} beat={beat} />}</div>
+          {compiled && <details open><summary>本次生成输入</summary>
+            {plan.length > 0 && <div className="story-plan">
+              <p className="story-hint">这条链路就是接下来真正会执行的东西（预览与实跑共用同一份计算，不是另算一遍给你看的）。</p>
+              <dl>{plan.map(step => <div key={step.label} className="story-plan-row"><dt>{step.label}</dt><dd>{step.detail}</dd></div>)}</dl>
+            </div>}
+            <details><summary>编译后的提示词全文</summary><div className="story-prose">{compiled}</div></details>
+          </details>}
+        </section>{scene && beat && <StoryResults scene={scene} beat={beat} busy={Boolean(busy)} onRerun={rerun} />}</div>
         <StorySettings values={bibleDraft} busy={Boolean(busy)} characters={project.bible.characters || []} onPortrait={portrait} onChange={setBibleDraft} onSave={saveBible} />
         <StoryProducts project={project} onPick={setSelected} />
       </main>

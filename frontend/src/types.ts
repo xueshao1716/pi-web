@@ -96,16 +96,20 @@ export interface StoryGenerationRun {
   sceneTitle?: string
   // 这一趟实际用了哪些原始引用（定妆照 / 挂载素材）。记的是原始地址，不是内联后的 base64。
   referenceImages?: string[]
+  // 负向提示词（这一趟实际用的那份）。以前没有这个概念。
+  negative?: string
   createdAt: string
   finishedAt?: string
 }
+// 「这次到底会做什么」的一步。预览与实跑共用同一个 plan，界面照它显示。
+export interface StoryPlanStep { label: string; detail: string }
 // 挂在某一段上的素材：别的工作台（AI 绘画 / 视频工坊 / 小说工坊）的产出。
 // 与 `references`（指向 bible 实体的 id）刻意分开：这类素材是**已经存在的成品文件**，自带地址。
 export interface StoryBeatInput { id: string; type: 'image' | 'video' | 'text'; name?: string; url?: string; text?: string; path?: string }
-export interface StoryBeat { id: string; kind: 'novel' | 'image' | 'video'; prompt: string; references: StoryAssetRef[]; inheritFromBeatId?: string; activeRunId?: string; dialogue?: string; inputs?: StoryBeatInput[] }
+export interface StoryBeat { id: string; kind: 'novel' | 'image' | 'video'; prompt: string; references: StoryAssetRef[]; inheritFromBeatId?: string; activeRunId?: string; dialogue?: string; inputs?: StoryBeatInput[]; negative?: string }
 export interface StoryScene { id: string; index: number; title: string; summary: string; beats: StoryBeat[]; outputs: StoryGenerationRun[]; activeRunId?: string }
 export interface StoryFilm { id: string; url: string; clipCount: number; method: string; beatIds: string[]; createdAt: string }
-export interface StoryProject { id: string; title: string; logline?: string; bible: StoryBible; scenes: StoryScene[]; films?: StoryFilm[]; activeSceneId?: string; createdAt: string; updatedAt: string }
+export interface StoryProject { id: string; title: string; logline?: string; bible: StoryBible; scenes: StoryScene[]; films?: StoryFilm[]; activeSceneId?: string; negative?: string; createdAt: string; updatedAt: string }
 
 // 交付物（/api/ws/deliveries）条目
 export interface AssetDelivery {

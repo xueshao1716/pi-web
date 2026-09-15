@@ -49,7 +49,18 @@ export function dialogueBlock(beat, kind) {
   return `${head}\n${lines}`;
 }
 
-export function compileStoryPrompt({ bible, scene, beat, inherited } = {}) {
+// 负向提示词（ComfyUI 里 negative 是一等公民，元枢此前完全没有）。
+// 这里先落成**提示词块**：任何生图/生视频通道都吃文本，也不会因为某家上游不认
+// `negative_prompt` 字段而整单失败。同时编排层还会把它作为 negative 传给图像通道
+// （见 story-orchestrator 的 buildRunPlan），两处都看得见。
+export function negativeBlock(negative) {
+  const text = String(negative || '').trim();
+  if (!text) return '';
+  const lines = text.split(/[\n；;]+/).map(l => l.trim()).filter(Boolean).slice(0, 20).map(l => `- ${l}`).join('\n');
+  return lines ? `## 必须避免\n- 以下内容**不要**出现在这一段的成品里：\n${lines}` : '';
+}
+
+export function compileStoryPrompt({ bible, scene, beat, inherited, negative } = {}) {
   const b = normalizeBible(bible);
   const refs = [];
   for (const item of [...(inherited?.referenceIds || []), ...(beat?.references || [])]) {
@@ -69,6 +80,7 @@ export function compileStoryPrompt({ bible, scene, beat, inherited } = {}) {
     inherited?.prompt ? `## 继承镜头上下文\n${inherited.prompt}` : '',
     beat?.prompt ? `## 当前镜头要求\n${beat.prompt}` : '',
     dialogueBlock(beat, beat?.kind),
+    negativeBlock(negative ?? beat?.negative),
     // 素材：别的工作台产出的图/视频/文本被挂到这一段上时，正文里要能看见它们是什么，
     // 否则模型只知道"有素材"，写出来的东西对不上。
     materialBlock(inherited?.materials),
