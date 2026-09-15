@@ -33,6 +33,7 @@ import { beginYuanshuEmotion, endYuanshuEmotion, lastTalkAt } from "./yuanshu-em
 import { readActivityRhythm } from "./activity-rhythm.mjs";
 import { pendingPromiseText } from "./promises.mjs";
 import { goalPrompt } from "./goals.mjs";
+import { effectiveSandboxMode } from "./sandbox-session.mjs";
 import { resolveAuth } from "./dsh-keys.mjs";
 import { runYuanshuToolRound, attachYuanshuCodeTool, toolCallLoopKey, toolCallsFromPlan } from "./yuanshu-loop.mjs";
 import { canonicalStepKey, hashArgs } from "./run-effects.mjs";
@@ -1008,7 +1009,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     maxTurns: toolLoopMaxTurns({ imageIntent, videoIntent }),
     imageIntent,
     videoIntent,
-    sandboxMode: isPlanLock ? "read-only" : "workspace-write",
+    sandboxMode: effectiveSandboxMode(_getAgentDir?.() || "", sessionId, { planLock: isPlanLock }),
     sandboxWsRoot: _cwd,
     sandboxAsk: approvalAsk,
     effects: runContext?.effects,

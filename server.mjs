@@ -27,6 +27,7 @@ import { promptTimeText } from "./engine/yuanshu-seams.mjs";
 import { readActivityRhythm } from "./engine/activity-rhythm.mjs";
 import { settleTurnMemory } from "./engine/turn-memory.mjs";
 import { advanceGoalTurn, noteGoalError, goalPrompt, listGoals, createGoal, armGoal, pauseGoal, settleGoal, disarmAllGoals } from "./engine/goals.mjs";
+import { sandboxModeView, recordSandboxMode } from "./engine/sandbox-session.mjs";
 import { extractPromises, recordPromises, loadPromises, pendingPromises, closePromise, pendingPromiseText } from "./engine/promises.mjs";
 import { createSoilReader } from "./engine/aibody-soil.mjs";
 // ── 会话解析纯函数（拆模块）：消息/文本/图片/文件提取 ──
@@ -1546,6 +1547,15 @@ function findKeyByEntry(entry) {
   return null;
 }
 
+/** 台前没带 sessionId 时用它：最近一个会话。单用户桌面下够用。 */
+function latestSessionId() {
+  try {
+    const list = getSessionList() || [];
+    const first = list[0] || {};
+    return String(first.id || first.sessionId || "");
+  } catch { return ""; }
+}
+
 // GET /api/sessions/:id/messages
 async function handleMessages(res, id, req, url) {
   const found = getSessionList().find(s => s.id === id);
@@ -1714,6 +1724,20 @@ const API_ROUTES = [
     // 结清只能由人给结论；这里不接受任何自动判定，也没有定时任务会调它
     const r = closePromise(WS_ROOT, String(b.id), { status: b.status === "dropped" ? "dropped" : "kept", evidence: b.evidence || null });
     json(res, r?.ok ? 200 : 400, r);
+  }],
+  // ── 会话级沙箱模式：append-only 日志 + fold，收紧随时可以、放宽必须给理由 ──
+  // ── 会话级沙箱模式：append-only 日志 + fold，收紧随时可以、放宽必须给理由 ──
+  ["GET", "/api/sandbox/mode", (res, req, url) => {
+    const sid = url?.searchParams?.get("session") || latestSessionId();
+    json(res, 200, { ok: true, sessionId: sid, ...sandboxModeView(AGENT_DIR, sid) });
+  }],
+  ["POST", "/api/sandbox/mode", async (res, req) => {
+    const b = await readBody(req);
+    const sid = b?.sessionId || latestSessionId();
+    if (!sid) return json(res, 400, { error: "没有可用的会话" });
+    // 只可能来自台前点击，所以来源固定记 human
+    const r = recordSandboxMode(AGENT_DIR, sid, { preset: b?.preset, origin: "human", reason: b?.reason });
+    json(res, r?.ok ? 200 : 400, { ...r, sessionId: sid, view: r?.ok ? sandboxModeView(AGENT_DIR, sid) : null });
   }],
   // ── 跨轮目标：三重闸门在 engine/goals.mjs；台前只做"人类给结论"这一侧 ──
   ["GET", "/api/goals", (res) => {

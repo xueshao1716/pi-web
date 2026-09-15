@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { ArrowLeftRight } from 'lucide-react'
 import { EngineApi } from '../../api'
+import SandboxModePanel from './SandboxModePanel'
 
 type Pair = Awaited<ReturnType<typeof EngineApi.pair>>
 
@@ -55,5 +56,6 @@ export default function EnginePairPanel({ data, error, onReload }: { data?: Pair
         </div>
       </details>)}
     </div>
+    <SandboxModePanel />
   </section>
 }

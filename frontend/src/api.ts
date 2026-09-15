@@ -638,6 +638,20 @@ export const GoalApi = {
     api<{ ok: boolean; goal?: GoalItem; reason?: string }>('/api/goals/action', { method: 'POST', body: { id, action, ...extra } }),
 }
 
+// ── 会话级沙箱模式：引擎侧是 append-only 日志 + fold（收紧随时可以、放宽必须给理由）──
+export interface SandboxPreset { id: string; mode: string; label: string; desc: string }
+export interface SandboxView {
+  ok: boolean; sessionId: string
+  preset: string; mode: string; label: string; desc: string; defaultPreset: string
+  presets: SandboxPreset[]
+  history: { at: string; preset: string; mode: string; from: string; widening: boolean; origin: string; reason: string | null }[]
+}
+export const SandboxApi = {
+  get: () => api<SandboxView>('/api/sandbox/mode'),
+  set: (preset: string, reason?: string) =>
+    api<{ ok: boolean; reason?: string; sessionId?: string; view?: SandboxView }>('/api/sandbox/mode', { method: 'POST', body: { preset, reason } }),
+}
+
 // ── 系统面板：说明 / 检测更新 ──
 export const SystemApi = {
   info: () => api<any>('/api/system/info'),
