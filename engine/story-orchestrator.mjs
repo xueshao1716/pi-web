@@ -9,7 +9,10 @@ import { buildStoryAssistPrompt, parseStoryAssist, buildStoryboardPrompt, parseS
 import { lintStoryProject } from './story-lint.mjs';
 import { collectFilmClips, concatClips } from './story-film.mjs';
 import { materializeMedia } from './media-inline.mjs';
-import { listRecipes, saveRecipe, deleteRecipe, importRecipes, exportRecipes, normalizeRefStrategy } from './story-recipes.mjs';import { json } from './http-utils.mjs';
+import { listRecipes, saveRecipe, deleteRecipe, importRecipes, exportRecipes, normalizeRefStrategy } from './story-recipes.mjs';
+import { buildStorySoFar, contextBudget } from './story-context.mjs';
+import { renderScript, scriptStats, SCRIPT_FORMATS } from './story-screenplay.mjs';
+import { runRoleplay, normalizePlayground } from './story-playground.mjs';import { json } from './http-utils.mjs';
 
 const makeId = () => crypto.randomUUID();
 const nowIso = () => new Date().toISOString();
@@ -180,6 +183,10 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       kind, input.model,
     );
     const context = mergeBeatContext(project, scene, beat);
+    // 全剧至今：以前只带继承链上的前 3 段，写到第 8 段时第 2 段发生的事模型看不见。
+    // 挂到 context 上，由 compileStoryPrompt 写进提示词（见 story-context.mjs 的三条原则）。
+    const soFar = buildStorySoFar(project, { maxChars: contextBudget(), excludeBeatId: beat.id });
+    context.storySoFar = soFar;
     // 负向提示词（段落级 > 项目默认配方）。先写进提示词块（所有通道都吃、都看得见），
     // 再作为 negative 传给图像通道——上游认不认那个字段是另一回事，但请求里必须看得见。
     const negative = String(input.negative ?? beat.negative ?? defaultRecipe?.negative ?? '').trim();
@@ -238,6 +245,7 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       { label: '挂载素材', detail: plan.materialAssets.length ? plan.materialAssets.map(a => `${a.type}:${a.name || a.url || a.id}`).join('、') : '无' },
       { label: '负向提示词', detail: plan.negative ? `${plan.negative}${plan.defaultRecipe ? `（段落没写，取自项目默认配方「${plan.defaultRecipe.name}」）` : ''}` : '未设置' },
       { label: '上送参数', detail: JSON.stringify(plan.adapterParams).slice(0, 300) || '—' },
+      { label: '全剧上下文', detail: plan.context?.storySoFar?.text ? `${plan.context.storySoFar.chars} 字（${plan.context.storySoFar.scenes} 场、含 ${plan.context.storySoFar.proseBeats} 段已写正文${plan.context.storySoFar.truncated ? '；**因长度上限砍掉了更早的部分**' : ''}）` : '无（这个项目还没有可追溯的成文内容）' },
     ];
     if (plan.defaultRecipe) steps.unshift({ label: '项目默认配方', detail: `「${plan.defaultRecipe.name}」在段落没说的地方生效（模型/参数/负向/变体数/参考图策略）` });
     const warn = [...(plan.caps.degradation || []), ...(plan.notes || []), ...(run?.degradation || [])].filter(Boolean);
@@ -414,6 +422,70 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       return { project, run, status: run.status, settled: true, waitedMs: waitedMs(run, clock) };
     },
     pollWindowMs: () => videoPollWindowMs(),
+    // ── 剧本导出（Laper 的地基：能出图出片，还要能拿出一个能给人看的剧本文件）──
+    scriptStats: async (id) => scriptStats(await readProject(root, id)),
+    exportScript: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const format = String(input.format || 'txt');
+      const out = renderScript(project, format);
+      const safe = String(project.title || '未命名').replace(/[\\/:*?"<>|]/g, '_').slice(0, 40);
+      return { ...out, filename: `${safe}-剧本.${out.ext}`, stats: scriptStats(project), formats: Object.entries(SCRIPT_FORMATS).map(([k, v]) => ({ format: k, label: v.label })) };
+    },
+    // ── 与角色对台词（Laper 的 Playground）：检验台词像不像这个人 ──
+    playground: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const scene = findScene(project, input.sceneId);
+      const beat = findBeat(scene, input.beatId);
+      if (!scene || !beat) throw Object.assign(new Error('sceneId 或 beatId 不存在'), { statusCode: 400 });
+      const characters = Array.isArray(project.bible?.characters) ? project.bible.characters : [];
+      const character = characters.find(c => String(c?.id) === String(input.characterId)) || characters[0];
+      if (!character) throw Object.assign(new Error('这个故事还没有角色：先让 AI 补一段设定，或加一个角色'), { statusCode: 400 });
+      const history = normalizePlayground(beat.playground);
+      const soFar = buildStorySoFar(project, { maxChars: Math.min(contextBudget(), 6000), excludeBeatId: '' });
+      // 候选模型按 handleStoryAssist 同一套路：指定的 → 非推理快模型 → 默认模型，
+      // 试最多 2 个，并把**每个**失败原因带回来。短台词最怕推理模型把输出吃光。
+      const available = typeof getModelList === 'function' ? getModelList() : [];
+      const fast = available.find(m => m?.capabilities?.chat && !m.reasoning && /agnes-3\.0-flash/i.test(m.id))
+        || available.find(m => m?.capabilities?.chat && !m.reasoning);
+      const candidates = [input.model, fast, typeof getDefaultModel === 'function' ? getDefaultModel() : null]
+        .filter((m, i, all) => m?.id && all.findIndex(x => x?.provider === m.provider && x?.id === m.id) === i);
+      if (!candidates.length) throw Object.assign(new Error('没有可用的文本模型：先去模型页配一个'), { statusCode: 503 });
+      const reasons = [];
+      let reply = '', used = candidates[0];
+      for (const model of candidates.slice(0, 2)) {
+        try {
+          const out = await runRoleplay({
+            directChat, model, project, character, scene, beat, history,
+            message: input.message, storySoFar: soFar.text,
+          });
+          reply = out.reply; used = model; break;
+        } catch (e) { reasons.push(`${model?.provider}/${model?.id}：${String(e?.message || e).slice(0, 120)}`); }
+      }
+      if (!reply) throw new Error(`对台词失败（试过 ${reasons.length} 个模型）—— ${reasons.join('；')}`);
+      // 对话留档：对台词是创作过程的一部分，"这个角色这么说过了"本身就是要保持一致的既成事实
+      const at = (clock.now || nowIso)();
+      const turns = [...history, { role: 'writer', text: String(input.message).trim(), at }, { role: 'character', text: reply, at }];
+      const next = withUpdated({
+        ...project,
+        scenes: project.scenes.map(s => s.id !== scene.id ? s : { ...s, beats: s.beats.map(b => b.id !== beat.id ? b : { ...b, playground: normalizePlayground(turns) }) }),
+      });
+      validateProject(next);
+      await writeProject(root, next);
+      return { project: next, reply, character: { id: character.id, name: character.name || '' }, turns: normalizePlayground(turns), model: { provider: used?.provider || '', id: used?.id || '' } };
+    },
+    clearPlayground: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const scene = findScene(project, input.sceneId);
+      const beat = findBeat(scene, input.beatId);
+      if (!scene || !beat) throw Object.assign(new Error('sceneId 或 beatId 不存在'), { statusCode: 400 });
+      const next = withUpdated({
+        ...project,
+        scenes: project.scenes.map(s => s.id !== scene.id ? s : { ...s, beats: s.beats.map(b => b.id !== beat.id ? b : { ...b, playground: [] }) }),
+      });
+      validateProject(next);
+      await writeProject(root, next);
+      return { project: next };
+    },
     // 角色定妆照：按角色设定出一张可复用的形象参考图，写回 bible.characters[].refImage。
     // 这张图随后会被 runGeneration 当成真实参考图注入（图像走图生图、视频走 reference 模式），
     // 这是"锁定人物外貌"的入口——在此之前 story 层只有文字描述，产品自己也在界面上承认做不到。
@@ -594,6 +666,22 @@ export async function handleStoryRun(ctx, res, id, body) {
 
 export async function handleStoryRunCheck(ctx, res, id, body) {
   try { return json(res, 200, await createStoryOrchestrator(ctx).checkRun(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryScriptStats(ctx, res, id) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).scriptStats(id)); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryExportScript(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).exportScript(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryPlayground(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).playground(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryPlaygroundClear(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).clearPlayground(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
 }
 
 export async function handleStoryPortrait(ctx, res, id, body) {

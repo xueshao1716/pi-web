@@ -77,6 +77,8 @@ export function compileStoryPrompt({ bible, scene, beat, inherited, negative } =
     style ? `## 视觉与叙事风格\n- ${style}` : '',
     section('连续性规则', b.rules),
     scene?.title ? `## 当前场景\n- 标题: ${scene.title}\n- 摘要: ${scene.summary || '无'}` : '',
+    // 全剧至今（story-context.mjs）：接得上前面，但不能变成复述比赛
+    inherited?.storySoFar?.text ? inherited.storySoFar.text : '',
     inherited?.prompt ? `## 继承镜头上下文\n${inherited.prompt}` : '',
     beat?.prompt ? `## 当前镜头要求\n${beat.prompt}` : '',
     dialogueBlock(beat, beat?.kind),

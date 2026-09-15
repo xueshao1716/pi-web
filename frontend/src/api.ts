@@ -187,6 +187,12 @@ export const StoryApi = {
   film: (id: string) => api<{ project: StoryProject; film: StoryFilm; url: string; clipCount: number; method: string }>(`/api/story/projects/${encodeURIComponent(id)}/film`, { method: 'POST', body: {}, timeoutMs: 900000 }),
   // 生成配方：调好的生成设置，可存/套用/导出/导入（跨项目共用）
   recipes: () => api<{ recipes: StoryRecipe[] }>('/api/story/recipes'),
+  // 剧本要素与导出（Laper 的地基：能出图出片，还要能拿出一个能给人看的剧本文件）
+  scriptStats: (id: string) => api<{ scenes: number; actions: number; dialogueLines: number; transitions: number; speakers: string[] }>(`/api/story/projects/${encodeURIComponent(id)}/script-stats`),
+  exportScript: (id: string, body: { format: string }) => api<{ format: string; ext: string; mime: string; body: string; filename: string; stats: { scenes: number; dialogueLines: number; speakers: string[] } }>(`/api/story/projects/${encodeURIComponent(id)}/script-export`, { method: 'POST', body }),
+  // 与角色对台词（Playground）：检验台词像不像这个人
+  playground: (id: string, body: { sceneId: string; beatId: string; characterId?: string; message: string }) => api<{ project: StoryProject; reply: string; character: { id: string; name: string }; turns: { role: string; text: string }[] }>(`/api/story/projects/${encodeURIComponent(id)}/playground`, { method: 'POST', body, timeoutMs: 90000 }),
+  playgroundClear: (id: string, body: { sceneId: string; beatId: string }) => api<{ project: StoryProject }>(`/api/story/projects/${encodeURIComponent(id)}/playground-clear`, { method: 'POST', body }),
   saveRecipe: (body: Partial<StoryRecipe> & { name: string }) => api<{ recipe: StoryRecipe; recipes: StoryRecipe[] }>('/api/story/recipes', { method: 'POST', body }),
   deleteRecipe: (id: string) => api<{ ok: boolean; recipes: StoryRecipe[] }>(`/api/story/recipes/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   exportRecipes: () => api<{ format: string; version: number; exportedAt: string; recipes: StoryRecipe[] }>('/api/story/recipes/export'),

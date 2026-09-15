@@ -99,6 +99,27 @@ test('视频异步：创建与收尾分开，超窗不等于失败', () => {
   assert.doesNotMatch(api, /run: \(id[^\n]*timeoutMs: 900000/, '创建不该再阻塞几分钟');
 });
 
+test('剧本要素 / 导出 / 试戏 必须留在界面上（照 Laper 补的地基）', () => {
+  assert.match(source, /StoryScript/, '剧本与导出的面板要挂在制作台');
+  assert.match(source, /StoryPlayground/, '试戏面板要挂在制作台');
+  assert.match(source, /aria-label="本段动作"/, '动作行要能单独写（它和画面描述不是一回事）');
+  assert.match(source, /aria-label="转场"/);
+  assert.match(source, /aria-label="内外景"/);
+  assert.match(source, /aria-label="场景地点"/);
+  assert.match(source, /aria-label="场景时间"/);
+  const script = fs.readFileSync('frontend/src/components/story/StoryScript.tsx', 'utf8');
+  for (const need of ['StoryApi.exportScript', 'StoryApi.scriptStats', 'fdx', 'fountain', '没有真机打开验证过']) {
+    assert.ok(script.includes(need), `剧本面板缺「${need}」`);
+  }
+  const pg = fs.readFileSync('frontend/src/components/story/StoryPlayground.tsx', 'utf8');
+  for (const need of ['StoryApi.playground', 'StoryApi.playgroundClear', '不许编新设定', '最多 20 句']) {
+    assert.ok(pg.includes(need), `试戏面板缺「${need}」`);
+  }
+  const api = fs.readFileSync('frontend/src/api.ts', 'utf8');
+  assert.match(api, /script-export/);
+  assert.match(api, /playground-clear/);
+});
+
 test('作品列表：段号取生成时的定格值、失败可见、成片落回项目', () => {  const products = fs.readFileSync('frontend/src/components/story/StoryProducts.tsx', 'utf8');
   // 段号优先用 run.beatNo（生成时刻定格），只在旧数据上按当前分镜顺序回退
   assert.match(products, /run\.beatNo/);

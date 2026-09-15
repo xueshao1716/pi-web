@@ -88,7 +88,7 @@ import * as confirmRegistry from "./engine/tools/confirm-registry.mjs";
 import { initRefineApi, readRefineJson, runRefineScript, handleRefineStatus, handleRefineList, detectSkillDomain, handleRefineFeedback, handleRefineGenes, handleRefinePlan, handleRefineApprove, handleRefineReject, handleRefineRollback } from "./engine/refine-api.mjs";
 import { initMcpServer, handleMcp } from "./engine/mcp-server.mjs";
 import { initMcpChat } from "./engine/mcp-chat.mjs";
-import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryRunCheck, handleStoryAssist, handleStoryPortrait, handleStoryLint, handleStoryStoryboard, handleStoryFilm, handleStoryRecipes, handleStoryRecipesExport, handleStoryRecipesImport, handleStoryRecipeDelete } from "./engine/story-orchestrator.mjs";
+import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryRunCheck, handleStoryAssist, handleStoryPortrait, handleStoryLint, handleStoryStoryboard, handleStoryFilm, handleStoryScriptStats, handleStoryExportScript, handleStoryPlayground, handleStoryPlaygroundClear, handleStoryRecipes, handleStoryRecipesExport, handleStoryRecipesImport, handleStoryRecipeDelete } from "./engine/story-orchestrator.mjs";
 import { startShare, stopShareSync, handleShare, handleShareStatus, handleShareStop } from "./engine/share-api.mjs";
 import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
@@ -1687,6 +1687,12 @@ const API_ROUTES = [
   ["POST", /^\/api\/story\/projects\/([^/]+)\/storyboard$/, async (res, req, url, m) => handleStoryStoryboard({ root: WS_ROOT, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 16))],
   // 成片合成：按分镜顺序把成功的视频片段拼成长片并落盘为正式产物
   ["POST", /^\/api\/story\/projects\/([^/]+)\/film$/, async (res, req, url, m) => handleStoryFilm({ root: WS_ROOT, saveArtifactFromFile }, res, m[1], await readBody(req, 8))],
+  // 剧本要素统计 + 导出（中文剧本 / Fountain / Final Draft FDX）
+  ["GET", /^\/api\/story\/projects\/([^/]+)\/script-stats$/, (res, req, url, m) => handleStoryScriptStats({ root: WS_ROOT }, res, m[1])],
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/script-export$/, async (res, req, url, m) => handleStoryExportScript({ root: WS_ROOT }, res, m[1], await readBody(req, 4))],
+  // 与角色对台词（Laper 的 Playground）：检验台词像不像这个人
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/playground$/, async (res, req, url, m) => handleStoryPlayground({ root: WS_ROOT, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 8))],
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/playground-clear$/, async (res, req, url, m) => handleStoryPlaygroundClear({ root: WS_ROOT }, res, m[1], await readBody(req, 4))],
   // 生成配方（可存/可套用/可导出导入的生成设置）——挂在 /api/story/recipes，与项目平级，因为它跨项目
   ["GET", "/api/story/recipes", (res) => handleStoryRecipes({ root: WS_ROOT }, res)],
   ["GET", "/api/story/recipes/export", (res) => handleStoryRecipesExport({ root: WS_ROOT }, res)],

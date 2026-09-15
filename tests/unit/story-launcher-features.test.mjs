@@ -1,0 +1,264 @@
+// 剧本要素与导出 / 全剧上下文 / 与角色对台词 —— 对照 Laper 补的三件
+//
+// Laper（laper.ai）的地基是**剧本要素 + 工业格式导出**（它整个产品就建在这上面），
+// 外加 **200K 全剧本上下文** 和 **Playground（和 AI 扮演的角色对台词）**。
+// 元枢这边三件都缺：能出图、出片、出正文，却拿不出一个能给人看的剧本文件；
+// 生成时只看得到继承链上的前 3 段；没有任何"试戏"的手段。
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { parseDialogueLines, slugHollywood, slugChinese, beatAction, projectToElements, toFountain, toChineseScript, toFdx, renderScript, scriptStats } from '../../engine/story-screenplay.mjs';
+import { buildStorySoFar, contextBudget, latestProse } from '../../engine/story-context.mjs';
+import { buildRoleplayPrompt, cleanRoleplayReply, normalizePlayground, runRoleplay, PLAYGROUND_MAX_TURNS } from '../../engine/story-playground.mjs';
+import { createStoryOrchestrator } from '../../engine/story-orchestrator.mjs';
+import { createProject, writeProject } from '../../engine/story-store.mjs';
+
+// ─────────── 剧本要素 ───────────
+
+test('台词按「角色名：台词」拆成要素，括号提示与续行都要认', () => {
+  const lines = parseDialogueLines([
+    '阿宁（低声）：车不会来了。',
+    '老周: 我知道。',
+    '又过了一会儿，他才开口。',
+    '画外音：末班车已经收车。',
+  ].join('\n'));
+  assert.deepEqual(lines[0], { type: 'dialogue', speaker: '阿宁', paren: '低声', text: '车不会来了。' });
+  assert.deepEqual(lines[1], { type: 'dialogue', speaker: '老周', paren: '', text: '我知道。' });
+  // 没有冒号：上一行有说话人 → 当作同一人的续行（不是动作）
+  assert.deepEqual(lines[2], { type: 'dialogue', speaker: '老周', paren: '', text: '又过了一会儿，他才开口。' });
+  assert.deepEqual(lines[3], { type: 'dialogue', speaker: '画外音', paren: '', text: '末班车已经收车。' });
+  // 开头就没有说话人 → 只能是动作行
+  assert.deepEqual(parseDialogueLines('雨点砸在顶棚上。'), [{ type: 'action', text: '雨点砸在顶棚上。' }]);
+  assert.equal(parseDialogueLines('').length, 0);
+});
+
+test('场景标题：没填要素也要能导出（用场景名兜底，不许因为缺字段就导不出东西）', () => {
+  assert.equal(slugHollywood({ title: '站台', slug: { interior: 'exterior', location: '站台', timeOfDay: 'NIGHT' } }), 'EXT. 站台 - NIGHT');
+  assert.equal(slugChinese({ title: '站台', slug: { interior: 'interior', location: '站台', timeOfDay: '夜' } }), '内景 站台 夜');
+  assert.equal(slugHollywood({ title: '开场' }), 'INT. 开场');
+  assert.equal(slugChinese({ id: 's1' }), '内景 未命名场景');
+  assert.equal(slugHollywood({ title: 'x', slug: { interior: '乱写' } }), 'INT. x', '非法内外景回落到内景');
+});
+
+test('动作行优先用显式剧本动作，退回画面描述——两者不是一回事', () => {
+  assert.equal(beatAction({ action: '他把烟摁灭。', prompt: '特写，浅景深，顶光' }), '他把烟摁灭。');
+  assert.equal(beatAction({ prompt: '特写，浅景深，顶光' }), '特写，浅景深，顶光', '没写动作就用画面描述兜底');
+  assert.equal(beatAction({}), '');
+});
+
+const demo = {
+  title: '末班车',
+  logline: '一个不愿下车的乘客。',
+  bible: { characters: [] },
+  scenes: [{
+    id: 's1', index: 1, title: '站台', summary: '两人对峙', slug: { interior: 'exterior', location: '站台', timeOfDay: '夜' },
+    beats: [
+      { id: 'b1', kind: 'novel', prompt: '雨夜站台', action: '雨点砸在顶棚上。', dialogue: '阿宁（低声）：车不会来了。\n老周：我知道。' },
+      { id: 'b2', kind: 'image', prompt: '特写', transition: '切至' },
+    ],
+    outputs: [],
+  }],
+};
+
+test('三种导出共用同一份要素流，谁也不许自己另算一遍', () => {
+  const els = projectToElements(demo);
+  assert.deepEqual(els.map(e => e.type), ['scene_heading', 'synopsis', 'action', 'dialogue', 'dialogue', 'action', 'transition']);
+  const cn = toChineseScript(demo);
+  assert.match(cn, /1、内景|1、外景/);
+  assert.match(cn, /雨点砸在顶棚上。/);
+  assert.match(cn, /阿宁（低声）：车不会来了。/);
+  assert.match(cn, /切至/);
+  const f = toFountain(demo);
+  assert.match(f, /Title: 末班车/);
+  assert.match(f, /^EXT\. 站台 - 夜$/m, 'Fountain 的场景标题用行业写法');
+  assert.match(f, /^阿宁$/m, '角色名单独一行');
+  assert.match(f, /^\(低声\)$/m);
+  assert.match(f, /^> 切至$/m, 'Fountain 的转场用 > 前缀');
+  assert.match(f, /^= 两人对峙$/m, '梗概行用 = 前缀');
+});
+
+test('FDX 是合法 XML，段落类型按公开约定', () => {
+  const xml = toFdx(demo);
+  assert.match(xml, /^<\?xml version="1\.0" encoding="UTF-8" standalone="no"\?>/);
+  assert.match(xml, /<FinalDraft DocumentType="Script"/);
+  for (const type of ['Scene Heading', 'Action', 'Character', 'Parenthetical', 'Dialogue', 'Transition']) {
+    assert.ok(xml.includes(`Type="${type}"`), `缺 ${type} 段落`);
+  }
+  assert.doesNotMatch(xml, /Type="Synopsis"/, '梗概不该写进 FDX 正文（那是大纲视图的事）');
+  // 转义：& < > 与引号都不能把 XML 弄坏
+  const nasty = toFdx({ title: 't', scenes: [{ id: 's', title: 'a & b <c>', beats: [{ id: 'b', prompt: '5 > 3 & "x"' }], outputs: [] }] });
+  assert.match(nasty, /a &amp; b &lt;c&gt;/);
+  assert.match(nasty, /5 &gt; 3 &amp; &quot;x&quot;/);
+  // 结构自检：标签配平（不引第三方解析器，但至少要配平）
+  const open = (nasty.match(/<Paragraph /g) || []).length;
+  const close = (nasty.match(/<\/Paragraph>/g) || []).length;
+  assert.equal(open, close);
+});
+
+test('导出格式与统计：renderScript 兜底、统计口径一致', () => {
+  assert.equal(renderScript(demo, 'fdx').ext, 'fdx');
+  assert.equal(renderScript(demo, '乱写').format, 'txt', '不认识的格式回落到中文剧本，而不是报错导不出');
+  const s = scriptStats(demo);
+  assert.deepEqual({ scenes: s.scenes, dialogueLines: s.dialogueLines, transitions: s.transitions }, { scenes: 1, dialogueLines: 2, transitions: 1 });
+  assert.deepEqual(s.speakers, ['阿宁', '老周']);
+  // 空项目也要能导出（不能因为没内容就崩）
+  const empty = renderScript({ title: '空', scenes: [] }, 'txt');
+  assert.match(empty.body, /空/);
+});
+
+// ─────────── 全剧上下文 ───────────
+
+const longProject = () => createProject({
+  title: '长篇',
+  scenes: Array.from({ length: 6 }, (_, i) => ({
+    id: `s${i}`, index: i + 1, title: `第 ${i + 1} 场`, summary: `第 ${i + 1} 场发生的事`,
+    beats: [{ id: `b${i}`, kind: 'novel', prompt: `第 ${i + 1} 段的画面`, dialogue: `阿宁：第 ${i + 1} 句台词`, references: [] }],
+    outputs: [{ id: `r${i}`, beatId: `b${i}`, kind: 'novel', status: 'succeeded', outputAssets: [{ id: 'a', type: 'text', text: `第 ${i + 1} 段正文`.repeat(300) }] }],
+  })),
+}, { id: () => 'pl' });
+
+test('全剧至今：带场摘要 + 台词 + 已写正文，且排除当前这一段', () => {
+  const p = longProject();
+  const soFar = buildStorySoFar(p, { maxChars: 20000, excludeBeatId: 'b3' });
+  assert.equal(soFar.scenes, 6);
+  assert.match(soFar.text, /第 1 场发生的事/, '最早的场摘要也要在——这正是"继承链前 3 段"看不到的');
+  assert.match(soFar.text, /第 6 句台词/);
+  assert.match(soFar.text, /已写正文：/);
+  assert.match(soFar.text, /全剧至今/, '要说明这是既成事实，只保持一致、不要复述');
+  assert.doesNotMatch(soFar.text, /第 4 段正文/, '当前这一段的正文要被排除（它还没写/正在写）');
+  assert.equal(soFar.truncated, false);
+});
+
+test('全剧至今有上限，且**砍过要说出来**；预算是可配的', () => {
+  const p = longProject();
+  const full = buildStorySoFar(p, { maxChars: 20000 });
+  assert.equal(full.truncated, false);
+  const small = buildStorySoFar(p, { maxChars: 2000 });
+  assert.ok(small.chars <= 2000 + 200, `实际 ${small.chars} 不该超过预算太多`);
+  assert.equal(small.truncated, true, `没砍到就测不出上限（全文 ${full.chars} 字）`);
+  assert.match(small.text, /被省略了/, '砍了就要说，不能让人以为模型看到了全部');
+  assert.equal(contextBudget({}), 20000);
+  assert.equal(contextBudget({ STORY_CONTEXT_CHARS: '60000' }), 60000);
+  assert.equal(contextBudget({ STORY_CONTEXT_CHARS: 'abc' }), 20000);
+  assert.equal(contextBudget({ STORY_CONTEXT_CHARS: '10' }), 20000, '太小的值当没设');
+  // 非文字段落不该有"已写正文"
+  assert.equal(latestProse({ outputs: [{ beatId: 'b', kind: 'image', status: 'succeeded', outputAssets: [{ type: 'text', text: 'x' }] }] }, 'b', 'image'), '');
+});
+
+test('生成时真的把全剧上下文带上了（执行链里看得见字数）', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-story-ctx-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const project = longProject();
+  await writeProject(root, project);
+  const api = createStoryOrchestrator({ root, getModelList: () => [{ provider: 'p', id: 'm', capabilities: { chat: true } }] });
+  const pv = await api.previewRun('pl', { sceneId: 's0', beatId: 'b0', kind: 'novel', model: { provider: 'p', id: 'm' } });
+  assert.match(pv.context.prompt, /全剧至今/);
+  const row = pv.plan.find(s => s.label === '全剧上下文');
+  assert.ok(row, '执行链要有一行说明这次带了多少全剧上下文');
+  assert.match(row.detail, /\d+ 字/);
+});
+
+// ─────────── 与角色对台词（Playground）── ───────────
+
+test('试戏提示词：只能依据设定、只能说自己的话、不许给创作建议', () => {
+  const prompt = buildRoleplayPrompt({
+    project: { title: '末班车', bible: { rules: [{ text: '不许有人说普通话以外的语言' }] } },
+    character: { id: 'c1', name: '阿宁', appearance: '二十岁，短发', secret: '他认识司机' },
+    scene: { title: '站台', summary: '两人对峙' },
+    beat: { dialogue: '阿宁：车不会来了。' },
+    storySoFar: '## 全剧至今\n第 1 场：他上过车。',
+    message: '你为什么不走？',
+  });
+  assert.match(prompt, /扮演/);
+  assert.match(prompt, /阿宁/);
+  assert.match(prompt, /短发/);
+  assert.match(prompt, /不要写旁白/, '不许把旁白混进台词');
+  assert.match(prompt, /不要替别的角色说话/);
+  assert.match(prompt, /不要给编剧提建议/, '他只能演，不能替编剧做决定');
+  assert.match(prompt, /只能依据这些，不许自己编新设定/);
+  assert.match(prompt, /全剧至今/);
+  assert.match(prompt, /你为什么不走？/);
+});
+
+test('角色回话要剥掉外壳；对话留档有上限', () => {
+  assert.equal(cleanRoleplayReply('「我不走。」'), '我不走。');
+  assert.equal(cleanRoleplayReply('（沉默片刻）车不来了。'), '车不来了。');
+  assert.equal(cleanRoleplayReply('```\n我不走。\n```'), '我不走。');
+  assert.equal(cleanRoleplayReply('   '), '');
+  const many = Array.from({ length: 30 }, (_, i) => ({ role: i % 2 ? 'character' : 'writer', text: `第 ${i} 句` }));
+  const norm = normalizePlayground(many);
+  assert.equal(norm.length, PLAYGROUND_MAX_TURNS, '留档有上限，别让试戏把项目撑爆');
+  assert.equal(norm[0].text, '第 10 句', '超上限时丢最早的那些');
+  assert.deepEqual(normalizePlayground([{ role: 'x', text: 'hi' }])[0].role, 'writer', '不认识的 role 归到编剧');
+  assert.deepEqual(normalizePlayground([{ role: 'character', text: '' }]), [], '空话不占位');
+});
+
+test('对台词走 directChat，历史喂回去，空回复要报错不是静默', async () => {
+  const calls = [];
+  const r = await runRoleplay({
+    directChat: async (model, prompt, history, opts) => { calls.push({ model, prompt, history, ...(opts || {}) }); return { text: '「我不走。」' } },
+    model: { provider: 'p', id: 'chat' },
+    project: { title: 't', bible: {} }, character: { id: 'c', name: '阿宁' }, scene: { title: 's' }, beat: {},
+    history: [{ role: 'writer', text: '你为什么不走？' }, { role: 'character', text: '车不来了。' }],
+    message: '那你打算怎么办？',
+  });
+  assert.equal(r.reply, '我不走。');
+  assert.deepEqual(calls[0].history, [{ role: 'user', content: '你为什么不走？' }, { role: 'assistant', content: '车不来了。' }]);
+  // 思考必须显式关掉：推理模型开着思考时，1–3 句台词会被吃光，拿回来的 content 是空的
+  assert.equal(calls[0].thinking, false, '短台词任务要显式关思考（仓库里"填充/短任务必须关掉"同一条纪律）');
+  // 三种失败要分得开：没凭据（directChat 返回 null）/ 有内容但没台词 / 没说话就发送
+  await assert.rejects(
+    () => runRoleplay({ directChat: async () => ({ text: '' }), model: { provider: 'p', id: 'm' }, project: {}, character: {}, scene: {}, beat: {}, message: 'x' }),
+    /没有台词/,
+  );
+  await assert.rejects(
+    () => runRoleplay({ directChat: async () => null, model: { provider: 'p', id: 'm' }, project: {}, character: {}, scene: {}, beat: {}, message: 'x' }),
+    /没有可用凭据或端点/,
+    'directChat 返回 null 是"没被调用"，不能和"返回空内容"混成一句话',
+  );
+  await assert.rejects(() => runRoleplay({ directChat: async () => ({ text: 'x' }), model: {}, project: {}, character: {}, scene: {}, beat: {}, message: '  ' }), /先说一句/);
+  await assert.rejects(() => runRoleplay({ model: {}, project: {}, character: {}, scene: {}, beat: {}, message: 'x' }), /未接入/);
+});
+
+test('自述不是台词：绝不能把"用户让我扮演…"当成角色说的话', async () => {
+  const { looksLikeMetaReply } = await import('../../engine/story-playground.mjs');
+  // 真实踩到的那一条
+  assert.equal(looksLikeMetaReply('用户让我扮演角色"阿宁"，和编剧对台词。编剧问"你为什么不走？"'), true);
+  assert.equal(looksLikeMetaReply('我需要扮演阿宁，所以我会回答：'), true);
+  assert.equal(looksLikeMetaReply('根据角色设定，他应该说：我不走。'), true);
+  // 真台词不能被误伤
+  assert.equal(looksLikeMetaReply('我不走。'), false);
+  assert.equal(looksLikeMetaReply('车不会来了。你也不用再等了。'), false);
+  assert.equal(looksLikeMetaReply('他说"用户让我扮演"——我不信。'), false, '引号里的话不算自述');
+  assert.equal(looksLikeMetaReply(''), false);
+  // 自述要走"报错→换模型"，而不是把自述当回复展示
+  await assert.rejects(
+    () => runRoleplay({ directChat: async () => ({ text: '用户让我扮演角色"阿宁"。' }), model: { provider: 'p', id: 'weak' }, project: {}, character: {}, scene: {}, beat: {}, message: 'x' }),
+    /在自述而不是演/,
+  );
+});
+
+test('对台词结果落进 beat.playground（可追溯），清空是真的清空', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-story-pg-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const project = createProject({
+    title: '试戏',
+    bible: { characters: [{ id: 'c1', name: '阿宁', appearance: '短发' }] },
+    scenes: [{ id: 's1', index: 1, title: '站台', summary: '', beats: [{ id: 'b1', kind: 'novel', prompt: '雨夜', references: [] }], outputs: [] }],
+  }, { id: () => 'pp' });
+  await writeProject(root, project);
+  const api = createStoryOrchestrator({ root, directChat: async () => ({ text: '「我不走。」' }), getModelList: () => [], getDefaultModel: () => ({ provider: 'p', id: 'chat' }) });
+  const r = await api.playground('pp', { sceneId: 's1', beatId: 'b1', characterId: 'c1', message: '你为什么不走？' });
+  assert.equal(r.reply, '我不走。');
+  assert.deepEqual(r.turns.map(x => x.role), ['writer', 'character']);
+  const stored = (await api.get('pp')).scenes[0].beats[0].playground;
+  assert.equal(stored.length, 2);
+  assert.equal(stored[1].text, '我不走。');
+  const cleared = await api.clearPlayground('pp', { sceneId: 's1', beatId: 'b1' });
+  assert.deepEqual(cleared.project.scenes[0].beats[0].playground, []);
+  assert.deepEqual((await api.get('pp')).scenes[0].beats[0].playground, []);
+  // 没角色的项目要给出可操作的提示，而不是 500
+  await assert.rejects(() => api.playground('pp', { sceneId: 's1', beatId: 'b1', message: 'x' }).then(() => { throw new Error('不该成功') }).catch(e => { if (e.message === '不该成功') throw e; throw e; }), /./);
+});

@@ -130,8 +130,13 @@ export interface StoryRecipe {
 // 挂在某一段上的素材：别的工作台（AI 绘画 / 视频工坊 / 小说工坊）的产出。
 // 与 `references`（指向 bible 实体的 id）刻意分开：这类素材是**已经存在的成品文件**，自带地址。
 export interface StoryBeatInput { id: string; type: 'image' | 'video' | 'text'; name?: string; url?: string; text?: string; path?: string }
-export interface StoryBeat { id: string; kind: 'novel' | 'image' | 'video'; prompt: string; references: StoryAssetRef[]; inheritFromBeatId?: string; activeRunId?: string; dialogue?: string; inputs?: StoryBeatInput[]; negative?: string }
-export interface StoryScene { id: string; index: number; title: string; summary: string; beats: StoryBeat[]; outputs: StoryGenerationRun[]; activeRunId?: string }
+// 剧本要素（Laper 的地基）：场景标题由 slug 三要素生成，动作与生成指令分开——
+// `prompt` 是发给图像/视频模型的「动作、构图、镜头、光线」，把它整段当剧本动作，
+// 会把"镜头怎么推"写进剧本，那不是剧作该写的东西。
+export interface StorySceneSlug { interior?: 'interior' | 'exterior' | 'mixed'; location?: string; timeOfDay?: string }
+export interface StoryPlaygroundTurn { role: 'writer' | 'character'; text: string; at?: string }
+export interface StoryBeat { id: string; kind: 'novel' | 'image' | 'video'; prompt: string; references: StoryAssetRef[]; inheritFromBeatId?: string; activeRunId?: string; dialogue?: string; inputs?: StoryBeatInput[]; negative?: string; reference?: { images: number; prefer: string }; action?: string; transition?: string; playground?: StoryPlaygroundTurn[] }
+export interface StoryScene { id: string; index: number; title: string; summary: string; beats: StoryBeat[]; outputs: StoryGenerationRun[]; activeRunId?: string; slug?: StorySceneSlug }
 export interface StoryFilm { id: string; url: string; clipCount: number; method: string; beatIds: string[]; createdAt: string }
 export interface StoryProject { id: string; title: string; logline?: string; bible: StoryBible; scenes: StoryScene[]; films?: StoryFilm[]; activeSceneId?: string; defaultRecipeId?: string; createdAt: string; updatedAt: string }
 

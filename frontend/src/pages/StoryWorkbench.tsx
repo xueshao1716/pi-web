@@ -9,6 +9,8 @@ import StoryResults from '../components/story/StoryResults'
 import StoryProducts from '../components/story/StoryProducts'
 import StoryMaterials from '../components/story/StoryMaterials'
 import StoryRecipes from '../components/story/StoryRecipes'
+import StoryScript from '../components/story/StoryScript'
+import StoryPlayground from '../components/story/StoryPlayground'
 import { defaultRefStrategy, normalizeRefStrategy, refStrategyLabel, recipeBeatPatch } from '../lib/story-ref'
 import type { StoryBeatInput } from '../types'
 import '../components/story/story.css'
@@ -49,6 +51,11 @@ export function StoryPanel() {
   const [paramDraft, setParamDraft] = useState<Record<string, string>>({})
   // 参考图策略：用几张、谁优先。以前这条策略硬编码在编排层里，用户在界面上既看不到也改不了。
   const [refDraft, setRefDraft] = useState<{ images: number; prefer: 'material' | 'portrait' }>({ images: 1, prefer: 'material' })
+  // 剧本要素：动作与转场单独存（action 留空则导出时用画面描述兜底）。
+  // 场景标题的三要素（内外景/地点/时间）存在场景上，不是段落上。
+  const [actionDraft, setActionDraft] = useState('')
+  const [transitionDraft, setTransitionDraft] = useState('')
+  const [slugDraft, setSlugDraft] = useState<{ interior: string; location: string; timeOfDay: string }>({ interior: 'interior', location: '', timeOfDay: '' })
   const [compiled, setCompiled] = useState('')
   const [timelineOpen, setTimelineOpen] = useState(() => window.innerWidth > 640)
   const [storyboardIdea, setStoryboardIdea] = useState('')
@@ -62,7 +69,9 @@ export function StoryPanel() {
   const hydrateBible = (p: StoryProject) => setBibleDraft(bibleText(p.bible))
   const update = (p: StoryProject) => { setProject(p); setProjects(items => [p, ...items.filter(item => item.id !== p.id)]) }
   const choose = (p: StoryProject | null) => { setProject(p); setSelected(p?.scenes[0]?.beats[0]?.id || ''); if (p) hydrateBible(p); setAssistResult(null); setCompiled(''); setError(''); setNotice('') }
-  useEffect(() => { if (beat) { setSelectedKind(beat.kind); setPromptDraft(beat.prompt); setDialogueDraft(beat.dialogue || ''); setInputDrafts(beat.inputs || []); setNegativeDraft(beat.negative || ''); setSeedDraft(''); setRefDraft(normalizeRefStrategy((beat as any).reference, beat.kind)) } setAssistResult(null); setCompiled('') }, [project?.id, beat?.id, beat?.kind, beat?.prompt, beat?.dialogue, beat?.inputs, beat?.negative])
+  useEffect(() => { if (beat) { setSelectedKind(beat.kind); setPromptDraft(beat.prompt); setDialogueDraft(beat.dialogue || ''); setInputDrafts(beat.inputs || []); setNegativeDraft(beat.negative || ''); setSeedDraft(''); setRefDraft(normalizeRefStrategy((beat as any).reference, beat.kind)); setActionDraft(beat.action || ''); setTransitionDraft(beat.transition || '') } setAssistResult(null); setCompiled('') }, [project?.id, beat?.id, beat?.kind, beat?.prompt, beat?.dialogue, beat?.inputs, beat?.negative, beat?.action, beat?.transition])
+  // 场景标题三要素跟着场景走
+  useEffect(() => { const s = scene?.slug; setSlugDraft({ interior: s?.interior || 'interior', location: s?.location || '', timeOfDay: s?.timeOfDay || '' }) }, [project?.id, scene?.id, scene?.slug?.interior, scene?.slug?.location, scene?.slug?.timeOfDay])
   // 切换输出类型时，参考图策略的默认值跟着类型走（画面 1 张素材优先 / 视频 4 张定妆照优先）——
   // 否则从视频切到画面会沿用"4 张"，把一个只吃一张的通道撑爆。
   const setGenerationKind = (kind: StoryBeat['kind']) => { setSelectedKind(kind); setSelectedModel(''); setCompiled(''); setRefDraft(normalizeRefStrategy(undefined, kind)) }
@@ -93,8 +102,10 @@ export function StoryPanel() {
     if (!project) throw new Error('请先开始一个故事')
     const scenes = project.scenes.length ? project.scenes : [{id:'scene-1',index:1,title:'开场',summary:project.logline || '',beats:[],outputs:[]}]
     const target = scene || scenes[0]
-    const nextBeat = { ...(beat || emptyBeat), kind:selectedKind, prompt:promptDraft.trim(), dialogue:dialogueDraft.trim(), inputs:inputDrafts, negative:negativeDraft.trim() }
-    const r = await StoryApi.patchProject(project.id, { bible: editedBible(project.bible, bibleDraft), scenes: scenes.map(s => s.id !== target.id ? s : {...s,beats:s.beats.some(b => b.id === nextBeat.id) ? s.beats.map(b => b.id === nextBeat.id ? nextBeat : b) : [...s.beats,nextBeat]}) })
+    const nextBeat = { ...(beat || emptyBeat), kind:selectedKind, prompt:promptDraft.trim(), dialogue:dialogueDraft.trim(), inputs:inputDrafts, negative:negativeDraft.trim(), action:actionDraft.trim(), transition:transitionDraft.trim() }
+    // 场景标题三要素存回场景上（空值不写，避免给项目塞一堆没用的字段）
+    const slug = { ...(slugDraft.location.trim() ? { location: slugDraft.location.trim() } : {}), ...(slugDraft.timeOfDay.trim() ? { timeOfDay: slugDraft.timeOfDay.trim() } : {}), ...(slugDraft.interior !== 'interior' ? { interior: slugDraft.interior as 'interior' } : {}) }
+    const r = await StoryApi.patchProject(project.id, { bible: editedBible(project.bible, bibleDraft), scenes: scenes.map(s => s.id !== target.id ? s : {...s, ...(Object.keys(slug).length ? { slug } : {}), beats:s.beats.some(b => b.id === nextBeat.id) ? s.beats.map(b => b.id === nextBeat.id ? nextBeat : b) : [...s.beats,nextBeat]}) })
     update(r.project); hydrateBible(r.project)
     return { project:r.project, sceneId:target.id, beatId:nextBeat.id }
   }
@@ -319,6 +330,15 @@ export function StoryPanel() {
           <div className="story-form-row"><label>输出类型<select aria-label="选择输出类型" disabled={Boolean(busy)} value={selectedKind} onChange={e=>setGenerationKind(e.target.value as StoryBeat['kind'])}><option value="novel">小说段落</option><option value="image">故事画面</option><option value="video">视频片段</option></select></label><label>生成模型<select aria-label="选择模型" disabled={Boolean(busy)} value={selectedModel} onChange={e=>setSelectedModel(e.target.value)}><option value="">自动选择模型</option>{availableModels.map(m=><option key={modelKey(m)} value={modelKey(m)}>{m.name || m.id}</option>)}</select></label></div>
           <label>本段内容<textarea aria-label="本段内容" disabled={Boolean(busy)} value={promptDraft} onChange={e=>{setPromptDraft(e.target.value);setCompiled('')}} rows={6} placeholder="写下本段想发生的事，或让 AI 帮你完善" /></label>
           <label>本段台词 · 对白<textarea aria-label="本段台词" disabled={Boolean(busy)} value={dialogueDraft} onChange={e=>{setDialogueDraft(e.target.value);setCompiled('')}} rows={4} placeholder={'一行一句，写成「角色名：台词」。这是故事的骨头——人物说了什么，比镜头怎么推更重要。'} /></label>
+          <div className="story-form-row">
+            <label>本段动作 · 剧本动作行<input aria-label="本段动作" disabled={Boolean(busy)} value={actionDraft} onChange={e=>{setActionDraft(e.target.value);setCompiled('')}} placeholder="留空则导出时用「本段内容」（画面描述）兜底" /></label>
+            <label>转场<input aria-label="转场" disabled={Boolean(busy)} value={transitionDraft} onChange={e=>setTransitionDraft(e.target.value)} placeholder="例如 切至 / CUT TO:" /></label>
+          </div>
+          <div className="story-form-row">
+            <label>内外景<select aria-label="内外景" disabled={Boolean(busy)} value={slugDraft.interior} onChange={e=>setSlugDraft({...slugDraft, interior:e.target.value})}><option value="interior">内景</option><option value="exterior">外景</option><option value="mixed">内外景</option></select></label>
+            <label>地点<input aria-label="场景地点" disabled={Boolean(busy)} value={slugDraft.location} onChange={e=>setSlugDraft({...slugDraft, location:e.target.value})} placeholder="留空用场景名" /></label>
+            <label>时间<input aria-label="场景时间" disabled={Boolean(busy)} value={slugDraft.timeOfDay} onChange={e=>setSlugDraft({...slugDraft, timeOfDay:e.target.value})} placeholder="例如 夜 / 清晨" /></label>
+          </div>
           <StoryMaterials materials={inputDrafts} busy={Boolean(busy)} onChange={next => { setInputDrafts(next); setCompiled('') }} />
           <label>本段负向提示词 · 不要出现什么<textarea aria-label="本段负向提示词" disabled={Boolean(busy)} value={negativeDraft} onChange={e=>{setNegativeDraft(e.target.value);setCompiled('')}} rows={2} placeholder="一行一条，例如：多余的手指、文字水印、现代服装" /></label>
           <div className="story-form-row">
@@ -343,6 +363,16 @@ export function StoryPanel() {
             onChanged={() => void mutateRecipes()}
             onPatchProject={() => void load()}
           />
+          <StoryScript project={project} busy={Boolean(busy)} onPatchProject={() => void load()} />
+          {scene && beat && <StoryPlayground
+            project={project}
+            sceneId={scene.id}
+            beatId={beat.id}
+            characters={project.bible.characters || []}
+            turns={beat.playground || []}
+            busy={Boolean(busy)}
+            onDone={update}
+          />}
           <div className="story-form-row"><label>构思模型<select value={planningModel} disabled={Boolean(busy)} onChange={e=>setPlanningModel(e.target.value)}><option value="">自动选择文本模型</option>{models.filter(m=>capable(m,'novel')).map(m=><option key={modelKey(m)} value={modelKey(m)}>{m.name || m.id}</option>)}</select></label><div className="story-actions"><button className="btn-ghost" disabled={Boolean(busy)} onClick={assist}>让 AI 完善本段</button></div></div>
           {assistResult && <div className="story-draft"><h3>AI 草稿 · 确认后一起保存</h3><p>{assistResult.scene?.summary}</p><p>{assistResult.beat?.prompt}</p><p className="story-hint">人物：{assistResult.characters?.map((c:any)=>[c.name,c.appearance].filter(Boolean).join(' · ')).join('；') || '沿用既有设定'}</p><div className="story-actions"><button className="btn-primary" disabled={Boolean(busy)} onClick={applyAssist}>采用并保存设定</button><button className="btn-ghost" disabled={Boolean(busy)} onClick={()=>setAssistResult(null)}>暂不采用</button></div></div>}
           <p className="story-hint">{selectedKind==='novel'?'续写会带上已保存的设定和继承段落的实际正文。':`已生成的定妆照会作为真实参考图注入（画面走图生图、视频走 reference），用来锁住人物外貌；还没有定妆照的角色只能靠文字描述。当前 ${portraitCount}/${(project.bible.characters||[]).length} 个角色有定妆照。`}{selectedKind==='video'?' 每次生成一个视频片段，攒够成功的片段后用左侧「合成成片」拼成长片。':''}</p>

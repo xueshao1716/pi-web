@@ -140,6 +140,21 @@
 .story-recipe-item .story-actions { gap: 6px; }
 .story-recipe-item .story-actions :is(.btn-ghost) { padding: 4px 8px; font-size: 11px; }
 .story-recipe-item.is-default { border-color: var(--pi-accent); background: color-mix(in oklab, var(--pi-accent) 8%, var(--pi-bg2)); }
+/* 剧本要素与导出（对照 Laper 补的地基） */
+.story-script, .story-playground { border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-md); padding: 10px 12px; background: var(--pi-bg1); }
+.story-script-head, .story-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--pi-dim); }
+.story-script-head .btn-ghost, .story-head .btn-ghost { padding: 6px 10px; font-size: 11px; }
+.story-script-body, .story-playground-body { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--pi-border-soft); }
+.story-script-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; font-size: 11px; color: var(--pi-dim2); }
+.story-script-row, .story-playground-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.story-script-row select, .story-playground-row select { min-height: 32px; font-size: 12px; }
+.story-playground-row input { min-height: 32px; font-size: 12px; flex: 1 1 200px; }
+.story-playground-row .btn-primary, .story-playground-row .btn-ghost { padding: 6px 12px; font-size: 12px; }
+.story-playground-turns { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 8px; max-height: 260px; overflow: auto; }
+.story-playground-turn { padding: 6px 10px; border-radius: var(--pi-r-sm); background: var(--pi-bg2); border-left: 2px solid var(--pi-border); }
+.story-playground-turn.is-character { border-left-color: var(--pi-accent); }
+.story-playground-turn span { font-size: 11px; color: var(--pi-dim2); }
+.story-playground-turn p { margin: 2px 0 0; font-size: 12px; line-height: 1.7; color: var(--pi-dim); white-space: pre-wrap; overflow-wrap: anywhere; }
 .story-recipe-save { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .story-recipe-save input { min-height: 32px; font-size: 12px; flex: 1 1 160px; }
 .story-recipe-save .btn-ghost { padding: 6px 10px; font-size: 11px; }
