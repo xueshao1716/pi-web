@@ -333,6 +333,20 @@ test('参考图资产三件共用一条通路：角色/场景/道具都能生成
   // 指定已存在的形象名 → 重做那一张，不再新增
   const again = await api.generatePortrait('pg', { characterId: 'c1', lookName: '战斗装束' });
   assert.equal(again.project.bible.characters[0].looks.length, 2, '同名形象是重做，不是新增');
+
+  // 老角色（有这个功能之前就生成过定妆照：只有 refImage、没有 looks）再加一张新形象时，
+  // **不许把 refImage 顶掉**——真机踩到过：给林默加「战斗装束」，结果基础定妆照被覆盖了。
+  const legacy = createProject({
+    title: '老项目',
+    bible: { characters: [{ id: 'c9', name: '老角色', refImage: '/old-base.png' }] },
+    scenes: [{ id: 's1', index: 1, title: '一', summary: '', beats: [{ id: 'b1', kind: 'image', prompt: 'x', references: [] }], outputs: [] }],
+  }, { id: () => 'pl' });
+  await writeProject(root, legacy);
+  const added = await api.generatePortrait('pl', { characterId: 'c9', lookName: '战斗装束' });
+  const c9 = added.project.bible.characters[0];
+  assert.equal(c9.refImage, '/old-base.png', '基础定妆照不能被新形象覆盖');
+  assert.deepEqual(c9.looks.map(l => l.name), ['基础形象', '战斗装束'], '既有的那张要登记成基础形象，新的排在后面');
+  assert.equal(c9.looks[0].refImage, '/old-base.png', '基础形象指向原来那张图');
   // 空设定要给出可操作的提示，而不是 500
   const bare = await api.create({ title: '空的' });
   await assert.rejects(() => api.generateAssetRef(bare.id, { assetType: 'location' }), /还没有场景/);

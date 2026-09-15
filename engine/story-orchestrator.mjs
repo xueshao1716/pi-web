@@ -825,14 +825,18 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       const patchItem = (x) => {
         if (x !== item) return x;
         if (!look) return { ...x, refImage: url };
+        // 老角色（有 refImage、没有 looks）第一次加**新形象**时，先把既有的那张登记成「基础形象」——
+        // 否则新形象会顶掉 refImage，等于把原来的定妆照弄丢了（真机踩到过：给林默加「战斗装束」，
+        // 结果 refImage 也被改成战斗装束那张）。
         const nextLooks = [...looks];
+        if (!nextLooks.length && x.refImage) nextLooks.push({ id: `look-${String(x.id || 'c')}-base`, name: '基础形象', refImage: x.refImage });
+        const isNewBase = nextLooks.length === 0;   // 这个角色一张形象都还没有 → 这一张就是基础形象
         const idx = nextLooks.findIndex(l => String(l?.id) === String(look.id));
         const entry = { ...(idx >= 0 ? nextLooks[idx] : look), name: String(look.name || '基础形象'), refImage: url };
         if (idx >= 0) nextLooks[idx] = entry; else nextLooks.push(entry);
-        // 第一张形象同时写回 refImage：参考图挑选与连续性体检此前只认 refImage，
-        // 不让既有功能"看不见"新生成的形象（否则界面有图、生成时不带）。
-        const isBase = String(nextLooks[0]?.id) === String(entry.id);
-        return { ...x, looks: nextLooks, ...(isBase ? { refImage: url } : {}) };
+        // 只有**基础形象**（第一张）才回写 refImage：参考图挑选与连续性体检此前只认它，
+        // 别让既有功能"看不见"新生成的形象；但第二张形象绝不该覆盖基础定妆照。
+        return { ...x, looks: nextLooks, ...(isNewBase ? { refImage: url } : {}) };
       };
       const next = withUpdated({
         ...project,
