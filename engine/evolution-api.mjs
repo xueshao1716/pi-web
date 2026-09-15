@@ -173,6 +173,10 @@ export async function nudgeSkill({ label, result, trigger = "task" }) {
     if (p.skip) return { skip: true, reason: "评估为一次性任务" };
     if (!p.name || !p.skill || String(p.skill).length < 120) return { skip: true, reason: "草稿不完整" };
     const pool = loadPool();
+    // 同名提案去重：09-07 与 09-14 两次复盘提出过同一个 daily-retrospective，
+    // 池子里并排躺着两条 open——重复提案只会变成人眼前的噪音。
+    const dup = pool.find((x) => x.kind === "skill-nudge" && x.name === p.name && x.state !== "dismissed");
+    if (dup) return { skip: true, reason: `同名技能提案已存在（${dup.state}）：${p.name}` };
     const id = `nudge-${Date.now()}`;
     pool.push({ id, kind: "skill-nudge", label: label || p.name, name: p.name, description: p.description || "", skill: p.skill, trigger, resultPreview: String(result).slice(0, 300), created: new Date().toISOString(), state: "open" });
     savePool(pool);

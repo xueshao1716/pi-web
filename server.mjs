@@ -93,7 +93,7 @@ import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
 import { createCodeMode } from "./code-mode/code-mode.mjs";
 import { createTimeEngine } from "./engine/time-engine.mjs";
-import { composeTimeTaskMessages, timeTaskReadTools } from "./engine/time-task-run.mjs";
+import { composeTimeTaskMessages, timeTaskReadTools, recordReflectionActions } from "./engine/time-task-run.mjs";
 import { sanitizeSessionFile } from "./engine/session-sanitize.mjs";
 import { createCorsPolicy } from "./engine/cors-policy.mjs";
 import { initSessionDb, handleDbList, handleDbRebuild, handleDbSanitize, handleDbMeta, handleDbStats, handleDbSweep, sweepSessionsNow, ensureSessionSequence } from "./engine/session-db.mjs";
@@ -2481,6 +2481,12 @@ function startServer() {
 ${String(out).slice(0, 16000)}
 `;
           try { fs.appendFileSync(logFile, entry); } catch {}
+          // 复盘的行动清单落成承诺：这样"今天要做的"才可追踪——下一轮复盘会看到它、
+          // 台前「待兑现承诺」会列它，结清仍只能由人给结论。没有 JSON 块的任务是无操作。
+          try {
+            const rec = recordReflectionActions(CONFIG.cwd, out, { taskId: task.id });
+            if (rec?.ok) console.log(`[time-engine] 任务 ${task.id} 的行动清单 → 承诺账：解析 ${rec.parsed} 条，新增 ${rec.added} 条`);
+          } catch {}
           console.log(`[time-engine] 任务 ${task.id} 完成，已记录到 ${logFile}`);
         } catch (e) {
           console.log(`[time-engine] 任务 ${task.id} 异常: ${String(e?.message || e).slice(0, 100)}`);
