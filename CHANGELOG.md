@@ -8,6 +8,73 @@
 
 ## [Unreleased]
 
+## [2.33.0] - 2026-09-15
+
+### 顺手挖出的真问题：你的技能写好了，但**主引擎根本看不见它们**
+打磨完照着"技能到底会不会被用上"真跑了一遍（建临时会话 → 走真服务 → 读 SSE → 删会话），
+结果两条任务**都没激活技能**。翻模型的思考记录才看明白：
+
+- 主引擎是 `pi`（兼容适配器 / Pi SDK），它扫描技能的根只有两个 —— 会话工作目录的
+  `cwd/skills`（你的技能商店 `D:\pi-workspace\skills`）和 `~/.agents/skills`。
+  **仓库根的内置技能 `D:\pi-web\skills` 不在它任何一条扫描路径上**：
+  「元枢技能」页面上列得出来（那个走的是另一条读取路径 `listBuiltinSkills()`），
+  模型却看不见。实测原话："I don't see a `prompt-architect` skill in the list"，
+  然后转身去读了 SDK 那份目录里的 `multi-agent-meeting`。
+- `activate_skill` 工具一直好好注册着（`engine/session-manager.mjs:322`），
+  但目录里没有名字，这个工具就永远等不到调用 —— 上一轮所有技能打磨，在这条通道上等于白做。
+- 连带的：`engine/context-loader.mjs` 里的 `makeLoader()`（本来是给 SDK 会话追加技能目录的）
+  **是死代码，全仓库没有任何调用点**。
+
+修法（`server.mjs` `handleChat` + `engine/yuanshu-protocol.mjs`）：
+
+- 每个会话**注入一次**「元枢内置技能库」目录（`skillCatalogSent` 记账，不重复灌上下文），
+  走的是和情绪/时间/PPT 护栏同一条 `nextTurn` 通道，不污染会话历史；
+- 每轮再做一次技能匹配，命中就补一句"本轮任务可能匹配：xxx"，把候选点名给模型；
+- 匹配器补了两族"概念名"规则：实测 `用提示词架构师的办法…` 原本**零命中**、
+  `用多AI角色扮演系统…` 命中的是无关技能，现在分别稳定命中 `prompt-architect` / `multi-ai-roleplay`。
+
+验证（改完重启服务再跑）：问"你上下文里有没有元枢内置技能库"，模型**逐行复述出全部 17 个技能名**。
+新增 `tests/unit/skill-catalog-injection.test.mjs`（3 条）：目录文本能用（每条注入 ≤90 字且触发语在 90 字内）、
+匹配器认得这两族、`handleChat` 真的走"每会话一次 + nextTurn"注入。
+顺带修正 `diagram-design` 的 description：118 字时"use when…"正好被 90 字截口切掉，现已压到 89 字。
+
+### 继续打磨你写的那些技能：17 份 description 全部进 120 字 + 3 份源文抽出可读文本 + 全技能契约测试
+上一轮只查了万像两份。这一轮把 `skills/` 下**全部 17 个技能**按同一把尺子过了一遍，问题还是老几样：
+
+- **description 超过 120 字，超出部分等于没写**：`engine/context-loader.mjs:181` 只把前 120 字
+  塞进技能目录，那是模型唯一能看见的一行。实测有 9 个在 121–220 字之间（`seedance-25` 713、
+  `diagram-design` 579、`video-prompt-library` 220、`gpt-image-2` 191…）。现在 17 份**全部 ≤120 字
+  且触发语前置**（"当用户…"/"Use when…"）。
+- **三份技能指向读不到的东西**：`multi-ai-roleplay` / `prompt-architect` / `shortform-genesis`
+  都只给了 `.docx`（Word 二进制，`read` 工具读不了），其中两份还引用了**根本不存在**的抽取文本。
+  → 新增 `scripts/extract-docx.mjs` 抽出 `src_full.txt`（3926 / 65 / 750 行），
+  `scripts/gen-skill-index.mjs` 生成 `INDEX.md`（章 → 行号区间）；SKILL.md 的「参考文档」段改成
+  **先查索引、按行号 read**，`.docx` 降级为"只在逐字核对措辞时看"。
+- **索引生成器把"重号章"当成样例藏了**：平面文档第 89 行和第 116 行都是"第四章"
+  （全域色彩美学引擎 / 设计生成基本范式与核心模板库），旧逻辑把第二个丢进"非序列标题"，
+  缺陷被"多半是正文里的样例"这句话盖掉。现在**重号章既进章节表（行号区间才对）又报"章号重复"**。
+- **死链**：`gpt-image-2` 的 7 个 `cases/*.md` 是外部库
+  （`D:/pi-workspace/工程/awesome-gpt-image-2-prompts/`）里的相对路径——改成绝对路径，
+  并写明"没 clone 到本地时就别去 read"；`diagram-design` 多处写 `style-guide.md` 却没带 `references/`
+  目录，还有 3 处让 agent 去跑**本机不存在**的 `verify-geometry.py` / `verify-motion.py`
+  （上游脚本没随技能过来）→ 改指随技能发布的 `scripts/self_check.py`。
+- **"运行时产物"要说清**：`novel-forge-v10` / `novel-writing-pipeline` 里的
+  `current_state.json`、`canon.md`、`souls/<角色>.json` 是**你小说工程目录里**的文件，
+  不是技能自带的——现在都标了"运行时产物，别去 `skills/` 下找"。
+- **契约测试从"只看万像两个"扩到全部 17 个**：`tests/unit/wanxiang-skills.test.mjs`
+  → `tests/unit/skills-contract.test.mjs`（11 条），新增三条最值钱的：
+  **加载器必须真的读到每个技能的 description**（CRLF/引号/frontmatter 坏掉就红——实测
+  `diagram-design`、`seedance-25` 整份是 CRLF，旧正则只认 `\n`，这两个技能的说明一直是正文第一行）、
+  **引用不到的文件必须写明是运行时产物**、**原文 docx 不得被抽取文本顶掉**。
+- 加载器容 CRLF（`engine/context-loader.mjs:177`），两个 CRLF 技能归一为 LF。
+
+**仍未做（跟你报备过，没动你的材料）**：`wx_full.txt` 里 35 处【旧版补充】块**只标出位置，
+没有物理搬动**——搬动等于改写你的合并稿；`万像平面` 的第 17/18 章在 `D:\遗产` 里找不到正文
+（现有 16 章正文 / 17 个标题，第 4 章重号）。
+
+验证：`npm test` **1300/1300 通过**（原 1292 + 新增 8：技能契约 11 条替换旧的 6 条 + 目录注入 3 条）；
+另外真机跑了两轮技能激活验收（临时会话，跑完删除），并复述出全部 17 个内置技能名。
+
 ## [2.32.0] - 2026-09-15
 
 ### 打磨：你写的那两个万像技能（`skills/wanxiang-portrait` / `wanxiang-design`）
