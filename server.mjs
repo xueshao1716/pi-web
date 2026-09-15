@@ -26,6 +26,7 @@ import { initFileLock, usingSharedFileQueue } from "./engine/file-lock.mjs";
 import { promptTimeText } from "./engine/yuanshu-seams.mjs";
 import { readActivityRhythm } from "./engine/activity-rhythm.mjs";
 import { settleTurnMemory } from "./engine/turn-memory.mjs";
+import { advanceGoalTurn, noteGoalError, goalPrompt, listGoals, createGoal, armGoal, pauseGoal, settleGoal, disarmAllGoals } from "./engine/goals.mjs";
 import { extractPromises, recordPromises, loadPromises, pendingPromises, closePromise, pendingPromiseText } from "./engine/promises.mjs";
 import { createSoilReader } from "./engine/aibody-soil.mjs";
 // ── 会话解析纯函数（拆模块）：消息/文本/图片/文件提取 ──
@@ -831,6 +832,9 @@ async function handleChat(req, res, body) {
     } catch {}
   }
   try { sseWrite(res, "engine_selected", { engine: observedEngine, reason: forceResumeUnified ? "恢复任务使用元枢循环，承接已保存的步骤。" : ({ primary: "使用系统配置的主引擎。", force: "启动配置指定使用元枢引擎。", "non-native": "当前模型通道由元枢自建循环承接。", "cannot-lead": "配置主引擎无法承担此任务，由可执行的引擎接替。" }[engineDecision.reason] || "使用本轮可用的执行通道。") }); } catch {}
+  // 跨轮目标：本轮推进一轮（闸门在 advanceGoalTurn 里：到顶/重放/revision 不匹配一律不放行）。
+  // 必须在分支之前认领，这样 pi 与 yuanshu 两条路径看到的是同一个轮号。
+  const goalTurn = advanceGoalTurn(CONFIG.cwd);
   // 本轮开始前的会话文件大小：收尾结算时按这个偏移切片，只认本轮新追加的助手回复
   const sessionBytesBefore = (() => { try { return fs.statSync(entry.sm.sessionFile).size; } catch { return 0; } })();
   if (forceResumeUnified || engineDecision.lead === "dsh" || (defaultModel && !useAgent)) {
@@ -848,6 +852,8 @@ async function handleChat(req, res, body) {
       }
     } catch (e) {
       try { sseWrite(res, "error", { message: String(e?.message || e) }); } catch {}
+      // 闸门③：一轮出错就解除目标，不带着错误继续转
+      if (goalTurn?.ok) noteGoalError(CONFIG.cwd, goalTurn.goal.id, e?.message || e);
     } finally {
       clearInterval(hb2);
       req.removeListener("close", onClose);
@@ -1160,6 +1166,15 @@ async function handleChat(req, res, body) {
         { deliverAs: "nextTurn" }
       );
     } catch {}
+    // 跨轮目标：把"进行到第几轮"和纪律交给模型（未武装时为空，不占上下文）
+    if (goalTurn?.prompt) {
+      try {
+        await entry.agent?.sendCustomMessage?.(
+          { customType: "context", content: [{ type: "text", text: goalTurn.prompt }] },
+          { deliverAs: "nextTurn" }
+        );
+      } catch {}
+    }
     // 待兑现承诺：模型自己许下但没结清的事，主动交代；账上为空时不占上下文
     try {
       const owed = pendingPromiseText(CONFIG.cwd, { now: new Date(), limit: 5 });
@@ -1455,6 +1470,8 @@ async function handleChat(req, res, body) {
   } catch (e) {
     // 官方 agent 管线异常 → 降级到自制 unifiedChat 兑底（避免任务静默失败）
     const agentErr = String(e?.message || e);
+    // 闸门③：一轮出错就解除目标，不带着错误继续转（降级重试属于同一轮）
+    if (goalTurn?.ok) noteGoalError(CONFIG.cwd, goalTurn.goal.id, agentErr);
     try { await mediaDelivered; } catch {}
     if (/fetch failed|Failed to fetch/i.test(agentErr)) {
       const netNote = `⚠️ ${explainMediaError(agentErr)}。思考和工具若已开始会保留；出图走旁路，失败不会再挡住主模型。`;
@@ -1694,6 +1711,33 @@ const API_ROUTES = [
     if (!b?.id) return json(res, 400, { error: "缺少 id" });
     // 结清只能由人给结论；这里不接受任何自动判定，也没有定时任务会调它
     const r = closePromise(WS_ROOT, String(b.id), { status: b.status === "dropped" ? "dropped" : "kept", evidence: b.evidence || null });
+    json(res, r?.ok ? 200 : 400, r);
+  }],
+  // ── 跨轮目标：三重闸门在 engine/goals.mjs；台前只做"人类给结论"这一侧 ──
+  ["GET", "/api/goals", (res) => {
+    const all = listGoals(WS_ROOT);
+    const active = all.find((g) => g.status === "active") || null;
+    json(res, 200, { ok: true, active, goals: all.map(({ id, objective, status, round, maxRounds, autoAdvance, evidence, blockedReason, updatedAt }) => ({ id, objective, status, round, maxRounds, autoAdvance, evidence, blockedReason, updatedAt })) });
+  }],
+  ["POST", "/api/goals/create", async (res, req) => {
+    const b = await readBody(req);
+    const r = createGoal(WS_ROOT, { objective: b?.objective, maxRounds: b?.maxRounds, autoAdvance: b?.autoAdvance });
+    json(res, r?.ok ? 200 : 400, r);
+  }],
+  ["POST", "/api/goals/action", async (res, req) => {
+    const b = await readBody(req);
+    if (!b?.id || !b?.action) return json(res, 400, { error: "缺少 id/action" });
+    // 武装与结清都标记 origin: "human"——它们只可能来自台前的人工点击，
+    // 没有任何服务端路径会自己调这两个（模型要结清必须由人确认）。
+    const map = {
+      arm: () => armGoal(WS_ROOT, String(b.id), { origin: "human", autoAdvance: b.autoAdvance ?? null }),
+      pause: () => pauseGoal(WS_ROOT, String(b.id), { origin: "human" }),
+      complete: () => settleGoal(WS_ROOT, String(b.id), { status: "complete", origin: "human", evidence: b.evidence }),
+      block: () => settleGoal(WS_ROOT, String(b.id), { status: "blocked", origin: "human", reason: b.reason, evidence: b.evidence }),
+    };
+    const fn = map[String(b.action)];
+    if (!fn) return json(res, 400, { error: "action 只能是 arm/pause/complete/block" });
+    const r = fn();
     json(res, r?.ok ? 200 : 400, r);
   }],
   ["POST", "/api/memory-gardener/reviewed", async (res, req) => {
@@ -2385,6 +2429,9 @@ function startServer() {
       // 日志 .bak 同理：每次"去重"都落一份全量日志副本，保留最近几份即可
       const pb = pruneLogBackups(CONFIG.cwd);
       if (pb?.removed) console.log(`[memory] 日志备份收敛：删除 ${pb.removed} 份旧 .bak，保留 ${pb.kept} 份`);
+      // 跨轮目标：重启后一律回到未武装态，必须人类重新确认——重启不该自动续跑
+      const dg = disarmAllGoals(CONFIG.cwd, { reason: "服务重启后需人类重新确认" });
+      if (dg?.disarmed) console.log(`[goals] ${dg.disarmed} 个进行中的目标已解除武装（重启不自动续跑）`);
     } catch {}
     // 时间引擎：定时任务调度（触发时跑 unifiedChat + 结果落盘 文档/时间引擎日志.md）
     try {

@@ -32,6 +32,7 @@ import { persistYuanshuUser, persistYuanshuAssistant, persistYuanshuToolTrace, a
 import { beginYuanshuEmotion, endYuanshuEmotion, lastTalkAt } from "./yuanshu-emotion.mjs";
 import { readActivityRhythm } from "./activity-rhythm.mjs";
 import { pendingPromiseText } from "./promises.mjs";
+import { goalPrompt } from "./goals.mjs";
 import { resolveAuth } from "./dsh-keys.mjs";
 import { runYuanshuToolRound, attachYuanshuCodeTool, toolCallLoopKey, toolCallsFromPlan } from "./yuanshu-loop.mjs";
 import { canonicalStepKey, hashArgs } from "./run-effects.mjs";
@@ -639,6 +640,13 @@ export async function initEngine() {
       name: "待兑现承诺",
       section: "memory",
       contribute: (ctx) => pendingPromiseText(ctx?.cwd, { now: ctx?.now }),
+    });
+    // 跨轮目标：轮号已由 server.mjs 在分支之前认领，这里只读当前状态，不重复推进
+    await registerPromptSection(nextGateway.registry, {
+      id: "yuanshu:prompt:goal",
+      name: "进行中的目标",
+      section: "plan",
+      contribute: (ctx) => goalPrompt(ctx?.cwd),
     });
     await registerPromptSection(nextGateway.registry, {
       id: "yuanshu:prompt:persona",
