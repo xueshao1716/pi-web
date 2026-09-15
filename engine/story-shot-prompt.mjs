@@ -153,11 +153,20 @@ export function shotFieldsFromBeat(beat = {}) {
   const explicit = beat?.shot && typeof beat.shot === 'object' ? beat.shot : {};
   const inferred = inferShotFromProse(beat?.prompt || beat?.action || '');
   const pick = key => String(explicit[key] ?? '').trim() || inferred[key] || '';
+  const size = pick('size');
+  // 老分镜常常把景别写在内容开头（「镜头特写：林默趴在…」）。景别一旦被提到句首，
+  // 这个前缀就成了重复——真机验收时编出来是「特写。镜头特写：林默趴在…」，同一个词两遍。
+  // 只削**开头那一个**（削完是空就还原，宁可重复也不能把内容吃没）。
+  let content = String(beat?.prompt || beat?.action || '').trim();
+  if (size && content.startsWith('镜头')) {
+    const stripped = content.replace(new RegExp(`^(?:镜头|画面|摄影机)?\\s*${size}\\s*[：:，,。]?\\s*`), '').trim();
+    if (stripped) content = stripped;
+  }
   return {
-    size: pick('size'), angle: pick('angle'), move: pick('move'),
+    size, angle: pick('angle'), move: pick('move'),
     light: pick('light'), tone: pick('tone'), texture: pick('texture'),
     ending: pick('ending'), carry: String(explicit.carry ?? '').trim(),
-    content: String(beat?.prompt || beat?.action || '').trim(),
+    content,
     dialogue: String(beat?.dialogue || '').trim(),
   };
 }

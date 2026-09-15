@@ -78,8 +78,23 @@ test('老项目也要受益：从散文里认出景别/机位/运镜/落幅', ()
   assert.match(text, /落幅定格/);
 });
 
-test('显式 shot 字段优先于散文推断，且不许编造没写的字段', () => {
-  const f = shotFieldsFromBeat({ prompt: '全景。她在走路。', shot: { size: '特写', move: '跟拍' } });
+test('内容开头自带的景别前缀要削掉（真机验收：编出来是「特写。镜头特写：林默趴在…」）', () => {
+  const beat = { kind: 'video', prompt: '镜头特写：林默趴在发霉的床垫上，嘴角有一滴口水。' };
+  const f = shotFieldsFromBeat(beat);
+  assert.equal(f.size, '特写', '景别要从"镜头特写："里认出来');
+  assert.equal(f.content, '林默趴在发霉的床垫上，嘴角有一滴口水。', '前缀不能留，否则同一个词出现两遍');
+  const text = compileShotPrompt({ shot: f, kind: 'video' });
+  assert.ok(text.startsWith('特写。林默趴在'), `不该出现"特写。镜头特写"：${text.slice(0, 30)}`);
+  // 削完啥都不剩就还原——宁可重复，也不能把内容吃没
+  const only = shotFieldsFromBeat({ prompt: '特写。' });
+  assert.equal(only.content, '特写。');
+  // 没写景别的老分镜不受影响
+  const plain = shotFieldsFromBeat({ prompt: '林默趴在床垫上。' });
+  assert.equal(plain.content, '林默趴在床垫上。');
+  assert.equal(plain.size, '');
+});
+
+test('显式 shot 字段优先于散文推断，且不许编造没写的字段', () => {  const f = shotFieldsFromBeat({ prompt: '全景。她在走路。', shot: { size: '特写', move: '跟拍' } });
   assert.equal(f.size, '特写', '显式字段优先');
   assert.equal(f.move, '跟拍');
   assert.equal(f.angle, '', '没写就不许编');
