@@ -71,9 +71,25 @@ npm run version:bump minor --dry  # 预演，不落盘
 npm run version:bump minor    # 1. 改所有版本声明 + 收 CHANGELOG
 #                             # 2. 补 CHANGELOG 条目
 npm run build:frontend        # 3. 构建（版本会注入前端，产物名带新版本）
-npm test                      # 4. 契约测试会检查全部一致
-git push origin main          # 5. 双推
+npm run prune:dist -- --apply # 4. 清掉历史构建遗留的不可达分块（见下）
+npm run sync:frontend         # 5. 镜像到 public/ 与 app/dist/（会先清空目标再拷贝）
+npm test                      # 6. 契约测试会检查全部一致
+git push origin main          # 7. 双推
 ```
+
+### 为什么第 4 步不能省
+
+`vite.config.ts` 里 `emptyOutDir: false` 是**故意的**——保留上一版指纹资源，避免还开着旧
+`index.html` 的客户端懒加载新模块时 404。代价是**每次构建都会新增一整套分块**
+（约 190 个 / 6 MB），而 `sync:frontend` 是忠实镜像，会把这套垃圾一起复制进 `public/` 和
+`app/dist/`。于是三棵树各自无限膨胀：不清理的话，发一次版就往仓库里多加约 570 个文件。
+
+`scripts/prune-dist.mjs` 的判据是可解释的，不靠猜：从「当前 `dist/index.html`」和**最近 2 个
+改过 `index.html` 的提交**出发做可达性遍历，只有所有这些入口都到不了的指纹分块才删。
+也就是说，当前版本依赖的文件一个都不会删，上一个发布版本也仍然完整可用（要更保守用 `--keep 3`）。
+它只碰 `frontend/dist/assets` 下匹配 vite 指纹格式的文件，手写资源（favicon、manifest 等）一律不动。
+
+删完必须再跑一次 `sync:frontend`——否则 `public/` 与 `app/dist/` 里仍是裁剪前的旧副本。
 
 ---
 

@@ -1,7 +1,9 @@
 # 元枢更新日志
 
 > 每次发版：`npm run version:bump <major|minor|patch>`（它会同改所有版本声明并收本文件的 `[Unreleased]`）
-> → 补一条日志 → 构建 `frontend/dist` → 双推。
+> → 补一条日志 → 构建 `frontend/dist` → `npm run prune:dist -- --apply` → `npm run sync:frontend` → 双推。
+> prune 那一步不能省：`emptyOutDir:false` 会让每次构建都新增约 190 个分块，
+> 而 `sync:frontend` 是忠实镜像，会把它们复制进 `public/` 与 `app/dist/`（细节见 `docs/NAMING.md`）。
 > 版本唯一来源是仓库根的 `version.json`；契约见 `docs/NAMING.md`。
 
 ## [Unreleased]
