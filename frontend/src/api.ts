@@ -1,4 +1,4 @@
-import type { Model, Session, ChatMessage, SessionMessages, Artifact, AssetDelivery, SkillSummary, StoryProject, StoryGenerationRun, StoryFilm, StoryPlanStep, StoryRecipe } from './types'
+import type { Model, Session, ChatMessage, SessionMessages, Artifact, AssetDelivery, SkillSummary, StoryProject, StoryGenerationRun, StoryFilm, StoryPlanStep, StoryRecipe, StoryEpisode, StoryEpisodeGroup, StoryAdaptResult } from './types'
 import { parseSseBlocks, type RunEvent, type RunStatus } from './lib/run-events'
 import { rememberDownload } from './lib/downloads'
 import { saveNativeDownload } from './lib/native-download'
@@ -190,6 +190,15 @@ export const StoryApi = {
   film: (id: string) => api<{ project: StoryProject; film: StoryFilm; url: string; clipCount: number; method: string }>(`/api/story/projects/${encodeURIComponent(id)}/film`, { method: 'POST', body: {}, timeoutMs: 900000 }),
   // 生成配方：调好的生成设置，可存/套用/导出/导入（跨项目共用）
   recipes: () => api<{ recipes: StoryRecipe[] }>('/api/story/recipes'),
+  // 分集：短剧/系列内容的组织单位（场用 episodeId 归属；删集只解绑不删场）
+  episodes: (id: string) => api<{ episodes: StoryEpisode[]; groups: StoryEpisodeGroup[]; unassigned: number }>(`/api/story/projects/${encodeURIComponent(id)}/episodes`),
+  addEpisode: (id: string, body: { title?: string; summary?: string; targetSeconds?: number }) => api<{ project: StoryProject; episode: StoryEpisode }>(`/api/story/projects/${encodeURIComponent(id)}/episodes`, { method: 'POST', body }),
+  updateEpisode: (id: string, body: { episodeId: string; title?: string; summary?: string; no?: number; targetSeconds?: number }) => api<{ project: StoryProject; episodes: StoryEpisode[] }>(`/api/story/projects/${encodeURIComponent(id)}/episodes`, { method: 'PATCH', body }),
+  removeEpisode: (id: string, body: { episodeId: string }) => api<{ project: StoryProject; unassigned: number }>(`/api/story/projects/${encodeURIComponent(id)}/episodes/remove`, { method: 'POST', body }),
+  assignScene: (id: string, body: { sceneId: string; episodeId?: string }) => api<{ project: StoryProject }>(`/api/story/projects/${encodeURIComponent(id)}/scene-assign`, { method: 'POST', body }),
+  // 原著改编：小说原文（粘贴）或小说工坊的章节 → 分集大纲（集+场+段）一次落进项目。
+  // preview=true 只读书、只报字数，不调模型：先看清要花多少钱再决定。
+  adapt: (id: string, body: { sourceText?: string; bookId?: string; chapterFiles?: string[]; episodes?: number; secondsPerEpisode?: number; idea?: string; preview?: boolean; model?: { provider: string; id: string } }) => api<StoryAdaptResult>(`/api/story/projects/${encodeURIComponent(id)}/adapt`, { method: 'POST', body, timeoutMs: 300000 }),
   // 剧本要素与导出（Laper 的地基：能出图出片，还要能拿出一个能给人看的剧本文件）
   scriptStats: (id: string) => api<{ scenes: number; actions: number; dialogueLines: number; transitions: number; speakers: string[] }>(`/api/story/projects/${encodeURIComponent(id)}/script-stats`),
   exportScript: (id: string, body: { format: string }) => api<{ format: string; ext: string; mime: string; body: string; filename: string; stats: { scenes: number; dialogueLines: number; speakers: string[] } }>(`/api/story/projects/${encodeURIComponent(id)}/script-export`, { method: 'POST', body }),

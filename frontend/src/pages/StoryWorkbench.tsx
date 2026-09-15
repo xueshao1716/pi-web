@@ -11,6 +11,9 @@ import StoryMaterials from '../components/story/StoryMaterials'
 import StoryRecipes from '../components/story/StoryRecipes'
 import StoryScript from '../components/story/StoryScript'
 import StoryPlayground from '../components/story/StoryPlayground'
+import StoryEpisodes from '../components/story/StoryEpisodes'
+import StoryAdapt from '../components/story/StoryAdapt'
+import StoryBatch from '../components/story/StoryBatch'
 import { defaultRefStrategy, normalizeRefStrategy, refStrategyLabel, recipeBeatPatch } from '../lib/story-ref'
 import type { StoryBeatInput } from '../types'
 import '../components/story/story.css'
@@ -62,7 +65,9 @@ export function StoryPanel() {
   const [storyboardCount, setStoryboardCount] = useState('6')
   const [filmUrl, setFilmUrl] = useState('')
   const [lint, setLint] = useState<{ issues: { level: string; code: string; message: string }[]; summary: { characters: number; portraits: number; scenes: number; beats: number; level: string } } | null>(null)
-  const scene = project?.scenes.find(s => s.beats.some(b => b.id === selected)) || project?.scenes[0]
+  // selected 既可能是**段 id**（点某一段）也可能是**场 id**（分集面板里点某一场）。
+  // 只按段 id 找的话，从分集面板点「第 3 场」会被静默落到第 1 场——看起来像跳转失灵。
+  const scene = project?.scenes.find(s => s.id === selected || s.beats.some(b => b.id === selected)) || project?.scenes[0]
   const beat = scene?.beats.find(b => b.id === selected) || scene?.beats[0] || (scene ? emptyBeat : undefined)
   const availableModels = models.filter(m => capable(m, selectedKind))
   const selectedModelInfo = modelValue(selectedModel)
@@ -374,6 +379,9 @@ export function StoryPanel() {
             onPatchProject={() => void load()}
           />
           <StoryScript project={project} busy={Boolean(busy)} onPatchProject={() => void load()} />
+          <StoryEpisodes project={project} busy={Boolean(busy)} onDone={update} onPickScene={setSelected} />
+          <StoryAdapt project={project} busy={Boolean(busy)} onDone={update} />
+          <StoryBatch project={project} selectedSceneId={scene?.id} busy={Boolean(busy)} onDone={update} />
           {scene && beat && <StoryPlayground
             project={project}
             sceneId={scene.id}

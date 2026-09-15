@@ -1,4 +1,5 @@
 import { withFileToken } from '../../api'
+import { STYLE_PRESETS, stylePresetById } from '../../lib/story-styles'
 import type { StoryCharacter } from '../../types'
 
 type AssetKind = 'character' | 'location' | 'prop'
@@ -51,6 +52,16 @@ export default function StorySettings({ values, busy, characters, locations = []
       </div>
     })}
     {characters.length > 0 && withRef < characters.length && <p className="story-hint">还没有定妆照的角色只能靠文字描述，人物一致性会差很多。</p>}
+    {/* 风格预设：把"这部戏长什么样"从自由发挥变成可选的统一画风——
+        画风一旦漂移，人物锁得再准也救不回来 */}
+    <div className="story-style-presets">
+      <label>统一画风<select aria-label="风格预设" disabled={busy} defaultValue=""
+        onChange={e => { const p = stylePresetById(e.target.value); if (p) onChange({ ...values, style: `${p.visual}；${p.tone}（${p.name}）` }) }}>
+        <option value="">选一个预设填进「文字与画面风格」</option>
+        {STYLE_PRESETS.map(p => <option key={p.id} value={p.id}>{p.name}（{p.tags.join('/')}）</option>)}
+      </select></label>
+      <span className="story-hint">预置了 {STYLE_PRESETS.length} 种画风，选完仍可手改</span>
+    </div>
     <div className="story-settings-grid">{[['characters','人物与外貌'],['locations','场景'],['wardrobe','服装'],['props','道具'],['rules','必须遵守的规则'],['style','文字与画面风格']].map(([key,label]) => <label key={key}>{label}<textarea value={values[key] || ''} rows={3} disabled={busy} onChange={e => onChange({ ...values, [key]: e.target.value })} placeholder={`补充${label}`} /></label>)}</div>
     <button className="btn-ghost" disabled={busy} onClick={onSave}>保存设定</button>
   </details>

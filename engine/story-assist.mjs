@@ -164,6 +164,71 @@ function beatsOf(scene) {
   return [];
 }
 
+// 场次标题（slug）：interior / location / timeOfDay。
+// 模型可能给对象、给一行完整场次标题（「外景 站台 夜」或「INT. 车内 - 凌晨」）、或干脆不给；
+// 缺了不影响生成，但**一行标题也不能白扔**——它是剧本里唯一写清"这场在哪、什么时间"的东西。
+const TIME_WORDS = /^(日|夜|晨|清晨|早|上午|中午|下午|傍晚|黄昏|晚|深夜|凌晨|day|night|dawn|dusk|morning|evening|noon|afternoon|sunset|sunrise)$/i;
+function parseSlugLine(text) {
+  let rest = String(text || '').trim();
+  let interior = '';
+  const head = rest.match(/^(int\.?\s*\/\s*ext\.?|ext\.?\s*\/\s*int\.?|int\.?|ext\.?|内外景|内景|外景|日外|日内|夜外|夜内)\s*[.。:：、]?\s*/i);
+  if (head) {
+    const tag = head[1].toLowerCase();
+    interior = tag.startsWith('内外') || tag.includes('/') ? 'mixed'
+      : tag.startsWith('ext') || tag.startsWith('外') || tag.startsWith('日外') || tag.startsWith('夜外') ? 'exterior' : 'interior';
+    rest = rest.slice(head[0].length).trim();
+  }
+  // 先按分隔号切（「车内 - 凌晨」），没有分隔号再按空白切，末段是时间就单拎出来
+  const parts = rest.split(/\s*[-—–－]{1,2}\s*/).map(s => s.trim()).filter(Boolean);
+  let location = rest, timeOfDay = '';
+  if (parts.length >= 2) {
+    location = parts[0];
+    timeOfDay = parts[parts.length - 1];
+  } else {
+    const tokens = rest.split(/\s+/).filter(Boolean);
+    if (tokens.length >= 2 && TIME_WORDS.test(tokens[tokens.length - 1])) {
+      timeOfDay = tokens[tokens.length - 1];
+      location = tokens.slice(0, -1).join(' ');
+    }
+  }
+  return { ...(interior ? { interior } : {}), ...(location ? { location: location.slice(0, 60) } : {}), ...(timeOfDay ? { timeOfDay: timeOfDay.slice(0, 30) } : {}) };
+}
+
+function cleanSlug(scene) {
+  const raw = scene?.slug ?? scene?.heading ?? scene?.sceneHeading;
+  if (raw == null || raw === '') return null;
+  if (typeof raw !== 'object') return Object.keys(parseSlugLine(raw)).length ? parseSlugLine(raw) : null;
+  const src = raw;
+  const intExt = String(src.interior ?? src.intExt ?? src.int_ext ?? '').trim();
+  const interior = /^(ext|exterior|外)/i.test(intExt) ? 'exterior'
+    : /^(int|interior|内)/i.test(intExt) ? 'interior'
+      : /^(mixed|混合|内外)/i.test(intExt) ? 'mixed' : '';
+  const location = firstString(src, ['location', 'place', 'where']);
+  const timeOfDay = firstString(src, ['timeOfDay', 'time', 'when']);
+  const out = {
+    ...(interior ? { interior } : {}),
+    ...(location ? { location: location.slice(0, 60) } : {}),
+    ...(timeOfDay ? { timeOfDay: timeOfDay.slice(0, 30) } : {}),
+  };
+  return Object.keys(out).length ? out : null;
+}
+
+// 场景清洗**只此一份**：一键分镜（storyboard）与原著改编（adapt）共用。
+// 真实模型返回的形状五花八门，宽容逻辑一旦写成两份必然漂移——
+// 到时候「分镜能解析、改编解析不出来」这种差异修一个漏一个。
+export function cleanScenes(rawScenes, { maxScenes = 12, maxBeats = 40 } = {}) {
+  const src = Array.isArray(rawScenes) ? rawScenes : (rawScenes && typeof rawScenes === 'object' ? [rawScenes] : []);
+  return src.slice(0, maxScenes).map(scene => {
+    const slug = cleanSlug(scene);
+    return {
+      title: firstString(scene, ['title', 'name']),
+      summary: firstString(scene, ['summary', 'description', 'synopsis']),
+      ...(slug ? { slug } : {}),
+      beats: beatsOf(scene).slice(0, maxBeats).map(cleanBeat).filter(Boolean),
+    };
+  }).filter(scene => scene.beats.length);
+}
+
 export function parseStoryboard(raw) {
   const text = String(raw || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
   const candidates = [];
@@ -181,17 +246,98 @@ export function parseStoryboard(raw) {
     const root = candidate.storyboard || candidate.data || candidate.result || candidate;
     let scenes = root.scenes ?? root.shots ?? root.episodes ?? root;
     if (!Array.isArray(scenes)) scenes = [scenes];
-    const out = scenes
-      .map(scene => ({
-        title: firstString(scene, ['title', 'name']),
-        summary: firstString(scene, ['summary', 'description', 'synopsis']),
-        beats: beatsOf(scene).map(cleanBeat).filter(Boolean),
-      }))
-      .filter(scene => scene.beats.length)
-      .slice(0, 12);
+    const out = cleanScenes(scenes, { maxScenes: 12 });
     const beatCount = out.reduce((n, scene) => n + scene.beats.length, 0);
     if (beatCount) return { scenes: out, beatCount, bible: cleanBible(candidate.bible || root.bible) };
     failures.push(Object.keys(candidate).slice(0, 8).join('/') || '无键');
   }
   throw new Error(`分镜里没有任何可生成的段落（试过 ${candidates.length} 个 JSON，顶层键：${failures.join(' | ').slice(0, 120)}；原文开头：${text.slice(0, 120)}）`);
+}
+
+// ── 原著改编：小说原文 → 总览 + 人物关系 + 分集大纲（每集内含分场与段落）──
+// 元枢此前只能把小说工坊的章节挂在项目上，不会分集：一整本小说进来就是一个大平铺，
+// 用户得自己数着第几场属于第几集。这是 PINNGOO「小说转分集短剧」的核心四步。
+export function buildAdaptPrompt({ title = '', sourceText = '', episodes = 4, secondsPerEpisode = 90, idea = '' } = {}) {
+  const ep = Math.max(1, Math.min(60, Number(episodes) || 4));
+  const secs = Math.max(15, Math.min(1800, Number(secondsPerEpisode) || 90));
+  const text = String(sourceText || '').slice(0, 60000);
+  return `你是元枢连续创作的**改编编剧**。下面是一部小说的原文（可能不完整）。请把它改编成 ${ep} 集短剧，每集目标时长约 ${secs} 秒。
+
+项目：${String(title).trim() || '未命名故事'}
+${String(idea).trim() ? `改编要求：${String(idea).trim().slice(0, 500)}\n` : ''}
+## 小说原文
+${text}
+
+要求：
+1. **先梳理再改编**：overview.logline 写清这个故事一句话讲的是什么；overview.characters 登记主要人物，appearance 要写清年龄、体型、发型、服装、辨识特征（后续要据此生成定妆照锁定长相）；overview.relationships 写人物关系。
+2. **按集组织**：episodes 每集要有 no（从 1 开始）、title、summary（这一集讲什么、钩子在哪），
+   以及 scenes——每场要有 title、summary，slug 写清 interior（interior / exterior / mixed）、location、timeOfDay。
+3. **每段都要能直接生成**：beats 里每段 kind（novel / image / video）、prompt 写清动作、构图、镜头、光线，dialogue 写这一段的台词（一行一句「角色名：台词」）。
+4. **保留原著的主线与关键转折**，可以压缩、合并、改写，但不要凭空新增原著里没有的人物与事件。
+5. **每集结尾留钩子**，集与集之间要接得上；按目标时长决定每集放几场、每场几段。
+6. 段落提示词里要写出**角色姓名**，后续靠姓名把定妆照挂到对应段落上。
+
+只返回 JSON，不要 Markdown：
+{"overview":{"logline":"","characters":[{"name":"","appearance":""}],"relationships":[{"from":"","to":"","note":""}]},"episodes":[{"no":1,"title":"","summary":"","scenes":[{"title":"","summary":"","slug":{"interior":"interior","location":"","timeOfDay":""},"beats":[{"kind":"video","prompt":"","dialogue":"角色名：台词"}]}]}]}`;
+}
+
+// 宽容解析改编结果：只要有一集能解析出场景就算成功（哪怕第 5 集塌了，前 4 集也是可用产出）；
+// 解析不出来的集数如实带回 failures，让界面能说清「哪几集没出来」，而不是整体报失败让用户重跑全部。
+export function parseAdapt(raw) {
+  const text = String(raw || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  const candidates = [];
+  try { candidates.push(JSON.parse(text)); } catch { /* 落到逐个抠对象 */ }
+  candidates.push(...extractJsonObjects(text));
+  if (!candidates.length) {
+    throw new Error(`改编返回的内容不是有效 JSON（开头：${text.slice(0, 80) || '(空)'}）`);
+  }
+  const failures = [];
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    const root = candidate.story || candidate.data || candidate.result || candidate;
+    let eps = root.episodes ?? root.episode ?? [];
+    if (!Array.isArray(eps)) eps = [eps];
+    const episodes = [];
+    for (const [i, e] of eps.entries()) {
+      const scenes = cleanScenes(e?.scenes ?? e?.shots ?? e?.sceneList ?? [], { maxScenes: 40 });
+      if (!scenes.length) { failures.push(`第 ${i + 1} 集无场次`); continue; }
+      const no = Number(e?.no ?? e?.episode ?? e?.index);
+      episodes.push({
+        no: Number.isFinite(no) && no > 0 ? Math.round(no) : i + 1,
+        title: firstString(e, ['title', 'name']) || `第 ${i + 1} 集`,
+        summary: firstString(e, ['summary', 'description', 'synopsis']),
+        scenes,
+      });
+    }
+    if (episodes.length) {
+      const overview = root?.overview && typeof root.overview === 'object' ? root.overview : {};
+      const bibleSource = {
+        ...(candidate.bible && typeof candidate.bible === 'object' ? candidate.bible : {}),
+        ...(root.bible && typeof root.bible === 'object' ? root.bible : {}),
+        ...(Array.isArray(overview.characters) ? { characters: overview.characters } : {}),
+        ...(overview.style ? { style: overview.style } : {}),
+      };
+      return {
+        episodes,
+        overview: {
+          logline: firstString(overview, ['logline', 'summary', 'synopsis']),
+          relationships: (Array.isArray(overview.relationships) ? overview.relationships : [])
+            .slice(0, 40)
+            .map(r => ({
+              from: firstString(r, ['from', 'a', 'left', 'name']),
+              to: firstString(r, ['to', 'b', 'right', 'target']),
+              note: firstString(r, ['note', 'relation', 'relationship', 'description']),
+            }))
+            .filter(r => r.from || r.to),
+        },
+        bible: cleanBible(bibleSource),
+        episodeCount: episodes.length,
+        sceneCount: episodes.reduce((n, e) => n + e.scenes.length, 0),
+        beatCount: episodes.reduce((n, e) => n + e.scenes.reduce((m, s) => m + s.beats.length, 0), 0),
+        failures,
+      };
+    }
+    failures.push(`顶层键 ${Object.keys(root).slice(0, 8).join('/') || '无'}`);
+  }
+  throw new Error(`改编结果里没有任何能用的分集场景（试过 ${candidates.length} 个 JSON；${failures.slice(0, 6).join(' | ').slice(0, 140)}；原文开头：${text.slice(0, 120)}）`);
 }

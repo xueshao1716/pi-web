@@ -5,14 +5,16 @@ import path from 'node:path';
 import { createProject, listProjects, readProject, writeProject, validateProject, mergeBeatContext } from './story-store.mjs';
 import { compileStoryPrompt, buildPortraitPrompt, buildAssetPrompt } from './story-prompts.mjs';
 import { createImageAdapter, createNovelAdapter, createVideoAdapter } from './story-adapters.mjs';
-import { buildStoryAssistPrompt, parseStoryAssist, buildStoryboardPrompt, parseStoryboard } from './story-assist.mjs';
+import { buildStoryAssistPrompt, parseStoryAssist, buildStoryboardPrompt, parseStoryboard, buildAdaptPrompt, parseAdapt } from './story-assist.mjs';
 import { lintStoryProject } from './story-lint.mjs';
 import { collectFilmClips, concatClips } from './story-film.mjs';
 import { materializeMedia } from './media-inline.mjs';
 import { listRecipes, saveRecipe, deleteRecipe, importRecipes, exportRecipes, normalizeRefStrategy } from './story-recipes.mjs';
 import { buildStorySoFar, contextBudget } from './story-context.mjs';
 import { renderScript, scriptStats, SCRIPT_FORMATS } from './story-screenplay.mjs';
-import { runRoleplay, normalizePlayground } from './story-playground.mjs';import { json } from './http-utils.mjs';
+import { runRoleplay, normalizePlayground } from './story-playground.mjs';
+import { normalizeEpisodes, createEpisode, groupScenesByEpisode, episodeStats, assignSceneToEpisode, removeEpisode, renumberEpisodes } from './story-episodes.mjs';
+import { json } from './http-utils.mjs';
 
 const makeId = () => crypto.randomUUID();
 const nowIso = () => new Date().toISOString();
@@ -171,7 +173,28 @@ function pickCapableModel(models, kind) {
   return hits.sort((a, b) => rank(a) - rank(b))[0] || null;
 }
 
-export function createStoryOrchestrator({ root, clock = {}, adapters = {}, generateImage = null, generateVideo = null, startVideoJob = null, checkVideoJob = null, saveArtifact = null, saveArtifactFromFile = null, directChat = null, getDefaultModel = null, getModelList = null }) {
+// 原著来源：要么直接粘贴正文，要么指定小说工坊的一本书（可选只要哪几章）。
+// 两条路都必须能说清"到底拿了多少字"——不声不响地截断，用户会以为整本书都改编了。
+async function collectAdaptSource(input, readNovelBook) {
+  const pasted = String(input?.sourceText || '').trim();
+  const bookId = String(input?.bookId || '').trim();
+  const files = Array.isArray(input?.chapterFiles) ? input.chapterFiles.map(String).filter(Boolean) : [];
+  if (!bookId) return { kind: pasted ? 'text' : 'empty', text: pasted, chapters: [], bookId: '', title: '' };
+  if (typeof readNovelBook !== 'function') throw Object.assign(new Error('小说工坊未接入，无法按书导入'), { statusCode: 503 });
+  const book = await readNovelBook({ bookId, files });
+  const chapters = Array.isArray(book?.chapters) ? book.chapters : [];
+  const body = chapters
+    .map(c => `# ${c.title || c.file}\n${String(c.content || '').trim()}`)
+    .filter(chunk => chunk.replace(/^#.*$/m, '').trim())
+    .join('\n\n');
+  return {
+    kind: 'novel', bookId, title: String(book?.title || ''),
+    chapters: chapters.map(c => ({ file: c.file, title: c.title || c.file, chars: Number(c.chars) || String(c.content || '').length })),
+    text: pasted ? `${body}\n\n## 补充说明\n${pasted}` : body,
+  };
+}
+
+export function createStoryOrchestrator({ root, clock = {}, adapters = {}, generateImage = null, generateVideo = null, startVideoJob = null, checkVideoJob = null, saveArtifact = null, saveArtifactFromFile = null, directChat = null, getDefaultModel = null, getModelList = null, readNovelBook = null }) {
   if (!root) throw new Error('story orchestrator 缺少 root');
   const withUpdated = project => ({ ...project, updatedAt: (clock.now || nowIso)() });
   // 前端模型下拉只能给出 {provider, id}，capabilities 会整个丢掉；而 negotiateCapabilities
@@ -449,8 +472,59 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       return { project, run, status: run.status, settled: true, waitedMs: waitedMs(run, clock) };
     },
     pollWindowMs: () => videoPollWindowMs(),
-    // ── 剧本导出（Laper 的地基：能出图出片，还要能拿出一个能给人看的剧本文件）──
+    // ── 分集：短剧/系列内容的组织单位（PINNGOO 的"分集短剧"、LibTV 的"按集拆镜头"都是这个）──
+    episodes: async (id) => {
+      const project = await readProject(root, id);
+      const groups = groupScenesByEpisode(project);
+      return {
+        episodes: normalizeEpisodes(project.episodes).map(e => ({ ...e, stats: episodeStats(project, e.id) })),
+        groups: groups.map(g => ({ episode: g.episode, scenes: g.scenes.map(s => ({ id: s.id, title: s.title, beats: (s.beats || []).length })) })),
+        unassigned: (project.scenes || []).filter(s => !s.episodeId).length,
+      };
+    },
+    addEpisode: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const episode = createEpisode({ ...input, episodes: project.episodes }, clock);
+      const next = withUpdated({ ...project, episodes: normalizeEpisodes([...(project.episodes || []), episode]) });
+      validateProject(next);
+      await writeProject(root, next);
+      return { project: next, episode };
+    },
+    updateEpisode: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const target = String(input.episodeId || '');
+      const list = normalizeEpisodes(project.episodes);
+      if (!list.some(e => e.id === target)) throw Object.assign(new Error('这一集不存在'), { statusCode: 404 });
+      const episodes = list.map(e => e.id !== target ? e : {
+        ...e,
+        ...(input.title != null ? { title: String(input.title).trim().slice(0, 60) || e.title } : {}),
+        ...(input.summary != null ? { summary: String(input.summary).trim().slice(0, 600) } : {}),
+        ...(input.no != null && Number(input.no) > 0 ? { no: Math.round(Number(input.no)) } : {}),
+        ...(input.targetSeconds != null ? { targetSeconds: Number(input.targetSeconds) > 0 ? Math.round(Number(input.targetSeconds)) : undefined } : {}),
+      });
+      const next = withUpdated({ ...project, episodes: normalizeEpisodes(episodes) });
+      validateProject(next);
+      await writeProject(root, next);
+      return { project: next, episodes: next.episodes };
+    },
+    // 删集**只解绑，不删场**：删一个集就把内容一起带走，是最不能接受的一种"顺手"
+    removeEpisode: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const stripped = removeEpisode(project, input.episodeId);
+      const next = withUpdated(renumberEpisodes(stripped));
+      validateProject(next);
+      await writeProject(root, next);
+      return { project: next, unassigned: next.scenes.filter(s => !s.episodeId).length };
+    },
+    assignScene: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const next = withUpdated(assignSceneToEpisode(project, input.sceneId, input.episodeId));
+      validateProject(next);
+      await writeProject(root, next);
+      return { project: next };
+    },
     scriptStats: async (id) => scriptStats(await readProject(root, id)),
+    // ── 剧本导出（Laper 的地基：能出图出片，还要能拿出一个能给人看的剧本文件）──
     exportScript: async (id, input = {}) => {
       const project = await readProject(root, id);
       const format = String(input.format || 'txt');
@@ -644,6 +718,147 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
         ...(short(storyboard.beatCount) ? { short: true, note: `模型两次都只给了 ${storyboard.beatCount} 段（要的是 ${count} 段），可以再点一次或把想法写具体些` } : {}),
       };
     },
+    // ── 原著改编：小说原文 → 集 + 场 + 段落，一次落进项目 ──
+    // 元枢此前只能把小说工坊的章节当"文本素材"挂在某一段上，一整本书进来仍是一个大平铺，
+    // 用户得自己数着第几场属于第几集。这里补的是 PINNGOO/Laper 那条主线：原著 → 分集大纲 → 分集剧本。
+    //
+    // 三个刻意的取舍：
+    // 1) 先能**预览**再花钱：preview=true 只读书、只报字数与章节，不调模型；
+    // 2) 段落 kind **不被项目默认配方覆盖**（与一键分镜相反）：改编出来的"哪段是文字、哪段出图、哪段出片"
+    //    正是这一集的骨架，拿一个全局 kind 抹平等于把改编结果毁了；
+    // 3) 解析不全**不算整体失败**：能出几集就落几集，哪几集没出来如实回报。
+    adapt: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const source = await collectAdaptSource(input, readNovelBook);
+      const episodeWish = Math.max(1, Math.min(60, Number(input.episodes) || 4));
+      const secondsPerEpisode = Math.max(15, Math.min(1800, Number(input.secondsPerEpisode) || 90));
+      const cap = 60000;
+      const usedChars = Math.min(source.text.length, cap);
+      const sourceBrief = {
+        kind: source.kind, bookId: source.bookId, title: source.title,
+        chapters: source.chapters, chars: source.text.length, usedChars,
+        truncated: source.text.length > cap,
+      };
+      if (input.preview) {
+        return {
+          preview: true, source: sourceBrief, episodeWish, secondsPerEpisode,
+          // 预览要能回答"这次会改编成什么样"，所以把它预估的规模也摊开
+          note: !source.text.trim()
+            ? '还没有原文：粘贴小说正文，或选一本小说工坊的书'
+            : `将占提示词约 ${usedChars} / ${cap} 字${source.text.length > cap ? '（原文超限，只取前 6 万字）' : ''}，按 ${episodeWish} 集 × ${secondsPerEpisode} 秒改编`,
+        };
+      }
+      if (!source.text.trim()) throw Object.assign(new Error('没有可改编的原文：粘贴小说正文，或选一本小说工坊的书'), { statusCode: 400 });
+      if (typeof directChat !== 'function') throw Object.assign(new Error('改编引擎未接入'), { statusCode: 503 });
+      const model = pickJsonModel(input.model);
+      const basePrompt = buildAdaptPrompt({
+        title: project.title, sourceText: source.text, episodes: episodeWish,
+        secondsPerEpisode, idea: String(input.idea || '').trim().slice(0, 500),
+      });
+      let parsed = null, attempts = 0, retried = false, firstEpisodes = 0;
+      let prompt = basePrompt;
+      while (attempts < 2) {
+        attempts += 1;
+        const result = await directChat(model, prompt, [], { maxTokens: 8000, timeout: 180000 });
+        if (!result?.text) {
+          if (attempts === 1) continue;
+          throw new Error('改编模型没有返回内容');
+        }
+        let candidate;
+        try { candidate = parseAdapt(result.text); }
+        catch (error) {
+          console.log(`[story] 改编解析失败（模型 ${model?.provider}/${model?.id}，原文 ${String(result.text).length} 字）：${String(result.text).replace(/\s+/g, ' ').slice(0, 1200)}`);
+          if (attempts === 1) continue;
+          throw error;
+        }
+        if (attempts === 1) firstEpisodes = candidate.episodeCount;
+        parsed = candidate;
+        // 集数少于一半才算"明显不足"：模型多一集少一集是正常波动，不值得为它多烧一次调用
+        if (candidate.episodeCount >= Math.max(1, Math.ceil(episodeWish / 2)) || attempts === 2) break;
+        retried = true;
+        prompt = `${basePrompt}\n\n【补充要求】上一次你只给了 ${candidate.episodeCount} 集，不够。这一次必须给足 ${episodeWish} 集，每集都要有 title / summary / scenes，且每场都要有 beats，不要合并、不要省略、不要用省略号带过。`;
+      }
+      const stampRecipe = await loadDefaultRecipe(project);
+      const bible = mergeStoryboardBible(project.bible, parsed.bible);
+      const cast = Array.isArray(bible.characters) ? bible.characters : [];
+      const stamp = Date.now().toString(36);
+      const scenes = [...(project.scenes || [])];
+      const episodes = normalizeEpisodes(project.episodes);
+      const baseNo = episodes.length ? Math.max(...episodes.map(e => Number(e.no) || 0)) : 0;
+      let previousId = scenes.flatMap(s => s.beats || []).slice(-1)[0]?.id || '';
+      const createdEpisodes = [];
+      const createdSceneIds = [];
+      let beatCount = 0;
+      parsed.episodes.forEach((ep, epIndex) => {
+        const episode = createEpisode(
+          { no: baseNo + epIndex + 1, title: ep.title, summary: ep.summary, targetSeconds: secondsPerEpisode },
+          clock,
+        );
+        episodes.push(episode);
+        createdEpisodes.push({ id: episode.id, no: episode.no, title: episode.title, summary: episode.summary, sceneCount: ep.scenes.length });
+        ep.scenes.forEach((scene, sceneIndex) => {
+          const beats = scene.beats.map((beat, beatIndex) => {
+            const beatId = `beat-${stamp}-${createdEpisodes.length}-${sceneIndex}-${beatIndex}`;
+            const item = {
+              id: beatId,
+              // 模型给的 kind 优先：文字段落/画面/视频的分工是改编结果本身
+              kind: ['novel', 'image', 'video'].includes(beat.kind) ? beat.kind : (stampRecipe?.kind || 'image'),
+              prompt: beat.prompt,
+              ...(beat.dialogue ? { dialogue: String(beat.dialogue).slice(0, 2000) } : {}),
+              ...(stampRecipe?.negative ? { negative: stampRecipe.negative } : {}),
+              references: pickBeatReferences(cast, beat.prompt),
+              ...(previousId ? { inheritFromBeatId: previousId } : {}),
+            };
+            previousId = beatId;
+            beatCount += 1;
+            return item;
+          });
+          const sceneId = `scene-${stamp}-${createdEpisodes.length}-${sceneIndex}`;
+          createdSceneIds.push(sceneId);
+          scenes.push({
+            id: sceneId, index: scenes.length + 1, episodeId: episode.id,
+            title: scene.title || `第 ${scenes.length + 1} 场`, summary: scene.summary,
+            ...(scene.slug ? { slug: scene.slug } : {}),
+            beats, outputs: [],
+          });
+        });
+      });
+      const record = {
+        id: `adapt-${(clock.id || makeId)()}`,
+        at: (clock.now || nowIso)(),
+        source: { ...sourceBrief, chapters: sourceBrief.chapters.map(c => ({ file: c.file, title: c.title, chars: c.chars })) },
+        episodeIds: createdEpisodes.map(e => e.id),
+        sceneIds: createdSceneIds,
+        episodeCount: createdEpisodes.length, sceneCount: createdSceneIds.length, beatCount,
+        logline: parsed.overview.logline,
+        relationships: parsed.overview.relationships,
+        model: { provider: model?.provider || '', id: model?.id || '' },
+      };
+      const next = withUpdated({
+        ...project,
+        bible,
+        ...(parsed.overview.logline && !String(project.logline || '').trim() ? { logline: parsed.overview.logline } : {}),
+        episodes: normalizeEpisodes(episodes),
+        scenes,
+        // 改编史留档：刷新之后仍要能回答"这个项目是从哪本小说、哪几章改出来的"
+        adaptations: [...(project.adaptations || []), record].slice(-10),
+      });
+      validateProject(next);
+      await writeProject(root, next);
+      return {
+        project: next, source: sourceBrief, adaptations: next.adaptations,
+        episodeCount: createdEpisodes.length, sceneCount: createdSceneIds.length, beatCount,
+        episodesCreated: createdEpisodes, episodeIds: record.episodeIds, sceneIds: createdSceneIds,
+        overview: parsed.overview,
+        characters: cast.length, characterNames: cast.map(c => String(c.name || '')).filter(Boolean),
+        model: record.model, requested: episodeWish, attempts, retried,
+        ...(firstEpisodes && firstEpisodes !== createdEpisodes.length ? { firstEpisodeCount: firstEpisodes } : {}),
+        ...(parsed.failures.length ? { incomplete: parsed.failures.slice(0, 8) } : {}),
+        ...(createdEpisodes.length < episodeWish
+          ? { short: true, note: `模型两次一共只给了 ${createdEpisodes.length} 集（要的是 ${episodeWish} 集），可以再点一次或把改编要求写具体些` }
+          : {}),
+      };
+    },
     // 成片合成：按分镜顺序把**成功**的视频片段拼成一条长片，并落盘为正式产物。
     // 界面此前明确写着「暂不自动拼成长片」，这里把它做掉。
     assembleFilm: async (id, input = {}) => {
@@ -708,6 +923,26 @@ export async function handleStoryRunCheck(ctx, res, id, body) {
   try { return json(res, 200, await createStoryOrchestrator(ctx).checkRun(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
 }
 
+export async function handleStoryEpisodes(ctx, res, id) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).episodes(id)); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryEpisodeAdd(ctx, res, id, body) {
+  try { return json(res, 201, await createStoryOrchestrator(ctx).addEpisode(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryEpisodeUpdate(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).updateEpisode(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryEpisodeRemove(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).removeEpisode(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStorySceneAssign(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).assignScene(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
 export async function handleStoryScriptStats(ctx, res, id) {
   try { return json(res, 200, await createStoryOrchestrator(ctx).scriptStats(id)); } catch (e) { return sendError(res, e); }
 }
@@ -742,6 +977,10 @@ export async function handleStoryStoryboard(ctx, res, id, body) {
   try { return json(res, 200, await createStoryOrchestrator(ctx).storyboard(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
 }
 
+export async function handleStoryAdapt(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).adapt(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
 export async function handleStoryFilm(ctx, res, id, body) {
   try { return json(res, 200, await createStoryOrchestrator(ctx).assembleFilm(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
 }
@@ -773,7 +1012,9 @@ export async function handleStoryRecipesImport(ctx, res, body) {
   try { return json(res, 200, await importRecipes(ctx.root, body)); } catch (e) { return sendError(res, e); }
 }
 
-export async function handleStoryAssist(ctx, res, id, body) {  try {    if (typeof ctx.directChat !== 'function' || typeof ctx.getDefaultModel !== 'function') throw Object.assign(new Error('智能填充引擎未接入'), { statusCode: 503 });
+export async function handleStoryAssist(ctx, res, id, body) {
+  try {
+    if (typeof ctx.directChat !== 'function' || typeof ctx.getDefaultModel !== 'function') throw Object.assign(new Error('智能填充引擎未接入'), { statusCode: 503 });
     const project = await readProject(ctx.root, id);
     const idea = String(bodyOrEmpty(body).idea || '').trim().slice(0, 2000);
     if (!idea) throw Object.assign(new Error('请输入想补充的故事想法'), { statusCode: 400 });

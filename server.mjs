@@ -88,7 +88,7 @@ import * as confirmRegistry from "./engine/tools/confirm-registry.mjs";
 import { initRefineApi, readRefineJson, runRefineScript, handleRefineStatus, handleRefineList, detectSkillDomain, handleRefineFeedback, handleRefineGenes, handleRefinePlan, handleRefineApprove, handleRefineReject, handleRefineRollback } from "./engine/refine-api.mjs";
 import { initMcpServer, handleMcp } from "./engine/mcp-server.mjs";
 import { initMcpChat } from "./engine/mcp-chat.mjs";
-import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryRunCheck, handleStoryAssist, handleStoryPortrait, handleStoryAssetRef, handleStoryLint, handleStoryStoryboard, handleStoryFilm, handleStoryScriptStats, handleStoryExportScript, handleStoryPlayground, handleStoryPlaygroundClear, handleStoryRecipes, handleStoryRecipesExport, handleStoryRecipesImport, handleStoryRecipeDelete } from "./engine/story-orchestrator.mjs";
+import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryRunCheck, handleStoryAssist, handleStoryPortrait, handleStoryAssetRef, handleStoryLint, handleStoryStoryboard, handleStoryAdapt, handleStoryFilm, handleStoryEpisodes, handleStoryEpisodeAdd, handleStoryEpisodeUpdate, handleStoryEpisodeRemove, handleStorySceneAssign, handleStoryScriptStats, handleStoryExportScript, handleStoryPlayground, handleStoryPlaygroundClear, handleStoryRecipes, handleStoryRecipesExport, handleStoryRecipesImport, handleStoryRecipeDelete } from "./engine/story-orchestrator.mjs";
 import { startShare, stopShareSync, handleShare, handleShareStatus, handleShareStop } from "./engine/share-api.mjs";
 import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
@@ -1668,6 +1668,26 @@ const runApi = createRunApi({ manager: runManager, json, readContext: async (run
   subagents: await subagent.getSubagentHistory({ sessionId: run.sessionId, runId: run.id, limit: 50 }),
 }) });
 
+// 连续创作「原著改编」按书导入：从小说工坊读指定章节（不给就是全书）。
+// 放在 server 层而不是编排层：编排层不该知道小说工坊的文件布局，
+// 它只要一份 {title, chapters:[{file,title,chars,content}]} 的纯数据。
+function readStoryNovelBook({ bookId, files } = {}) {
+  const id = String(bookId || '').trim();
+  const detail = novelStudio.bookDetail(id);
+  if (detail?.error) throw Object.assign(new Error(`读不到这本书：${detail.error}`), { statusCode: 404 });
+  const available = Array.isArray(detail.chapters) ? detail.chapters : [];
+  if (!available.length) throw Object.assign(new Error('这本书还没有章节，先在小说工坊写一章'), { statusCode: 400 });
+  const want = Array.isArray(files) && files.length ? files.map(String) : null;
+  const picked = want ? available.filter(c => want.includes(c.file)) : available;
+  if (!picked.length) throw Object.assign(new Error('选中的章节不在这本书里'), { statusCode: 400 });
+  const chapters = picked.map(c => {
+    const read = novelStudio.readChapter(id, c.file);
+    const content = read?.error ? '' : String(read.content || '');
+    return { file: c.file, title: c.title || c.file, chars: content.length, content };
+  });
+  return { bookId: id, title: String(detail.meta?.title || ''), chapters };
+}
+
 const API_ROUTES = [
   // ── 连续创作编排（阶段一：项目/Story Bible/镜头运行记录）──
   ["GET", "/api/story/projects", (res) => handleStoryProjects({ root: WS_ROOT }, res)],
@@ -1689,6 +1709,15 @@ const API_ROUTES = [
   ["POST", /^\/api\/story\/projects\/([^/]+)\/storyboard$/, async (res, req, url, m) => handleStoryStoryboard({ root: WS_ROOT, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 16))],
   // 成片合成：按分镜顺序把成功的视频片段拼成长片并落盘为正式产物
   ["POST", /^\/api\/story\/projects\/([^/]+)\/film$/, async (res, req, url, m) => handleStoryFilm({ root: WS_ROOT, saveArtifactFromFile }, res, m[1], await readBody(req, 8))],
+  // 原著改编：小说原文/小说工坊章节 → 分集大纲（集+场+段）一次落进项目。
+  // preview=true 只读书报字数，不调模型——先看清要花多少钱再决定。
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/adapt$/, async (res, req, url, m) => handleStoryAdapt({ root: WS_ROOT, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList, readNovelBook: readStoryNovelBook }, res, m[1], await readBody(req, 64))],
+  // 分集：短剧/系列内容的组织单位（场用 episodeId 归属；删集只解绑不删场）
+  ["GET", /^\/api\/story\/projects\/([^/]+)\/episodes$/, (res, req, url, m) => handleStoryEpisodes({ root: WS_ROOT }, res, m[1])],
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/episodes$/, async (res, req, url, m) => handleStoryEpisodeAdd({ root: WS_ROOT }, res, m[1], await readBody(req, 8))],
+  ["PATCH", /^\/api\/story\/projects\/([^/]+)\/episodes$/, async (res, req, url, m) => handleStoryEpisodeUpdate({ root: WS_ROOT }, res, m[1], await readBody(req, 8))],
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/episodes\/remove$/, async (res, req, url, m) => handleStoryEpisodeRemove({ root: WS_ROOT }, res, m[1], await readBody(req, 8))],
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/scene-assign$/, async (res, req, url, m) => handleStorySceneAssign({ root: WS_ROOT }, res, m[1], await readBody(req, 8))],
   // 剧本要素统计 + 导出（中文剧本 / Fountain / Final Draft FDX）
   ["GET", /^\/api\/story\/projects\/([^/]+)\/script-stats$/, (res, req, url, m) => handleStoryScriptStats({ root: WS_ROOT }, res, m[1])],
   ["POST", /^\/api\/story\/projects\/([^/]+)\/script-export$/, async (res, req, url, m) => handleStoryExportScript({ root: WS_ROOT }, res, m[1], await readBody(req, 4))],

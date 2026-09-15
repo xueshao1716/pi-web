@@ -19,6 +19,12 @@ export function createProject(input = {}, clock = {}) {
     // 项目级默认配方（可空）。createProject 是白名单式构造，**漏掉一个字段就等于这个功能不存在**：
     // 第一版就漏了它，于是"设为项目默认"存进去、再读出来就没了（测试当场抓到）。
     ...(input.defaultRecipeId ? { defaultRecipeId: String(input.defaultRecipeId) } : {}),
+    // 分集：短剧/系列内容以"集"为组织单位，场用 scene.episodeId 归属。
+    // 同一个坑的第三次预兆——**新字段一律要在这里显式登记**，否则写进去读不回来。
+    ...(Array.isArray(input.episodes) && input.episodes.length ? { episodes: input.episodes } : {}),
+    // 改编史：项目是从哪本小说/哪段原文改出来的、上次改出了哪些集。
+    // 同一条铁律：新字段必须在这里登记，否则写进去读不回来。
+    ...(Array.isArray(input.adaptations) && input.adaptations.length ? { adaptations: input.adaptations } : {}),
     activeSceneId: input.activeSceneId,
     createdAt: now,
     updatedAt: now,

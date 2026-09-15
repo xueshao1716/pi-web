@@ -136,9 +136,44 @@ export interface StoryBeatInput { id: string; type: 'image' | 'video' | 'text'; 
 export interface StorySceneSlug { interior?: 'interior' | 'exterior' | 'mixed'; location?: string; timeOfDay?: string }
 export interface StoryPlaygroundTurn { role: 'writer' | 'character'; text: string; at?: string }
 export interface StoryBeat { id: string; kind: 'novel' | 'image' | 'video'; prompt: string; references: StoryAssetRef[]; inheritFromBeatId?: string; activeRunId?: string; dialogue?: string; inputs?: StoryBeatInput[]; negative?: string; reference?: { images: number; prefer: string }; action?: string; transition?: string; playground?: StoryPlaygroundTurn[] }
-export interface StoryScene { id: string; index: number; title: string; summary: string; beats: StoryBeat[]; outputs: StoryGenerationRun[]; activeRunId?: string; slug?: StorySceneSlug }
+// 分集：短剧/系列内容的组织单位。场用 episodeId 归属；没归属的场进"未分集"，不会被强行塞进某一集。
+export interface StoryEpisode { id: string; no: number; title: string; summary: string; targetSeconds?: number; createdAt?: string; stats?: { scenes: number; beats: number; withOutput: number; pending: number; failed: number; running: number } }
+export interface StoryEpisodeGroup { episode: StoryEpisode | null; scenes: { id: string; title: string; beats: number }[] }
+export interface StoryScene { id: string; index: number; title: string; summary: string; beats: StoryBeat[]; outputs: StoryGenerationRun[]; activeRunId?: string; slug?: StorySceneSlug; episodeId?: string }
 export interface StoryFilm { id: string; url: string; clipCount: number; method: string; beatIds: string[]; createdAt: string }
-export interface StoryProject { id: string; title: string; logline?: string; bible: StoryBible; scenes: StoryScene[]; films?: StoryFilm[]; activeSceneId?: string; defaultRecipeId?: string; createdAt: string; updatedAt: string }
+// 原著改编：一次「小说原文 → 分集大纲（集+场+段）」的留档。
+// 存在的意义是刷新之后仍能回答两个问题：这个项目是从哪本小说、哪几章改出来的；上次改出了哪几集。
+export interface StoryAdaptChapter { file: string; title: string; chars: number }
+export interface StoryAdaptSource { kind: 'text' | 'novel' | 'empty'; bookId?: string; title?: string; chapters: StoryAdaptChapter[]; chars: number; usedChars?: number; truncated?: boolean }
+export interface StoryAdaptRelation { from: string; to: string; note?: string }
+export interface StoryAdaptation {
+  id: string; at: string; source: StoryAdaptSource
+  episodeIds: string[]; sceneIds: string[]
+  episodeCount: number; sceneCount: number; beatCount: number
+  logline?: string; relationships?: StoryAdaptRelation[]
+  model?: { provider: string; id: string }
+}
+export interface StoryAdaptResult {
+  preview?: boolean
+  source: StoryAdaptSource
+  episodeWish?: number
+  secondsPerEpisode?: number
+  note?: string
+  project?: StoryProject
+  episodeCount?: number; sceneCount?: number; beatCount?: number
+  episodesCreated?: { id: string; no: number; title: string; summary?: string; sceneCount: number }[]
+  episodeIds?: string[]
+  overview?: { logline?: string; relationships?: StoryAdaptRelation[] }
+  adaptations?: StoryAdaptation[]
+  model?: { provider: string; id: string }
+  requested?: number; attempts?: number; retried?: boolean
+  firstEpisodeCount?: number
+  incomplete?: string[]
+  short?: boolean
+  characters?: number
+  characterNames?: string[]
+}
+export interface StoryProject { id: string; title: string; logline?: string; bible: StoryBible; scenes: StoryScene[]; films?: StoryFilm[]; episodes?: StoryEpisode[]; adaptations?: StoryAdaptation[]; activeSceneId?: string; defaultRecipeId?: string; createdAt: string; updatedAt: string }
 
 // 交付物（/api/ws/deliveries）条目
 export interface AssetDelivery {

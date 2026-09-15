@@ -70,9 +70,22 @@ export function beatAction(beat) {
 }
 
 // ── 组装：把项目摊成一份有序的剧本元素流（三种导出共用，避免各自漂移）──
+// 分集（story-episodes）：有集就在每个集的开头插一条集标题元素，
+// 于是导出的剧本是"第 1 集 / 第 2 集"分好的——短剧投稿要的就是这个形状。
 export function projectToElements(project) {
+  const episodes = new Map((project?.episodes || []).map(e => [String(e.id), e]));
   const elements = [];
+  let currentEpisode = null;
   (project?.scenes || []).forEach((scene, sceneIndex) => {
+    const epId = scene?.episodeId ? String(scene.episodeId) : '';
+    const ep = epId && episodes.has(epId) ? episodes.get(epId) : null;
+    if (ep && (!currentEpisode || currentEpisode !== ep.id)) {
+      currentEpisode = ep.id;
+      elements.push({ type: 'episode', text: `第 ${ep.no} 集 ${ep.title || ''}`.trim(), cn: `第 ${ep.no} 集 ${ep.title || ''}`.trim(), episodeId: ep.id });
+    } else if (!ep && currentEpisode) {
+      currentEpisode = null;
+      elements.push({ type: 'episode', text: '（未分集）', cn: '（未分集）' });
+    }
     elements.push({ type: 'scene_heading', text: slugHollywood(scene), cn: slugChinese(scene), index: sceneIndex + 1, sceneId: scene.id });
     if (scene.summary) elements.push({ type: 'synopsis', text: String(scene.summary).trim() });
     for (const beat of scene.beats || []) {
@@ -94,6 +107,7 @@ export function toFountain(project, { withSynopsis = true } = {}) {
   const lines = [`Title: ${project?.title || '未命名'}`, ''];
   const elements = projectToElements(project);
   for (const el of elements) {
+    if (el.type === 'episode') { lines.push('', `# ${el.text}`, ''); continue; }
     if (el.type === 'scene_heading') { lines.push('', el.text, ''); continue; }
     if (el.type === 'synopsis') { if (withSynopsis) lines.push(`= ${el.text}`, ''); continue; }
     if (el.type === 'action') { lines.push(el.text, ''); continue; }
@@ -112,6 +126,7 @@ export function toChineseScript(project, { withSynopsis = true } = {}) {
   if (project?.logline) lines.push(String(project.logline).trim(), '');
   let sceneNo = 0;
   for (const el of projectToElements(project)) {
+    if (el.type === 'episode') { lines.push('', `【${el.cn}】`, ''); continue; }
     if (el.type === 'scene_heading') { sceneNo += 1; lines.push('', `${sceneNo}、${el.cn}`, ''); continue; }
     if (el.type === 'synopsis') { if (withSynopsis) lines.push(`（${el.text}）`, ''); continue; }
     if (el.type === 'action') { lines.push(`　　${el.text}`, ''); continue; }
@@ -135,6 +150,8 @@ const escapeXml = (s) => String(s ?? '')
 export function toFdx(project) {
   const paragraphs = [];
   for (const el of projectToElements(project)) {
+    // 分集：FDX 里用一段居中的 Action 承载集标题（不发明自定义 Type，免得软件打不开）
+    if (el.type === 'episode') { paragraphs.push(['Action', el.text]); continue; }
     if (el.type === 'scene_heading') { paragraphs.push(['Scene Heading', el.text]); continue; }
     if (el.type === 'synopsis') continue; // FDX 正文里不写梗概，那是大纲视图的事
     if (el.type === 'action') { paragraphs.push(['Action', el.text]); continue; }

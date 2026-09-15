@@ -155,6 +155,77 @@
 .story-playground-turn.is-character { border-left-color: var(--pi-accent); }
 .story-playground-turn span { font-size: 11px; color: var(--pi-dim2); }
 .story-playground-turn p { margin: 2px 0 0; font-size: 12px; line-height: 1.7; color: var(--pi-dim); white-space: pre-wrap; overflow-wrap: anywhere; }
+/* 分集：短剧/系列按集组织（此前只有平铺的"场"） */
+.story-episodes { border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-md); padding: 10px 12px; background: var(--pi-bg1); }
+.story-episodes-body { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--pi-border-soft); }
+.story-episodes-add { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.story-episodes-add input { min-height: 32px; font-size: 12px; flex: 1 1 160px; }
+.story-episodes-add .btn-ghost { padding: 6px 10px; font-size: 11px; }
+.story-episode-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
+.story-episode-item { padding: 8px 10px; border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-sm); background: var(--pi-bg2); }
+.story-episode-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.story-episode-head input { min-height: 30px; font-size: 12px; font-weight: 600; flex: 1 1 140px; }
+.story-episode-head span { font-size: 11px; color: var(--pi-dim2); }
+.story-episode-head .btn-ghost { padding: 4px 8px; font-size: 11px; }
+.story-episode-item textarea { width: 100%; margin-top: 6px; font-size: 12px; }
+.story-episode-groups { display: grid; gap: 8px; }
+.story-episode-group-head { display: flex; align-items: baseline; gap: 8px; font-size: 12px; font-weight: 600; color: var(--pi-text); }
+.story-episode-group-head span { font-size: 11px; font-weight: 400; color: var(--pi-dim2); }
+.story-episode-group ul { list-style: none; margin: 4px 0 0; padding: 0 0 0 10px; display: grid; gap: 4px; }
+.story-episode-group li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 11px; color: var(--pi-dim2); }
+.story-episode-group li select { min-height: 26px; font-size: 11px; }
+.story-link { background: none; border: 0; padding: 0; color: var(--pi-accent); font-size: 11px; cursor: pointer; text-align: left; }
+/* 原著改编：小说原文 → 分集大纲（集+场+段）一次落进项目 */
+.story-adapt, .story-batch { border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-md); padding: 10px 12px; background: var(--pi-bg1); }
+.story-adapt-body, .story-batch-body { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--pi-border-soft); }
+.story-adapt-modes { display: flex; gap: 8px; margin-bottom: 8px; }
+.story-adapt-modes .btn-ghost { padding: 5px 10px; font-size: 11px; }
+.story-adapt-modes .btn-ghost.on { border-color: var(--pi-accent); color: var(--pi-accent); }
+.story-adapt-body > textarea { width: 100%; font-size: 12px; }
+.story-adapt-novel { display: grid; gap: 8px; }
+.story-adapt-novel > select { min-height: 32px; font-size: 12px; }
+.story-adapt-chapters { max-height: 180px; overflow: auto; display: grid; gap: 4px; padding: 8px; border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-sm); background: var(--pi-bg2); }
+.story-adapt-chapters label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--pi-dim); }
+.story-adapt-chapters label span:first-of-type { flex: 1 1 auto; }
+.story-adapt-chapters label span:last-of-type { font-size: 11px; color: var(--pi-dim2); }
+.story-adapt-bulk { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--pi-dim2); }
+.story-adapt-bulk .btn-ghost { padding: 4px 8px; font-size: 11px; }
+.story-adapt-opts { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 8px 0; font-size: 12px; color: var(--pi-dim); }
+.story-adapt-opts label { display: flex; align-items: center; gap: 6px; }
+.story-adapt-opts input { width: 72px; min-height: 30px; font-size: 12px; }
+.story-adapt-warn { color: var(--pi-warn, #d08770); }
+.story-adapt-body > input { width: 100%; min-height: 32px; font-size: 12px; }
+.story-adapt-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.story-adapt-source { margin-top: 10px; padding: 8px 10px; border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-sm); background: var(--pi-bg2); font-size: 11px; color: var(--pi-dim); overflow-wrap: anywhere; }
+.story-adapt-logline { margin: 10px 0 0; font-size: 12px; color: var(--pi-text); }
+.story-adapt-relations, .story-adapt-episodes { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.story-adapt-relations li { font-size: 11px; color: var(--pi-dim2); }
+.story-adapt-episodes li { padding: 8px 10px; border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-sm); background: var(--pi-bg2); }
+.story-adapt-episodes li strong { font-size: 12px; }
+.story-adapt-episodes li span { margin-left: 8px; font-size: 11px; color: var(--pi-dim2); }
+.story-adapt-episodes li p { margin: 4px 0 0; font-size: 11px; line-height: 1.7; color: var(--pi-dim); }
+.story-adapt-history { margin-top: 10px; font-size: 11px; color: var(--pi-dim2); }
+.story-adapt-history summary { cursor: pointer; }
+.story-adapt-history ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.story-adapt-history li { display: flex; flex-wrap: wrap; gap: 10px; }
+/* 跨段批量生成：逐段串行提交 + 统一等上游；每段成败都列出来 */
+.story-batch-scopes { display: grid; gap: 6px; margin-bottom: 10px; font-size: 12px; color: var(--pi-dim); }
+.story-batch-scopes label { display: flex; align-items: center; gap: 8px; }
+.story-batch-rows { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; }
+.story-batch-rows li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 6px 8px; border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-sm); background: var(--pi-bg2); font-size: 11px; }
+.story-batch-kind { padding: 1px 6px; border-radius: 999px; background: var(--pi-bg1); color: var(--pi-dim2); }
+.story-batch-label { flex: 1 1 180px; color: var(--pi-dim); overflow-wrap: anywhere; }
+.story-batch-status { color: var(--pi-dim2); }
+.story-batch-note { flex: 1 1 100%; color: var(--pi-dim2); }
+.story-batch-waiting, .story-batch-submitted { border-left: 2px solid var(--pi-accent); }
+.story-batch-failed { border-left: 2px solid var(--pi-danger, #bf616a); }
+.story-batch-failed .story-batch-note { color: var(--pi-danger, #bf616a); }
+.story-batch-done { border-left: 2px solid var(--pi-ok, #a3be8c); }
+/* 风格预设：把画风从自由发挥变成可选的统一项 */
+.story-style-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
+.story-style-presets label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--pi-dim); }
+.story-style-presets select { min-height: 32px; font-size: 12px; }
+.story-style-presets .story-hint { margin: 0; }
 .story-recipe-save { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .story-recipe-save input { min-height: 32px; font-size: 12px; flex: 1 1 160px; }
 .story-recipe-save .btn-ghost { padding: 6px 10px; font-size: 11px; }
