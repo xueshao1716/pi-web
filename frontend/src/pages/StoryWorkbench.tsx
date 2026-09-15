@@ -329,6 +329,17 @@ export function StoryPanel() {
     if (r.failed) setError(`有 ${r.failed} 个产物还是没能下载到本地：${r.results.filter(x => !x.ok).map(x => x.reason).join('；')}`)
     else setNotice(`这一版的 ${r.localized} 个产物已下载到本地，地址已换成工作区里的文件——外站链接失效也不影响了。`)
   })
+  // 全项目补下载：参考图（定妆照/场景/道具）与每一次生成的产出都算"产物"，
+  // 都可能还挂在外站临时链接上（入库时下载失败留下的）。只补下载、不重新生成。
+  const localizeAll = () => action('正在把外站的产物拉到本地', async () => {
+    if (!project) return
+    const r = await StoryApi.localize(project.id, { scope: 'all' })
+    update(r.project); hydrateBible(r.project)
+    const failed = (r.items || []).filter((x: any) => !x.ok)
+    if (r.localized === 0 && !failed.length) setNotice('没有需要下载的：项目里的产物都已经在本地了。')
+    else if (failed.length) setError(`拉到本地：成功 ${r.localized} 个，失败 ${failed.length} 个 —— ${failed.map((x: any) => `${x.label || x.assetId || x.runId}：${x.reason}`).join('；')}`)
+    else setNotice(`已把 ${r.localized} 个外站产物下载到本地并写回项目——外站链接失效也不影响了。（挂载素材不重复落盘：它引用的是别的工作台的产物。）`)
+  })
   const currentRuns = scene?.outputs.filter(r => r.beatId === beat?.id) || []
   const hasOutput = currentRuns.some(r => r.outputAssets?.length)
   // 成片链接来自**项目里存的成片历史**，不是一次性的本地状态——
@@ -337,6 +348,11 @@ export function StoryPanel() {
   const latestFilm = films.length ? films[films.length - 1] : null
   const filmHref = latestFilm?.url || filmUrl
   const portraitCount = (project?.bible.characters || []).filter(c => c.refImage || (c as any).ref).length
+  // 还挂在外站临时链接上的产物数量（参考图 + 每一次生成的产出）。>0 就在设定面板给一个补下载入口。
+  const externalAssets = project ? [
+    ...['characters', 'locations', 'props', 'wardrobe'].flatMap(k => (project.bible as any)[k] || []).map((x: any) => x.refImage),
+    ...(project.scenes || []).flatMap(s => (s.outputs || []).flatMap(r => (r.outputAssets || []).map(a => a.url))),
+  ].filter((u: any) => /^https?:/i.test(String(u || ''))).length : 0
   return <div className="story-workbench story-workbench-embedded">
     <header className="story-header"><div className="story-actions">
       <select aria-label="选择故事项目" disabled={Boolean(busy)} value={project?.id || ''} onChange={e => choose(projects.find(p => p.id === e.target.value) || null)}><option value="">开始新故事</option>{projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}</select>
@@ -432,7 +448,7 @@ export function StoryPanel() {
             <details><summary>编译后的提示词全文</summary><div className="story-prose">{compiled}</div></details>
           </details>}
         </section>{scene && beat && <StoryResults scene={scene} beat={beat} busy={Boolean(busy)} onRerun={rerun} onCheck={checkOne} onDelete={deleteRun} onLocalize={localizeRun} />}</div>
-        <StorySettings values={bibleDraft} busy={Boolean(busy)} characters={project.bible.characters || []} locations={(project.bible.locations || []) as any} props={(project.bible.props || []) as any} onPortrait={portrait} onAssetRef={assetRef} onChange={setBibleDraft} onSave={saveBible} />
+        <StorySettings values={bibleDraft} busy={Boolean(busy)} characters={project.bible.characters || []} locations={(project.bible.locations || []) as any} props={(project.bible.props || []) as any} externalAssets={externalAssets} onPortrait={portrait} onAssetRef={assetRef} onLocalizeAll={localizeAll} onChange={setBibleDraft} onSave={saveBible} />
         <StoryProducts project={project} onPick={setSelected} />
       </main>
     </div>}

@@ -198,6 +198,8 @@ export const StoryApi = {
   deleteRun: (id: string, body: { sceneId: string; runId: string; force?: boolean; keepFiles?: boolean }) => api<StoryRunDeleteResult>(`/api/story/projects/${encodeURIComponent(id)}/run-delete`, { method: 'POST', body }),
   // 把某一版还挂在外站的产物下载到本地（只补下载，不重新生成——省钱也保住同一个产物）
   localizeRun: (id: string, body: { sceneId: string; runId: string }) => api<{ project: StoryProject; run: StoryGenerationRun; results: { url: string; ok: boolean; alreadyLocal?: boolean; saved?: string; reason?: string }[]; localized: number; failed: number }>(`/api/story/projects/${encodeURIComponent(id)}/run-localize`, { method: 'POST', body, timeoutMs: 180000 }),
+  // 全项目补下载：参考图（定妆照/场景/道具）与每一次生成的产出，一次把外站的东西拉到本地
+  localize: (id: string, body: { scope?: 'refs' | 'runs' | 'all' } = {}) => api<{ project: StoryProject; scope: string; localized: number; failed: number; items: { kind: 'ref' | 'run'; label?: string; assetType?: string; itemId?: string; runId?: string; assetId?: string; from: string; ok: boolean; url?: string; alreadyLocal?: boolean; reason?: string }[]; skipped: { what: string; reason: string }[] }>(`/api/story/projects/${encodeURIComponent(id)}/localize`, { method: 'POST', body, timeoutMs: 600000 }),
   // 生成配方：调好的生成设置，可存/套用/导出/导入（跨项目共用）
   recipes: () => api<{ recipes: StoryRecipe[] }>('/api/story/recipes'),
   // 分集：短剧/系列内容的组织单位（场用 episodeId 归属；删集只解绑不删场）

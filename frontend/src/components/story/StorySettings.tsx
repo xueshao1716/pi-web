@@ -12,17 +12,24 @@ interface RefAsset { id: string; name?: string; refImage?: string }
 // 2026-09-15 扩展：**场景与道具也走同一条通路**。此前只有角色有参考图，场景/道具只有文字，
 // 同一间屋子在两段里会长得不一样（对手产品都在解决：PINNGOO 叫资产库，LibTV 叫角色三视图+资产复用）。
 // 挂载规则和角色一样：名字出现在这一段的提示词里，就带上它的参考图。
-export default function StorySettings({ values, busy, characters, locations = [], props = [], onPortrait, onAssetRef, onChange, onSave }: {
+//
+// 2026-09-16：参考图也是"产物"，所以**同样受本地化契约约束**（docs/NAMING.md 第三节）——
+// 入库时下载失败的会留下外站临时链接，定妆照挂在会过期的地址上，几天后人物一致性就悄悄失效。
+// 这里标出哪些还是外链，并给一个把外站产物都拉到本地的入口。
+export default function StorySettings({ values, busy, characters, locations = [], props = [], externalAssets = 0, onPortrait, onAssetRef, onLocalizeAll, onChange, onSave }: {
   values: Record<string, string>
   busy: boolean
   characters: StoryCharacter[]
   locations?: RefAsset[]
   props?: RefAsset[]
+  externalAssets?: number
   onPortrait: (character: StoryCharacter) => void
   onAssetRef?: (assetType: AssetKind, asset: RefAsset) => void
+  onLocalizeAll?: () => void
   onChange: (values: Record<string, string>) => void
   onSave: () => void
 }) {
+  const isExternal = (url?: string) => /^https?:/i.test(String(url || ''))
   const withRef = characters.filter(c => c.refImage).length
   const groups: { key: AssetKind; label: string; list: RefAsset[]; hint: string; cta: string }[] = [
     { key: 'character', label: '角色定妆照', list: characters, hint: '锁住人物外貌', cta: '生成定妆照' },
@@ -30,6 +37,10 @@ export default function StorySettings({ values, busy, characters, locations = []
     { key: 'prop', label: '道具参考图', list: props, hint: '锁住关键道具的材质与细节', cta: '生成道具图' },
   ]
   return <details className="story-settings"><summary>人物与连续性设定 <span>每一段都会使用，展开修改</span></summary>
+    {externalAssets > 0 && <div className="story-external">
+      <span>有 <strong>{externalAssets}</strong> 个产物还挂在外站临时链接上（会过期）。参考图与产出都算在内。</span>
+      <button type="button" className="btn-ghost" disabled={busy || !onLocalizeAll} onClick={onLocalizeAll}>把外站的产物拉到本地</button>
+    </div>}
     {groups.filter(g => g.list.length > 0).map(g => {
       const n = g.list.filter(x => x.refImage).length
       return <div key={g.key} className="story-portraits">
@@ -43,6 +54,7 @@ export default function StorySettings({ values, busy, characters, locations = []
               ? <img src={withFileToken(item.refImage)} alt={`${item.name || item.id} 的参考图`} />
               : <div className="story-portrait-empty" aria-hidden="true">未生成</div>}
             <strong title={item.name || item.id}>{item.name || item.id}</strong>
+            {isExternal(item.refImage) && <span className="story-portrait-warn">外链 · 会过期</span>}
             <button type="button" className="btn-ghost" disabled={busy}
               onClick={() => (g.key === 'character' ? onPortrait(item as StoryCharacter) : onAssetRef?.(g.key, item))}>
               {item.refImage ? '重新生成' : g.cta}

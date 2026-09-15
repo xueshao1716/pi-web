@@ -278,6 +278,10 @@
 .story-portrait-list { display: grid; grid-template-columns: repeat(auto-fill,minmax(140px,1fr)); gap: 12px; }
 .story-portrait-card { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .story-portrait-card img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--pi-r-sm); border: 1px solid var(--pi-border-soft); background: var(--pi-bg2); }
+/* 外站临时链接会过期：参考图也是产物，同样受本地化契约约束 */
+.story-external { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0; padding: 10px 12px; border: 1px solid var(--pi-warn, #d08770); border-radius: var(--pi-r-sm); background: var(--pi-bg2); font-size: 12px; }
+.story-external .btn-ghost { padding: 5px 10px; font-size: 11px; }
+.story-portrait-warn { font-size: 11px; color: var(--pi-warn, #d08770); }
 .story-portrait-empty { width: 100%; aspect-ratio: 1; display: grid; place-items: center; border-radius: var(--pi-r-sm); border: 1px dashed var(--pi-border); background: var(--pi-bg2); color: var(--pi-dim); font-size: 12px; }
 .story-portrait-card strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .story-model-select { max-width: 220px; }

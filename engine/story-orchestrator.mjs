@@ -24,6 +24,26 @@ import { json } from './http-utils.mjs';
 const makeId = () => crypto.randomUUID();
 const nowIso = () => new Date().toISOString();
 const fileExists = async file => { try { await fsp.stat(file); return true; } catch { return false; } };
+const BIBLE_ASSET_KEYS = { characters: 'character', locations: 'location', props: 'prop', wardrobe: 'wardrobe' };
+
+// ── 把"还挂在外站"的地址搞到本地（docs/NAMING.md 第三节的本地化契约）──
+// 外站给的是几小时到几天就失效的临时链接，所以凡是能下载的产物**必须先落到本地**。
+// 三种地方会漏：运行产出、参考图（定妆照/场景/道具）、补下载入口——它们共用这一段判定，
+// 免得三处各写一遍、各漏一种。
+// 返回 { ok, url, from?, alreadyLocal? , reason? }；失败一定带 reason（不许含糊）。
+async function pullToLocal(url, { type = 'image', prompt = '', root, saveArtifact } = {}) {
+  const raw = String(url || '');
+  if (!raw) return { ok: false, reason: '这个条目还没有产物' };
+  const file = localPathFromArtifactUrl(raw, root);
+  if (file && (await fileExists(file))) return { ok: true, alreadyLocal: true, url: raw };
+  if (!/^(https?:|data:)/i.test(raw)) return { ok: false, reason: '既不是本地文件也不是可下载的外链' };
+  if (typeof saveArtifact !== 'function') return { ok: false, reason: '落盘实现未接入（下载不到本地）' };
+  const saved = await saveArtifact({ type, url: raw, prompt });
+  if (!saved?.local) return { ok: false, reason: saved?.reason || '下载失败' };
+  const localFile = localPathFromArtifactUrl(saved.url, root);
+  if (!localFile || !(await fileExists(localFile))) return { ok: false, reason: '下载成功但本地文件找不到（落盘路径解析失败）' };
+  return { ok: true, url: saved.url, from: raw };
+}
 
 // 视频轮询窗口（多长之后前端**不再自动等**）。可配：`STORY_VIDEO_POLL_MS`，默认 10 分钟。
 // 注意它**不是失败判据**：超窗只是"不再自动等"，任务在上游是死是活要靠「查一次」问出来。
@@ -339,17 +359,10 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
   //   2) 下载失败（SSRF 守卫拦下内网地址、上游 404/502、超过 50MB 等）——saveArtifact 会给出 reason。
   const localizeClip = async (run) => {
     const asset = (run.outputAssets || []).find(a => a?.type === 'video' && a.url);
-    const url = String(asset?.url || '');
-    if (!url) return { error: '这一版没有视频成品' };
-    const file = localPathFromArtifactUrl(url, root);
-    if (file && (await fileExists(file))) return { file, url, localized: false };
-    if (!/^(https?:|data:)/i.test(url)) return { error: '这一版的地址既不是本地文件也不是可下载的外链' };
-    if (typeof saveArtifact !== 'function') return { error: '这一版还是外链，而落盘实现未接入（下载不到本地）' };
-    const saved = await saveArtifact({ type: 'video', url, prompt: run.promptText || `${run.beatId || ''} 片段` });
-    if (!saved?.local) return { error: `外链没下载到本地：${saved?.reason || '未知原因'}` };
-    const localFile = localPathFromArtifactUrl(saved.url, root);
-    if (!localFile || !(await fileExists(localFile))) return { error: '下载成功但本地文件找不到（落盘路径解析失败）' };
-    return { file: localFile, url: saved.url, localized: true, from: url };
+    if (!asset?.url) return { error: '这一版没有视频成品' };
+    const got = await pullToLocal(asset.url, { type: 'video', prompt: run.promptText || `${run.beatId || ''} 片段`, root, saveArtifact });
+    if (!got.ok) return { error: got.reason };
+    return { file: localPathFromArtifactUrl(got.url, root), url: got.url, localized: !got.alreadyLocal, from: got.from };
   };
 
   // 挑片段（或"每段取最后一次成功"）→ 逐段搞到本地 → 给出可拼的清单。
@@ -766,13 +779,20 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       const url = result?.output?.url;
       const label = assetType === 'character' ? '定妆照' : `${noun}参考图`;
       if (!url) return { project, asset: item, assetType, status: 'failed', error: result?.error || `${label}生成失败`, model: result?.model };
+      const localizeError = result?.output?.localizeError ? String(result.output.localizeError) : '';
       const next = withUpdated({
         ...project,
         bible: { ...project.bible, [key]: list.map(x => (x === item ? { ...x, refImage: url } : x)) },
       });
       validateProject(next);
       await writeProject(root, next);
-      return { project: next, asset: { ...item, refImage: url }, assetType, image: url, status: result.status, model: result.model };
+      // 参考图也可能没落到本地（下载失败时 saveArtifact 会把外站临时链接原样返回）。
+      // 这件事**必须在返回值里说出来**：定妆照是要长期复用的锚点，挂在会过期的外链上，
+      // 几天后人物一致性就悄悄失效了——而界面此前看起来是"生成成功"。
+      return {
+        project: next, asset: { ...item, refImage: url }, assetType, image: url, status: result.status, model: result.model,
+        ...(localizeError ? { localizeError, note: `${label}已生成，但没能存到本地（${localizeError}）。当前用的是外站临时链接，过期后会失效——可以在设定面板里点「把外站的产物拉到本地」重试下载。` } : {}),
+      };
     },
     // 角色定妆照：上面的一个特例，保留这个名字是因为既有调用方（与测试）按它工作
     generatePortrait: async (id, input = {}) => {
@@ -1100,6 +1120,96 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
         try { await fsp.rm(dir, { recursive: true, force: true }); } catch {}
       }
     },
+    // 全项目补下载：把还挂在外站的东西一次搞到本地。
+    // 覆盖两类，因为它们是同一件事的两副面孔：
+    //   refs —— 定妆照 / 场景参考图 / 道具参考图（写回 bible 对应条目）
+    //   runs —— 每一次生成的产出（写回 run.outputAssets）
+    // 只补下载、**不重新生成**：产物还在，只是没落到本地，重生成要多花一次钱。
+    // 挂载素材（beat.inputs）刻意不动：它是"引用别的工作台的产物"，再落一份盘只是重复占地方，
+    // 这一点在返回里明确说出来（skipped），不装作没看见。
+    localizeProject: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const scope = input.scope === 'refs' || input.scope === 'runs' ? input.scope : 'all';
+      const items = [];
+      const applyRefs = [];
+      const applyRuns = new Map();
+      // ① 参考图
+      if (scope !== 'runs') {
+        for (const [key, kind] of Object.entries(BIBLE_ASSET_KEYS)) {
+          for (const item of Array.isArray(project.bible?.[key]) ? project.bible[key] : []) {
+            const url = String(item?.refImage || '');
+            if (!/^(https?:|data:)/i.test(url)) continue;
+            const got = await pullToLocal(url, { type: 'image', prompt: `${kind} 参考图`, root, saveArtifact });
+            items.push({ kind: 'ref', assetType: kind, itemId: item.id, label: item.name || item.id, from: url, ...got });
+            if (got.ok && !got.alreadyLocal) applyRefs.push({ key, itemId: item.id, url: got.url });
+          }
+        }
+      }
+      // ② 运行产出
+      if (scope !== 'refs') {
+        for (const scene of project.scenes || []) {
+          for (const run of scene.outputs || []) {
+            for (const asset of run.outputAssets || []) {
+              const url = String(asset?.url || '');
+              if (!/^(https?:|data:)/i.test(url)) continue;
+              const got = await pullToLocal(url, { type: asset.type || 'image', prompt: run.promptText || `${run.beatId || ''} 产物`, root, saveArtifact });
+              items.push({ kind: 'run', sceneId: scene.id, runId: run.id, beatId: run.beatId, assetId: asset.id, from: url, ...got });
+              if (got.ok && !got.alreadyLocal) {
+                const list = applyRuns.get(run.id) || [];
+                list.push({ assetId: asset.id, from: url, url: got.url });
+                applyRuns.set(run.id, list);
+              }
+            }
+          }
+        }
+      }
+      const done = items.filter(i => i.ok && !i.alreadyLocal);
+      const failed = items.filter(i => !i.ok);
+      let next = project;
+      if (done.length) {
+        next = withUpdated({
+          ...project,
+          bible: applyRefs.length
+            ? Object.fromEntries(Object.entries(project.bible || {}).map(([key, list]) => [key, (Array.isArray(list) ? list : []).map(item => {
+              const hit = applyRefs.find(r => r.key === key && String(r.itemId) === String(item.id));
+              return hit ? { ...item, refImage: hit.url } : item;
+            })]))
+            : project.bible,
+          scenes: project.scenes.map(scene => ({
+            ...scene,
+            outputs: (scene.outputs || []).map(run => {
+              const hits = applyRuns.get(run.id);
+              if (!hits) return run;
+              const updated = { ...run, outputAssets: (run.outputAssets || []).map(a => {
+                const hit = hits.find(h => String(h.assetId) === String(a.id) || h.from === String(a.url));
+                return hit ? { ...a, url: hit.url } : a;
+              }) };
+              // 全下完了才清"没落到本地"那条说明；还有没下的就得留着
+              const stillExternal = (updated.outputAssets || []).some(a => /^https?:/i.test(String(a.url || '')));
+              if (!stillExternal && Array.isArray(updated.degradation)) {
+                const left = updated.degradation.filter(d => !/本地|localize/i.test(String(d)));
+                if (left.length !== updated.degradation.length) { if (left.length) updated.degradation = left; else delete updated.degradation; }
+              }
+              return updated;
+            }),
+          })),
+        });
+        validateProject(next);
+        await writeProject(root, next);
+      }
+      return {
+        project: next,
+        scope,
+        localized: done.length,
+        failed: failed.length,
+        items,
+        // 挂载素材是"引用别的工作台的产物"：再落一份盘只是重复占地方。
+        // 不论扫哪个范围都不动它，但**必须说出来**——"没做"和"忘了做"看起来一样。
+        skipped: (project.scenes || []).some(s => (s.beats || []).some(b => (b.inputs || []).some(i => /^https?:/i.test(String(i.url || '')))))
+          ? [{ what: '段落挂载素材', reason: '挂载素材是引用别的工作台的产物，不再落一份盘（避免重复占地方）' }]
+          : [],
+      };
+    },
     // 把某一版还挂在外站的产物**下载到本地**（本地化契约的重试入口）。
     // 为什么要有这个入口：入库时下载失败（上游 CDN 抖一下、502），项目里留下的就是外站临时链接——
     // 它是会自己死掉的引用，而此前除了"重新生成一次"（再花一次钱）没有任何补救办法。
@@ -1114,17 +1224,9 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       const assets = [];
       for (const asset of run.outputAssets || []) {
         const url = String(asset?.url || '');
-        const file = localPathFromArtifactUrl(url, root);
-        if (file && (await fileExists(file))) { results.push({ url, ok: true, alreadyLocal: true }); assets.push(asset); continue; }
-        if (!/^(https?:|data:)/i.test(url)) { results.push({ url, ok: false, reason: '这个地址既不是本地文件也不是可下载的外链' }); assets.push(asset); continue; }
-        const saved = await saveArtifact({ type: asset.type || 'image', url, prompt: run.promptText || `${run.beatId || ''} 产物` });
-        if (saved?.local) {
-          results.push({ url, ok: true, saved: saved.url });
-          assets.push({ ...asset, url: saved.url });
-        } else {
-          results.push({ url, ok: false, reason: saved?.reason || '下载失败' });
-          assets.push(asset);
-        }
+        const got = await pullToLocal(url, { type: asset.type || 'image', prompt: run.promptText || `${run.beatId || ''} 产物`, root, saveArtifact });
+        results.push({ url, ok: got.ok, ...(got.alreadyLocal ? { alreadyLocal: true } : {}), ...(got.ok && !got.alreadyLocal ? { saved: got.url } : {}), ...(got.ok ? {} : { reason: got.reason }) });
+        assets.push(got.ok && !got.alreadyLocal ? { ...asset, url: got.url } : asset);
       }
       const okCount = results.filter(r => r.ok && !r.alreadyLocal).length;
       const failed = results.filter(r => !r.ok);
@@ -1366,6 +1468,10 @@ export async function handleStoryRunDelete(ctx, res, id, body) {
 
 export async function handleStoryRunLocalize(ctx, res, id, body) {
   try { return json(res, 200, await createStoryOrchestrator(ctx).localizeRun(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryLocalizeAll(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).localizeProject(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
 }
 
 export async function handleStoryRecipes(ctx, res, body) {

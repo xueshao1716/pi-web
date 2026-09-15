@@ -188,6 +188,22 @@ test('外链产物要有补下载入口（本地化契约：外站链接会自�
   assert.match(orchestrator, /localizeRun: async/);
 });
 
+test('参考图也受本地化契约：标出外链，并能一次把全项目的产物拉到本地', () => {
+  const settings = read('frontend/src/components/story/StorySettings.tsx')
+  assert.match(settings, /外链 · 会过期/, '参考图是外链时要标出来（它是长期复用的锚点，过期就悄悄失效）');
+  assert.match(settings, /把外站的产物拉到本地/, '要有全项目补下载入口');
+  assert.match(settings, /参考图与产出都算在内/, '要说清这个入口覆盖什么');
+  assert.match(workbench, /externalAssets/, '要算出还有多少外链产物');
+  assert.match(workbench, /StoryApi\.localize\(project\.id, \{ scope: 'all' \}\)/, '补下载走 /localize');
+  assert.match(workbench, /挂载素材不重复落盘/, '挂载素材为什么不落盘要说出来');
+  assert.match(workbench, /onLocalizeAll=\{localizeAll\}/);
+  assert.match(api, /localize: \(id: string/, '前端要接上全项目补下载');
+  assert.match(server, /\/localize\$/);
+  assert.match(orchestrator, /localizeProject: async/);
+  assert.match(orchestrator, /generateAssetRef[\s\S]{0,2000}localizeError/, '参考图没落盘时要如实带出来');
+  assert.match(css, /\.story-external/);
+});
+
 test('风格预设：是可选的统一画风，不是又一句自由发挥', () => {
   const ids = [...styles.matchAll(/^    id: '([a-z0-9-]+)'/gm)].map(m => m[1]);
   assert.equal(ids.length, 10, '预置 10 种画风');

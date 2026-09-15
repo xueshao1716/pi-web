@@ -88,7 +88,7 @@ import * as confirmRegistry from "./engine/tools/confirm-registry.mjs";
 import { initRefineApi, readRefineJson, runRefineScript, handleRefineStatus, handleRefineList, detectSkillDomain, handleRefineFeedback, handleRefineGenes, handleRefinePlan, handleRefineApprove, handleRefineReject, handleRefineRollback } from "./engine/refine-api.mjs";
 import { initMcpServer, handleMcp } from "./engine/mcp-server.mjs";
 import { initMcpChat } from "./engine/mcp-chat.mjs";
-import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryRunCheck, handleStoryRunCheckMany, handleStoryAssist, handleStoryPortrait, handleStoryAssetRef, handleStoryLint, handleStoryStoryboard, handleStoryAdapt, handleStoryFilm, handleStoryFilmPlan, handleStoryRunDelete, handleStoryRunLocalize, handleStoryEpisodes, handleStoryEpisodeAdd, handleStoryEpisodeUpdate, handleStoryEpisodeRemove, handleStorySceneAssign, handleStoryScriptStats, handleStoryExportScript, handleStoryPlayground, handleStoryPlaygroundClear, handleStoryMethods, handleStoryMethodDelete, handleStoryMethodCapture, handleStoryMethodApply, handleStoryRecipes, handleStoryRecipesExport, handleStoryRecipesImport, handleStoryRecipeDelete } from "./engine/story-orchestrator.mjs";
+import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryRunCheck, handleStoryRunCheckMany, handleStoryAssist, handleStoryPortrait, handleStoryAssetRef, handleStoryLint, handleStoryStoryboard, handleStoryAdapt, handleStoryFilm, handleStoryFilmPlan, handleStoryRunDelete, handleStoryRunLocalize, handleStoryLocalizeAll, handleStoryEpisodes, handleStoryEpisodeAdd, handleStoryEpisodeUpdate, handleStoryEpisodeRemove, handleStorySceneAssign, handleStoryScriptStats, handleStoryExportScript, handleStoryPlayground, handleStoryPlaygroundClear, handleStoryMethods, handleStoryMethodDelete, handleStoryMethodCapture, handleStoryMethodApply, handleStoryRecipes, handleStoryRecipesExport, handleStoryRecipesImport, handleStoryRecipeDelete } from "./engine/story-orchestrator.mjs";
 import { startShare, stopShareSync, handleShare, handleShareStatus, handleShareStop } from "./engine/share-api.mjs";
 import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
@@ -1719,6 +1719,8 @@ const API_ROUTES = [
   ["POST", /^\/api\/story\/projects\/([^/]+)\/run-delete$/, async (res, req, url, m) => handleStoryRunDelete({ root: WS_ROOT }, res, m[1], await readBody(req, 8))],
   // 把某一版还挂在外站的产物下载到本地（本地化契约的重试入口：只补下载，不重新生成）
   ["POST", /^\/api\/story\/projects\/([^/]+)\/run-localize$/, async (res, req, url, m) => handleStoryRunLocalize({ root: WS_ROOT, saveArtifact }, res, m[1], await readBody(req, 8))],
+  // 全项目补下载：参考图（定妆照/场景/道具）与每一次生成的产出，一次把外站的东西拉到本地
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/localize$/, async (res, req, url, m) => handleStoryLocalizeAll({ root: WS_ROOT, saveArtifact }, res, m[1], await readBody(req, 4))],
   // 原著改编：小说原文/小说工坊章节 → 分集大纲（集+场+段）一次落进项目。
   // preview=true 只读书报字数，不调模型——先看清要花多少钱再决定。
   ["POST", /^\/api\/story\/projects\/([^/]+)\/adapt$/, async (res, req, url, m) => handleStoryAdapt({ root: WS_ROOT, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList, readNovelBook: readStoryNovelBook }, res, m[1], await readBody(req, 64))],
