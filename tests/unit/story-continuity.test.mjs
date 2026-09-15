@@ -65,7 +65,11 @@ test('出场角色判定：名字出现在提示词里就带它的定妆照，�
     { id: 'c4', name: '没图角色' },
   ] } };
   assert.deepEqual(pickReferenceImages(project, '## 角色\n- name: 小雨，appearance: 短发'), ['/ref/xiaoyu.png']);
-  assert.deepEqual(pickReferenceImages(project, '没有任何名字命中'), ['/ref/aning.png', '/ref/xiaoyu.png']);
+  // 一个名字都没命中 → **退回主角（就一张）**，不是"退回前 N 个"。
+  // 旧期望是 ['aning','xiaoyu']，那是把"退回首 limit 个"当成了"退回主角"；
+  // 2026-09-15 同时发现这条判定在真实调用里是退化的（compileStoryPrompt 会把整个 bible 列进
+  // 提示词，于是每个名字都"出现"），所以判定改为基于**段落自己的文本**，见 pickReferenceImages 的注释。
+  assert.deepEqual(pickReferenceImages(project, '没有任何名字命中'), ['/ref/aning.png']);
   assert.deepEqual(pickReferenceImages({ bible: { characters: [{ id: 'x', name: '甲' }] } }, '甲'), [], '没有定妆照就返回空，不能编一个');
 });
 

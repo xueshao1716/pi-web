@@ -88,7 +88,7 @@ import * as confirmRegistry from "./engine/tools/confirm-registry.mjs";
 import { initRefineApi, readRefineJson, runRefineScript, handleRefineStatus, handleRefineList, detectSkillDomain, handleRefineFeedback, handleRefineGenes, handleRefinePlan, handleRefineApprove, handleRefineReject, handleRefineRollback } from "./engine/refine-api.mjs";
 import { initMcpServer, handleMcp } from "./engine/mcp-server.mjs";
 import { initMcpChat } from "./engine/mcp-chat.mjs";
-import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryRunCheck, handleStoryAssist, handleStoryPortrait, handleStoryLint, handleStoryStoryboard, handleStoryFilm, handleStoryScriptStats, handleStoryExportScript, handleStoryPlayground, handleStoryPlaygroundClear, handleStoryRecipes, handleStoryRecipesExport, handleStoryRecipesImport, handleStoryRecipeDelete } from "./engine/story-orchestrator.mjs";
+import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryRunCheck, handleStoryAssist, handleStoryPortrait, handleStoryAssetRef, handleStoryLint, handleStoryStoryboard, handleStoryFilm, handleStoryScriptStats, handleStoryExportScript, handleStoryPlayground, handleStoryPlaygroundClear, handleStoryRecipes, handleStoryRecipesExport, handleStoryRecipesImport, handleStoryRecipeDelete } from "./engine/story-orchestrator.mjs";
 import { startShare, stopShareSync, handleShare, handleShareStatus, handleShareStop } from "./engine/share-api.mjs";
 import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
@@ -1679,8 +1679,10 @@ const API_ROUTES = [
   // 收尾一次（查上游任务号）：视频是异步的，创建与收尾必须分开，不能让一个请求干等
   ["POST", /^\/api\/story\/projects\/([^/]+)\/run-check$/, async (res, req, url, m) => handleStoryRunCheck({ root: WS_ROOT, startVideoJob, checkVideoJob, saveArtifact }, res, m[1], await readBody(req, 8))],
   ["POST", /^\/api\/story\/projects\/([^/]+)\/assist$/, async (res, req, url, m) => handleStoryAssist({ root: WS_ROOT, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 8))],
-  // 角色定妆照：产出可复用的形象参考图，写回 bible；后续镜头生成会当作真实参考图注入
+  // 角色定妆照 / 场景参考图 / 道具参考图：产出可复用的形象与场景资产，写回 bible 对应条目；
+  // 后续镜头生成会按"名字出现在提示词里"把参考图当作真实输入注入。
   ["POST", /^\/api\/story\/projects\/([^/]+)\/portrait$/, async (res, req, url, m) => handleStoryPortrait({ root: WS_ROOT, generateImage, saveArtifact, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 8))],
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/asset-ref$/, async (res, req, url, m) => handleStoryAssetRef({ root: WS_ROOT, generateImage, saveArtifact, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 8))],
   // 连续性体检：只读，把"这次生成能不能保住人物一致性"的条件提前摊开
   ["POST", /^\/api\/story\/projects\/([^/]+)\/lint$/, async (res, req, url, m) => handleStoryLint({ root: WS_ROOT }, res, m[1], await readBody(req, 8))],
   // 一键分镜：从梗概一次生成整场分镜表并追加进项目

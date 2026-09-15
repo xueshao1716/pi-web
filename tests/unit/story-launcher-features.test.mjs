@@ -240,6 +240,67 @@ test('自述不是台词：绝不能把"用户让我扮演…"当成角色说的
   );
 });
 
+// ─────────── 场景/道具参考图（对手都在解决的"场景漂移"）── ───────────
+
+test('场景与道具的参考图走和角色同一条规则：名字出现在提示词里就挂上', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-story-assetref-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const project = createProject({
+    title: '资产',
+    bible: {
+      characters: [{ id: 'c1', name: '阿宁', refImage: '/p/aning.png' }],
+      locations: [{ id: 'l1', name: '公交站台', refImage: '/p/station.png' }, { id: 'l2', name: '末班车', refImage: '/p/bus.png' }],
+      props: [{ id: 'p1', name: '蓝色信封', refImage: '/p/envelope.png' }],
+    },
+    scenes: [{ id: 's1', index: 1, title: '站台', summary: '', beats: [{ id: 'b1', kind: 'video', prompt: '阿宁在公交站台等车', references: [] }], outputs: [] }],
+  }, { id: () => 'pa' });
+  await writeProject(root, project);
+  const api = createStoryOrchestrator({ root, getModelList: () => [{ provider: 'a', id: 'v', capabilities: { video: true, reference: true, keyframe: true, seed: true } }] });
+  const pv = await api.previewRun('pa', { sceneId: 's1', beatId: 'b1', kind: 'video', model: { provider: 'a', id: 'v' } });
+  const list = pv.plan.find(s => s.label === '参考图清单').detail;
+  assert.match(list, /aning\.png/, '角色参考图要在');
+  assert.match(list, /station\.png/, '**场景参考图也要在**——此前场景只有文字，同一间屋子两段长得不一样');
+  assert.doesNotMatch(list, /bus\.png/, '这一段的提示词里没提到「末班车」，就不该挂它的参考图');
+  assert.doesNotMatch(list, /envelope\.png/, '道具同理：没提到就不挂');
+  // 提到道具就要挂上
+  await api.patch('pa', { scenes: [{ ...project.scenes[0], beats: [{ ...project.scenes[0].beats[0], prompt: '阿宁攥着蓝色信封站在公交站台' }] }] });
+  const pv2 = await api.previewRun('pa', { sceneId: 's1', beatId: 'b1', kind: 'video', model: { provider: 'a', id: 'v' } });
+  assert.match(pv2.plan.find(s => s.label === '参考图清单').detail, /envelope\.png/, '提到道具就带上它');
+});
+
+test('参考图资产三件共用一条通路：角色/场景/道具都能生成并写回对应条目', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-story-assetgen-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const project = createProject({
+    title: '生成资产',
+    bible: { characters: [{ id: 'c1', name: '阿宁' }], locations: [{ id: 'l1', name: '公交站台' }], props: [{ id: 'p1', name: '蓝色信封' }] },
+    scenes: [{ id: 's1', index: 1, title: '站台', summary: '', beats: [{ id: 'b1', kind: 'image', prompt: 'x', references: [] }], outputs: [] }],
+  }, { id: () => 'pg' });
+  await writeProject(root, project);
+  let seen = null;
+  const api = createStoryOrchestrator({
+    root,
+    getModelList: () => [{ provider: 'p', id: 'img', capabilities: { image: true, reference: true, seed: true } }],
+    adapters: { image: { generate: async ({ prompt, params }) => { seen = { prompt, params }; return { status: 'succeeded', output: { type: 'image', url: '/gen.png' } } } } },
+  });
+  const loc = await api.generateAssetRef('pg', { assetType: 'location', assetId: 'l1' });
+  assert.equal(loc.image, '/gen.png');
+  assert.match(seen.prompt, /场景参考图/, '场景提示词要说清这是可复用的场景锚点');
+  assert.match(seen.prompt, /不要出现任何人物/, '有人的场景图当不了场景锚点');
+  assert.equal(loc.project.bible.locations[0].refImage, '/gen.png', '写回 locations，不是 characters');
+  const prop = await api.generateAssetRef('pg', { assetType: 'prop', assetId: 'p1' });
+  assert.match(seen.prompt, /道具参考图/);
+  assert.equal(prop.project.bible.props[0].refImage, '/gen.png');
+  // 角色走同一条路（老的 generatePortrait 是它的特例，返回形状保持兼容）
+  const ch = await api.generatePortrait('pg', { characterId: 'c1' });
+  assert.equal(ch.character.refImage, '/gen.png');
+  assert.match(seen.prompt, /角色定妆照/);
+  assert.equal(ch.project.bible.characters[0].refImage, '/gen.png');
+  // 空设定要给出可操作的提示，而不是 500
+  const bare = await api.create({ title: '空的' });
+  await assert.rejects(() => api.generateAssetRef(bare.id, { assetType: 'location' }), /还没有场景/);
+});
+
 test('对台词结果落进 beat.playground（可追溯），清空是真的清空', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-story-pg-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

@@ -259,6 +259,16 @@ export function StoryPanel() {
     if (r.image) setNotice(`「${r.character?.name || character.name || character.id}」的定妆照已保存；后续画面与视频会带上它作为参考图。`)
     else setError(r.error || '定妆照生成失败，请换一个图像模型再试')
   })
+  // 场景 / 道具参考图：和定妆照同一条通路，只是对象不同。
+  // 之后这一段的提示词里出现该场景/道具的名字，它就会被当作真实参考图注入。
+  const assetRef = (assetType: 'location' | 'prop', asset: { id: string; name?: string }) => action(`正在生成「${asset.name || asset.id}」的参考图`, async () => {
+    if (!project) return
+    const r = await StoryApi.assetRef(project.id, { assetType, assetId: asset.id })
+    update(r.project); hydrateBible(r.project)
+    const noun = assetType === 'location' ? '场景参考图' : '道具参考图'
+    if (r.image) setNotice(`「${r.asset?.name || asset.name || asset.id}」的${noun}已保存；这一段的提示词里出现它的名字时就会带上它。`)
+    else setError(r.error || `${noun}生成失败，请换一个图像模型再试`)
+  })
   // 连续性体检：随项目/输出类型变化刷新；做完动作后再刷一次，让「缺定妆照/未继承」这类提示实时消失
   const refreshLint = async (id = project?.id, kind = selectedKind) => {
     if (!id) { setLint(null); return }
@@ -386,7 +396,7 @@ export function StoryPanel() {
             <details><summary>编译后的提示词全文</summary><div className="story-prose">{compiled}</div></details>
           </details>}
         </section>{scene && beat && <StoryResults scene={scene} beat={beat} busy={Boolean(busy)} onRerun={rerun} onCheck={checkOne} />}</div>
-        <StorySettings values={bibleDraft} busy={Boolean(busy)} characters={project.bible.characters || []} onPortrait={portrait} onChange={setBibleDraft} onSave={saveBible} />
+        <StorySettings values={bibleDraft} busy={Boolean(busy)} characters={project.bible.characters || []} locations={(project.bible.locations || []) as any} props={(project.bible.props || []) as any} onPortrait={portrait} onAssetRef={assetRef} onChange={setBibleDraft} onSave={saveBible} />
         <StoryProducts project={project} onPick={setSelected} />
       </main>
     </div>}

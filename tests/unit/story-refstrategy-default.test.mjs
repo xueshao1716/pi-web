@@ -35,7 +35,9 @@ async function fixture(t, { kind = 'image', caps = IMG_CAPS, characters = 2, mat
     bible: { characters: portraits.map((url, i) => ({ id: `c${i}`, name: ['阿宁', '老周', '小雨'][i] || `角色${i}`, refImage: url })) },
     scenes: [{
       id: 's1', index: 1, title: '探针场', summary: '',
-      beats: [{ id: 'b1', kind, prompt: '阿宁站在站台', references: [], inputs: mats.map((url, i) => ({ id: `m${i}`, type: 'image', url, name: `mood${i}.png` })) }],
+      // 两个角色都要在段落文本里被提到，才会两张定妆照都挂上——
+      // 判定基于**段落自己的文本**（不是编译后的提示词，那里面列着整个 bible）
+      beats: [{ id: 'b1', kind, prompt: '阿宁和老周站在站台', references: [], inputs: mats.map((url, i) => ({ id: `m${i}`, type: 'image', url, name: `mood${i}.png` })) }],
       outputs: [],
     }],
   }, { id: () => 'pr' });

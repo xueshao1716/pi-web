@@ -3,7 +3,7 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createProject, listProjects, readProject, writeProject, validateProject, mergeBeatContext } from './story-store.mjs';
-import { compileStoryPrompt, buildPortraitPrompt } from './story-prompts.mjs';
+import { compileStoryPrompt, buildPortraitPrompt, buildAssetPrompt } from './story-prompts.mjs';
 import { createImageAdapter, createNovelAdapter, createVideoAdapter } from './story-adapters.mjs';
 import { buildStoryAssistPrompt, parseStoryAssist, buildStoryboardPrompt, parseStoryboard } from './story-assist.mjs';
 import { lintStoryProject } from './story-lint.mjs';
@@ -79,16 +79,43 @@ export function appendRun(scene, run) {
   return scene;
 }
 
-// 出场角色 → 定妆照 URL。规则刻意保持可解释，不做玄学推断：
-// 1) 角色名出现在编译后的提示词里 → 视为出场（compileStoryPrompt 会把每个角色的 name 写进提示词）；
-// 2) 一个都没匹配上时，退回首张有定妆照的角色（通常是主角），最多 limit 张。
-// 这张图会成为真实的图生图/视频 reference 输入，而不是只把 id 拼进提示词。
-export function pickReferenceImages(project, promptText, limit = 2) {
-  const chars = (project?.bible?.characters || []).filter(c => c && (c.refImage || c.ref));
-  if (!chars.length) return [];
-  const text = String(promptText || '');
-  const mentioned = chars.filter(c => c.name && text.includes(String(c.name)));
-  return (mentioned.length ? mentioned : chars).slice(0, limit).map(c => String(c.refImage || c.ref)).filter(Boolean);
+// 出场角色 / 场景 / 道具 → 参考图 URL。规则刻意保持可解释，不做玄学推断。
+//
+// **关键：判定要基于"这一段自己的文本"，而不是编译后的整份提示词。**
+// 2026-09-15 踩到：compileStoryPrompt 会把整个 bible（角色/场景/道具全列）写进提示词，
+// 于是"名字出现在提示词里"对**每一个**条目都成立——规则直接退化，一段视频会把所有参考图
+// 全挂上（每张内联成 base64 都是 MB 级，既烧钱又给模型塞噪音）。
+// 现在传入的是 beat.prompt + dialogue + action，只有这一段真正提到谁才挂谁。
+// 1) 名字出现 → 视为出场；
+// 2) 角色一个都没匹配上时，退回首张有定妆照的角色（通常是主角）；
+// 3) 顺序：角色（人物一致性最要紧）→ 场景 → 道具。
+export function pickReferenceImages(project, sourceText, limit = 4) {
+  const text = String(sourceText || '');
+  const hasRef = x => x && (x.refImage || x.ref);
+  const refOf = x => String(x.refImage || x.ref);
+  const bible = project?.bible || {};
+  const mentioned = list => (list || []).filter(x => hasRef(x) && x.name && text.includes(String(x.name)));
+  const chars = mentioned(bible.characters);
+  const ordered = [
+    ...(chars.length ? chars : (bible.characters || []).filter(hasRef).slice(0, 1)),
+    ...mentioned(bible.locations),
+    ...mentioned(bible.props),
+  ];
+  const seen = new Set();
+  const out = [];
+  for (const item of ordered) {
+    const url = refOf(item);
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    out.push(url);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+// 判定参考图要用的"这一段自己的文本"。**不要**用编译后的提示词（它含整个 bible）。
+export function beatReferenceText(beat) {
+  return [beat?.prompt, beat?.dialogue, beat?.action].filter(Boolean).map(String).join('\n');
 }
 
 function findScene(project, id) { return (project.scenes || []).find(s => s.id === id); }
@@ -199,7 +226,7 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
     const refStrategy = normalizeRefStrategy(input.reference ?? beat.reference ?? defaultRecipe?.reference, kind);
     const caps = capabilitiesFor(kind, model);
     const materials = Array.isArray(context.materials) ? context.materials : [];
-    const picked = caps.supported.reference ? pickReferenceImages(project, compiled.text) : [];
+    const picked = caps.supported.reference ? pickReferenceImages(project, beatReferenceText(beat)) : [];
     const materialImages = caps.supported.reference ? materials.filter(m => m.type === 'image' && m.url).map(m => m.url) : [];
     const materialVideos = materials.filter(m => m.type === 'video' && m.url).map(m => m.url);
     // 谁优先由策略决定（默认：画面素材优先、视频定妆照优先），张数也由策略定（0 = 明确不用参考图）
@@ -486,27 +513,40 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       await writeProject(root, next);
       return { project: next };
     },
-    // 角色定妆照：按角色设定出一张可复用的形象参考图，写回 bible.characters[].refImage。
-    // 这张图随后会被 runGeneration 当成真实参考图注入（图像走图生图、视频走 reference 模式），
-    // 这是"锁定人物外貌"的入口——在此之前 story 层只有文字描述，产品自己也在界面上承认做不到。
-    generatePortrait: async (id, input = {}) => {
+    // 参考图资产：角色定妆照 / 场景参考图 / 道具参考图，三件共用一套流程，写回 bible 对应条目。
+    // 角色那份是 2026-09-14 开的头（"锁定人物外貌"），场景与道具是 2026-09-15 补的：
+    // 此前场景和道具只有文字，同一间屋子在两段里会长得不一样。
+    generateAssetRef: async (id, input = {}) => {
       const project = await readProject(root, id);
-      const characters = Array.isArray(project.bible?.characters) ? project.bible.characters : [];
-      if (!characters.length) throw Object.assign(new Error('这个故事还没有角色：先让 AI 补一段设定，或到下方设定里加一个角色'), { statusCode: 400 });
-      const character = characters.find(c => String(c?.id) === String(input.characterId)) || characters[0];
+      const assetType = input.assetType === 'location' ? 'location' : input.assetType === 'prop' ? 'prop' : 'character';
+      const key = assetType === 'location' ? 'locations' : assetType === 'prop' ? 'props' : 'characters';
+      const list = Array.isArray(project.bible?.[key]) ? project.bible[key] : [];
+      const noun = assetType === 'character' ? '角色' : assetType === 'location' ? '场景' : '道具';
+      if (!list.length) throw Object.assign(new Error(`这个故事还没有${noun}：先让 AI 补一段设定，或到下方设定里加一个${noun}`), { statusCode: 400 });
+      const item = list.find(x => String(x?.id) === String(input.assetId)) || list[0];
       const adapter = resolvedAdapters.image;
       if (!adapter?.generate) throw Object.assign(new Error('图像引擎未接入'), { statusCode: 503 });
       const model = resolveModel(input.model, 'image', null);
-      const result = await adapter.generate({ prompt: buildPortraitPrompt({ bible: project.bible, character }), model, params: { size: input.size } });
+      const prompt = assetType === 'character'
+        ? buildPortraitPrompt({ bible: project.bible, character: item })
+        : buildAssetPrompt({ bible: project.bible, assetType, item });
+      const result = await adapter.generate({ prompt, model, params: { size: input.size } });
       const url = result?.output?.url;
-      if (!url) return { project, character, status: 'failed', error: result?.error || '定妆照生成失败', model: result?.model };
+      const label = assetType === 'character' ? '定妆照' : `${noun}参考图`;
+      if (!url) return { project, asset: item, assetType, status: 'failed', error: result?.error || `${label}生成失败`, model: result?.model };
       const next = withUpdated({
         ...project,
-        bible: { ...project.bible, characters: characters.map(c => (c === character ? { ...c, refImage: url } : c)) },
+        bible: { ...project.bible, [key]: list.map(x => (x === item ? { ...x, refImage: url } : x)) },
       });
       validateProject(next);
       await writeProject(root, next);
-      return { project: next, character: { ...character, refImage: url }, image: url, status: result.status, model: result.model };
+      return { project: next, asset: { ...item, refImage: url }, assetType, image: url, status: result.status, model: result.model };
+    },
+    // 角色定妆照：上面的一个特例，保留这个名字是因为既有调用方（与测试）按它工作
+    generatePortrait: async (id, input = {}) => {
+      const api = await createStoryOrchestrator({ root, clock, adapters, generateImage, generateVideo, startVideoJob, checkVideoJob, saveArtifact, saveArtifactFromFile, directChat, getDefaultModel, getModelList });
+      const r = await api.generateAssetRef(id, { ...input, assetType: 'character', assetId: input.characterId });
+      return { ...r, character: r.asset };
     },
     // 连续性体检：只读，不落盘。把"这次生成能不能保住人物一致性"的条件提前摊开。
     lint: async (id, input = {}) => {
@@ -688,6 +728,10 @@ export async function handleStoryPortrait(ctx, res, id, body) {
   try {
     return json(res, 200, await createStoryOrchestrator(ctx).generatePortrait(id, bodyOrEmpty(body)));
   } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryAssetRef(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).generateAssetRef(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
 }
 
 export async function handleStoryLint(ctx, res, id, body) {

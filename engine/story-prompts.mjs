@@ -118,3 +118,25 @@ export function buildPortraitPrompt({ bible, character } = {}) {
   ].filter(Boolean);
   return blocks.join('\n\n');
 }
+
+// 场景 / 道具参考图：与定妆照同一个思路，只是对象从"人"换成"地方"和"东西"。
+// 为什么需要它：定妆照只锁住了人物，**场景和道具一直只有文字**——于是同一间屋子在两段里
+// 长得不一样（对手产品都在解决这件事：PINNGOO 叫"资产库"、LibTV 叫"角色三视图"）。
+// 要求：无人物、构图中性、光线均匀、细节完整，这样它才能当"同一个地方"的锚点。
+export function buildAssetPrompt({ bible, assetType, item } = {}) {
+  const b = normalizeBible(bible);
+  const style = Object.entries(b.style).filter(([, value]) => value != null && String(value).trim()).map(([k, v]) => `${k}: ${String(v).trim()}`).join('，');
+  const self = entryText(item);
+  const isLocation = assetType === 'location';
+  const what = isLocation ? '场景' : '道具';
+  const label = isLocation ? '场景参考图（location sheet）' : '道具参考图（prop sheet）';
+  const blocks = [
+    `生成一张${what}${label}。它的用途是作为后续所有相关镜头的 ${what} 参考，因此必须稳定、可复用，而不是一张有剧情有情绪的画面。`,
+    self ? `## ${what}设定\n- ${self}` : '',
+    style ? `## 统一视觉风格\n- ${style}` : '',
+    isLocation
+      ? '## 硬性要求\n- 构图中性、视角平视，把这个地方**整体交代清楚**（空间关系、材质、光线氛围）。\n- 画面里**不要出现任何人物或动物**（有人物就没法当场景锚点）。\n- 不要出现文字、水印、分镜格。'
+      : '## 硬性要求\n- 单一物件居中、完整入画、细节清晰（材质、磨损、标识都要能用）。\n- 纯净背景，**不要出现人物**，也不要出现无关杂物。\n- 不要出现文字、水印、分镜格。',
+  ].filter(Boolean);
+  return blocks.join('\n\n');
+}

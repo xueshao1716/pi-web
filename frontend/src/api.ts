@@ -179,6 +179,9 @@ export const StoryApi = {
   assist: (id: string, idea: string, model?: { provider: string; id: string }) => api<{ assist: any; model: { provider: string; id: string } }>(`/api/story/projects/${encodeURIComponent(id)}/assist`, { method: 'POST', body: { idea, model }, timeoutMs: 100000 }),
   // 角色定妆照：生成后写回 bible.characters[].refImage，后续画面/视频会把它当作真实参考图注入
   portrait: (id: string, body: { characterId?: string; model?: { provider: string; id: string }; size?: string }) => api<{ project: StoryProject; character?: { id: string; name?: string; refImage?: string }; image?: string; status?: string; error?: string }>(`/api/story/projects/${encodeURIComponent(id)}/portrait`, { method: 'POST', body, timeoutMs: 200000 }),
+  // 参考图资产（角色定妆照 / 场景参考图 / 道具参考图）共用一条通路——对手都在解决"场景漂移"，
+  // 我们此前只有角色有参考图。
+  assetRef: (id: string, body: { assetType: 'character' | 'location' | 'prop'; assetId?: string; model?: { provider: string; id: string }; size?: string }) => api<{ project: StoryProject; asset?: { id: string; name?: string; refImage?: string }; assetType?: string; image?: string; status?: string; error?: string }>(`/api/story/projects/${encodeURIComponent(id)}/asset-ref`, { method: 'POST', body, timeoutMs: 200000 }),
   // 连续性体检：只读，把"这次生成能不能保住人物一致性"的条件提前摊开
   lint: (id: string, body: { kind?: StoryGenerationRun['kind']; capabilities?: Record<string, unknown> | null } = {}) => api<{ issues: { level: 'warn' | 'info'; code: string; message: string }[]; summary: { characters: number; portraits: number; scenes: number; beats: number; level: 'ok' | 'info' | 'warn' } }>(`/api/story/projects/${encodeURIComponent(id)}/lint`, { method: 'POST', body }),
   // 一键分镜：从梗概一次生成整场分镜表并追加进项目（自动串继承链）
