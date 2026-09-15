@@ -34,6 +34,26 @@ test('台词按「角色名：台词」拆成要素，括号提示与续行都�
   assert.equal(parseDialogueLines('').length, 0);
 });
 
+// 2026-09-15：从别的工具导出的真剧本（Pavo）把动作写成 `△ …`，其中一行还带全角冒号
+// （`△ 记忆画面：年轻的林默穿着…`）。旧解析器把它当成"说话人 △ 记忆画面"，
+// 并把后面所有无冒号的动作行都并进去，整段动作变成一句 190 字的"台词"，台词机检全跑偏。
+test('△/▲/○ 动作行永远是动作：不当说话人，也不吞掉后面的动作', () => {
+  const lines = parseDialogueLines([
+    '林默（低声）：这是哪……',
+    '△ 记忆画面：年轻的林默穿着工程服，站在楼顶。',
+    '他手里攥着蓝色的全息图纸。',
+    '陈曦：你挡住了我的视线。',
+  ].join('\n'));
+  assert.deepEqual(lines[0], { type: 'dialogue', speaker: '林默', paren: '低声', text: '这是哪……' });
+  assert.deepEqual(lines[1], { type: 'action', text: '记忆画面：年轻的林默穿着工程服，站在楼顶。' });
+  // 动作行之后的续行也是动作，不能续进上一句台词
+  assert.deepEqual(lines[2], { type: 'action', text: '他手里攥着蓝色的全息图纸。' });
+  assert.deepEqual(lines[3], { type: 'dialogue', speaker: '陈曦', paren: '', text: '你挡住了我的视线。' });
+  // 圆点/星号等其它动作标记同理
+  assert.deepEqual(parseDialogueLines('○ 门开了。'), [{ type: 'action', text: '门开了。' }]);
+  assert.equal(parseDialogueLines('△ 走了。').filter(r => r.type === 'dialogue').length, 0);
+});
+
 test('场景标题：没填要素也要能导出（用场景名兜底，不许因为缺字段就导不出东西）', () => {
   assert.equal(slugHollywood({ title: '站台', slug: { interior: 'exterior', location: '站台', timeOfDay: 'NIGHT' } }), 'EXT. 站台 - NIGHT');
   assert.equal(slugChinese({ title: '站台', slug: { interior: 'interior', location: '站台', timeOfDay: '夜' } }), '内景 站台 夜');

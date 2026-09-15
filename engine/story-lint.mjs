@@ -8,7 +8,8 @@
 // 台词那部分最要命的几条**本来就是能算的**（同行也是这么做的：语速 3.5~5 字/秒、
 // 单句 >24 字必须拆镜），以前却要花一次模型调用才能从"听起来别扭"里猜出来。
 // 现在并进体检：不花钱就能看到"这一句 37 字，最快也要 7.4 秒，而这段只有 5 秒"。
-import { dialogueAudit, auditEngine } from './story-craft.mjs';
+import { dialogueAudit, auditEngine, repeatCheck } from './story-craft.mjs';
+import { beatAction } from './story-screenplay.mjs';
 
 const text = value => String(value ?? '').trim();
 const list = value => (Array.isArray(value) ? value : []);
@@ -81,6 +82,18 @@ export function lintStoryProject(project, { kind = 'image', capabilities = null 
     }
   }
 
+  // ── 重复体检（"生成在原地打转"）──
+  // 真机对照踩到的：另一家工具自动写的 10 集剧本里第 5 集与第 6 集逐字相同，全剧 26% 的
+  // 段落跨集重复，而没有任何环节在报。这里按"场"做单元：场与场之间高度重合，
+  // 或者同一段话在多场里逐字出现，就抬进体检。
+  const repeatUnits = scenes.map((scene, i) => ({
+    no: i + 1,
+    title: text(scene?.title) || text(scene?.id) || '',
+    text: [text(scene?.summary), ...list(scene?.beats).map(b => `${text(b?.dialogue)}\n${beatAction(b)}`)].filter(Boolean).join('\n'),
+  }));
+  const repeat = repeatCheck(repeatUnits);
+  for (const issue of repeat.issues) add('warn', `repeat-${issue.code}`, issue.message);
+
   // ── 构思体检（结构性的那几条）──
   const engine = auditEngine(project?.craft, { currentEpisode: list(project?.episodes).length });
   if (!project?.craft) {
@@ -100,6 +113,6 @@ export function lintStoryProject(project, { kind = 'image', capabilities = null 
   const level = blocking.some(i => i.level === 'warn') ? 'warn' : blocking.length ? 'info' : 'ok';
   return {
     issues,
-    summary: { characters: characters.length, portraits, scenes: scenes.length, beats: beats.length, dialogueIssues, craftLevel: engine.level, level },
+    summary: { characters: characters.length, portraits, scenes: scenes.length, beats: beats.length, dialogueIssues, craftLevel: engine.level, level, repeatParagraphs: repeat.stats.duplicatedParagraphs, repeatRatio: repeat.stats.ratio },
   };
 }

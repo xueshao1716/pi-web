@@ -325,10 +325,81 @@ export function auditEngine(engine, { currentEpisode = 0, plannedEpisodes = 0 } 
   return { issues, level };
 }
 
+// ── 重复检测（"生成在原地打转"）──
+// 2026-09-15 来自一次真机对照：另一家的工具（Pavo）自动写出的 10 集剧本里，
+// **第 5 集与第 6 集逐字相同**（5-gram 重合度 100%），全剧 26% 的正文段落跨集重复。
+// 这不是文笔问题，是长文本生成卡住之后的**退化**——而且它完全不用模型就能发现，
+// 却没有任何一个环节在报：用户要读到第 5 集才知道自己被喂了重复内容。
+// 所以这里把它做成可算的一条：单元（集/场）之间的重合度 + 跨单元重复的段落。
+const normText = s => String(s || '').replace(/[\s，。！？、；：""''（）()【】\[\]「」『』△▲○●◇◆·…—\-—-]/g, '');
+function grams5(text) {
+  const set = new Set();
+  for (let i = 0; i + 5 <= text.length; i++) set.add(text.slice(i, i + 5));
+  return set;
+}
+function jaccard(a, b) {
+  if (!a.size || !b.size) return 0;
+  let inter = 0;
+  for (const g of a) if (b.has(g)) inter += 1;
+  return inter / (a.size + b.size - inter);
+}
+const unitLabel = u => (u.title ? `第 ${u.no} 集「${u.title}」` : `第 ${u.no} 段`);
+
+// units: [{ no, title, text }] —— 集也好、场也好、段落也好，只要是"应该各自推进"的单元。
+export function repeatCheck(units = [], { unitOverlap = 0.5, paraMinChars = 12 } = {}) {
+  const list = (Array.isArray(units) ? units : [])
+    .map((u, i) => ({ no: u?.no ?? i + 1, title: String(u?.title || '').trim(), text: String(u?.text || '') }))
+    .filter(u => normText(u.text).length >= paraMinChars);
+  const issues = [];
+  const gs = list.map(u => grams5(normText(u.text)));
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      const overlap = jaccard(gs[i], gs[j]);
+      if (overlap < unitOverlap) continue;
+      issues.push({
+        code: 'repeat-unit', level: 'warn', a: list[i].no, b: list[j].no, overlap: +(overlap * 100).toFixed(1),
+        message: `${unitLabel(list[i])} 与 ${unitLabel(list[j])} 有 ${(overlap * 100).toFixed(1)}% 逐字重合：正文在重复，不是"呼应"——观众会直接看出你在原地打转`,
+      });
+    }
+  }
+  // 段落级：同一段话（去标点后逐字相同）出现在多个单元里。完全匹配才算，避免误报。
+  const buckets = new Map();
+  let paragraphTotal = 0;
+  for (const u of list) {
+    const seenInUnit = new Set();
+    for (const raw of u.text.split(/\n+/)) {
+      const para = String(raw).trim();
+      if (normText(para).length < paraMinChars) continue;
+      paragraphTotal += 1;
+      const key = normText(para);
+      if (seenInUnit.has(key)) continue; // 同一单元内重复也记，但只用一次做桶
+      seenInUnit.add(key);
+      const bucket = buckets.get(key) || { text: para, units: [] };
+      bucket.units.push(u.no);
+      buckets.set(key, bucket);
+    }
+  }
+  const dupParas = [...buckets.values()].filter(b => b.units.length >= 2);
+  const duplicatedOccurrences = dupParas.reduce((n, b) => n + b.units.length, 0);
+  if (dupParas.length) {
+    const ratio = paragraphTotal ? duplicatedOccurrences / paragraphTotal : 0;
+    const worst = [...dupParas].sort((a, b) => b.units.length - a.units.length)[0];
+    issues.push({
+      code: 'repeat-paragraph', level: 'warn',
+      count: dupParas.length, occurrences: duplicatedOccurrences,
+      message: `${dupParas.length} 段正文在多个单元里逐字重复（共 ${duplicatedOccurrences} 处，占全部段落的 ${(ratio * 100).toFixed(0)}%）。`
+        + `最严重的一段出现在第 ${worst.units.join('、')} ——多是长文生成卡住后的退化，删掉重复段、把信息往前推一步。`,
+    });
+  }
+  const level = issues.some(i => i.level === 'warn') ? 'warn' : issues.length ? 'info' : 'ok';
+  return { issues, level, stats: { units: list.length, paragraphs: paragraphTotal, duplicatedParagraphs: dupParas.length, duplicatedOccurrences, ratio: paragraphTotal ? +(duplicatedOccurrences / paragraphTotal).toFixed(3) : 0 } };
+}
+
 // 台词七维里"机检不了"的两维，以及构思体检的说明——写在这里，界面直接引用，
 // 免得两处各写一份说法。
 export const CRAFT_NOTES = {
   dialogueHeuristics: '机检是启发式，会误报：它只负责把明显的问题（太长、在解释情绪、自报家门、古装出现代词）先揪出来，最终判断仍在你。',
   subjective: '「潜台词够不够深」「金句够不够狠」这两件事没有机器判据，只能人看——不要把机检通过当成台词好。',
   engine: '深度构思的机检只查结构（伏笔有没有回收集、每集有没有钩子、单元矛盾有没有硬帽），查不了"好不好看"。',
+  repeat: '重复检测是逐字比对（去标点后 5-gram 重合 / 段落完全相同）：它只说"这两处像到不正常"，不会替你判断这是刻意的呼应还是生成退化。',
 };

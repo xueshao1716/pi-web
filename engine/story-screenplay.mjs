@@ -23,12 +23,25 @@ export const INTERIOR_CN = { interior: '内景', exterior: '外景', mixed: '内
 //   阿宁（低声）：我不走了。  阿宁 (低声): 我不走了。
 //   画外音：车不会来了。     ← 当角色名处理，不特殊化
 //   没有冒号的行：若上一行有说话人 → 当作同一人的台词续行；否则当作动作行。
+//   动作行标记（△ ▲ ○ ● ·）：**永远是动作**，不参与说话人判定。
+// 动作行标记这条是 2026-09-15 补的，来自一份从别的工具导出的真剧本：它把动作写成
+// `△ 记忆画面：年轻的林默穿着…`——带全角冒号，于是被认成"说话人 △ 记忆画面"；
+// 更糟的是，一旦有了这个假说话人，后面每一行没有冒号的动作描述都被并进它名下，
+// 整段动作变成一句 190 字的"台词"，台词机检（语速/拆镜）全被带偏。
+// 所以动作行既要**先于**冒号规则拦下，也要**清掉** lastSpeaker——
+// 否则下一行无冒号的动作还是会被算进上一句台词里。
+const ACTION_MARK = /^([△▲○●◇◆・·※]|\*(?=\s))\s*/;
 export function parseDialogueLines(dialogue) {
   const out = [];
   let lastSpeaker = '';
   for (const raw of String(dialogue || '').split('\n')) {
     const line = raw.trim();
     if (!line) continue;
+    if (ACTION_MARK.test(line)) {
+      out.push({ type: 'action', text: line.replace(ACTION_MARK, '').trim() });
+      lastSpeaker = '';
+      continue;
+    }
     const m = line.match(/^([^：:（）()]{1,24}?)\s*(?:[（(]([^）)]{1,40})[）)])?\s*[：:]\s*(.+)$/);
     if (m) {
       lastSpeaker = m[1].trim();
