@@ -8,6 +8,32 @@
 
 ## [Unreleased]
 
+## [2.36.0] - 2026-09-15
+
+### 流水线状态机：把"现在该干什么、为什么这个按钮点不了"交给服务端说
+学自 Pavo 的 `flow`：`{ current_step, allowed_actions, blocked_actions[{action, reason_code, message}],
+recommended_actions, failed_recovery_actions }`。元枢此前是反过来的——十几个按钮各自 `disabled`，
+用户得自己猜"我现在该干到哪一步了""为什么合成成片是灰的"。
+
+- 新增 `engine/story-flow.mjs`（纯函数）：四个阶段（剧本大纲 → 资产库 → 分镜成片 → 成片），
+  **完成度只用真实产物判断**，不看"用户点过什么"；被挡住的动作必须带 `reason_code` + 人话，
+  且理由要具体到数字（「可用视频片段只有 1 段，合成至少要 2 段」，不是"不可用"）。
+- 失败与进行中优先：`failed_recovery_actions` 分别给 `retry_failed` / `check_running`；
+  两者同时存在时 headline 两件都说——只报"进行中"会把失败藏起来。
+- 外链产物会被认出来并推荐"拉到本地"（`http(s)` 且非本机才算外链，工作区自己的产物不算）。
+- `GET /api/story/projects/:id` 现在随项目下发 `flow`（算出来的，不落盘）。
+- 前端新增 `StoryFlowBar`：四步胶囊 + 一句人话总状态 + 推荐动作按钮 +
+  「N 个动作现在做不了（点开看原因）」。**界面不自己写一份规则**，只渲染服务端给的三张表；
+  动作按钮复用既有处理器，做完重新取一次项目（`patch`/`run` 的返回里没有 flow，
+  不重取就会一直显示旧状态——"刚做完还提示你做同一件事"比没有状态条更让人困惑）。
+- 测试：`tests/unit/story-flow.test.mjs` 6 条（阶段推进、理由必须带数字、失败/进行中优先、
+  外链识别、每个动作都有 label+panel、推荐不能推荐被挡住的、产物在 outputAssets 里也要算数）。
+- **真机验收又抓到一个**：产物的 url **不在 `run.url` 上**，而在 `run.outputAssets[].url`
+  （一个项目 14 条 run 里 `run.url` 全是 undefined）。只看 `run.url` 会把"已经出片的段落"算成
+  "没有成品"——状态条于是催你重做已经做好的段，还把「合成成片」误判成"可用片段 0 段"挡住。
+  现在按 `outputAssets` 统计，`degraded`（片子到了但带降级说明）也算有成品：
+  三个真实项目的段落完成度从「0/N」修正为「3/7」「4/23」，合成动作也正确放开了。
+
 ## [2.35.1] - 2026-09-15
 
 ### 修：景别前缀重复（真机验收里发现的）
