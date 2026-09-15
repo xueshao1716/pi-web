@@ -64,6 +64,7 @@ import { initWorkspaceApi, WS_ROOT, findWorkspaceFiles, wsSafePath, saveArtifact
 import { initContextLoader, makeLoader, loadExperience, readRulesWithImports, loadContextRules, jitRulesForPath, loadProjectRules, loadSkillIndex, execActivateSkill, ACTIVATE_SKILL_TOOL, WORK_PROTOCOL, loadMemory, loadMemoryIndex, loadExperienceIndex, shouldInjectFullMemory, setLastUserQuery } from "./engine/context-loader.mjs";
 import { initMediaApi, findMediaModel, detectMediaIntents, extractMediaPrompt, mediaAwarePrompt, mediaReadyNotice, explainMediaError, generateMediaAsync, generateTTS, generateImage, handleImage, handleImageWithSave, generateVideo, startVideoJob, checkVideoJob, handleMedia, assistantContentWithMedia } from "./engine/media-api.mjs";
 import { extractPlayableMedia } from "./engine/media-embed.mjs";
+import { formatSkillIndexPrompt, matchSkillsForTask } from "./engine/yuanshu-protocol.mjs";
 import { MEDIA_TOOL_SCHEMAS, mediaExtraExecutors, formatSensitiveHint, listHostChannels } from "./engine/media-channels.mjs";
 import { TODO_TOOL_SCHEMAS, todoExtraExecutors } from "./engine/yuanshu-todo.mjs";
 import { PLAN_FILES_SCHEMA, planFilesExtraExecutors, initYuanshuWorkmem } from "./engine/yuanshu-workmem.mjs";
@@ -238,6 +239,7 @@ let defaultModel = undefined; // 在启动模型列表构建后初始化（见�
 
 // ── 会话管理 ───────────────────────────────────────────────────────
 const activeSessions = new Map();   // id -> { agent, sm, busy }
+const skillCatalogSent = new Set(); // 已注入过「元枢内置技能库」目录的会话（每会话一次，别每轮灌一遍）
 const pushedArtifacts = new Map();  // sessionId -> Set(已推送文件路径)，防止重复推"本轮产物"
 let lastUnnamedId = null;           // 最近创建/复用的未命名会话（打断时复用同一会话）
 let lastUnnamedEntry = null;
@@ -1211,6 +1213,32 @@ async function handleChat(req, res, body) {
         );
       } catch {}
     }
+    // 元枢内置技能库（仓库根 skills/）：Pi SDK 会话的技能发现只看 `cwd/skills` 与
+    // `agentDir/skills` 两个根，**仓库里的 skills/ 不在它的扫描范围内**——于是「元枢技能」
+    // 页面上列得出来、模型却看不见，`activate_skill` 也就永远等不到调用。
+    // 2026-09-15 实测：问"用提示词架构师的办法…"，模型回"列表里没有 prompt-architect 技能"，
+    // 转身去读了 SDK 自己那份目录里的 multi-agent-meeting。
+    // 修法：每个会话注入一次目录（不重复占上下文），命中匹配时再补一句"本轮可能匹配"。
+    try {
+      const builtinSkills = loadSkillIndex();
+      if (!skillCatalogSent.has(sessKey)) {
+        const catalog = formatSkillIndexPrompt(builtinSkills);
+        if (catalog) {
+          skillCatalogSent.add(sessKey);
+          await entry.agent?.sendCustomMessage?.(
+            { customType: "context", content: [{ type: "text", text: `【元枢内置技能库】这是元枢自带的技能（与 SDK 自己扫描到的那份是**两个来源**，两边都可能有用）。对得上就先 activate_skill 加载全文再做，对不上按你的判断做。\n${catalog}` }] },
+            { deliverAs: "nextTurn" }
+          );
+        }
+      }
+      const matchedSkills = matchSkillsForTask(message, builtinSkills);
+      if (matchedSkills.length) {
+        await entry.agent?.sendCustomMessage?.(
+          { customType: "context", content: [{ type: "text", text: `本轮任务可能匹配元枢内置技能：${matchedSkills.map(s => s.name).join("、")}。对得上就 activate_skill 加载全文，对不上按你的判断继续。` }] },
+          { deliverAs: "nextTurn" }
+        );
+      }
+    } catch {}
     // 条件注入全量记忆（任务型消息才带）：人格保底用常驻索引（agent 创建时已注入），干活时全量
     if (shouldInjectFullMemory(message)) {
       setLastUserQuery(message);

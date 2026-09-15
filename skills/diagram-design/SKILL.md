@@ -1,6 +1,6 @@
 ---
 name: diagram-design
-description: Branded diagrams as standalone HTML/SVG — architecture, flowchart, ER, timeline, charts. Use when asked for a diagram.
+description: Branded diagrams as HTML/SVG (architecture/flowchart/ER/timeline/charts); use when asked.
 license: MIT
 metadata:
   version: "2.3"

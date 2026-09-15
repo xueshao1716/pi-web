@@ -34,6 +34,10 @@ export function matchSkillsForTask(message, skills = [], limit = 3) {
     if (/图|海报|写真|配图/.test(msg) && /image|图|写真|海报|wanxiang/.test(`${name}${desc}`)) score += 3;
     if (/ppt|幻灯片|演示|汇报/i.test(msg) && /ppt|幻灯片|演示|presentation/i.test(`${name}${desc}`)) score += 4;
     if (/小说|连载|故事/.test(msg) && /novel|小说|forge/.test(`${name}${desc}`)) score += 3;
+    // 元枢内置技能里有两族是"纯概念名"，光靠名字/描述分词永远匹配不到
+    // （2026-09-15 实测：问"用提示词架构师的办法…"零命中，问"用多AI角色扮演系统…"命中的是无关技能）。
+    if (/角色扮演|多\s*AI|多智能体|听证|红队|多方视角/.test(msg) && /roleplay|角色扮演|多\s*AI|多智能体|multi-agent/i.test(`${name}${desc}`)) score += 6;
+    if (/提示词架构|结构化的?提示词|六段式|角色卡/.test(msg) && /prompt-architect|提示词架构师|六段式/.test(`${name}${desc}`)) score += 6;
     if (score) scored.push({ name, desc, score });
   }
   return scored.sort((a, b) => b.score - a.score).slice(0, limit);
