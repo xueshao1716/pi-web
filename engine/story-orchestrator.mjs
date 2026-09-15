@@ -42,6 +42,10 @@ export function createGenerationRun(input, clock = {}) {
     status: 'queued',
     degradation: capabilities.degradation.length ? capabilities.degradation : undefined,
     parentRunId: input?.parentRunId || undefined,
+    // 段号在**生成时刻**定下来。作品列表原先按当前分镜顺序现算，一旦重排分镜，
+    // 旧产物卡上的"第 N 段"就跟着变——产物是历史，不该被后来的重排改写。
+    beatNo: Number.isFinite(input?.beatNo) ? input.beatNo : undefined,
+    sceneTitle: input?.sceneTitle ? String(input.sceneTitle) : undefined,
     createdAt: now,
   };
 }
@@ -172,7 +176,13 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       const model = resolveModel(input.model, kind, input.model);
       const context = mergeBeatContext(project, scene, beat);
       const compiled = compileStoryPrompt({ bible: project.bible, scene, beat, inherited: context });
-      const run = createGenerationRun({ ...input, kind, model, projectId: id, sceneId: scene.id, beatId: beat.id, inputAssets: input.inputAssets || compiled.referenceIds.map(assetId => ({ id: assetId, role: 'reference' })) }, clock);
+      // 段号（跨场景连续）在生成时定格，随产物一起存下来——见 createGenerationRun 里的说明
+      const beatNo = (() => {
+        let n = 0;
+        for (const s of project.scenes || []) for (const b of s.beats || []) { n += 1; if (b.id === beat.id) return n; }
+        return undefined;
+      })();
+      const run = createGenerationRun({ ...input, kind, model, projectId: id, sceneId: scene.id, beatId: beat.id, beatNo, sceneTitle: scene.title, inputAssets: input.inputAssets || compiled.referenceIds.map(assetId => ({ id: assetId, role: 'reference' })) }, clock);
       // 参考图只在模型声明支持时注入：不支持的模型塞图会 400，反而掩盖真实的降级原因。
       const referenceImages = run.capabilities.reference ? pickReferenceImages(project, compiled.text) : [];
       if (referenceImages.length) run.referenceImages = referenceImages;
@@ -281,7 +291,18 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
         const outFile = path.join(dir, 'film.mp4');
         const result = await concatClips({ clips, outFile, workDir: dir });
         const url = await saveArtifactFromFile({ filePath: result.outFile, type: 'video', prompt: `${project.title} 成片 ${result.clipCount} 段` });
-        return { project, url, clipCount: result.clipCount, method: result.method, beatIds: clips.map(c => c.beatId) };
+        const film = {
+          id: `film-${(clock.id || makeId)()}`,
+          url,
+          clipCount: result.clipCount,
+          method: result.method,
+          // 记下这一版成片用了哪些段：重排分镜后仍能还原"这版成片是什么时候、由哪些片段拼的"
+          beatIds: clips.map(c => c.beatId),
+          createdAt: (clock.now || nowIso)(),
+        };
+        const next = withUpdated({ ...project, films: [...(project.films || []), film] });
+        await writeProject(root, next);
+        return { project: next, film, url, clipCount: result.clipCount, method: result.method, beatIds: film.beatIds };
       } finally {
         try { await fsp.rm(dir, { recursive: true, force: true }); } catch {}
       }

@@ -1,4 +1,4 @@
-import type { Model, Session, ChatMessage, SessionMessages, Artifact, AssetDelivery, SkillSummary, StoryProject, StoryGenerationRun } from './types'
+import type { Model, Session, ChatMessage, SessionMessages, Artifact, AssetDelivery, SkillSummary, StoryProject, StoryGenerationRun, StoryFilm } from './types'
 import { parseSseBlocks, type RunEvent, type RunStatus } from './lib/run-events'
 import { rememberDownload } from './lib/downloads'
 import { saveNativeDownload } from './lib/native-download'
@@ -181,8 +181,8 @@ export const StoryApi = {
   lint: (id: string, body: { kind?: StoryGenerationRun['kind']; capabilities?: Record<string, unknown> | null } = {}) => api<{ issues: { level: 'warn' | 'info'; code: string; message: string }[]; summary: { characters: number; portraits: number; scenes: number; beats: number; level: 'ok' | 'info' | 'warn' } }>(`/api/story/projects/${encodeURIComponent(id)}/lint`, { method: 'POST', body }),
   // 一键分镜：从梗概一次生成整场分镜表并追加进项目（自动串继承链）
   storyboard: (id: string, body: { idea?: string; count?: number; model?: { provider: string; id: string } }) => api<{ project: StoryProject; beatCount: number; sceneCount: number; characters?: number; characterNames?: string[] }>(`/api/story/projects/${encodeURIComponent(id)}/storyboard`, { method: 'POST', body, timeoutMs: 120000 }),
-  // 成片合成：按分镜顺序把成功的视频片段拼成长片
-  film: (id: string) => api<{ project: StoryProject; url: string; clipCount: number; method: string }>(`/api/story/projects/${encodeURIComponent(id)}/film`, { method: 'POST', body: {}, timeoutMs: 900000 }),
+  // 成片合成：按分镜顺序把成功的视频片段拼成长片，并把这一版写回 project.films
+  film: (id: string) => api<{ project: StoryProject; film: StoryFilm; url: string; clipCount: number; method: string }>(`/api/story/projects/${encodeURIComponent(id)}/film`, { method: 'POST', body: {}, timeoutMs: 900000 }),
 }
 export const MessagesApi = {
   add: (sid: string, text: string) => api<{ ok: boolean; id: string }>(`/api/sessions/${encodeURIComponent(sid)}/messages`, { method: 'POST', body: { text } }),

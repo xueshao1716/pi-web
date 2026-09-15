@@ -71,3 +71,61 @@ test('runGeneration selects a capable image model when auto is requested', async
   await api.runGeneration('p2', { sceneId: 's1', beatId: 'b1', kind: 'image', model: { provider: 'auto', id: 'auto' } });
   assert.deepEqual(used, { provider: 'img', id: 'image-1', capabilities: { image: true } });
 });
+
+// 段号是**产物**的一部分：重排分镜之后，历史产物卡上的"第 N 段"不能跟着变。
+// 否则用户昨天导出的"第 3 段"今天就指向别的内容，产物就不再是历史了。
+test('runGeneration stamps beatNo and sceneTitle at generation time, and reordering does not rewrite them', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-story-beatno-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const project = createProject({
+    title: '段号测试',
+    scenes: [
+      { id: 's1', index: 1, title: '第一场', summary: '', beats: [{ id: 'b1', kind: 'novel', prompt: '一', references: [] }, { id: 'b2', kind: 'novel', prompt: '二', references: [] }], outputs: [] },
+      { id: 's2', index: 2, title: '第二场', summary: '', beats: [{ id: 'b3', kind: 'novel', prompt: '三', references: [] }], outputs: [] },
+    ],
+  }, { id: () => 'p3' });
+  await writeProject(root, project);
+  const api = createStoryOrchestrator({ root, adapters: { novel: { generate: async () => ({ status: 'succeeded', output: { type: 'text', text: '正文' } }) } } });
+  const result = await api.runGeneration('p3', { sceneId: 's2', beatId: 'b3', kind: 'novel' });
+  assert.equal(result.run.beatNo, 3, '段号跨场景连续编号');
+  assert.equal(result.run.sceneTitle, '第二场');
+
+  // 把第二场挪到最前：当前顺序下 b3 变成第 1 段，但已生成的那次运行仍应写着第 3 段
+  const stored = await api.get('p3');
+  await api.patch('p3', { scenes: [stored.scenes[1], stored.scenes[0]] });
+  const after = await api.get('p3');
+  const run = after.scenes[0].outputs[0];
+  assert.equal(run.beatNo, 3, '重排分镜不得改写已落盘产物的段号');
+  assert.equal(run.sceneTitle, '第二场');
+});
+
+// 成片此前只存进产物库就返回，项目里没有任何记录——刷新页面链接就没了。
+test('assembleFilm records the film in project.films and persists it', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-story-film-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.writeFile(path.join(root, 'clip.mp4'), 'not-really-mp4');
+  const project = createProject({
+    title: '成片测试',
+    scenes: [{
+      id: 's1', index: 1, title: '一', summary: '',
+      beats: [{ id: 'b1', kind: 'video', prompt: '镜头', references: [] }],
+      outputs: [{ id: 'r1', beatId: 'b1', status: 'succeeded', outputAssets: [{ id: 'a1', type: 'video', url: '/api/ws/file?path=clip.mp4' }] }],
+    }],
+  }, { id: () => 'p4' });
+  await writeProject(root, project);
+  const api = createStoryOrchestrator({
+    root,
+    clock: { id: () => 'f1', now: () => '2026-09-15T10:00:00.000Z' },
+    saveArtifactFromFile: async () => '/api/ws/file?path=films%2Ffilm-1.mp4',
+  });
+  const result = await api.assembleFilm('p4');
+  assert.equal(result.film.clipCount, 1);
+  assert.equal(result.film.method, 'copy');
+  assert.deepEqual(result.film.beatIds, ['b1']);
+  assert.equal(result.film.createdAt, '2026-09-15T10:00:00.000Z');
+  assert.equal(result.project.films.length, 1, '返回值里带上了写回后的项目');
+  // 真正的证据是**磁盘上**的项目；只改内存对象不算落地
+  const reread = await api.get('p4');
+  assert.equal(reread.films.length, 1);
+  assert.equal(reread.films[0].url, '/api/ws/file?path=films%2Ffilm-1.mp4');
+});

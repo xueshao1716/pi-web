@@ -13,6 +13,9 @@ export function createProject(input = {}, clock = {}) {
     logline: input.logline ? String(input.logline) : '',
     bible: { ...BIBLE(), ...(input.bible || {}) },
     scenes: Array.isArray(input.scenes) ? input.scenes : [],
+    // 成片历史。assembleFilm 之前只把文件存进产物库就返回，项目里没有任何记录——
+    // 刷新页面后「成片」链接就丢了，用户以为合成失败。产物是历史，必须落回项目。
+    films: Array.isArray(input.films) ? input.films : [],
     activeSceneId: input.activeSceneId,
     createdAt: now,
     updatedAt: now,

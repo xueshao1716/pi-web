@@ -90,12 +90,17 @@ export interface StoryGenerationRun {
   status: 'queued' | 'running' | 'succeeded' | 'failed' | 'degraded'
   degradation?: string[]
   parentRunId?: string
+  // 段号/场景名在**生成时刻**定下来，跟着产物一起存；重排分镜也不会改写历史产物上的编号。
+  // 旧数据没有这两个字段，界面回退到"按当前分镜顺序现算"。
+  beatNo?: number
+  sceneTitle?: string
   createdAt: string
   finishedAt?: string
 }
 export interface StoryBeat { id: string; kind: 'novel' | 'image' | 'video'; prompt: string; references: StoryAssetRef[]; inheritFromBeatId?: string; activeRunId?: string }
 export interface StoryScene { id: string; index: number; title: string; summary: string; beats: StoryBeat[]; outputs: StoryGenerationRun[]; activeRunId?: string }
-export interface StoryProject { id: string; title: string; logline?: string; bible: StoryBible; scenes: StoryScene[]; activeSceneId?: string; createdAt: string; updatedAt: string }
+export interface StoryFilm { id: string; url: string; clipCount: number; method: string; beatIds: string[]; createdAt: string }
+export interface StoryProject { id: string; title: string; logline?: string; bible: StoryBible; scenes: StoryScene[]; films?: StoryFilm[]; activeSceneId?: string; createdAt: string; updatedAt: string }
 
 // 交付物（/api/ws/deliveries）条目
 export interface AssetDelivery {

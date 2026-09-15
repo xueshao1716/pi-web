@@ -147,11 +147,18 @@ export function StoryPanel() {
   const makeFilm = () => action('正在合成成片（按分镜顺序拼接）', async () => {
     if (!project) throw new Error('请先开始一个故事')
     const r = await StoryApi.film(project.id)
-    setFilmUrl(r.url)
-    setNotice(`成片已生成：${r.clipCount} 段拼接完成${r.method === 'copy' ? '（只有一段，直接落盘）' : ''}，已归档到工作空间。`)
+    // 服务端已把这一版成片写回项目；这里用返回值刷新，刷新页面后链接也不会丢
+    if (r.project) update(r.project)
+    setFilmUrl(r.film?.url || r.url)
+    setNotice(`成片已生成：${r.clipCount} 段拼接完成${r.method === 'copy' ? '（只有一段，直接落盘）' : ''}，已归档到工作空间并记入项目，共 ${(r.project?.films || project.films || []).length} 版。`)
   })
   const currentRuns = scene?.outputs.filter(r => r.beatId === beat?.id) || []
   const hasOutput = currentRuns.some(r => r.outputAssets?.length)
+  // 成片链接来自**项目里存的成片历史**，不是一次性的本地状态——
+  // 之前只 setFilmUrl，刷新页面链接就没了，用户以为合成失败了。
+  const films = project?.films || []
+  const latestFilm = films.length ? films[films.length - 1] : null
+  const filmHref = latestFilm?.url || filmUrl
   const portraitCount = (project?.bible.characters || []).filter(c => c.refImage || (c as any).ref).length
   return <div className="story-workbench story-workbench-embedded">
     <header className="story-header"><div className="story-actions">
@@ -173,7 +180,7 @@ export function StoryPanel() {
             <input className="story-studio-idea" aria-label="分镜想法" placeholder="想讲什么（可留空，按梗概排）" value={storyboardIdea} disabled={Boolean(busy)} onChange={e=>setStoryboardIdea(e.target.value)} />
             <button className="btn-ghost" disabled={Boolean(busy)} onClick={runStoryboard}>一键分镜</button>
             <button className="btn-primary" disabled={Boolean(busy)} onClick={makeFilm}>合成成片</button>
-            {filmUrl && <a className="story-studio-link" href={withFileToken(filmUrl)} target="_blank" rel="noreferrer">打开成片</a>}
+            {filmHref && <a className="story-studio-link" href={withFileToken(filmHref)} target="_blank" rel="noreferrer">打开成片{films.length > 1 ? `（第 ${films.length} 版）` : ''}</a>}
           </div>
           {lint && <div className={`story-lint story-lint-${lint.summary.level}`}>
             <span className="story-lint-head">连续性体检 · 角色 {lint.summary.characters}（定妆照 {lint.summary.portraits}）· {lint.summary.scenes} 场 {lint.summary.beats} 段</span>

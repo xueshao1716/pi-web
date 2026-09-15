@@ -78,6 +78,19 @@
 .story-products summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; padding-block: 10px; }
 .story-products-title { font-size: 15px; font-weight: 650; color: var(--pi-text); }
 .story-products-count { font-size: 12px; color: var(--pi-dim); }
+.story-products-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding-bottom: 6px; }
+.story-products-filter { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--pi-dim); cursor: pointer; }
+.story-films { padding-bottom: 10px; }
+.story-films-title { margin: 4px 0 8px; font-size: 13px; font-weight: 650; color: var(--pi-text); }
+.story-film-list { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin: 0; padding: 0; }
+.story-film-item { display: flex; gap: 10px; padding: 10px; border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-md); background: var(--pi-bg1); min-width: 0; }
+.story-film-item .story-product-thumb { width: 120px; max-height: 84px; flex: none; }
+.story-film-meta { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 11px; color: var(--pi-dim2); }
+.story-film-meta strong { font-size: 12px; color: var(--pi-text); }
+.story-film-meta .story-actions { gap: 8px; margin-top: 2px; }
+.story-film-meta .story-actions :is(.btn-ghost) { padding: 4px 8px; font-size: 11px; }
+.story-film-meta .story-actions a { font-size: 11px; }
+.story-product-fail { font-size: 11px; line-height: 1.6; color: var(--pi-warning); overflow-wrap: anywhere; }
 .story-product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; padding-top: 8px; }
 .story-product-card { display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-md); background: var(--pi-bg1); min-width: 0; }
 .story-product-card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
