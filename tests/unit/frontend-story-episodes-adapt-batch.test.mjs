@@ -18,6 +18,7 @@ const settings = read('frontend/src/components/story/StorySettings.tsx');
 const css = read('frontend/src/components/story/story.css');
 const server = read('server.mjs');
 const orchestrator = read('engine/story-orchestrator.mjs');
+const store = read('engine/story-store.mjs');
 
 test('分集：面板挂在制作台，点某一场要真的跳到那一场', () => {
   assert.match(workbench, /StoryEpisodes/, '分集面板要挂在制作台里');
@@ -202,6 +203,26 @@ test('参考图也受本地化契约：标出外链，并能一次把全项目�
   assert.match(orchestrator, /localizeProject: async/);
   assert.match(orchestrator, /generateAssetRef[\s\S]{0,2000}localizeError/, '参考图没落盘时要如实带出来');
   assert.match(css, /\.story-external/);
+});
+
+test('项目：不用下拉框了，改成能看能删的项目架', () => {
+  const shelf = read('frontend/src/components/story/StoryProjects.tsx')
+  assert.match(workbench, /StoryProjects/, '项目架要挂在制作台里');
+  assert.match(shelf, /StoryApi\.deleteProject/);
+  assert.match(shelf, /role="alertdialog"/, '删项目不可逆，要有确认块');
+  assert.match(shelf, /连产物文件一起删（只删没有被别的项目引用的）/, '要不要删文件必须让用户选，并说清边界');
+  assert.match(shelf, /产物文件会留着——工作区里还能从「资产」找到它们/, '默认保文件要说清');
+  assert.match(shelf, /story-projects\/\.trash\//, '要说清副本留在哪、能恢复');
+  assert.match(shelf, /点「打开」才切换当前项目/, '翻列表不该顺手换掉正在写的项目');
+  assert.match(shelf, /改动于 .*toLocaleString/, '列表里要看得见时间，别只有标题');
+  assert.match(shelf, /集|成片/, '列表里要看得见规模（场/段/集/成片）');
+  // 下拉框必须真的撤掉，而不是两套并存
+  assert.ok(!/aria-label="选择故事项目"/.test(workbench), '旧的 <select> 下拉框应当已经被项目架取代');
+  assert.match(api, /deleteProject/);
+  assert.match(server, /\["DELETE", \/\^\\\/api\\\/story\\\/projects/);
+  assert.match(orchestrator, /deleteProject: async/);
+  assert.match(store, /export async function trashProject/, '先留副本再删');
+  assert.match(css, /\.story-project-item/);
 });
 
 test('风格预设：是可选的统一画风，不是又一句自由发挥', () => {

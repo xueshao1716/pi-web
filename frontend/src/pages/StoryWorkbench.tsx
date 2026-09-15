@@ -15,6 +15,7 @@ import StoryEpisodes from '../components/story/StoryEpisodes'
 import StoryAdapt from '../components/story/StoryAdapt'
 import StoryMethod from '../components/story/StoryMethod'
 import StoryFilm from '../components/story/StoryFilm'
+import StoryProjects from '../components/story/StoryProjects'
 import StoryBatch from '../components/story/StoryBatch'
 import { defaultRefStrategy, normalizeRefStrategy, refStrategyLabel, recipeBeatPatch } from '../lib/story-ref'
 import type { StoryBeatInput } from '../types'
@@ -354,10 +355,27 @@ export function StoryPanel() {
     ...(project.scenes || []).flatMap(s => (s.outputs || []).flatMap(r => (r.outputAssets || []).map(a => a.url))),
   ].filter((u: any) => /^https?:/i.test(String(u || ''))).length : 0
   return <div className="story-workbench story-workbench-embedded">
-    <header className="story-header"><div className="story-actions">
-      <select aria-label="选择故事项目" disabled={Boolean(busy)} value={project?.id || ''} onChange={e => choose(projects.find(p => p.id === e.target.value) || null)}><option value="">开始新故事</option>{projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}</select>
-      <button className="btn-ghost" disabled={Boolean(busy)} onClick={() => choose(null)}>新故事</button><button className="btn-ghost" disabled={Boolean(busy)} onClick={load}>刷新</button>
-    </div></header>
+    {/* 项目架取代原来的下拉框：项目一多，下拉里只看得到标题（哪个有成片、哪个是草稿、
+        哪个是上周的，全看不出来），更不能删。这里每个项目一行，能看能删能打开。
+        「新故事」也搬进来了，顶栏只留这一件事。 */}
+    <StoryProjects
+      projects={projects}
+      currentId={project?.id}
+      busy={Boolean(busy)}
+      onOpen={choose}
+      onNew={() => choose(null)}
+      onRefresh={() => void load()}
+      onDone={deletedId => {
+        // 删完必须**把这一行从界面上拿掉**：真机点验时发现过只弹了"已删除"、列表里那行还在
+        //（API 已经删了，界面没跟上——这类"说成功了但看到的不是那么回事"最容易让人不敢用）。
+        // 这里直接按 id 从本地列表里剔除，而不是重新拉一遍：重新拉会走到 load() 的
+        // "找不到当前项目就选第一个"分支，把用户顺手带到另一个项目上。
+        setProjects(items => items.filter(item => item.id !== deletedId))
+        if (project?.id === deletedId) choose(null)
+      }}
+      onNotice={setNotice}
+      onError={setError}
+    />
     <div aria-live="polite">{busy && <p role="status" className="story-notice">{busy}…</p>}{notice && <p role="status" className="story-notice">{notice}</p>}</div>
     {error && <p role="alert" className="story-notice story-error">{error}</p>}
     {!project ? <StoryStart busy={Boolean(busy)} onStart={start}><label className="story-model-select">构思模型<select value={planningModel} disabled={Boolean(busy)} onChange={e=>setPlanningModel(e.target.value)}><option value="">自动选择文本模型</option>{models.filter(m=>capable(m,'novel')).map(m=><option key={modelKey(m)} value={modelKey(m)}>{m.name || m.id}</option>)}</select></label></StoryStart> : <div className="story-layout">

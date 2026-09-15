@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createProject, listProjects, readProject, writeProject, validateProject, mergeBeatContext } from './story-store.mjs';
+import { createProject, listProjects, readProject, writeProject, validateProject, mergeBeatContext, trashProject } from './story-store.mjs';
 import { compileStoryPrompt, buildPortraitPrompt, buildAssetPrompt } from './story-prompts.mjs';
 import { createImageAdapter, createNovelAdapter, createVideoAdapter } from './story-adapters.mjs';
 import { buildStoryAssistPrompt, parseStoryAssist, buildStoryboardPrompt, parseStoryboard, buildAdaptPrompt, parseAdapt } from './story-assist.mjs';
@@ -1250,6 +1250,39 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       await writeProject(root, next);
       return { project: next, run: next.scenes.find(s => s.id === scene.id).outputs.find(r => String(r.id) === String(run.id)), results, localized: okCount, failed: failed.length };
     },
+    // 删项目。比删一版产出严重得多（人物、分集、成片历史都在里面），所以：
+    // 1) **一定先留副本**（story-projects/.trash/），手滑删掉整部戏是不可逆的；
+    // 2) 产物文件默认**不动**——它们在工作区里还能从「资产」找到，而且可能被别的项目引用；
+    //    真要一起清，得显式传 deleteFiles，且只删**没有被别处引用**的那些；
+    // 3) 如实回报删了什么、留了什么、副本在哪。
+    deleteProject: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const urls = [...new Set(urlsInProject(project))];
+      // 先把项目记录挪进 .trash（这一步之后它就不再出现在项目列表里，
+      // 也不会被 referencedElsewhere 当成"还在用这个文件"——.trash 是子目录，不在扫描范围内）。
+      const moved = await trashProject(root, id);
+      const files = [];
+      if (input.deleteFiles) {
+        for (const url of urls) {
+          const file = localPathFromArtifactUrl(url, root);
+          if (!file || !(await fileExists(file))) continue;
+          const referenced = await referencedElsewhere(root, file);
+          if (referenced) { files.push({ url, deleted: false, reason: `还被「${referenced}」引用，只移除项目记录` }); continue; }
+          try { await fsp.rm(file, { force: true }); files.push({ url, deleted: true }); }
+          catch (error) { files.push({ url, deleted: false, reason: `删除文件失败：${String(error?.message || error).slice(0, 80)}` }); }
+        }
+      }
+      return {
+        deletedProjectId: id, title: project.title,
+        trashCopy: moved.kept,
+        files,
+        fileDeleted: files.filter(f => f.deleted).length,
+        fileKept: files.filter(f => !f.deleted).length,
+        note: input.deleteFiles
+          ? '项目已移除；产物文件按"没有被别处引用"的规则清理，副本留在 story-projects/.trash/。'
+          : '项目已移除；产物文件**没有动**（还在工作区里，可从「资产」找到）。副本留在 story-projects/.trash/，改回来即可恢复。',
+      };
+    },
     // 删掉某一版产出（以及它的文件）。
     // 用户会同一段生成好几版镜头，留着占地方、挑片子时也碍眼——但**删是不可逆的**，
     // 所以三件事必须做对：
@@ -1349,6 +1382,10 @@ export async function handleStoryProjects(ctx, res, body) {
 
 export async function handleStoryProject(ctx, res, id) {
   try { return json(res, 200, { project: await createStoryOrchestrator(ctx).get(id) }); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryProjectDelete(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).deleteProject(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
 }
 
 export async function handleStoryProjectPatch(ctx, res, id, body) {

@@ -88,7 +88,7 @@ import * as confirmRegistry from "./engine/tools/confirm-registry.mjs";
 import { initRefineApi, readRefineJson, runRefineScript, handleRefineStatus, handleRefineList, detectSkillDomain, handleRefineFeedback, handleRefineGenes, handleRefinePlan, handleRefineApprove, handleRefineReject, handleRefineRollback } from "./engine/refine-api.mjs";
 import { initMcpServer, handleMcp } from "./engine/mcp-server.mjs";
 import { initMcpChat } from "./engine/mcp-chat.mjs";
-import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryRunCheck, handleStoryRunCheckMany, handleStoryAssist, handleStoryPortrait, handleStoryAssetRef, handleStoryLint, handleStoryStoryboard, handleStoryAdapt, handleStoryFilm, handleStoryFilmPlan, handleStoryRunDelete, handleStoryRunLocalize, handleStoryLocalizeAll, handleStoryEpisodes, handleStoryEpisodeAdd, handleStoryEpisodeUpdate, handleStoryEpisodeRemove, handleStorySceneAssign, handleStoryScriptStats, handleStoryExportScript, handleStoryPlayground, handleStoryPlaygroundClear, handleStoryMethods, handleStoryMethodDelete, handleStoryMethodCapture, handleStoryMethodApply, handleStoryRecipes, handleStoryRecipesExport, handleStoryRecipesImport, handleStoryRecipeDelete } from "./engine/story-orchestrator.mjs";
+import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryProjectDelete, handleStoryRunPreview, handleStoryRun, handleStoryRunCheck, handleStoryRunCheckMany, handleStoryAssist, handleStoryPortrait, handleStoryAssetRef, handleStoryLint, handleStoryStoryboard, handleStoryAdapt, handleStoryFilm, handleStoryFilmPlan, handleStoryRunDelete, handleStoryRunLocalize, handleStoryLocalizeAll, handleStoryEpisodes, handleStoryEpisodeAdd, handleStoryEpisodeUpdate, handleStoryEpisodeRemove, handleStorySceneAssign, handleStoryScriptStats, handleStoryExportScript, handleStoryPlayground, handleStoryPlaygroundClear, handleStoryMethods, handleStoryMethodDelete, handleStoryMethodCapture, handleStoryMethodApply, handleStoryRecipes, handleStoryRecipesExport, handleStoryRecipesImport, handleStoryRecipeDelete } from "./engine/story-orchestrator.mjs";
 import { startShare, stopShareSync, handleShare, handleShareStatus, handleShareStop } from "./engine/share-api.mjs";
 import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
@@ -1694,6 +1694,9 @@ const API_ROUTES = [
   ["POST", "/api/story/projects", async (res, req) => handleStoryProjects({ root: WS_ROOT }, res, await readBody(req, 4))],
   ["GET", /^\/api\/story\/projects\/([^/]+)$/, (res, req, url, m) => handleStoryProject({ root: WS_ROOT }, res, m[1])],
   ["PATCH", /^\/api\/story\/projects\/([^/]+)$/, async (res, req, url, m) => handleStoryProjectPatch({ root: WS_ROOT }, res, m[1], await readBody(req, 8))],
+  // 删项目：先留一份副本到 story-projects/.trash/（手滑删掉整部戏不可逆）；
+  // 产物文件默认不动，deleteFiles=true 时才清，且只清"没有被别处引用"的
+  ["DELETE", /^\/api\/story\/projects\/([^/]+)$/, async (res, req, url, m) => handleStoryProjectDelete({ root: WS_ROOT }, res, m[1], await readBody(req, 4))],
   ["POST", /^\/api\/story\/projects\/([^/]+)\/run-preview$/, async (res, req, url, m) => handleStoryRunPreview({ root: WS_ROOT, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 8))],
   ["POST", /^\/api\/story\/projects\/([^/]+)\/run$/, async (res, req, url, m) => handleStoryRun({ root: WS_ROOT, generateImage, generateVideo, startVideoJob, checkVideoJob, saveArtifact, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 8))],
   // 收尾一次（查上游任务号）：视频是异步的，创建与收尾必须分开，不能让一个请求干等

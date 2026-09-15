@@ -183,6 +183,20 @@ export async function listProjects(root) {
   return out.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
 }
 
+// 删项目：记录从列表里消失，但**先留一份副本**在 story-projects/.trash/。
+// 删项目比删一版产出严重得多（一部戏的人物、分集、成片历史都在里面），
+// 而"手滑删掉整个项目"是不可逆的——留一份副本的成本只有几 KB。
+// `.trash` 是子目录，listProjects 只扫当前层的 *.json，所以它不会出现在项目列表里。
+export async function trashProject(root, id) {
+  const file = projectPath(root, id);
+  const trash = path.join(projectRoot(root), '.trash');
+  await fs.mkdir(trash, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const kept = path.join(trash, `${id}.${stamp}.json`);
+  await fs.rename(file, kept);
+  return { kept, trashDir: trash };
+}
+
 // 服务启动时清理**孤儿运行**：状态还是 running、但没有 finishedAt 的那些。
 //
 // 为什么只在启动时判：一次生成由某个进程持有，进程没了，那些 running 就永远不会再有人来收尾——

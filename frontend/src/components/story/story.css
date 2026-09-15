@@ -282,6 +282,27 @@
 .story-external { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0; padding: 10px 12px; border: 1px solid var(--pi-warn, #d08770); border-radius: var(--pi-r-sm); background: var(--pi-bg2); font-size: 12px; }
 .story-external .btn-ghost { padding: 5px 10px; font-size: 11px; }
 .story-portrait-warn { font-size: 11px; color: var(--pi-warn, #d08770); }
+/* 项目架：取代原来的下拉框——项目多了要能看见"哪个是什么"、还要能删 */
+.story-projects { border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-md); padding: 10px 12px; background: var(--pi-bg1); margin-bottom: 12px; }
+.story-projects-body { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--pi-border-soft); }
+.story-projects-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.story-projects-bar .story-hint { margin: 0; }
+.story-project-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 380px; overflow: auto; }
+.story-project-item { padding: 8px 10px; border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-sm); background: var(--pi-bg2); }
+.story-project-item.is-current { border-color: var(--pi-accent); }
+.story-project-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.story-project-main strong { font-size: 13px; }
+.story-project-main span { font-size: 11px; color: var(--pi-dim2); }
+/* 强调色底上用 white（与 styles.css 里其他 accent 徽标一致）。
+   注意选择器要写成 `.story-project-main .story-project-badge`：徽标是个 <span>，
+   会被上面的 `.story-project-main span { color: var(--pi-dim2) }` 盖掉——
+   第一版就是两级同权重、结果深灰字压在蓝底上，真机截图里整行字直接看不见。
+   徽标不能靠"大概能看清"。 */
+.story-project-main .story-project-badge { padding: 1px 7px; border-radius: 999px; background: var(--pi-accent); color: #fff; font-weight: 600; }
+.story-project-logline { margin: 4px 0 0; font-size: 11px; color: var(--pi-dim); line-height: 1.6; overflow-wrap: anywhere; }
+.story-project-item .story-actions { margin-top: 6px; }
+.story-project-item .story-actions .btn-ghost { padding: 4px 10px; font-size: 11px; }
+.story-project-item .story-confirm { margin-top: 8px; }
 .story-portrait-empty { width: 100%; aspect-ratio: 1; display: grid; place-items: center; border-radius: var(--pi-r-sm); border: 1px dashed var(--pi-border); background: var(--pi-bg2); color: var(--pi-dim); font-size: 12px; }
 .story-portrait-card strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .story-model-select { max-width: 220px; }
