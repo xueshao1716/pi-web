@@ -11,6 +11,13 @@ function normalizeStored(result, fallbackUrl) {
   return { url: String(fallbackUrl || ''), local: false, reason: '落盘实现未返回结果' };
 }
 
+// 上游把参考图摘掉时（media-inline 落不下来，见 engine/media-inline.mjs），
+// 这一趟就是"没带参考图"的片子。适配器如实上报，编排层把它并进 run.degradation，
+// 于是任务显示「已生成 · 请核对连续性」而不是一个看不出问题的"成功"。
+function adapterNotes(result) {
+  return Array.isArray(result?.notes) ? result.notes.filter(Boolean).map(String) : [];
+}
+
 export function createImageAdapter({ generateImage, saveArtifact }) {
   return {
     async generate({ prompt, model, seed, params = {}, references = [], referenceImages = [] } = {}) {
@@ -65,7 +72,8 @@ export function createVideoAdapter({ generateVideo, saveArtifact }) {
         const result = await generateVideo(model?.provider, model?.id, finalPrompt, body);
         if (!result?.video) return { status: 'failed', error: result?.error || '视频模型未返回片子', model: cleanModel(model) };
         const stored = typeof saveArtifact === 'function' ? normalizeStored(await saveArtifact({ type: 'video', url: result.video, prompt: finalPrompt }), result.video) : { url: result.video, local: true, reason: '' };
-        return { status: 'succeeded', model: cleanModel(model), output: { type: 'video', url: stored.url || result.video, prompt: finalPrompt, ...(stored.local ? {} : { localizeError: stored.reason }) } };
+        const notes = adapterNotes(result);
+        return { status: 'succeeded', model: cleanModel(model), output: { type: 'video', url: stored.url || result.video, prompt: finalPrompt, ...(notes.length ? { degradation: notes } : {}), ...(stored.local ? {} : { localizeError: stored.reason }) } };
       } catch (error) { return { status: 'failed', error: String(error?.message || error).slice(0, 200), model: cleanModel(model) }; }
     },
   };

@@ -8,6 +8,7 @@ import { createImageAdapter, createNovelAdapter, createVideoAdapter } from './st
 import { buildStoryAssistPrompt, parseStoryAssist, buildStoryboardPrompt, parseStoryboard } from './story-assist.mjs';
 import { lintStoryProject } from './story-lint.mjs';
 import { collectFilmClips, concatClips } from './story-film.mjs';
+import { materializeMedia } from './media-inline.mjs';
 import { json } from './http-utils.mjs';
 
 const makeId = () => crypto.randomUUID();
@@ -125,10 +126,21 @@ function pickCapableModel(models, kind) {
 export function createStoryOrchestrator({ root, clock = {}, adapters = {}, generateImage = null, generateVideo = null, saveArtifact = null, saveArtifactFromFile = null, directChat = null, getDefaultModel = null, getModelList = null }) {
   if (!root) throw new Error('story orchestrator 缺少 root');
   const withUpdated = project => ({ ...project, updatedAt: (clock.now || nowIso)() });
+  // 前端模型下拉只能给出 {provider, id}，capabilities 会整个丢掉；而 negotiateCapabilities
+  // 就是靠它判断"这个模型认不认参考图"。丢了就会对**每个显式选中的模型**报
+  // 「当前模型不支持参考资产」，参考图通路被一条假降级关掉（真实项目里 4 次视频运行就是这样）。
+  // 能力是目录里的既有事实，按 provider+id 回查补上，不让一次下拉选择把它抹掉。
+  const withCatalogCapabilities = (model) => {
+    if (!model?.id) return model;
+    if (model.capabilities && Object.keys(model.capabilities).length) return model;
+    const candidates = typeof getModelList === 'function' ? getModelList() : [];
+    const hit = candidates.find(m => m?.provider === model.provider && m?.id === model.id);
+    return hit?.capabilities ? { ...model, capabilities: hit.capabilities } : model;
+  };
   const resolveModel = (explicit, kind, fallback) => {
     const isExplicit = explicit?.id && explicit.id !== 'auto' && explicit.provider !== 'auto';
     const candidates = typeof getModelList === 'function' ? getModelList() : [];
-    return (isExplicit ? explicit : null) || pickCapableModel(candidates, kind) || (typeof getDefaultModel === 'function' ? getDefaultModel() : fallback);
+    return (isExplicit ? withCatalogCapabilities(explicit) : null) || pickCapableModel(candidates, kind) || (typeof getDefaultModel === 'function' ? getDefaultModel() : fallback);
   };
   // 结构化 JSON 任务优先用**非推理**模型：推理模型的思考会混进 content，把 JSON 淹没。
   // handleStoryAssist 早就这么做，storyboard 一开始漏了 —— 2026-09-14 真实调用即踩到：
@@ -163,7 +175,7 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       const beat = findBeat(scene, input?.beatId);
       if (!scene || !beat) throw Object.assign(new Error('sceneId 或 beatId 不存在'), { statusCode: 400 });
       const context = mergeBeatContext(project, scene, beat);
-      const run = createGenerationRun({ ...input, projectId: id, sceneId: scene.id, beatId: beat.id, inputAssets: input?.inputAssets || context.referenceIds.map(assetId => ({ id: assetId, role: 'reference' })) }, clock);
+      const run = createGenerationRun({ ...input, model: withCatalogCapabilities(input?.model), projectId: id, sceneId: scene.id, beatId: beat.id, inputAssets: input?.inputAssets || context.referenceIds.map(assetId => ({ id: assetId, role: 'reference' })) }, clock);
       const compiled = compileStoryPrompt({ bible: project.bible, scene, beat, inherited: context });
       return { project, run, context: { ...compiled, prompt: compiled.text } };
     },
@@ -184,8 +196,17 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       })();
       const run = createGenerationRun({ ...input, kind, model, projectId: id, sceneId: scene.id, beatId: beat.id, beatNo, sceneTitle: scene.title, inputAssets: input.inputAssets || compiled.referenceIds.map(assetId => ({ id: assetId, role: 'reference' })) }, clock);
       // 参考图只在模型声明支持时注入：不支持的模型塞图会 400，反而掩盖真实的降级原因。
-      const referenceImages = run.capabilities.reference ? pickReferenceImages(project, compiled.text) : [];
-      if (referenceImages.length) run.referenceImages = referenceImages;
+      const picked = run.capabilities.reference ? pickReferenceImages(project, compiled.text) : [];
+      if (picked.length) run.referenceImages = picked;
+      // 上送用的那份要和**记录下来的那份**分开：run.referenceImages 会写进项目 JSON，
+      // 内联后的 base64 一张就是 2MB 级，存进产物历史会把项目文件撑爆。
+      // 记录保留原始引用（可追溯引用了哪张定妆照），只有真正发给上游时才换成 base64。
+      const upstreamImages = [];
+      for (const ref of picked) {
+        const r = materializeMedia(ref, { wsRoot: root });
+        if (r.value) upstreamImages.push(r.value);
+        else if (r.note) run.degradation = [...(run.degradation || []), `参考图未上送：${r.note}`];
+      }
       run.status = 'running';
       appendRun(scene, run);
       project.updatedAt = (clock.now || nowIso)();
@@ -197,9 +218,12 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
         return { project, run, context: compiled };
       }
       let result;
-      try { result = await adapter.generate({ prompt: compiled.text, model, seed: run.seed, params: run.params, references: compiled.referenceIds, referenceImages }); }
+      try { result = await adapter.generate({ prompt: compiled.text, model, seed: run.seed, params: run.params, references: compiled.referenceIds, referenceImages: upstreamImages }); }
       catch (error) { result = { status: 'failed', error: String(error?.message || error).slice(0, 300) }; }
       if (result?.output) run.outputAssets = [{ id: `${run.id}-output`, role: 'output', ...result.output }];
+      // 适配器如实上报的降级（例如上游把参考图摘掉了）必须并进来，否则这一趟看起来是"成功"
+      const reported = Array.isArray(result?.output?.degradation) ? result.output.degradation.filter(Boolean).map(String) : [];
+      if (reported.length) run.degradation = [...(run.degradation || []), ...reported];
       if (result?.status === 'succeeded') run.status = run.degradation?.length ? 'degraded' : 'succeeded';
       else { run.status = 'failed'; run.degradation = [...(run.degradation || []), result?.error || '生成失败']; }
       run.finishedAt = (clock.now || nowIso)();

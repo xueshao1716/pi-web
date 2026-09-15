@@ -62,6 +62,104 @@ test('unexpected adapter failure finishes and records a failed run instead of le
   assert.equal((await api.get(p.id)).scenes[0].outputs[0].status,'failed');
 });
 
+// 2026-09-15 实测故障：显式选中的模型只有 {provider,id}（前端下拉就这么给），capabilities
+// 整个丢掉，negotiateCapabilities 于是对**每个显式选中的模型**报「当前模型不支持参考资产」——
+// 参考图通路被一条假降级关掉。真实项目里 4 次视频运行正是这样"成功但没带参考图"。
+test('显式选中的模型要从目录补回 capabilities，不再无差别误报「不支持参考资产」', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-story-caps-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const project = createProject({
+    title: '能力补齐',
+    bible: { characters: [{ id: 'c1', name: '阿宁' }] },
+    scenes: [{ id: 's1', index: 1, title: '一', summary: '', beats: [{ id: 'b1', kind: 'video', prompt: '阿宁站在站台', references: [] }], outputs: [] }],
+  }, { id: () => 'pc' });
+  await writeProject(root, project);
+  let seenModel;
+  const api = createStoryOrchestrator({
+    root,
+    // 前端下拉只会给这两个字段
+    getModelList: () => [{ provider: 'agnes', id: 'agnes-video-2.5-flash', capabilities: { chat: false, video: true, reference: true, keyframe: true, seed: true } }],
+    adapters: { video: { generate: async ({ model }) => { seenModel = model; return { status: 'succeeded', output: { type: 'video', url: '/v.mp4' } }; } } },
+  });
+  const result = await api.runGeneration('pc', { sceneId: 's1', beatId: 'b1', kind: 'video', model: { provider: 'agnes', id: 'agnes-video-2.5-flash' } });
+  assert.equal(result.run.capabilities.reference, true, '显式选模型不能把参考图能力抹掉');
+  assert.equal(result.run.capabilities.keyframe, true);
+  assert.deepEqual(result.run.degradation, undefined, '能力齐备时不该有任何降级提示');
+  assert.equal(result.run.status, 'succeeded');
+  assert.ok(seenModel.capabilities?.reference, '适配器拿到的模型必须带着能力，否则它也没法决定要不要注入参考图');
+});
+
+// 参考图是元枢自己的文件地址，上游只认公网 http(s) 或 base64（见 engine/media-inline.mjs）。
+// 这一条把「编排层内联 → 上送 base64」和「项目里仍记原始引用」两件事一起锁住：
+// 记录里存 base64 会让项目 JSON 被撑爆（一张定妆照就是 2MB 级）。
+test('参考图上送前内联成 base64，但写进项目历史的仍是原始引用', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-story-ref-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const refFile = path.join(root, '生成物', '图片', 'portrait.png');
+  await fs.mkdir(path.dirname(refFile), { recursive: true });
+  await fs.writeFile(refFile, Buffer.from([0x89, 0x50, 0x4e, 0x47, 9, 9]));
+  const refUrl = `/api/ws/file?path=${encodeURIComponent(path.relative(root, refFile))}`;
+  const project = createProject({
+    title: '参考图内联',
+    bible: { characters: [{ id: 'c1', name: '阿宁', refImage: refUrl }] },
+    scenes: [{ id: 's1', index: 1, title: '一', summary: '', beats: [{ id: 'b1', kind: 'video', prompt: '阿宁站在站台', references: [] }], outputs: [] }],
+  }, { id: () => 'pr' });
+  await writeProject(root, project);
+  let handed;
+  const api = createStoryOrchestrator({
+    root,
+    getModelList: () => [{ provider: 'agnes', id: 'agnes-video-2.5-flash', capabilities: { video: true, reference: true, keyframe: true, seed: true } }],
+    adapters: { video: { generate: async ({ referenceImages }) => { handed = referenceImages; return { status: 'succeeded', output: { type: 'video', url: '/v.mp4' } }; } } },
+  });
+  const result = await api.runGeneration('pr', { sceneId: 's1', beatId: 'b1', kind: 'video', model: { provider: 'agnes', id: 'agnes-video-2.5-flash' } });
+  assert.equal(handed.length, 1);
+  assert.match(handed[0], /^data:image\/png;base64,/, '发给上游的必须是上游认的形式');
+  assert.equal(result.run.referenceImages[0], refUrl, '产物历史里记的是原始引用，不是 2MB 的 base64');
+  const reread = await api.get('pr');
+  assert.ok(JSON.stringify(reread).length < 20000, '项目 JSON 不能因为内联而膨胀');
+  assert.equal(reread.scenes[0].outputs[0].referenceImages[0], refUrl);
+});
+
+test('参考图落不下来时摘掉并如实降级，不静默发一趟没有参考图的请求', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-story-refbad-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const project = createProject({
+    title: '参考图缺失',
+    bible: { characters: [{ id: 'c1', name: '阿宁', refImage: '/api/ws/file?path=%E6%B2%A1%E6%9C%89%E8%BF%99%E5%BC%A0.png' }] },
+    scenes: [{ id: 's1', index: 1, title: '一', summary: '', beats: [{ id: 'b1', kind: 'video', prompt: '阿宁站在站台', references: [] }], outputs: [] }],
+  }, { id: () => 'pb' });
+  await writeProject(root, project);
+  let handed = 'never-called';
+  const api = createStoryOrchestrator({
+    root,
+    getModelList: () => [{ provider: 'agnes', id: 'agnes-video-2.5-flash', capabilities: { video: true, reference: true, keyframe: true, seed: true } }],
+    adapters: { video: { generate: async ({ referenceImages }) => { handed = referenceImages; return { status: 'succeeded', output: { type: 'video', url: '/v.mp4' } }; } } },
+  });
+  const result = await api.runGeneration('pb', { sceneId: 's1', beatId: 'b1', kind: 'video', model: { provider: 'agnes', id: 'agnes-video-2.5-flash' } });
+  assert.deepEqual(handed, [], '拿不到参考图就不该硬塞一个无效地址过去（那正是 400 的来源）');
+  assert.equal(result.run.status, 'degraded', '没带参考图却报"成功"，用户会以为人物已经锁定了');
+  assert.ok(result.run.degradation.some(d => d.includes('参考图未上送')), `降级原因里要写清为什么：${JSON.stringify(result.run.degradation)}`);
+});
+
+// 上游在创建阶段摘掉参考图时会把原因放在 notes 里（media-api.startVideoJob）。
+// 适配器要如实转成 output.degradation，编排层要并进 run.degradation——否则那一趟看起来是"成功"。
+test('适配器上报的降级要并进 run.degradation，而不是停在 output 里没人看', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-story-notes-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const project = createProject({
+    title: '降级上报',
+    scenes: [{ id: 's1', index: 1, title: '一', summary: '', beats: [{ id: 'b1', kind: 'video', prompt: '开场', references: [] }], outputs: [] }],
+  }, { id: () => 'pn' });
+  await writeProject(root, project);
+  const api = createStoryOrchestrator({
+    root,
+    adapters: { video: { generate: async () => ({ status: 'succeeded', output: { type: 'video', url: '/v.mp4', degradation: ['参考图未上送：上游拒绝了这张图'] } }) } },
+  });
+  const result = await api.runGeneration('pn', { sceneId: 's1', beatId: 'b1', kind: 'video' });
+  assert.equal(result.run.status, 'degraded');
+  assert.ok(result.run.degradation.includes('参考图未上送：上游拒绝了这张图'));
+});
+
 test('runGeneration selects a capable image model when auto is requested', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-story-image-'));
   const project = createProject({ title: '图像故事', scenes: [{ id: 's1', index: 1, title: '一', summary: '', beats: [{ id: 'b1', kind: 'image', prompt: '画面', references: [] }], outputs: [] }] }, { id: () => 'p2', now: () => '2026-09-12T08:00:00.000Z' });

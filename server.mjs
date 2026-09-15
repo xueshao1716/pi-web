@@ -2373,7 +2373,9 @@ const server = http.createServer(async (req, res) => {
     // 路由表无匹配 → 404
     return json(res, 404, { error: "not found" });
   } catch (e) {
-    try { json(res, 500, { error: String(e?.message || e) }); } catch {}
+    // 尊重错误自带的 statusCode（如 readBody 的 413「请求体太大」）：
+    // 一律回 500 会把"客户端发太大了"说成"服务端炸了"，把排查方向带偏。
+    try { json(res, Number(e?.statusCode) || 500, { error: String(e?.message || e) }); } catch {}
   } finally {
     // 请求日志（带 request-id 和耗时，API 路径记录，静态资源不刷屏）
     try {

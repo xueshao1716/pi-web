@@ -3,8 +3,9 @@
 import { json } from "./http-utils.mjs";
 import { httpJsonFetch, httpBufferFetch } from "./http.mjs";
 import { modelCapabilities } from "./model-probe.mjs";
-import { saveArtifact } from "./workspace-api.mjs"; // saveArtifact 定义在 workspace-api（工作空间块拆分时随走）
+import { saveArtifact, WS_ROOT } from "./workspace-api.mjs"; // saveArtifact 定义在 workspace-api（工作空间块拆分时随走）
 import { videoCreateBody, videoPollPath, repairVideoRequest } from "./video-request.mjs";
+import { materializeMedia, materializeVideoBody } from "./media-inline.mjs";
 import { extractPlayableMedia } from "./media-embed.mjs";
 
 let _resolveAuth = null, _readJsonFile = null, _modelsPath = "", _authPath = "", _getModelList = () => [];
@@ -220,6 +221,14 @@ export async function generateTTS(text) {
 export async function generateImage(provider, modelId, prompt, size, image) {
   const resolved = _resolveAuth(provider);
   if (!resolved) return null;
+  // 参考图同样要落地：上游只认公网 http(s) 或 base64，元枢的 /api/ws/file 地址会被拒。
+  // 落不下来就**明确报错**，不要悄悄退化成纯文生图——那等于把"锁定人物"变成一句假话。
+  let refImage = image;
+  if (image) {
+    const r = materializeMedia(image, { wsRoot: WS_ROOT });
+    if (!r.value) throw new Error(r.note || `参考图无法上送：${String(image).slice(0, 80)}`);
+    refImage = r.value;
+  }
   const baseUrl = resolved.baseUrl || (_readJsonFile(_modelsPath)[provider]?.models || []).find(m => m.id === modelId)?.baseUrl;
   const key = resolved.key;
   const base = (baseUrl || "").replace(/\/+$/, "");
@@ -227,7 +236,7 @@ export async function generateImage(provider, modelId, prompt, size, image) {
   const mkReq = (u) => httpJsonFetch(u, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model: modelId, prompt, n: 1, size: size || "1024x1024", ...(image ? { image } : {}) }),
+    body: JSON.stringify({ model: modelId, prompt, n: 1, size: size || "1024x1024", ...(refImage ? { image: refImage } : {}) }),
     timeout: 180000,
   });
   let r = await mkReq(`${baseNoV1}/v1/images/generations`);
@@ -499,31 +508,35 @@ export async function startVideoJob(provider, modelId, prompt, body = {}) {
   if (auth.error) return auth;
   try {
     const bodyObj = videoCreateBody(modelId, prompt, body);
+    // 出口前把 media 落地：上游只认公网 http(s) 或 base64，元枢自己的 /api/ws/file 地址
+    // 会被它当成"本地文件路径"直接 400（见 media-inline.mjs 顶部实测记录）。
+    const inlined = materializeVideoBody(bodyObj, { wsRoot: WS_ROOT });
+    const notes = inlined.notes;
     const postVideo = (payload) => httpJsonFetch(`${auth.baseNoV1}/v1/videos`, {
       method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.key}` },
       body: JSON.stringify(payload), timeout: 60000,
     });
-    let createR = await postVideo(bodyObj);
+    let createR = await postVideo(inlined.body);
     if (!createR.ok) {
       const t = await createR.text().catch(() => "");
       const err = `视频任务创建失败 ${createR.status}: ${t}`;
-      const repaired = repairVideoRequest(modelId, prompt, { ...body, ...bodyObj }, err);
+      const repaired = repairVideoRequest(modelId, prompt, { ...body, ...inlined.body }, err);
       if (repaired) {
         createR = await postVideo(repaired);
         if (!createR.ok) {
           const t2 = await createR.text().catch(() => "");
-          return { error: explainVideoHttp(createR.status, t2) };
+          return { error: explainVideoHttp(createR.status, t2), notes };
         }
       } else {
-        return { error: explainVideoHttp(createR.status, t) };
+        return { error: explainVideoHttp(createR.status, t), notes };
       }
     }
     const created = await createR.json();
     const taskId = created.task_id || created.id || created.video_id || created.data?.task_id;
     const url = created.url || created.video_url || created.output?.url || created.data?.url;
-    if (url) return { video: url, task_id: taskId };
-    if (!taskId) return { error: "视频接口未返回任务 ID" };
-    return { task_id: taskId, status: "pending" };
+    if (url) return { video: url, task_id: taskId, notes };
+    if (!taskId) return { error: "视频接口未返回任务 ID", notes };
+    return { task_id: taskId, status: "pending", notes };
   } catch (e) { return { error: String(e?.message || e).slice(0, 150) }; }
 }
 
@@ -552,13 +565,15 @@ export async function generateVideo(provider, modelId, prompt, body = {}) {
   const started = await startVideoJob(provider, modelId, prompt, body);
   if (started.error || started.video) return started;
   const taskId = started.task_id;
+  // 创建阶段摘掉过参考图的话，这个问题要跟着结果一路传回来，不能在这里丢掉
+  const notes = Array.isArray(started.notes) ? started.notes : [];
   for (let i = 0; i < 36; i++) {
     await new Promise(r => setTimeout(r, 5000));
     const q = await checkVideoJob(provider, modelId, taskId);
-    if (q.video) return { video: q.video, task_id: taskId };
-    if (q.error && q.status !== "pending") return { error: q.error, task_id: taskId };
+    if (q.video) return { video: q.video, task_id: taskId, notes };
+    if (q.error && q.status !== "pending") return { error: q.error, task_id: taskId, notes };
   }
-  return { error: "视频生成超时（180s）", task_id: taskId };
+  return { error: "视频生成超时（180s）", task_id: taskId, notes };
 }
 
 // POST /api/media —— 工坊短请求：无 task_id 只创建；有 task_id 只查一次

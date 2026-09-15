@@ -26,13 +26,36 @@ export function json(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
+// 读取并解析 JSON 请求体。
+//
+// 超限的处理方式很关键（2026-09-15 真机踩到）：以前是 `reject(); req.destroy()`——
+// 一旦 body 超过上限就**在响应写回之前掐断连接**，客户端只看到一句 `fetch failed`，
+// 连"太大了、上限多少"都拿不到（实测：2.8MB 的 /api/media 请求只报 fetch failed，
+// 排查方向直接被带偏到网络层）。现在改成：判超限后停止累积、把剩下的流量排掉、
+// 抛一个带 statusCode 的错，让调用方能回一个说得清的 413。
 export function readBody(req, maxMB = 2) {
   return new Promise((resolve, reject) => {
     let data = "";
+    let received = 0;
+    let tooLarge = false;
     const max = maxMB * 1024 * 1024;
-    req.on("data", (c) => { data += c; if (data.length > max) { reject(new Error(`body too large (limit ${maxMB}MB)`)); req.destroy(); } });
+    req.on("data", (c) => {
+      received += c.length;
+      if (tooLarge) return; // 已判超限：只把剩余流量丢掉，不再让它占内存
+      data += c;
+      if (data.length > max) {
+        tooLarge = true;
+        data = "";
+        req.resume(); // 把请求体读干净，响应才有机会送达
+        reject(Object.assign(
+          new Error(`请求体超过 ${maxMB}MB 上限（已收到 ${(received / 1048576).toFixed(1)}MB）。请改用文件路径，或减少内联的媒体数据。`),
+          { statusCode: 413 },
+        ));
+      }
+    });
     req.on("end", () => {
-      try { resolve(JSON.parse(data || "{}")); } catch { reject(new Error("invalid JSON")); }
+      if (tooLarge) return;
+      try { resolve(JSON.parse(data || "{}")); } catch { reject(Object.assign(new Error("invalid JSON"), { statusCode: 400 })); }
     });
     req.on("error", reject);
   });

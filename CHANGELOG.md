@@ -8,6 +8,60 @@
 
 ## [Unreleased]
 
+## [2.16.1] - 2026-09-15
+### 修复
+- **连续创作里带参考图的任务必失败：`视频任务创建失败 400: {"code":"invalid_request","message":"media must be
+  a public http(s) URL or base64 data. Local file paths are not supported; ..."}`**
+  根因不是猜的：真实项目「制作台验收」里 5 次视频运行的 `degradation` 全是这一条，
+  而**同一模型**在不带参考图时能正常出片。差别只有一处——带参考图时，元枢把角色定妆照以
+  **自己的相对地址** `/api/ws/file?path=...` 塞进 `images[]`（`run.referenceImages`，
+  由 `story-adapters.mjs:57` 放进创建体、`video-request.mjs:29` 原样转发）。
+  Agnes 只认**公网 http(s) URL 或 base64 data URI**，把相对地址一律当"本地文件路径"拒掉。
+  本地部署给不出公网地址（上游抓不到 127.0.0.1，隧道又是本地系统管的），所以按上游自己给出的
+  另一个选项做：**读文件内联成 base64**。新增 `engine/media-inline.mjs`，在 `startVideoJob`
+  与 `generateImage` 两个出口前落地 media（`media-inline.mjs`、`media-api.mjs`）。
+- **同一模型被报「当前模型不支持参考资产」——一条假降级。** 前端模型下拉只能给 `{provider,id}`，
+  `capabilities` 整个丢掉，于是 `negotiateCapabilities` 对**每个显式选中的模型**都判"不支持参考图"，
+  参考图通路被这条假降级关掉（真实项目里 4 次视频运行就是这样"成功但没带参考图"）。
+  现在按 provider+id 回目录补齐能力（`story-orchestrator.mjs` 的 `withCatalogCapabilities`）。
+
+### 改动
+- **请求体超限不再只留一句 `fetch failed`。** `readBody` 以前超限时 `req.destroy()`——
+  在响应写回**之前**掐断连接，客户端什么都拿不到（实测：2.8MB 的 `/api/media` 请求报的就是
+  光秃秃的 `fetch failed`，排查方向被带偏到网络层）。现在停止累积、排掉剩余流量、抛带
+  `statusCode` 的错，分发层尊重该状态码 → 客户端收到 **413 +「超过 2MB 上限（已收到 2.8MB）」**。
+  顺带：非法 JSON 也从 500 归正为 400（那是客户端的错）。
+  注意 `/api/media` 用的是默认 2MB，而连续创作**不把 media 放进请求体**（内联在服务端做），
+  所以这道墙不在连续创作的路上——它是同一类"错误说不清"的另一处。
+- **参考图落不下来就摘掉并如实降级**，不静默发一趟没有参考图的请求，也不硬失败：
+  超过 8MB 内联上限、文件缺失、空文件、地址解析不到，都会变成 `run.degradation` 里的一句人话。
+  `mode` 跟着修正——不给上游发一个没有 media 的 `reference`/`keyframe` 请求。
+- 适配器如实上报的降级（上游摘掉参考图时 `startVideoJob` 的 `notes`）会并进 `run.degradation`，
+  那一趟于是显示「已生成 · 请核对连续性」，而不是一个看不出问题的"成功"。
+- `run.referenceImages` 记录的仍是**原始引用**：内联后的 base64 一张就是 2MB 级，写进产物历史会把
+  项目 JSON 撑爆；原始引用保留可追溯性。上送用的那份单独算。
+
+### 验证
+- payload 级：把 `globalThis.fetch` 换成记录器，用真实项目里那张真实定妆照（1.51MB）
+  跑真实的 `startVideoJob`。实测 POST 体 2.02MB、`mode=reference`、`images[0]` 以
+  `data:image/png;base64,` 开头、体内**不再出现** `/api/ws/file`，
+  且内联字节与原文件 **sha256 一致**。
+- 真实上游（零成本探针）：全部用**不存在的模型 id**，模型校验必然失败，绝不会建出任务。
+  实测内联后 0.3／0.8／1.5／2.0／2.5／3.0MB 以及真实定妆照（2.02MB）**每一次都带着完整
+  body 到达 Agnes**（返回 `503 model_not_found`，而不是任何 media 报错）。
+  真实定妆照重复 8 次：**8/8 到达**。
+- 全量 `npm test`：1142/1142 通过（新增 10 条 media-inline 契约 + 4 条编排层契约 + 3 条 readBody 契约）。
+- **没有做**、也**不能**由免费探针得出的事，要说清：Agnes **先校验模型、后校验 media**
+  （用一个损坏的 base64 也是先返回 `model_not_found`），所以免费探针**证明不了**"上游接受这个 base64"。
+  "接受 base64" 是它自己那条错误信息里给出的选项，payload 已按该格式发出并逐字节核对。
+  要真正坐实，需要一次真实生成。
+- **一次未复现的失败也记下来**：切换新代码后第一次打 Agnes 时，同一个 2.02MB 请求返回过一次
+  `{"error":"fetch failed"}`；随后完全相同的请求 8/8 成功（首次调用耗时 4.9s，其余 0.7～1.0s，
+  像是重启后代理活性探测那个窗口）。**一个样本不算证据**，我没有把它算成已修或已知原因。
+- 探针里自己踩到的两个坑也补上了守卫（`resolveLocalMedia`）：`wsRoot` 为空时不再按进程 CWD
+  解析（`story-film` 的 `withinRoot` 在空 root 下会放行任意路径），解不出来的 URL 形态值不再被
+  `path.resolve` 拼成 `<wsRoot>\api\ws\file?...` 并谎报"文件不存在"。
+
 ## [2.16.0] - 2026-09-15
 ### 修复
 - **成片合成完刷新就没了。** `assembleFilm` 只把文件存进产物库就返回（`story-orchestrator.mjs`），
