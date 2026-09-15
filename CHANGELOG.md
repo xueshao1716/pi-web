@@ -6,6 +6,48 @@
 
 ## [Unreleased]
 
+## [2.13.0] - 2026-09-15
+### 更正（重要）
+- **上一版我在给用户的回复里说错了元枢的沙箱默认值。** 我写的是"元枢当前是
+  `danger-full-access` 默认，恰好相反"——**这是错的**，那句话来自调研线的一句未核实转述，
+  我没有验证就转给了用户。实测：`checkSandboxCall` 默认 `mode = "workspace-write"`，
+  非法值也回落到它（`engine/yuanshu-sandbox.mjs:44,51`）；**全仓没有任何地方默认
+  `danger-full-access`**。元枢的默认是阶梯中档，不是宽松那端。
+- **同时澄清一句我说得不完整的话**：元枢的沙箱阶梯**只管 yuanshu 这条路**——
+  `gateSandboxCall` 全仓只在 `engine/yuanshu-loop.mjs:117` 被调用；默认主驾的 pi 路径
+  用的是 Pi SDK 自己的工具，不经这道阶梯（元枢在那边只注入审批拦截）。
+  所以"把默认收成 read-only"收的是一条非默认路径。
+
+### 新增
+- **会话级沙箱模式**（`engine/sandbox-session.mjs`）。补齐的是真缺口：原先模式是**写死的**
+  （`unified-chat.mjs` 里 `isPlanLock ? "read-only" : "workspace-write"`），前端没有任何
+  控件、config 也没有开关——想让整个会话只看不改做不到，想整会话放开也做不到，
+  模式什么时候变过更没有记录。
+
+  按 dsh 的"**会话事件即状态、投影出有效值**"（`dsh-sandbox-policy:41-43,114-120`）实现成
+  一条 append-only 的 JSONL，最新一条生效——每次变化都可审计、可回放。两条 dsh 的规矩：
+    · **收紧随时可以，放宽必须写明理由**（dsh 单次升级必须配 justification，会话级同理：
+      没有理由的放宽，在日志里就是一句无据可查的授权）。
+    · **切换的是具名预设，不是一个裸值**（dsh-permission-presets）：`cautious`(read-only) /
+      `standard`(workspace-write) / `trusted`(danger)，各带 label 与说明。
+  另有一条元枢自己的不变量：**计划模式永远强制 read-only**，不会借用会话的放宽。
+
+- **台前**：引擎页新增「沙箱模式（本会话）」——显示当前档、切换预设、放宽时收一句理由、
+  把变化史摊开（时间 / 从哪到哪 / 放宽还是收紧 / 人工还是模型 / 理由）。
+
+### 刻意不改的一项
+**默认值保持 `standard`（workspace-write），没有按 dsh 改成 read-only。** 三条理由写在
+`DEFAULT_PRESET` 旁边：① 阶梯只管 yuanshu 这条非默认路径；② read-only 下写操作转审批、
+无人值守按 fail-closed 拒绝，而元枢的常态是跑长任务，会在第一次写就停住；③
+workspace-write 本身不宽松（禁工作区外路径，`BASH_DANGER_RE` 仍需单独升级）。
+要改成最严只改 `DEFAULT_PRESET` 一行；测试里留了回归锁，改它会挂，逼改的人先读那三条理由。
+
+### API
+`GET /api/sandbox/mode`、`POST /api/sandbox/mode`（缺 sessionId 时回落到最近会话）。
+
+### 验证
+测试 1104/1104（新增 `tests/unit/sandbox-session.test.mjs` 14 条）。
+
 ## [2.12.0] - 2026-09-15
 ### 新增
 - **fork 型子智能体**（`engine/subagent-fork.mjs` + `delegate_fork` 工具）。元枢原先只有
