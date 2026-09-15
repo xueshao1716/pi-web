@@ -424,3 +424,10 @@
 .story-compare-row dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .story-version-badge { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--pi-success); color: #fff; }
 .story-version-pick { margin-left: auto; font-size: 12px; color: var(--pi-dim); display: inline-flex; align-items: center; gap: 4px; }
+
+/* 角色形象变体：一张卡里列出这个人所有形象（基础形象/战斗装束…），点名字就重做那一张 */
+.story-look-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.story-look { display: inline-flex; border-radius: 999px; background: var(--pi-bg2); }
+.story-look.is-done { background: var(--pi-accent-soft); }
+.story-look-btn { border: 0; background: transparent; color: var(--pi-text); font-size: 12px; padding: 2px 8px; cursor: pointer; border-radius: 999px; }
+.story-look-btn:disabled { opacity: .6; cursor: default; }

@@ -121,9 +121,22 @@ test('@资产引用：只挂名字真的出现在这一段里的，带形象变�
   const withRoles = splitRefs(refs, '零点便利店');
   assert.equal(withRoles.find(r => r.name === '零点便利店').role, 'scene');
   assert.equal(withRoles.find(r => r.name === '林晚').role, 'character');
-  // 带形象变体
-  const withVariant = assetRefsForShot({ bible: { characters: [{ name: '林默', variants: ['基础形象', '战斗装束'] }] }, text: '林默冲进房间' });
-  assert.equal(withVariant[0].ref, '@林默-基础形象');
+  // 带形象变体：这一段提到哪张形象就用哪张（looks 是对象数组，不能当字符串拼）
+  const withVariant = assetRefsForShot({
+    bible: { characters: [{ name: '林默', looks: [{ id: 'l1', name: '基础形象', refImage: 'a.png' }, { id: 'l2', name: '战斗装束', refImage: 'b.png' }] }] },
+    text: '林默换上战斗装束冲进房间',
+  });
+  assert.equal(withVariant[0].ref, '@林默-战斗装束', '提到哪张形象就挂哪张');
+  assert.equal(withVariant[0].hasRef, true);
+  // 没提形象 → 只写名字，不硬塞一个变体
+  const noLook = assetRefsForShot({
+    bible: { characters: [{ name: '林默', looks: [{ id: 'l1', name: '基础形象', refImage: 'a.png' }] }] },
+    text: '林默站在门口',
+  });
+  assert.equal(noLook[0].ref, '@林默');
+  assert.equal(noLook[0].hasRef, true, '有形象图就算挂了参考图');
+  // 从没出现过 "[object Object]"——looks 被当字符串拼过就会长这样
+  assert.ok(!JSON.stringify(withVariant).includes('object Object'));
 });
 
 test('分镜 JSON 的 shot/seconds 必须被解析器留下（否则编译器无米下锅）', () => {

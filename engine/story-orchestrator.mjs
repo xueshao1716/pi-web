@@ -124,8 +124,14 @@ export function appendRun(scene, run) {
 // 3) 顺序：角色（人物一致性最要紧）→ 场景 → 道具。
 export function pickReferenceImages(project, sourceText, limit = 4) {
   const text = String(sourceText || '');
-  const hasRef = x => x && (x.refImage || x.ref);
-  const refOf = x => String(x.refImage || x.ref);
+  // 角色可能有多张形象（基础形象/战斗装束…）：**这一段提到哪张就挂哪张**，
+  // 没提到就挂基础形象。只认 refImage 的老逻辑在"换装段落"上必然挂错图。
+  const lookOf = (item) => {
+    const looks = Array.isArray(item?.looks) ? item.looks.filter(l => l?.refImage && l?.name) : [];
+    return looks.find(l => text.includes(String(l.name))) || null;
+  };
+  const hasRef = x => x && (x.refImage || x.ref || lookOf(x));
+  const refOf = x => String(lookOf(x)?.refImage || x.refImage || x.ref);
   const bible = project?.bible || {};
   const mentioned = list => (list || []).filter(x => hasRef(x) && x.name && text.includes(String(x.name)));
   const chars = mentioned(bible.characters);
@@ -796,25 +802,54 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       const adapter = resolvedAdapters.image;
       if (!adapter?.generate) throw Object.assign(new Error('图像引擎未接入'), { statusCode: 503 });
       const model = resolveModel(input.model, 'image', null);
+      // 角色**形象变体**（Pavo 那种「基础形象 / 战斗装束 · 已添加形象 1/2」）：
+      // 一个角色在不同段落要换装/换状态；只留一张定妆照，换装段落就只能靠嘴描述，一致性立刻掉。
+      // 指定 lookName 且不存在时**建一张新的**——这样"生成这张新形象"一步就完成了。
+      const looks = assetType === 'character' && Array.isArray(item.looks) ? item.looks : [];
+      const wantId = String(input.lookId || '').trim();
+      const wantName = String(input.lookName || '').trim();
+      let look = wantId ? looks.find(l => String(l?.id) === wantId) : null;
+      if (!look && wantName) look = looks.find(l => String(l?.name) === wantName) || { id: `look-${String(item.id || 'c')}-${looks.length + 1}`, name: wantName };
+      if (!look && looks.length) look = looks[0];   // 没指定就当作"重做基础形象"
+      // 第一次生成：把基础形象也**登记成一张 look**，角色从此统一有形象列表
+      // （界面上的「已添加形象 1/2」要数得出来；否则"基础形象"是个隐形的第 0 张）。
+      if (!look && assetType === 'character') look = { id: `look-${String(item.id || 'c')}-1`, name: '基础形象' };
       const prompt = assetType === 'character'
-        ? buildPortraitPrompt({ bible: project.bible, character: item })
+        ? buildPortraitPrompt({ bible: project.bible, character: item, look })
         : buildAssetPrompt({ bible: project.bible, assetType, item });
       const result = await adapter.generate({ prompt, model, params: { size: input.size } });
       const url = result?.output?.url;
-      const label = assetType === 'character' ? '定妆照' : `${noun}参考图`;
-      if (!url) return { project, asset: item, assetType, status: 'failed', error: result?.error || `${label}生成失败`, model: result?.model };
+      const label = assetType === 'character' ? (look ? `「${look.name || '基础形象'}」定妆照` : '定妆照') : `${noun}参考图`;
+      if (!url) return { project, asset: item, assetType, look: look || null, status: 'failed', error: result?.error || `${label}生成失败`, model: result?.model };
       const localizeError = result?.output?.localizeError ? String(result.output.localizeError) : '';
+      const patchItem = (x) => {
+        if (x !== item) return x;
+        if (!look) return { ...x, refImage: url };
+        const nextLooks = [...looks];
+        const idx = nextLooks.findIndex(l => String(l?.id) === String(look.id));
+        const entry = { ...(idx >= 0 ? nextLooks[idx] : look), name: String(look.name || '基础形象'), refImage: url };
+        if (idx >= 0) nextLooks[idx] = entry; else nextLooks.push(entry);
+        // 第一张形象同时写回 refImage：参考图挑选与连续性体检此前只认 refImage，
+        // 不让既有功能"看不见"新生成的形象（否则界面有图、生成时不带）。
+        const isBase = String(nextLooks[0]?.id) === String(entry.id);
+        return { ...x, looks: nextLooks, ...(isBase ? { refImage: url } : {}) };
+      };
       const next = withUpdated({
         ...project,
-        bible: { ...project.bible, [key]: list.map(x => (x === item ? { ...x, refImage: url } : x)) },
+        bible: { ...project.bible, [key]: list.map(patchItem) },
       });
       validateProject(next);
       await writeProject(root, next);
       // 参考图也可能没落到本地（下载失败时 saveArtifact 会把外站临时链接原样返回）。
       // 这件事**必须在返回值里说出来**：定妆照是要长期复用的锚点，挂在会过期的外链上，
       // 几天后人物一致性就悄悄失效了——而界面此前看起来是"生成成功"。
+      // 返回**落盘后的那一份**（角色会多出 looks 与回写的 refImage）：调用方与界面按它渲染，
+      // 之前用手拼的 { ...item, refImage } 会在有形象变体时丢掉 looks（测试当场抓到）。
+      const savedItem = (next.bible[key] || []).find(x => String(x?.id) === String(item.id)) || item;
       return {
-        project: next, asset: { ...item, refImage: url }, assetType, image: url, status: result.status, model: result.model,
+        project: next, asset: savedItem,
+        look: look ? { ...look, refImage: url } : null,
+        assetType, image: url, status: result.status, model: result.model,
         ...(localizeError ? { localizeError, note: `${label}已生成，但没能存到本地（${localizeError}）。当前用的是外站临时链接，过期后会失效——可以在设定面板里点「把外站的产物拉到本地」重试下载。` } : {}),
       };
     },

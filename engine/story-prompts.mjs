@@ -110,13 +110,17 @@ export function materialBlock(materials) {
 
 // 角色定妆照提示词：产出「后续所有镜头可复用的形象参考」，不是一张插画。
 // 因此限定单人/正面/中性表情/纯色背景/均匀柔光，并禁止文字与多人。
-export function buildPortraitPrompt({ bible, character } = {}) {
+// look：形象变体（基础形象 / 战斗装束 / 便装…）。一个角色只锁一张脸是不够的——
+// 换装段落必须有一张对应的形象图，否则模型只能靠文字猜，一致性立刻掉。
+export function buildPortraitPrompt({ bible, character, look = null } = {}) {
   const b = normalizeBible(bible);
   const style = Object.entries(b.style).filter(([, value]) => value != null && String(value).trim()).map(([k, v]) => `${k}: ${String(v).trim()}`).join('，');
   const self = entryText(character);
+  const lookName = String(look?.name || '').trim();
   const blocks = [
     '生成一张角色定妆照（character sheet）。它的用途是作为后续所有镜头的人物形象参考，因此必须稳定、可复用，而不是一张有情绪有场景的插画。',
     self ? `## 角色设定\n- ${self}` : '',
+    lookName ? `## 这一张形象\n- 形象名：${lookName}\n- 只换这一张形象要变的部分（服装/状态/装备），**脸、发型、体格必须与角色设定完全一致**——同一张脸的不同形象，不是另一个人。` : '',
     style ? `## 统一视觉风格\n- ${style}` : '',
     '## 硬性要求\n- 单人、正面半身、中性表情、纯色背景、均匀柔光，无强投影。\n- 服装与外貌严格按设定，不要自由发挥或美化。\n- 画面里不要出现任何文字、水印、分镜格、多人。',
   ].filter(Boolean);

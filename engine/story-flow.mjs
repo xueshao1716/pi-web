@@ -35,7 +35,8 @@ export const FLOW_ACTIONS = Object.freeze({
 });
 
 const list = value => (Array.isArray(value) ? value : []);
-const hasRef = item => Boolean(item?.refImage || item?.ref || item?.portrait || item?.anchor);
+const hasRef = item => Boolean(item?.refImage || item?.ref || item?.portrait || item?.anchor
+  || (Array.isArray(item?.looks) && item.looks.some(l => l?.refImage)));
 // 外链：http(s) 开头且不是本机/工作区的产物（工作区产物走 /api/ws/... 或 生成物/ 相对路径）
 const EXTERNAL = /^https?:\/\/(?!127\.0\.0\.1|localhost)/i;
 // ⚠️ 产物的 url **不在 run.url 上**，而在 `run.outputAssets[].url`（真机核过：

@@ -65,7 +65,8 @@ export interface Artifact {
 }
 
 export interface StoryAssetRef { id: string; role?: string; weight?: number; type?: string; url?: string; text?: string; prompt?: string; name?: string }
-export interface StoryCharacter { id: string; name: string; refImage?: string; appearance?: string; wardrobe?: string; [key: string]: unknown }
+export interface StoryCharacterLook { id?: string; name?: string; refImage?: string }
+export interface StoryCharacter { id: string; name: string; refImage?: string; appearance?: string; wardrobe?: string; looks?: StoryCharacterLook[]; [key: string]: unknown }
 export interface StoryLocation { id: string; name: string; [key: string]: unknown }
 export interface StoryBible {
   characters: StoryCharacter[]

@@ -271,9 +271,9 @@ export function StoryPanel() {
   const saveBible = () => action('正在保存设定', async () => { if (project) { const r=await StoryApi.patchProject(project.id,{bible:editedBible(project.bible,bibleDraft)});update(r.project);hydrateBible(r.project);setNotice('设定已保存') } })
   // 角色定妆照：生成一张可复用的形象参考图并写回设定；
   // 之后生成画面/视频时编排层会自动把它作为真实参考图注入。
-  const portrait = (character: StoryCharacter) => action(`正在生成「${character.name || character.id}」的定妆照`, async () => {
+  const portrait = (character: StoryCharacter, lookName?: string) => action(`正在生成「${character.name || character.id}」${lookName ? `的「${lookName}」形象` : '的定妆照'}`, async () => {
     if (!project) return
-    const r = await StoryApi.portrait(project.id, { characterId: character.id })
+    const r = await StoryApi.portrait(project.id, { characterId: character.id, ...(lookName ? { lookName } : {}) })
     update(r.project); hydrateBible(r.project)
     if (r.image) setNotice(`「${r.character?.name || character.name || character.id}」的定妆照已保存；后续画面与视频会带上它作为参考图。`)
     else setError(r.error || '定妆照生成失败，请换一个图像模型再试')
@@ -442,9 +442,12 @@ export function StoryPanel() {
     />
     <div aria-live="polite">{busy && <p role="status" className="story-notice">{busy}…</p>}{notice && <p role="status" className="story-notice">{notice}</p>}</div>
     {error && <p role="alert" className="story-notice story-error">{error}</p>}
-    {!project ? <StoryStart busy={Boolean(busy)} onStart={start}><label className="story-model-select">构思模型<select value={planningModel} disabled={Boolean(busy)} onChange={e=>setPlanningModel(e.target.value)}><option value="">自动选择文本模型</option>{models.filter(m=>capable(m,'novel')).map(m=><option key={modelKey(m)} value={modelKey(m)}>{m.name || m.id}</option>)}</select></label></StoryStart> : <div className="story-layout">
-      {/* 流水线状态条：现在该干什么、哪些动作做不了、为什么——判断全在服务端（engine/story-flow.mjs） */}
+    {!project ? <StoryStart busy={Boolean(busy)} onStart={start}><label className="story-model-select">构思模型<select value={planningModel} disabled={Boolean(busy)} onChange={e=>setPlanningModel(e.target.value)}><option value="">自动选择文本模型</option>{models.filter(m=>capable(m,'novel')).map(m=><option key={modelKey(m)} value={modelKey(m)}>{m.name || m.id}</option>)}</select></label></StoryStart> : <>
+      {/* 状态条必须放在 .story-layout **外面**：那是个两列网格（时间线 | 编辑器），
+          当成第一个 grid 子元素塞进去，它自己会占掉 200px 的时间线列，
+          把时间线、编辑器、结果整列挤偏——真机上的"排版乱了"就是这么来的。 */}
       <StoryFlowBar flow={project.flow} busy={Boolean(busy)} onAction={flowAction} />
+      <div className="story-layout">
       <details open={timelineOpen} onToggle={e=>setTimelineOpen(e.currentTarget.open)} className="story-timeline"><summary>分镜时间线 · {project.scenes.reduce((n,s)=>n+s.beats.length,0)} 段</summary><ol>{project.scenes.flatMap(s=>(s.beats.length?s.beats:[emptyBeat]).map(b=>({s,b}))).map(({s,b},i)=>{
         const latest=s.outputs?.filter(r=>r.beatId===b.id).slice(-1)[0]
         return <li key={b.id}><button disabled={Boolean(busy)} aria-current={beat?.id===b.id?'step':undefined} onClick={()=>setSelected(b.id)}><span>第 {i+1} 段 · {kindLabel[b.kind]}{b.dialogue?' · 有台词':''}{b.inputs?.length?` · 素材 ${b.inputs.length}`:''}</span><strong>{b.prompt?.slice(0,48) || b.dialogue?.split('\n')[0]?.slice(0,48) || '等待开场'}</strong><span>{latest?.status==='failed'?'生成失败':latest?.outputAssets?.length?'已有成品':latest?.status==='running'?'正在生成':'待生成'}{b.inheritFromBeatId?' · 承接前文':''}</span></button></li>
@@ -551,7 +554,7 @@ export function StoryPanel() {
         <StorySettings values={bibleDraft} busy={Boolean(busy)} characters={project.bible.characters || []} locations={(project.bible.locations || []) as any} props={(project.bible.props || []) as any} externalAssets={externalAssets} onPortrait={portrait} onAssetRef={assetRef} onLocalizeAll={localizeAll} onChange={setBibleDraft} onSave={saveBible} />
         <StoryProducts project={project} onPick={setSelected} />
       </main>
-    </div>}
+    </div></>}
   </div>
 }
 

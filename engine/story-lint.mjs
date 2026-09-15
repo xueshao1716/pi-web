@@ -39,7 +39,9 @@ export function lintStoryProject(project, { kind = 'image', capabilities = null 
     if (!text(character?.appearance) && !text(character?.description)) {
       add('warn', 'character-no-appearance', `角色「${name}」没有外貌描述：不同镜头容易走样`);
     }
-    if (!text(character?.refImage) && !text(character?.ref)) {
+    // 形象变体也算定妆照：一个角色有多张形象（基础/战斗装束）时，别再说他"没有定妆照"
+    const hasLookImage = Array.isArray(character?.looks) && character.looks.some(l => text(l?.refImage));
+    if (!text(character?.refImage) && !text(character?.ref) && !hasLookImage) {
       add('info', 'character-no-portrait', `角色「${name}」还没有定妆照：生成时只能用文字描述`);
     }
   }

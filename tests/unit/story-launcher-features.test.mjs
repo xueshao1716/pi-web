@@ -316,6 +316,23 @@ test('参考图资产三件共用一条通路：角色/场景/道具都能生成
   assert.equal(ch.character.refImage, '/gen.png');
   assert.match(seen.prompt, /角色定妆照/);
   assert.equal(ch.project.bible.characters[0].refImage, '/gen.png');
+
+  // ── 形象变体：同一张脸的第二套行头 ──
+  // 一个角色只锁一张脸不够：换装段落没有对应形象图，模型只能靠文字猜，一致性立刻掉。
+  const look = await api.generatePortrait('pg', { characterId: 'c1', lookName: '战斗装束' });
+  assert.equal(look.look.name, '战斗装束');
+  assert.match(seen.prompt, /形象名：战斗装束/, '提示词要写清这一张是哪套形象');
+  assert.match(seen.prompt, /脸、发型、体格必须与角色设定完全一致/, '换装不能换脸');
+  const char = look.project.bible.characters[0];
+  assert.equal(char.looks.length, 2, '基础形象 + 新形象');
+  assert.equal(char.looks[1].refImage, '/gen.png');
+  assert.equal(char.looks[1].name, '战斗装束');
+  // 第一张形象同时写回 refImage（老代码只认 refImage，别让它看不见）
+  assert.equal(char.looks[0].refImage, '/gen.png');
+  assert.equal(char.refImage, '/gen.png', '基础形象仍然写 refImage');
+  // 指定已存在的形象名 → 重做那一张，不再新增
+  const again = await api.generatePortrait('pg', { characterId: 'c1', lookName: '战斗装束' });
+  assert.equal(again.project.bible.characters[0].looks.length, 2, '同名形象是重做，不是新增');
   // 空设定要给出可操作的提示，而不是 500
   const bare = await api.create({ title: '空的' });
   await assert.rejects(() => api.generateAssetRef(bare.id, { assetType: 'location' }), /还没有场景/);

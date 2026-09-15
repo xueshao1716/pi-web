@@ -202,7 +202,9 @@ test('参考图也受本地化契约：标出外链，并能一次把全项目�
   assert.match(api, /localize: \(id: string/, '前端要接上全项目补下载');
   assert.match(server, /\/localize\$/);
   assert.match(orchestrator, /localizeProject: async/);
-  assert.match(orchestrator, /generateAssetRef[\s\S]{0,2000}localizeError/, '参考图没落盘时要如实带出来');
+  // 窗口放大到 4000：这段里后来又加了"形象变体"的解析逻辑，2000 字已经不够；
+  // 这条断言的本意是"localizeError 必须出现在 generateAssetRef 里"，窗口太紧只会误报。
+  assert.match(orchestrator, /generateAssetRef[\s\S]{0,4000}localizeError/, '参考图没落盘时要如实带出来');
   assert.match(css, /\.story-external/);
 });
 

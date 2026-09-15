@@ -23,7 +23,7 @@ export default function StorySettings({ values, busy, characters, locations = []
   locations?: RefAsset[]
   props?: RefAsset[]
   externalAssets?: number
-  onPortrait: (character: StoryCharacter) => void
+  onPortrait: (character: StoryCharacter, lookName?: string) => void
   onAssetRef?: (assetType: AssetKind, asset: RefAsset) => void
   onLocalizeAll?: () => void
   onChange: (values: Record<string, string>) => void
@@ -48,19 +48,37 @@ export default function StorySettings({ values, busy, characters, locations = []
           <strong>{g.label}</strong>
           <span className="story-hint">{g.hint}（已有 {n}/{g.list.length}）</span>
         </div>
-        <div className="story-portrait-list">{g.list.map(item => (
-          <div key={item.id} className="story-portrait-card">
-            {item.refImage
-              ? <img src={withFileToken(item.refImage)} alt={`${item.name || item.id} 的参考图`} />
+        <div className="story-portrait-list">{g.list.map(item => {
+          // 角色可能有多张形象（基础形象/战斗装束…）：每张单独生成，卡片上标出「已添加形象 N/M」。
+          // 只锁一张脸不够——换装段落没有对应形象图，模型只能靠文字猜，一致性立刻掉。
+          const looks = g.key === 'character' && Array.isArray((item as any).looks) ? (item as any).looks as { id?: string; name?: string; refImage?: string }[] : []
+          const done = looks.filter(l => l.refImage).length
+          const shown = looks.length ? (looks[0].refImage || item.refImage) : item.refImage
+          return <div key={item.id} className="story-portrait-card">
+            {shown
+              ? <img src={withFileToken(String(shown))} alt={`${item.name || item.id} 的参考图`} />
               : <div className="story-portrait-empty" aria-hidden="true">未生成</div>}
             <strong title={item.name || item.id}>{item.name || item.id}</strong>
+            {looks.length > 0 && <span className="story-hint">已添加形象 {done}/{looks.length}</span>}
             {isExternal(item.refImage) && <span className="story-portrait-warn">外链 · 会过期</span>}
-            <button type="button" className="btn-ghost" disabled={busy}
-              onClick={() => (g.key === 'character' ? onPortrait(item as StoryCharacter) : onAssetRef?.(g.key, item))}>
-              {item.refImage ? '重新生成' : g.cta}
-            </button>
+            {looks.length > 0 && <div className="story-look-list">{looks.map(l => (
+              <span key={l.id || l.name} className={`story-look${l.refImage ? ' is-done' : ''}`} title={l.refImage ? '已生成' : '还没生成'}>
+                <button type="button" className="story-look-btn" disabled={busy}
+                  onClick={() => onPortrait(item as StoryCharacter, l.name)}>{l.name || '形象'}</button>
+              </span>
+            ))}</div>}
+            <div className="story-actions">
+              <button type="button" className="btn-ghost" disabled={busy}
+                onClick={() => (g.key === 'character' ? onPortrait(item as StoryCharacter) : onAssetRef?.(g.key, item))}>
+                {item.refImage ? '重新生成' : g.cta}
+              </button>
+              {g.key === 'character' && <button type="button" className="btn-ghost" disabled={busy}
+                onClick={() => { const name = window.prompt('新形象叫什么？（例如：战斗装束 / 便装 / 雨夜）', ''); if (name && name.trim()) onPortrait(item as StoryCharacter, name.trim()) }}>
+                新增形象
+              </button>}
+            </div>
           </div>
-        ))}</div>
+        })}</div>
       </div>
     })}
     {characters.length > 0 && withRef < characters.length && <p className="story-hint">还没有定妆照的角色只能靠文字描述，人物一致性会差很多。</p>}

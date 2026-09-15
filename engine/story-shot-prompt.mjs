@@ -177,21 +177,29 @@ export function shotFieldsFromBeat(beat = {}) {
 export function assetRefsForShot({ bible = {}, scene = null, text = '', limit = 6 } = {}) {
   const hay = `${text} ${scene?.title || ''} ${scene?.summary || ''}`;
   const refs = [];
-  const push = (name, variants, hasRef = false) => {
+  const push = (name, variant, hasRef = false) => {
     const n = String(name || '').trim();
     if (!n || refs.some(r => r.name === n)) return;
-    const variant = (Array.isArray(variants) ? variants : []).find(v => v) || '';
-    refs.push({ name: n, variant: String(variant).trim(), hasRef, ref: `@${n}${variant ? `-${variant}` : ''}` });
+    const v = String(variant || '').trim();
+    refs.push({ name: n, variant: v, hasRef, ref: `@${n}${v ? `-${v}` : ''}` });
   };
+  // 形象变体：这一段提到哪张形象就用哪张（「林默-战斗装束」或直接出现「战斗装束」），
+  // 没提到就用基础形象。`looks` 是对象数组，别当成字符串拼——那会拼出 "[object Object]"。
+  const lookOf = (item) => {
+    const looks = Array.isArray(item?.looks) ? item.looks.filter(l => l?.name) : [];
+    return looks.find(l => hay.includes(String(l.name))) || null;
+  };
+  const refImageOf = (item) => Boolean(item?.refImage || item?.ref || item?.portrait || item?.anchor || (Array.isArray(item?.looks) && item.looks.some(l => l?.refImage)));
+  const lookNameOf = (item) => String(lookOf(item)?.name || '');
   // 只挂**名字真的出现在这一段里**的资产：全挂等于没挂（这一点在 pickBeatReferences 里已经吃过亏）
   for (const c of bible.characters || []) {
-    if (hay.includes(String(c?.name || ''))) push(c.name, c.variants || c.looks, Boolean(c.refImage || c.ref || c.portrait || c.anchor));
+    if (hay.includes(String(c?.name || ''))) push(c.name, lookNameOf(c), refImageOf(c));
   }
   for (const l of bible.locations || []) {
-    if (hay.includes(String(l?.name || '')) || scene?.title === l?.name) push(l.name, l.variants, Boolean(l.refImage || l.ref || l.anchor));
+    if (hay.includes(String(l?.name || '')) || scene?.title === l?.name) push(l.name, '', refImageOf(l));
   }
   for (const p of bible.props || []) {
-    if (hay.includes(String(p?.name || ''))) push(p.name, p.variants, Boolean(p.refImage || p.ref || p.anchor));
+    if (hay.includes(String(p?.name || ''))) push(p.name, '', refImageOf(p));
   }
   return refs.slice(0, limit);
 }
