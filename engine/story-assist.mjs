@@ -35,19 +35,52 @@ export function cleanBible(source) {
   return { characters: list('characters'), locations: list('locations'), props: list('props'), wardrobe: list('wardrobe'), style, rules: list('rules') };
 }
 
+// 智能填充的解析：**与一键分镜、原著改编共用同一套宽容逻辑**。
+// 这里曾经是个害过人的不一致：storyboard/adapt 早就能从"先复述一段再给 JSON"里把答案抠出来，
+// 而 assist 只做一次 JSON.parse——模型多写一句"好的，以下是草稿"就报
+// 「智能填充返回的内容不是有效 JSON」，用户手里一条线索都没有。
+// 真实模型给的东西五花八门：包一层 assist/draft/data、带 ```json 围栏、前后各写一段解释、
+// 甚至先把提示词里的"已有状态"复述一遍再给答案（取第一个 JSON 就会拿错）。全部宽容处理。
 export function parseStoryAssist(raw) {
   const text = String(raw || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-  let parsed;
-  try { parsed = JSON.parse(text); } catch { throw new Error('智能填充返回的内容不是有效 JSON'); }
-  const scene = parsed.scene && typeof parsed.scene === 'object' ? { title: String(parsed.scene.title || '').trim(), summary: String(parsed.scene.summary || '').trim() } : {};
-  const beat = parsed.beat && typeof parsed.beat === 'object'
-    ? {
-      kind: ['novel', 'image', 'video'].includes(parsed.beat.kind) ? parsed.beat.kind : 'image',
-      prompt: String(parsed.beat.prompt || '').trim(),
-      dialogue: cleanDialogue(firstDialogue(parsed.beat)),
-    }
-    : {};
-  return { ...cleanBible(parsed), scene, beat };
+  const candidates = [];
+  try { candidates.push(JSON.parse(text)); } catch { /* 落到逐个抠对象 */ }
+  candidates.push(...extractJsonObjects(text));
+  if (!candidates.length) {
+    throw new Error(`智能填充返回的内容里找不到 JSON（开头：${text.slice(0, 100) || '(空)'}）。可以换一个构思模型再试，或把想法写具体一些。`);
+  }
+  const failures = [];
+  let anyContent = null;
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    const parsed = candidate.assist || candidate.draft || candidate.data || candidate.result || candidate;
+    const scene = parsed.scene && typeof parsed.scene === 'object'
+      ? { title: String(parsed.scene.title || '').trim(), summary: String(parsed.scene.summary || '').trim() }
+      : {};
+    const beat = parsed.beat && typeof parsed.beat === 'object'
+      ? {
+        kind: ['novel', 'image', 'video'].includes(parsed.beat.kind) ? parsed.beat.kind : 'image',
+        prompt: String(parsed.beat.prompt || '').trim(),
+        dialogue: cleanDialogue(firstDialogue(parsed.beat)),
+      }
+      : {};
+    const bible = cleanBible(parsed);
+    const hasSceneOrBeat = Boolean(scene.title || scene.summary || beat.prompt || beat.dialogue);
+    const hasContent = Boolean(
+      hasSceneOrBeat
+      || bible.characters.length || bible.locations.length || bible.props.length || bible.wardrobe.length
+      || bible.rules.length || Object.keys(bible.style).length,
+    );
+    if (!hasContent) { failures.push(Object.keys(parsed).slice(0, 8).join('/') || '无键'); continue; }
+    // **优先取带 scene/beat 的那个候选**：那才是"这一段的可编辑草稿"。
+    // 模型常常先把提示词里的「已有状态」复述一遍再给答案，而那份复述里也有
+    // characters/locations（看名字完全像一份合格的回答）——唯一的区别是它没有 scene/beat，
+    // 因为 bible 里根本没有这两个字段。只按"有没有内容"挑，就会把复述当成草稿（实测即踩到）。
+    if (hasSceneOrBeat) return { ...bible, scene, beat };
+    if (!anyContent) anyContent = { ...bible, scene, beat };
+  }
+  if (anyContent) return anyContent;
+  throw new Error(`智能填充返回的 JSON 里没有可用内容（试过 ${candidates.length} 个 JSON，顶层键：${failures.join(' | ').slice(0, 140)}；原文开头：${text.slice(0, 120)}）。可以换一个构思模型再试。`);
 }
 
 export function firstDialogue(source) {

@@ -1513,15 +1513,31 @@ export async function handleStoryAssist(ctx, res, id, body) {
       || available.find(m => m?.capabilities?.chat && !m.reasoning)
       || ctx.getDefaultModel();
     const candidates = [requested, fast, ctx.getDefaultModel()].filter((m, i, all) => m?.id && all.findIndex(x => x?.provider === m.provider && x?.id === m.id) === i);
+    const basePrompt = buildStoryAssistPrompt({ title: project.title, logline: project.logline, idea, current: project.bible });
+    // 解析失败**先让同一个模型再答一次**（把"只输出 JSON"说到不能再直白），再换备选模型。
+    // 用户看到的「智能填充返回的内容不是有效 JSON」十有八九就是模型多写了一句开场白——
+    // 换模型是最后手段，不是第一反应（换模型往往还更慢更贵）。
+    const strictPrompt = `${basePrompt}\n\n【补充要求】上一次你的回复无法解析。这一次**只输出那一个 JSON 对象**：不要解释、不要开场白、不要说"好的"、不要 Markdown 代码块、不要在 JSON 前后写任何字。`;
     let lastError = '智能填充模型没有返回内容';
     for (const model of candidates.slice(0, 2)) {
-      try {
-        const result = await ctx.directChat(model, buildStoryAssistPrompt({ title: project.title, logline: project.logline, idea, current: project.bible }), [], { maxTokens: 2200, timeout: 40000 });
-        if (!result?.text) { lastError = `${model.provider}/${model.id} 没有返回内容`; continue; }
-        try { return json(res, 200, { assist: parseStoryAssist(result.text), model: { provider: model.provider || '', id: model.id || '' } }); }
-        catch (error) { lastError = String(error?.message || error); }
-      } catch (error) { lastError = String(error?.message || error); }
+      for (let attempt = 0; attempt < 2; attempt++) {
+        let result = null;
+        try {
+          result = await ctx.directChat(model, attempt === 0 ? basePrompt : strictPrompt, [], { maxTokens: 2200, timeout: 40000 });
+        } catch (error) {
+          lastError = String(error?.message || error);
+          break;
+        }
+        if (!result?.text) { lastError = `${model.provider}/${model.id} 没有返回内容`; break; }
+        try {
+          return json(res, 200, { assist: parseStoryAssist(result.text), model: { provider: model.provider || '', id: model.id || '' }, ...(attempt ? { retried: true } : {}) });
+        } catch (error) {
+          lastError = String(error?.message || error);
+          // 原文留在服务端日志里：不然只能看到"解析不出来"，无从判断是形状不符还是模型跑偏
+          console.log(`[story] 智能填充解析失败（模型 ${model.provider}/${model.id}，第 ${attempt + 1} 次，原文 ${String(result.text).length} 字）：${String(result.text).replace(/\s+/g, ' ').slice(0, 1200)}`);
+        }
+      }
     }
-    throw new Error(lastError);
+    throw Object.assign(new Error(lastError), { statusCode: 502 });
   } catch (e) { return sendError(res, e); }
 }
