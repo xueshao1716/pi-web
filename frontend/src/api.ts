@@ -623,6 +623,21 @@ export const PromiseApi = {
     api<{ ok: boolean; id?: string; status?: string; reason?: string }>('/api/promises/close', { method: 'POST', body: { id, status, evidence } }),
 }
 
+// ── 跨轮目标：引擎侧有三重闸门（回合上限 / 单轮预约 / 错误即解除）。
+// 台前只做"人类给结论"这一侧：武装与结清都只可能来自这里的点击。 ──
+export interface GoalItem {
+  id: string; objective: string; status: 'paused' | 'active' | 'complete' | 'blocked' | string
+  round: number; maxRounds: number; autoAdvance: boolean
+  evidence: string | null; blockedReason: string | null; updatedAt: string
+}
+export const GoalApi = {
+  list: () => api<{ ok: boolean; active: GoalItem | null; goals: GoalItem[] }>('/api/goals'),
+  create: (objective: string, maxRounds?: number, autoAdvance?: boolean) =>
+    api<{ ok: boolean; goal?: GoalItem; reason?: string }>('/api/goals/create', { method: 'POST', body: { objective, maxRounds, autoAdvance } }),
+  action: (id: string, action: 'arm' | 'pause' | 'complete' | 'block', extra: { evidence?: string; reason?: string; autoAdvance?: boolean } = {}) =>
+    api<{ ok: boolean; goal?: GoalItem; reason?: string }>('/api/goals/action', { method: 'POST', body: { id, action, ...extra } }),
+}
+
 // ── 系统面板：说明 / 检测更新 ──
 export const SystemApi = {
   info: () => api<any>('/api/system/info'),

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Check, EyeOff, Scissors, AlertTriangle, RefreshCw, Sprout, Archive, RotateCcw, Handshake, Moon } from 'lucide-react'
+import { ChevronDown, ChevronRight, Check, EyeOff, Scissors, AlertTriangle, RefreshCw, Sprout, Archive, RotateCcw, Handshake, Moon, Target } from 'lucide-react'
 import useSWR from 'swr'
-import { MemoryApi, PromiseApi, type PromisePending } from '../api'
+import { MemoryApi, PromiseApi, GoalApi, type PromisePending } from '../api'
 import EmptyState from '../components/EmptyState'
 
 // ── 记忆园丁视图（08-26 重做）：明细可见 + 人工核对按钮 ──
@@ -78,6 +78,90 @@ function SnapshotSection({ onRestored }: { onRestored: () => void }) {
             </div>
           ))}
           {items.length > 8 && <p className="text-[10px] text-pi-dim2 px-1">仅列出最近 8 份，共 {data?.total ?? items.length} 份。</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function GoalSection() {
+  const { data, mutate, isLoading } = useSWR('goals', () => GoalApi.list(), { dedupingInterval: 15000 })
+  const [busy, setBusy] = useState('')
+  const [draft, setDraft] = useState('')
+  const [msg, setMsg] = useState('')
+  const goals = data?.goals || []
+  const active = data?.active || null
+  const open = goals.filter(g => g.status === 'paused' || g.status === 'active')
+
+  const act = async (id: string, action: 'arm' | 'pause' | 'complete' | 'block') => {
+    let extra: { evidence?: string; reason?: string } = {}
+    if (action === 'complete') {
+      extra.evidence = prompt('标记「已完成」：写下可核查的证据（文件路径 / 测试名 / 提交号）。留空会记为「无证据」。') || ''
+    } else if (action === 'block') {
+      const r = prompt('标记「受阻」：卡在哪里？') ; if (r === null) return; extra.reason = r
+    }
+    setBusy(id + action); setMsg('')
+    try {
+      const r = await GoalApi.action(id, action, extra)
+      if (!r.ok) setMsg(r.reason || '操作被拒')
+      await mutate()
+    } catch (e: any) { setMsg('操作失败：' + (e?.message || e)) } finally { setBusy('') }
+  }
+  const create = async () => {
+    const text = draft.trim(); if (text.length < 4) return
+    setBusy('create'); setMsg('')
+    try {
+      const r = await GoalApi.create(text)
+      if (!r.ok) setMsg(r.reason || '新建失败'); else setDraft('')
+      await mutate()
+    } catch (e: any) { setMsg('新建失败：' + (e?.message || e)) } finally { setBusy('') }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center mb-2">
+        <h3 className="text-[13px] font-semibold text-pi-text inline-flex items-center gap-1.5"><Target className="w-3.5 h-3.5" />跨轮目标</h3>
+        <span className="ml-auto text-[11px] text-pi-dim2">
+          {isLoading ? '读取中…' : active ? `进行中：第 ${active.round}/${active.maxRounds} 轮` : open.length ? `${open.length} 个未武装` : '没有目标'}
+        </span>
+      </div>
+      <p className="text-[11px] text-pi-dim2 px-1 mb-2">
+        一个目标跨多轮自己往下走。引擎侧有三重闸门：到回合上限自动停、同一轮不重复驱动、出错立刻解除。
+        <span className="text-pi-text">武装与结清只有你能做</span>——它自己宣布完成不算数，重启后也会回到未武装态。
+      </p>
+      {msg && <div className="panel !p-2.5 text-xs text-pi-warning mb-2 flex items-center gap-2"><AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />{msg}</div>}
+      <div className="flex gap-2 mb-2">
+        <input value={draft} onChange={e => setDraft(e.target.value)} placeholder="要它跨轮推进的目标（至少 4 个字）"
+          className="flex-1 min-w-0 input !py-1.5 text-[12px]" onKeyDown={e => { if (e.key === 'Enter') create() }} />
+        <button className="btn-tool text-[11px] !px-2.5 !py-1.5 flex-shrink-0" disabled={busy === 'create' || draft.trim().length < 4} onClick={create}>新建</button>
+      </div>
+      {goals.length === 0 ? (
+        <p className="text-xs text-pi-dim2 px-1">{isLoading ? '正在读取…' : '还没有目标。新建后要先点「武装」才会开始推进。'}</p>
+      ) : (
+        <div className="space-y-2">
+          {goals.slice(0, 6).map(g => (
+            <div key={g.id} className={`panel !p-3 flex items-start gap-2.5 ${g.status === 'complete' ? 'opacity-60' : ''}`}>
+              <span className={`mt-0.5 flex-shrink-0 ${g.status === 'active' ? 'text-pi-accent' : g.status === 'blocked' ? 'text-pi-warning' : 'text-pi-dim2'}`}>
+                {g.status === 'blocked' ? <AlertTriangle className="w-4 h-4" strokeWidth={1.8} /> : <Target className="w-4 h-4" strokeWidth={1.8} />}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] text-pi-text break-all">{g.objective}</div>
+                <div className="text-[10px] text-pi-dim2 mt-0.5">
+                  {g.status === 'active' ? `进行中 · 第 ${g.round}/${g.maxRounds} 轮` : g.status === 'paused' ? '未武装' : g.status === 'complete' ? '已完成' : '受阻'}
+                  {g.evidence ? ` · 证据：${g.evidence}` : g.status === 'complete' ? ' · 无证据' : ''}
+                  {g.blockedReason ? ` · ${g.blockedReason}` : ''}
+                </div>
+              </div>
+              <span className="flex gap-1.5 flex-shrink-0">
+                {(g.status === 'paused') && <button className="btn-tool text-[11px] !px-2 !py-1" disabled={busy === g.id + 'arm'} onClick={() => act(g.id, 'arm')}>武装</button>}
+                {g.status === 'active' && <button className="btn-tool text-[11px] !px-2 !py-1" disabled={busy === g.id + 'pause'} onClick={() => act(g.id, 'pause')}>暂停</button>}
+                {(g.status === 'active' || g.status === 'paused') && <>
+                  <button className="btn-tool text-[11px] !px-2 !py-1 inline-flex items-center gap-1" disabled={busy === g.id + 'complete'} onClick={() => act(g.id, 'complete')}><Check className="w-3 h-3" />已完成</button>
+                  <button className="btn-tool text-[11px] !px-2 !py-1" disabled={busy === g.id + 'block'} onClick={() => act(g.id, 'block')}>受阻</button>
+                </>}
+              </span>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -314,6 +398,9 @@ export default function GardenerView() {
           <p className="text-[10px] text-pi-dim2 mt-1.5">这份读数会随「时间感」一起进提示词：深夜时它先确认你还在忙什么，而不是当成正常工作时间。</p>
         </div>
       )}
+
+      {/* 跨轮目标：引擎侧三重闸门，台前只做"人类给结论"这一侧 */}
+      <GoalSection />
 
       {/* 待兑现承诺：小语自己许下的「明天/回头/下次」，结清只能由人给结论 */}
       <PromiseSection />
