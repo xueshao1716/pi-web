@@ -65,7 +65,7 @@ import { extractPlayableMedia } from "./engine/media-embed.mjs";
 import { MEDIA_TOOL_SCHEMAS, mediaExtraExecutors, formatSensitiveHint, listHostChannels } from "./engine/media-channels.mjs";
 import { TODO_TOOL_SCHEMAS, todoExtraExecutors } from "./engine/yuanshu-todo.mjs";
 import { PLAN_FILES_SCHEMA, planFilesExtraExecutors, initYuanshuWorkmem } from "./engine/yuanshu-workmem.mjs";
-import { DELEGATE_TASK_TOOL, execDelegateTask } from "./engine/yuanshu-delegate.mjs";
+import { DELEGATE_TASK_TOOL, execDelegateTask, DELEGATE_FORK_TOOL, execDelegateFork } from "./engine/yuanshu-delegate.mjs";
 import { initAsrApi, handleAsr } from "./engine/asr-api.mjs";
 import { gardenMemory, scanMemoryHealth, markReviewed, unmarkReviewed, dedupeLog, reviewedKeys, pruneLogBackups } from "./engine/memory-gardener.mjs";
 import { upsertMemoryFact } from "./engine/memory-facts.mjs";
@@ -493,6 +493,7 @@ const UNIFIED_TOOLS = [
   PLAN_FILES_SCHEMA,
   ACTIVATE_SKILL_TOOL,
   DELEGATE_TASK_TOOL,
+  DELEGATE_FORK_TOOL,
 ];
 // ══ 外部思考工具（externalThinking 调试开关，默认关）══
 // 思路：关闭模型原生隐藏思考后，给它一张外部"草稿纸"（think 工具），
@@ -524,6 +525,7 @@ const executeUnifiedTool = createUnifiedToolExecutorGuarded({
     ...todoExtraExecutors(),
     ...planFilesExtraExecutors(),
     delegate_task: execDelegateTask,
+    delegate_fork: execDelegateFork,
   },
 });
 

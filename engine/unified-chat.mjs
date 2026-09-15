@@ -975,7 +975,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
   }
   async function runLockedChat(locked) {
     // history 末条已是 handleChat 改写后的规划指令消息（含需求），直接复用；只传只读工具定义
-    const result = await unifiedChat(chatModel, history, { onTool: onToolStart, onToolEnd, onCheckpoint, params, signal, tools: locked, sandboxMode: "read-only", sandboxWsRoot: _cwd, sandboxAsk: approvalAsk, effects: runContext?.effects, resumeSnapshot: runContext?.resume ? runContext.checkpoint?.historySnapshot : null, resumeCheckpointKind: runContext?.resume ? runContext.checkpoint?.checkpointKind : null, resumeToolPlan: runContext?.resume && runContext.checkpoint?.checkpointKind === "tool_plan" ? runContext.checkpoint?.toolPlan : null, executionContext: { runId: runContext?.runId, sessionId: runContext?.sessionId, attempt: runContext?.attempt, onEvent: runContext?.onEvent, aibodyContext: runContext?.aibodyContext } });
+    const result = await unifiedChat(chatModel, history, { onTool: onToolStart, onToolEnd, onCheckpoint, params, signal, tools: locked, sandboxMode: "read-only", sandboxWsRoot: _cwd, sandboxAsk: approvalAsk, effects: runContext?.effects, resumeSnapshot: runContext?.resume ? runContext.checkpoint?.historySnapshot : null, resumeCheckpointKind: runContext?.resume ? runContext.checkpoint?.checkpointKind : null, resumeToolPlan: runContext?.resume && runContext.checkpoint?.checkpointKind === "tool_plan" ? runContext.checkpoint?.toolPlan : null, executionContext: { runId: runContext?.runId, sessionId: runContext?.sessionId, attempt: runContext?.attempt, onEvent: runContext?.onEvent, aibodyContext: runContext?.aibodyContext, history } });
     if (!result || result.error) {
       clearTask(taskId, "error"); writer.push("error", { message: result?.error || "模型未返回内容" }); finishEmotion(); return;
     }
@@ -1015,7 +1015,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     resumeSnapshot: runContext?.resume ? runContext.checkpoint?.historySnapshot : null,
     resumeCheckpointKind: runContext?.resume ? runContext.checkpoint?.checkpointKind : null,
     resumeToolPlan: runContext?.resume && runContext.checkpoint?.checkpointKind === "tool_plan" ? runContext.checkpoint?.toolPlan : null,
-    executionContext: { runId: runContext?.runId, sessionId: runContext?.sessionId, attempt: runContext?.attempt, onEvent: runContext?.onEvent, aibodyContext: runContext?.aibodyContext },
+    executionContext: { runId: runContext?.runId, sessionId: runContext?.sessionId, attempt: runContext?.attempt, onEvent: runContext?.onEvent, aibodyContext: runContext?.aibodyContext, history },
   };
   let result = await unifiedChat(chatModel, history, chatOpts);
   // The resumed tool plan is consumed before the first model request. Do not
@@ -1101,7 +1101,7 @@ export async function handleUnifiedChat(res, entry, message, sessionId, params, 
     const proModel = routeProCandidate();
     if (proModel && (proModel.provider !== chatModel.provider || proModel.id !== chatModel.id)) {
       writer.push("note", { text: `🚀 模型自报任务超纲，升级 ${proModel.provider}/${proModel.id} 重试${proMatch[1] ? `（原因：${proMatch[1].trim()}）` : ""}…` });
-      const proResult = await unifiedChat(proModel, history, { onTool: onToolStart, onToolEnd, onCheckpoint, params, signal, tools: toolDefs, sandboxMode: chatOpts.sandboxMode, sandboxWsRoot: _cwd, sandboxAsk: approvalAsk, effects: runContext?.effects, resumeSnapshot: null, resumeCheckpointKind: null, resumeToolPlan: null, executionContext: { runId: runContext?.runId, sessionId: runContext?.sessionId, attempt: runContext?.attempt, onEvent: runContext?.onEvent, aibodyContext: runContext?.aibodyContext } });
+      const proResult = await unifiedChat(proModel, history, { onTool: onToolStart, onToolEnd, onCheckpoint, params, signal, tools: toolDefs, sandboxMode: chatOpts.sandboxMode, sandboxWsRoot: _cwd, sandboxAsk: approvalAsk, effects: runContext?.effects, resumeSnapshot: null, resumeCheckpointKind: null, resumeToolPlan: null, executionContext: { runId: runContext?.runId, sessionId: runContext?.sessionId, attempt: runContext?.attempt, onEvent: runContext?.onEvent, aibodyContext: runContext?.aibodyContext, history } });
       if (proResult?.text && !proResult.error) {
         const proTxt = String(proResult.text).trim();
         if (!NEEDS_PRO_RE.test(proTxt)) {

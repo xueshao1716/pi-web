@@ -1,6 +1,7 @@
 // 隔离子任务执行器：一次分析调用 + 可追溯生命周期台账。
 // 子代理仍不是工具执行器；它只返回结构化分析结论，不写文件、不跑命令。
 import { HttpModelAdapter } from "./model-adapter.mjs";
+import { nextSubagentDepth, DEFAULT_MAX_DEPTH } from "./subagent-depth.mjs";
 import path from "node:path";
 import {
   configureSubagentTraces,
@@ -84,6 +85,7 @@ export function initSubagent(options = {}) {
 export async function spawnSubagent({
   task,
   context = [],
+  seed = [],
   model,
   timeoutMs = 120000,
   role = "analyst",
@@ -92,12 +94,18 @@ export async function spawnSubagent({
   signal,
   onEvent,
   aibodyContext,
+  // 嵌套深度闸门。**注意：元枢的子智能体目前没有任何工具**（见下面 SYSTEM），
+  // 所以它派生不出下一层，这道闸门在今天是空转的——保留它是为了 fork 型子智能体
+  // 将来拿到工具时不会绕过上限，以及让 depth 在 trace 里可见。
+  parentDepth = 0,
+  maxDepth = DEFAULT_MAX_DEPTH,
 } = {}) {
   const normalizedRole = safeRole(role);
   const m = model || _getFlashModel() || _getDefaultModel();
   const subagentRunId = makeId("subagent");
   const ordinal = ++_ordinal;
-  const common = { runId: subagentRunId, parentRunId: runId, sessionId, role: normalizedRole, task, model: m, attempt: 1, turn: 1, ordinal };
+  const gate = nextSubagentDepth(parentDepth, { maxDepth });
+  const common = { runId: subagentRunId, parentRunId: runId, sessionId, role: normalizedRole, task, model: m, attempt: 1, turn: 1, ordinal, depth: gate.depth };
   const started = await _traceStore.begin(common);
   rememberInMemoryTrace(started);
   emit(onEvent, "subagent_started", { ...started, result: "", evidence: [] });
@@ -110,6 +118,11 @@ export async function spawnSubagent({
   if (signal?.aborted) {
     await finish({ status: "cancelled", error: "父任务已取消" });
     return { done: false, error: "子任务已取消", cancelled: true, model: m, subagentRunId };
+  }
+  // 深度闸门：超限直接失败并留痕，不派发（与 dsh 的 maxDepth 同向）
+  if (!gate.allowed) {
+    const record = await finish({ status: "failed", error: gate.reason });
+    return { done: false, error: record.error, model: m, subagentRunId, depth: gate.depth };
   }
   if (!m || !_adapterOptions) {
     const record = await finish({ status: "failed", error: "subagent 未初始化或无可用模型" });
@@ -135,6 +148,9 @@ export async function spawnSubagent({
   const messages = [
     { role: "system", content: SYSTEM },
     ...contextMessages(aibodyContext),
+    // fork 型：先给继承来的父对话前缀（真实消息，不是短字符串摘要），
+    // 再给 context（显式补充的最小事实），最后才是本轮子任务。
+    ...(Array.isArray(seed) ? seed.filter((s) => s && (s.role === "user" || s.role === "assistant") && String(s.content || "").trim()).slice(0, 24).map((s) => ({ role: s.role, content: String(s.content) })) : []),
     ...(Array.isArray(context) ? context.map(c => ({ role: "user", content: String(c).slice(0, 600) })).slice(0, 8) : []),
     { role: "user", content: String(task || "").slice(0, 1000) },
   ];
