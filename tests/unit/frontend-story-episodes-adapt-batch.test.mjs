@@ -158,6 +158,9 @@ test('挑片段合成：默认还是原来那套，改了才按你的；挑不�
   assert.match(film, /StoryApi\.filmPlan/, '要先拿到候选清单');
   assert.match(film, /StoryApi\.film\(project\.id, \{ clips: picks \}\)/, '合成时把挑好的版本与顺序送上去');
   assert.match(film, /默认就是原来那套/, '不改也能一键合成——不能为了新功能把老路堵掉');
+  assert.match(film, /先下载到本地再拼/, '外链片段要先下载到本地，这是本地化契约');
+  assert.match(film, /c\.localable/, '可选的版本按"本地已有或能下载"来判，不能只认本地文件');
+  assert.match(film, /外链（合成时先下载到本地）/, '界面要标出哪一版是外链');
   assert.match(film, /aria-label=\{`第 \$\{b\.beatNo\} 段用哪一版`\}/, '每一段要能换版本');
   assert.match(film, /上移|下移/, '顺序就是成片里的先后，要能调');
   assert.match(film, /整段不要/, '要能整段排除');
@@ -171,6 +174,18 @@ test('挑片段合成：默认还是原来那套，改了才按你的；挑不�
   assert.match(orchestrator, /filmPlan: async/);
   assert.match(types, /StoryFilmPlan/);
   assert.match(types, /picks\?: \{ beatId: string; runId: string \}\[\]/);
+});
+
+test('外链产物要有补下载入口（本地化契约：外站链接会自己过期）', () => {
+  const results = read('frontend/src/components/story/StoryResults.tsx')
+  assert.match(workbench, /onLocalize=\{localizeRun\}/, '补下载要接回编排层');
+  assert.match(workbench, /StoryApi\.localizeRun/);
+  assert.match(results, /外链产物 · 下载到本地/);
+  assert.match(results, /\^https\?:/i, '只对真的还是外链的版本显示这个入口');
+  assert.match(workbench, /只补下载、不重新生成|只补下载/, '要说清它不重新生成（不额外花钱）');
+  assert.match(api, /run-localize/);
+  assert.match(server, /run-localize\$/);
+  assert.match(orchestrator, /localizeRun: async/);
 });
 
 test('风格预设：是可选的统一画风，不是又一句自由发挥', () => {

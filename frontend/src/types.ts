@@ -142,12 +142,13 @@ export interface StoryEpisodeGroup { episode: StoryEpisode | null; scenes: { id:
 export interface StoryScene { id: string; index: number; title: string; summary: string; beats: StoryBeat[]; outputs: StoryGenerationRun[]; activeRunId?: string; slug?: StorySceneSlug; episodeId?: string }
 export interface StoryFilm { id: string; url: string; clipCount: number; method: string; beatIds: string[]; picks?: { beatId: string; runId: string }[]; createdAt: string }
 // 合成前的候选清单：同一段可能生成过好几版镜头，用户要能挑哪一版、要哪几段、什么顺序。
-export interface StoryFilmCandidate { runId: string; status: string; seed: number | null; createdAt?: string; url: string; exists: boolean; degradation?: string[] }
+export interface StoryFilmCandidate { runId: string; status: string; seed: number | null; createdAt?: string; url: string; exists: boolean; external?: boolean; downloadable?: boolean; localable?: boolean; degradation?: string[] }
 export interface StoryFilmBeat {
   beatId: string; sceneId: string; sceneTitle: string; beatNo: number
   kind: string; title: string
   candidates: StoryFilmCandidate[]
   usableCount: number
+  externalCount?: number
   recommendedRunId: string
 }
 export interface StoryFilmPlan { beats: StoryFilmBeat[]; usable: number; total: number }

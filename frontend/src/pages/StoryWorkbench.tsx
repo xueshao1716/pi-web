@@ -320,6 +320,15 @@ export function StoryPanel() {
       throw e
     }
   })
+  // 外链产物补下载：入库时下载失败留下的外站临时链接，会自己过期。
+  // 这里只补下载、不重新生成——产物还在，只是没落到本地。
+  const localizeRun = (target: StoryGenerationRun) => action('正在把这一版下载到本地', async () => {
+    if (!project || !scene) return
+    const r = await StoryApi.localizeRun(project.id, { sceneId: scene.id, runId: target.id })
+    update(r.project)
+    if (r.failed) setError(`有 ${r.failed} 个产物还是没能下载到本地：${r.results.filter(x => !x.ok).map(x => x.reason).join('；')}`)
+    else setNotice(`这一版的 ${r.localized} 个产物已下载到本地，地址已换成工作区里的文件——外站链接失效也不影响了。`)
+  })
   const currentRuns = scene?.outputs.filter(r => r.beatId === beat?.id) || []
   const hasOutput = currentRuns.some(r => r.outputAssets?.length)
   // 成片链接来自**项目里存的成片历史**，不是一次性的本地状态——
@@ -422,7 +431,7 @@ export function StoryPanel() {
             </div>}
             <details><summary>编译后的提示词全文</summary><div className="story-prose">{compiled}</div></details>
           </details>}
-        </section>{scene && beat && <StoryResults scene={scene} beat={beat} busy={Boolean(busy)} onRerun={rerun} onCheck={checkOne} onDelete={deleteRun} />}</div>
+        </section>{scene && beat && <StoryResults scene={scene} beat={beat} busy={Boolean(busy)} onRerun={rerun} onCheck={checkOne} onDelete={deleteRun} onLocalize={localizeRun} />}</div>
         <StorySettings values={bibleDraft} busy={Boolean(busy)} characters={project.bible.characters || []} locations={(project.bible.locations || []) as any} props={(project.bible.props || []) as any} onPortrait={portrait} onAssetRef={assetRef} onChange={setBibleDraft} onSave={saveBible} />
         <StoryProducts project={project} onPick={setSelected} />
       </main>

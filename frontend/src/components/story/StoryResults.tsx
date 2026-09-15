@@ -31,7 +31,7 @@ function Assets({ run, saving, onSave }: { run: StoryGenerationRun; saving: bool
   </>
 }
 
-export default function StoryResults({ scene, beat, busy, onRerun, onCheck, onDelete }: { scene: StoryScene; beat: StoryBeat; busy?: boolean; onRerun?: (run: StoryGenerationRun) => void; onCheck?: (run: StoryGenerationRun) => void; onDelete?: (run: StoryGenerationRun, opts: { keepFiles: boolean }) => void }) {
+export default function StoryResults({ scene, beat, busy, onRerun, onCheck, onDelete, onLocalize }: { scene: StoryScene; beat: StoryBeat; busy?: boolean; onRerun?: (run: StoryGenerationRun) => void; onCheck?: (run: StoryGenerationRun) => void; onDelete?: (run: StoryGenerationRun, opts: { keepFiles: boolean }) => void; onLocalize?: (run: StoryGenerationRun) => void }) {
   const runs = (scene.outputs || []).filter(run => run.beatId === beat.id).slice().reverse()
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
@@ -63,6 +63,10 @@ export default function StoryResults({ scene, beat, busy, onRerun, onCheck, onDe
         {onCheck && run.status === 'running' && run.taskId && <button className="btn-ghost" disabled={busy} onClick={() => onCheck(run)}>查一次（任务号 {String(run.taskId).slice(0, 12)}）</button>}
         {/* 同参重跑：有了它，一次偶然的好结果才算真的可复现（ComfyUI 里就是"再跑一次同样的图"） */}
         {onRerun && <button className="btn-ghost" disabled={busy} onClick={() => onRerun(run)}>照这版重跑 · 同 seed{run.seed != null ? ` ${run.seed}` : '（这一版没记 seed）'}</button>}
+        {/* 外链产物：还挂在会过期的外站地址上。给一个"补下载"的入口——
+            本地化契约要求先落到本地，而此前失败之后除了重新生成（再花一次钱）没有补救办法 */}
+        {onLocalize && (run.outputAssets || []).some(a => /^https?:/i.test(String(a.url || ''))) &&
+          <button className="btn-ghost" disabled={busy} onClick={() => onLocalize(run)}>外链产物 · 下载到本地</button>}
         {/* 删掉不要的那几版：同一段常常生成好几版镜头，留着占地方、挑片段时也碍眼 */}
         {onDelete && confirming !== run.id && <button className="btn-ghost" disabled={busy} onClick={() => { setConfirming(run.id); setKeepFiles(false) }}>删除这一版</button>}
       </div>

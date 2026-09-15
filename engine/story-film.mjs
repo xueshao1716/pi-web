@@ -39,6 +39,9 @@ function withinRoot(abs, wsRoot) {
 }
 
 // 按分镜顺序收集可合成的片段：每段取**最后一次成功**的视频产出。
+// 注意：它只看**已经在本地**的文件（同步、不下载）。真正的合成不走这里——
+// 合成必须先把外链下载到本地（docs/NAMING.md 第三节的本地化契约），
+// 那是异步且有失败原因的，在编排层 story-orchestrator.prepareFilmClips 里做。
 export function collectFilmClips(project, wsRoot) {
   const clips = [];
   for (const scene of list(project?.scenes)) {
@@ -62,7 +65,12 @@ export function videoFileOf(run, wsRoot) {
 }
 
 // 合成前的**候选清单**：按分镜顺序列出每一段，以及这一段生成过的所有可用版本。
-// 界面拿它做"选哪一版、要哪几段、什么顺序"。它只读，不改任何东西。
+// 界面拿它做"选哪一版、要哪几段、什么顺序"。它只读，不改任何东西、也**不下载**。
+//
+// 一个版本能不能进片子，取决于两件事：本地文件在不在，或者它是个**能下载的外链**
+// （http/data）。早先这里只认本地文件，于是外链版本在界面上显示成"拼不进去"——
+// 而本地化契约（docs/NAMING.md 第三节）说得很清楚：外站产物**必须先下载到本地**。
+// 拼不进去不是"外链"的错，是没先把它搞到本地。合成时会先下载，所以这里把它算作可用并标出来。
 export function filmPlan(project, wsRoot, { localPathOf = localPathFromArtifactUrl } = {}) {
   const beats = [];
   let beatNo = 0;
@@ -74,17 +82,25 @@ export function filmPlan(project, wsRoot, { localPathOf = localPathFromArtifactU
         .filter(r => ['succeeded', 'degraded'].includes(r.status))
         .map(r => {
           const asset = list(r.outputAssets).find(a => a?.type === 'video' && a.url);
-          const file = localPathOf(asset?.url, wsRoot);
+          const url = String(asset?.url || '');
+          const file = localPathOf(url, wsRoot);
           const exists = Boolean(file && fs.existsSync(file));
-          return { runId: r.id, status: r.status, seed: r.seed ?? null, createdAt: r.createdAt, url: asset?.url || '', exists, degradation: r.degradation || [] };
+          const downloadable = /^(https?:|data:)/i.test(url);
+          return {
+            runId: r.id, status: r.status, seed: r.seed ?? null, createdAt: r.createdAt, url,
+            exists, external: /^https?:/i.test(url), downloadable,
+            // 可用 = 本地已有，或是个能下载的外链（合成时会先下载到本地）
+            localable: exists || downloadable,
+            degradation: r.degradation || [],
+          };
         })
-        // 只把**真能拼进去**的版本算作候选：文件不在的排到最后也不行，得如实标出来
         .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
-      const usable = candidates.filter(c => c.exists);
+      const usable = candidates.filter(c => c.localable);
       beats.push({
         beatId: beat.id, sceneId: scene.id, sceneTitle: scene.title || '', beatNo,
         kind: beat.kind, title: (beat.prompt || beat.dialogue || beat.id).replace(/\s+/g, ' ').slice(0, 60),
         candidates, usableCount: usable.length,
+        externalCount: usable.filter(c => !c.exists).length,
         // 默认推荐：最新的一个可用版本（与"快速合成"一致，用户不改就是原来那版）
         recommendedRunId: usable.length ? usable[usable.length - 1].runId : '',
       });

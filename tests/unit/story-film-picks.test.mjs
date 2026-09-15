@@ -52,24 +52,87 @@ async function addRun(api, root, { runId, beatId, url, status = 'succeeded', cre
   await writeProject(root, { ...project, scenes: [scene] });
 }
 
-test('候选清单：只认真有本地文件的版本，并如实标出文件不在的', async t => {
+test('候选清单：本地已有 vs 需要下载（外链）分得清，真的不可用的也如实标出来', async t => {
   const { root, api } = await setup(t);
   const a = await makeMedia(root, 'a.mp4');
   const gone = await makeMedia(root, 'gone.mp4');
   await addRun(api, root, { runId: 'r1', beatId: 'b1', url: a.url, createdAt: '2026-09-16T01:00:00.000Z' });
   await addRun(api, root, { runId: 'r2', beatId: 'b1', url: gone.url, createdAt: '2026-09-16T02:00:00.000Z' });
-  await fs.rm(gone.abs); // 文件被移走：记录还在，但拼不进去
+  await fs.rm(gone.abs); // 本地文件被移走，地址又不是外链 → 真的拼不了
   await addRun(api, root, { runId: 'r3', beatId: 'b2', url: 'https://cdn.example/x.mp4', createdAt: '2026-09-16T03:00:00.000Z' });
 
   const plan = await api.filmPlan('p1');
   assert.equal(plan.total, 2);
-  assert.equal(plan.usable, 1, '只有 b1 的那一版能拼');
+  assert.equal(plan.usable, 2, '本地文件和**可下载的外链**都算可用——外链的错是"还没下"，不是"拼不了"');
   const b1 = plan.beats[0];
   assert.equal(b1.candidates.length, 2);
-  assert.deepEqual(b1.candidates.map(c => `${c.runId}:${c.exists}`), ['r1:true', 'r2:false'], '文件不在的也要列出来并标 false');
-  assert.equal(b1.recommendedRunId, 'r1', '推荐只能是**真能用**的那一版——推荐一个拼不进去的等于骗人');
-  assert.equal(plan.beats[1].recommendedRunId, '', '外链拼不进去，不推荐');
-  assert.equal(plan.beats[1].candidates[0].url.startsWith('https://'), true);
+  assert.deepEqual(b1.candidates.map(c => `${c.runId}:${c.exists}:${c.localable}`), ['r1:true:true', 'r2:false:false'], '文件没了又不是外链 → 真的不可用');
+  assert.equal(b1.recommendedRunId, 'r1', '推荐的是真能用的那一版');
+  assert.equal(plan.beats[1].recommendedRunId, 'r3', '外链版本可以被推荐：合成时会先下载到本地');
+  assert.equal(plan.beats[1].externalCount, 1, '要能看出这一段是外链、得先下载');
+  assert.equal(plan.beats[1].candidates[0].localable, true);
+});
+
+test('外链片段**先下载到本地**再拼（本地化契约），并把地址写回项目', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-film-ext-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const project = createProject({
+    title: '外链片段',
+    scenes: [{
+      id: 's1', index: 1, title: '一场', summary: '', beats: [{ id: 'b1', kind: 'video', prompt: '镜头', references: [] }],
+      outputs: [{
+        id: 'r1', beatId: 'b1', kind: 'video', status: 'degraded', createdAt: '2026-09-16T01:00:00.000Z', promptText: '镜头',
+        outputAssets: [{ id: 'a1', type: 'video', url: 'https://cdn.example/temp.mp4' }],
+        degradation: ['视频已生成，但没能存到本地（下载失败 HTTP 502）'],
+      }],
+    }],
+  }, { id: () => 'px' });
+  await writeProject(root, project);
+
+  // 假的落盘实现：模拟"下载成功、落回本地"
+  const downloaded = [];
+  const localRel = path.join('生成物', '视频', 'pulled.mp4');
+  const localAbs = path.join(root, localRel);
+  const localUrl = `/api/ws/file?path=${encodeURIComponent(localRel)}`;
+  const api = createStoryOrchestrator({
+    root, clock: { id: () => 'run-x', now: () => '2026-09-16T10:00:00.000Z' },
+    saveArtifact: async ({ url }) => {
+      downloaded.push(url);
+      await fs.mkdir(path.dirname(localAbs), { recursive: true });
+      await fs.writeFile(localAbs, 'pulled-bytes');
+      return { url: localUrl, local: true, reason: '' };
+    },
+    saveArtifactFromFile: async ({ filePath }) => `/saved/${path.basename(filePath)}`,
+  });
+
+  const plan = await api.filmPlan('px');
+  const cand = plan.beats[0].candidates[0];
+  assert.equal(cand.exists, false, '现在还不是本地文件');
+  assert.equal(cand.external, true);
+  assert.equal(cand.localable, true, '外链是可下载的 → 算可用');
+  assert.equal(plan.usable, 1);
+
+  const r = await api.assembleFilm('px', { clips: [{ beatId: 'b1', runId: 'r1' }] });
+  assert.deepEqual(downloaded, ['https://cdn.example/temp.mp4'], '合成前必须先把外链下载到本地');
+  assert.equal(r.clipCount, 1);
+  assert.equal(r.localized.length, 1);
+  assert.equal(r.localized[0].from, 'https://cdn.example/temp.mp4');
+  assert.equal(r.localized[0].beatId, 'b1');
+  const after = (await api.get('px')).scenes[0].outputs[0];
+  assert.match(after.outputAssets[0].url, /^\/api\/ws\/file\?path=/, '外链地址要换成本地地址');
+  assert.equal(after.degradation, undefined, '已经落盘了，"没能存到本地"那条降级说明必须去掉——留着就是假话');
+  assert.deepEqual((await api.get('px')).films[0].localized, [{ beatId: 'b1', runId: 'r1' }]);
+  assert.equal((await api.filmPlan('px')).beats[0].candidates[0].exists, true, '下次再看就已经在本地了，不用重下');
+
+  // 下载不下来：报的是**为什么下不下来**，不是一句含糊的"拼不进去"
+  const proj = await api.get('px');
+  proj.scenes[0].outputs = [{ id: 'r2', beatId: 'b1', kind: 'video', status: 'succeeded', createdAt: '2026-09-16T02:00:00.000Z', outputAssets: [{ id: 'a2', type: 'video', url: 'https://cdn.example/dead.mp4' }] }];
+  await writeProject(root, proj);
+  const failing = createStoryOrchestrator({ root, saveArtifact: async () => ({ url: 'https://cdn.example/dead.mp4', local: false, reason: '下载失败 HTTP 502' }), saveArtifactFromFile: async () => '/saved/x.mp4' });
+  await assert.rejects(() => failing.assembleFilm('px', { clips: [{ beatId: 'b1', runId: 'r2' }] }), /下载失败 HTTP 502/);
+  // 没接入落盘实现：说清是配置问题，而不是含糊的"不在本地"
+  const bare = createStoryOrchestrator({ root, saveArtifactFromFile: async () => '/saved/x.mp4' });
+  await assert.rejects(() => bare.assembleFilm('px', { clips: [{ beatId: 'b1', runId: 'r2' }] }), /落盘实现未接入/);
 });
 
 test('按挑好的版本与顺序合成：成片记下用的是哪一版；挑不出来的逐条说明原因', async t => {
@@ -204,13 +267,73 @@ test('keepFiles：只移除记录、文件留着（用户自己选的那条路�
   assert.ok((await fs.stat(keep.abs)).size > 0);
 });
 
-test('videoFileOf / filmPlan 不碰项目之外的东西：外链与 data URL 一律算"拼不进去"', async () => {
+test('外链产物补下载：只补下载不重新生成；全落下去了才清掉"没落到本地"的说明', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-film-reloc-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const localRel = path.join('生成物', '图片', 'pulled.png');
+  const localAbs = path.join(root, localRel);
+  let attempts = 0;
+  const api = createStoryOrchestrator({
+    root,
+    saveArtifact: async ({ url }) => {
+      attempts += 1;
+      // 第一次失败、第二次成功：这就是"入库时 CDN 抖了一下"的真实形状
+      if (attempts === 1) return { url, local: false, reason: '下载失败 HTTP 502' };
+      await fs.mkdir(path.dirname(localAbs), { recursive: true });
+      await fs.writeFile(localAbs, 'img-bytes');
+      return { url: `/api/ws/file?path=${encodeURIComponent(localRel)}`, local: true, reason: '' };
+    },
+  });
+  const project = createProject({
+    title: '补下载',
+    scenes: [{ id: 's1', index: 1, title: '一', summary: '', beats: [{ id: 'b1', kind: 'image', prompt: 'x', references: [] }],
+      outputs: [{ id: 'r1', beatId: 'b1', kind: 'image', status: 'degraded', createdAt: '2026-09-16T01:00:00.000Z',
+        outputAssets: [{ id: 'a1', type: 'image', url: 'https://cdn.example/temp.png' }],
+        degradation: ['画面已生成，但没能存到本地（下载失败 HTTP 502）'] }] }],
+  }, { id: () => 'pl' });
+  await writeProject(root, project);
+
+  const bad = await api.localizeRun('pl', { sceneId: 's1', runId: 'r1' });
+  assert.equal(bad.localized, 0);
+  assert.equal(bad.failed, 1);
+  assert.match(bad.results[0].reason, /502/, '失败要说清原因');
+  const still = (await api.get('pl')).scenes[0].outputs[0];
+  assert.match(still.outputAssets[0].url, /^https:/, '没下下来就不改地址');
+  assert.ok(still.degradation, '没下下来就不能把"没落到本地"这条说明抹掉——那是假话');
+
+  const good = await api.localizeRun('pl', { sceneId: 's1', runId: 'r1' });
+  assert.equal(good.localized, 1);
+  assert.equal(good.failed, 0);
+  assert.equal(attempts, 2, '只补下载，不重新生成（没有多花一次生成的钱）');
+  const fixed = (await api.get('pl')).scenes[0].outputs[0];
+  assert.match(fixed.outputAssets[0].url, /^\/api\/ws\/file\?path=/, '落下去了就把地址换成工作区里的文件');
+  assert.equal(fixed.degradation, undefined, '全落下去了才清掉那条说明');
+  // 已经在本地的再点一次是幂等的，不会重复下载
+  const again = await api.localizeRun('pl', { sceneId: 's1', runId: 'r1' });
+  assert.equal(again.localized, 0);
+  assert.equal(again.results[0].alreadyLocal, true);
+  assert.equal(attempts, 2);
+  await assert.rejects(() => api.localizeRun('pl', { sceneId: 's1', runId: '不存在' }), /不存在/);
+});
+
+test('filmPlan 只读：不下载、也不碰项目之外的东西（不可用的如实标出来）', async () => {
   const run = { id: 'r', status: 'succeeded', outputAssets: [{ type: 'video', url: 'data:video/mp4;base64,AAAA' }] };
   const got = videoFileOf(run, 'D:/pi-workspace');
-  assert.equal(got.exists, false);
+  assert.equal(got.exists, false, 'data URL 还不是本地文件');
   assert.equal(got.file, '');
   assert.equal(localPathFromArtifactUrl('https://cdn.example/x.mp4', 'D:/pi-workspace'), '');
   const plan = filmPlan({ scenes: [{ id: 's', beats: [{ id: 'b', kind: 'video', prompt: 'x' }], outputs: [{ id: 'r', beatId: 'b', status: 'succeeded', outputAssets: [{ type: 'video', url: 'https://x/y.mp4' }] }] }] }, 'D:/pi-workspace');
-  assert.equal(plan.usable, 0);
-  assert.equal(plan.beats[0].candidates.length, 1, '列表里仍要能看到它，只是标成不可用');
+  assert.equal(plan.usable, 1, '外链算可用（合成时会先下载）');
+  const c = plan.beats[0].candidates[0];
+  assert.equal(c.exists, false);
+  assert.equal(c.external, true);
+  assert.equal(c.downloadable, true);
+  assert.equal(c.localable, true);
+  // data URL 也能落回本地（不需要网络）
+  const dataPlan = filmPlan({ scenes: [{ id: 's', beats: [{ id: 'b', kind: 'video', prompt: 'x' }], outputs: [{ id: 'r', beatId: 'b', status: 'succeeded', outputAssets: [{ type: 'video', url: 'data:video/mp4;base64,AAAA' }] }] }] }, 'D:/pi-workspace');
+  assert.equal(dataPlan.beats[0].candidates[0].localable, true);
+  // 既不是本地文件、也不是可下载地址：真的拼不了，如实标出来
+  const oddPlan = filmPlan({ scenes: [{ id: 's', beats: [{ id: 'b', kind: 'video', prompt: 'x' }], outputs: [{ id: 'r', beatId: 'b', status: 'succeeded', outputAssets: [{ type: 'video', url: '/nope/missing.mp4' }] }] }] }, 'D:/pi-workspace');
+  assert.equal(oddPlan.usable, 0);
+  assert.equal(oddPlan.beats[0].candidates[0].localable, false);
 });

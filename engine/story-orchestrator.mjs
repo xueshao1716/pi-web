@@ -7,7 +7,7 @@ import { compileStoryPrompt, buildPortraitPrompt, buildAssetPrompt } from './sto
 import { createImageAdapter, createNovelAdapter, createVideoAdapter } from './story-adapters.mjs';
 import { buildStoryAssistPrompt, parseStoryAssist, buildStoryboardPrompt, parseStoryboard, buildAdaptPrompt, parseAdapt } from './story-assist.mjs';
 import { lintStoryProject } from './story-lint.mjs';
-import { collectFilmClips, concatClips, filmPlan, videoFileOf, localPathFromArtifactUrl } from './story-film.mjs';
+import { concatClips, filmPlan, localPathFromArtifactUrl } from './story-film.mjs';
 import { materializeMedia } from './media-inline.mjs';
 // seed 的合法区间由上游接口决定（Agnes 图像是 -1..999），权威定义在 media-api 里——
 // 编排层不许自己猜一个范围：上一版就是自己掷了个 2^31 的数，把画面生成全线打挂。
@@ -23,6 +23,7 @@ import { json } from './http-utils.mjs';
 
 const makeId = () => crypto.randomUUID();
 const nowIso = () => new Date().toISOString();
+const fileExists = async file => { try { await fsp.stat(file); return true; } catch { return false; } };
 
 // 视频轮询窗口（多长之后前端**不再自动等**）。可配：`STORY_VIDEO_POLL_MS`，默认 10 分钟。
 // 注意它**不是失败判据**：超窗只是"不再自动等"，任务在上游是死是活要靠「查一次」问出来。
@@ -327,6 +328,70 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
     return available.find(m => m?.capabilities?.chat && !m.reasoning && /agnes-3\.0-flash/i.test(m.id))
       || available.find(m => m?.capabilities?.chat && !m.reasoning)
       || (typeof getDefaultModel === 'function' ? getDefaultModel() : null);
+  };
+  // ── 合成前把片段**搞到本地**（docs/NAMING.md 第三节的本地化契约）──
+  // 外站给的是几小时到几天就失效的临时链接；ffmpeg 也只认本地文件。
+  // 所以遇到外链不是"拼不了"，而是**先下载到本地再拼**——这是契约规定的默认动作。
+  // 早先这里只认"本地已有文件"，把外链判成拼不进去，等于把契约做丢了。
+  //
+  // 只有两种情况才真的拼不了，而且都要说清原因：
+  //   1) 落盘实现没接入（服务端没给 saveArtifact）——配置问题；
+  //   2) 下载失败（SSRF 守卫拦下内网地址、上游 404/502、超过 50MB 等）——saveArtifact 会给出 reason。
+  const localizeClip = async (run) => {
+    const asset = (run.outputAssets || []).find(a => a?.type === 'video' && a.url);
+    const url = String(asset?.url || '');
+    if (!url) return { error: '这一版没有视频成品' };
+    const file = localPathFromArtifactUrl(url, root);
+    if (file && (await fileExists(file))) return { file, url, localized: false };
+    if (!/^(https?:|data:)/i.test(url)) return { error: '这一版的地址既不是本地文件也不是可下载的外链' };
+    if (typeof saveArtifact !== 'function') return { error: '这一版还是外链，而落盘实现未接入（下载不到本地）' };
+    const saved = await saveArtifact({ type: 'video', url, prompt: run.promptText || `${run.beatId || ''} 片段` });
+    if (!saved?.local) return { error: `外链没下载到本地：${saved?.reason || '未知原因'}` };
+    const localFile = localPathFromArtifactUrl(saved.url, root);
+    if (!localFile || !(await fileExists(localFile))) return { error: '下载成功但本地文件找不到（落盘路径解析失败）' };
+    return { file: localFile, url: saved.url, localized: true, from: url };
+  };
+
+  // 挑片段（或"每段取最后一次成功"）→ 逐段搞到本地 → 给出可拼的清单。
+  // 挑不出来的一律进 skipped 带原因：静默少拼一段，比直接报错难查得多。
+  const prepareFilmClips = async (project, input = {}) => {
+    const clips = [];
+    const skipped = [];
+    const localized = [];
+    const collect = async ({ scene, run, beatId, index }) => {
+      if (!['succeeded', 'degraded'].includes(run.status)) {
+        skipped.push({ index, beatId, runId: run.id, reason: `这一版状态是「${run.status}」，没有成品可拼` });
+        return;
+      }
+      const got = await localizeClip(run);
+      if (got.error) { skipped.push({ index, beatId, runId: run.id, reason: got.error }); return; }
+      if (got.localized) localized.push({ beatId, runId: run.id, from: got.from, url: got.url });
+      clips.push({ sceneId: scene.id, beatId, runId: run.id, file: got.file, url: got.url, index });
+    };
+    if (Array.isArray(input.clips)) {
+      for (const [i, pick] of input.clips.entries()) {
+        const runId = String(pick?.runId || '');
+        const beatId = String(pick?.beatId || '');
+        if (!runId || !beatId) { skipped.push({ index: i, beatId, runId, reason: '这一条没写清是哪一段的哪一版' }); continue; }
+        let hit = null;
+        for (const scene of project.scenes || []) {
+          const run = (scene.outputs || []).find(r => String(r.id) === runId);
+          if (run) { hit = { scene, run }; break; }
+        }
+        if (!hit) { skipped.push({ index: i, beatId, runId, reason: '这一版已经不在了（可能刚被删掉）' }); continue; }
+        if (String(hit.run.beatId) !== beatId) { skipped.push({ index: i, beatId, runId, reason: '这一版不属于这一段' }); continue; }
+        await collect({ scene: hit.scene, run: hit.run, beatId, index: i });
+      }
+      return { clips, skipped, localized };
+    }
+    // 没挑就按分镜顺序取"最后一次成功"——外链同样会先下载到本地，不再被静默漏掉
+    for (const scene of project.scenes || []) {
+      for (const beat of scene.beats || []) {
+        const run = [...(scene.outputs || [])].reverse().find(r => r?.beatId === beat.id && ['succeeded', 'degraded'].includes(r.status));
+        if (run) await collect({ scene, run, beatId: beat.id, index: clips.length });
+      }
+    }
+    return { clips, skipped, localized };
   };
   // 收尾共用逻辑：**只此一份**。单条「查一次」与批量收尾必须走同一段判定，
   // 否则两条路的"出片/还在排队/真失败"迟早会给出不一样的说法。
@@ -973,38 +1038,43 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
     //
     // 2026-09-16 补「挑版本」：`clips: [{ beatId, runId }]` 指定**每一段用哪一版、什么顺序**；
     // 不传就退回原行为（每段取最后一次成功、按分镜顺序）。挑不出来的段不静默丢掉——
-    // 逐条进 skipped 回报（文件不在了 / 这一版已被删除 / 这一版不属于这一段）。
+    // 逐条进 skipped 回报（下载不下来 / 这一版已被删除 / 这一版不属于这一段）。
     assembleFilm: async (id, input = {}) => {
       const project = await readProject(root, id);
-      const clips = [];
-      const skipped = [];
-      const picks = Array.isArray(input.clips) ? input.clips : null;
-      if (picks) {
-        for (const [i, pick] of picks.entries()) {
-          const runId = String(pick?.runId || '');
-          const beatId = String(pick?.beatId || '');
-          if (!runId || !beatId) { skipped.push({ index: i, beatId, runId, reason: '这一条没写清是哪一段的哪一版' }); continue; }
-          let hit = null;
-          for (const scene of project.scenes || []) {
-            const run = (scene.outputs || []).find(r => String(r.id) === runId);
-            if (run) { hit = { scene, run }; break; }
-          }
-          if (!hit) { skipped.push({ index: i, beatId, runId, reason: '这一版已经不在了（可能刚被删掉）' }); continue; }
-          if (String(hit.run.beatId) !== beatId) { skipped.push({ index: i, beatId, runId, reason: '这一版不属于这一段' }); continue; }
-          if (!['succeeded', 'degraded'].includes(hit.run.status)) { skipped.push({ index: i, beatId, runId, reason: `这一版状态是「${hit.run.status}」，没有成品可拼` }); continue; }
-          const { asset, file, exists } = videoFileOf(hit.run, root);
-          // 外部链接（http/data）落不到本地就拼不进去：ffmpeg 要读文件，如实说而不是悄悄跳过
-          if (!exists) { skipped.push({ index: i, beatId, runId, reason: asset?.url ? '这一版的片子不在本地（外链或文件已被移走）' : '这一版没有视频成品' }); continue; }
-          clips.push({ sceneId: hit.scene.id, beatId, runId, file, url: asset.url, index: i });
-        }
-        if (!clips.length) {
-          throw Object.assign(new Error(`挑出来的片段一个都拼不了：${skipped.map(s => s.reason).join('；') || '没有选中任何片段'}`), { statusCode: 400, skipped });
-        }
-      } else {
-        clips.push(...collectFilmClips(project, root));
+      const { clips, skipped, localized } = await prepareFilmClips(project, input);
+      if (!clips.length) {
+        const why = skipped.map(s => s.reason).join('；');
+        // "挑过的"和"没挑的"要用不同的话：挑了却一段都拼不了，跟"还没有视频可拼"是两回事
+        const message = Array.isArray(input.clips)
+          ? `挑出来的片段一个都拼不了：${why || '你一段都没选'}`
+          : (skipped.length ? `没有可合成的片段：${why}` : '还没有成功的视频片段可合成：先在某个段落里生成视频');
+        throw Object.assign(new Error(message), { statusCode: 400, skipped });
       }
-      if (!clips.length) throw Object.assign(new Error('还没有成功的视频片段可合成：先在某个段落里生成视频'), { statusCode: 400 });
       if (typeof saveArtifactFromFile !== 'function') throw Object.assign(new Error('产物入库未接入'), { statusCode: 503 });
+      // 外链已经下载到本地了：把地址**写回项目**。否则下次合成又要重下一遍，
+      // 而且界面上会一直挂着一条"没落到本地"的旧状态（契约要求落盘，不是每次现下）。
+      const withLocalized = localized.length
+        ? {
+          ...project,
+          scenes: project.scenes.map(scene => ({
+            ...scene,
+            outputs: (scene.outputs || []).map(run => {
+              const hit = localized.find(l => l.runId === run.id);
+              if (!hit) return run;
+              const next = {
+                ...run,
+                outputAssets: (run.outputAssets || []).map(a => (String(a.url) === hit.from ? { ...a, url: hit.url } : a)),
+              };
+              // 落盘成功了，就把"没能存到本地"那条降级说明去掉——留着它就是在说假话
+              if (Array.isArray(next.degradation)) {
+                const left = next.degradation.filter(d => !/本地|localize/i.test(String(d)));
+                if (left.length !== next.degradation.length) { if (left.length) next.degradation = left; else delete next.degradation; }
+              }
+              return next;
+            }),
+          })),
+        }
+        : project;
       const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'story-film-'));
       try {
         const outFile = path.join(dir, 'film.mp4');
@@ -1018,15 +1088,65 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
           // 记下这一版成片用了哪些段：重排分镜后仍能还原"这版成片是什么时候、由哪些片段拼的"
           beatIds: clips.map(c => c.beatId),
           // 挑版本时还要记住**用的是哪一版**：否则事后分不清这版成片用的是第 2 版还是第 5 版的镜头
-          ...(picks ? { picks: clips.map(c => ({ beatId: c.beatId, runId: c.runId })) } : {}),
+          ...(input.clips ? { picks: clips.map(c => ({ beatId: c.beatId, runId: c.runId })) } : {}),
+          // 这一版成片里有几段是从外链**现下载**到本地的：事后能看出"这些片段当时还是临时链接"
+          ...(localized.length ? { localized: localized.map(l => ({ beatId: l.beatId, runId: l.runId })) } : {}),
           createdAt: (clock.now || nowIso)(),
         };
-        const next = withUpdated({ ...project, films: [...(project.films || []), film] });
+        const next = withUpdated({ ...withLocalized, films: [...(withLocalized.films || []), film] });
         await writeProject(root, next);
-        return { project: next, film, url, clipCount: result.clipCount, method: result.method, beatIds: film.beatIds, skipped };
+        return { project: next, film, url, clipCount: result.clipCount, method: result.method, beatIds: film.beatIds, skipped, localized };
       } finally {
         try { await fsp.rm(dir, { recursive: true, force: true }); } catch {}
       }
+    },
+    // 把某一版还挂在外站的产物**下载到本地**（本地化契约的重试入口）。
+    // 为什么要有这个入口：入库时下载失败（上游 CDN 抖一下、502），项目里留下的就是外站临时链接——
+    // 它是会自己死掉的引用，而此前除了"重新生成一次"（再花一次钱）没有任何补救办法。
+    // 这里只补下载，不重新生成：产物还在，只是没落到本地。
+    localizeRun: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const scene = findScene(project, input.sceneId);
+      const run = (scene?.outputs || []).find(r => String(r.id) === String(input.runId));
+      if (!scene || !run) throw Object.assign(new Error('sceneId 或 runId 不存在（可能已经被删掉了）'), { statusCode: 404 });
+      if (typeof saveArtifact !== 'function') throw Object.assign(new Error('落盘实现未接入，下载不了'), { statusCode: 503 });
+      const results = [];
+      const assets = [];
+      for (const asset of run.outputAssets || []) {
+        const url = String(asset?.url || '');
+        const file = localPathFromArtifactUrl(url, root);
+        if (file && (await fileExists(file))) { results.push({ url, ok: true, alreadyLocal: true }); assets.push(asset); continue; }
+        if (!/^(https?:|data:)/i.test(url)) { results.push({ url, ok: false, reason: '这个地址既不是本地文件也不是可下载的外链' }); assets.push(asset); continue; }
+        const saved = await saveArtifact({ type: asset.type || 'image', url, prompt: run.promptText || `${run.beatId || ''} 产物` });
+        if (saved?.local) {
+          results.push({ url, ok: true, saved: saved.url });
+          assets.push({ ...asset, url: saved.url });
+        } else {
+          results.push({ url, ok: false, reason: saved?.reason || '下载失败' });
+          assets.push(asset);
+        }
+      }
+      const okCount = results.filter(r => r.ok && !r.alreadyLocal).length;
+      const failed = results.filter(r => !r.ok);
+      const next = withUpdated({
+        ...project,
+        scenes: project.scenes.map(s => s.id !== scene.id ? s : {
+          ...s,
+          outputs: (s.outputs || []).map(r => {
+            if (String(r.id) !== String(run.id)) return r;
+            const updated = { ...r, outputAssets: assets };
+            // 全部落下去了才把"没落到本地"那条降级说明去掉；还有没下去的就得留着
+            if (!failed.length && Array.isArray(updated.degradation)) {
+              const left = updated.degradation.filter(d => !/本地|localize/i.test(String(d)));
+              if (left.length !== updated.degradation.length) { if (left.length) updated.degradation = left; else delete updated.degradation; }
+            }
+            return updated;
+          }),
+        }),
+      });
+      validateProject(next);
+      await writeProject(root, next);
+      return { project: next, run: next.scenes.find(s => s.id === scene.id).outputs.find(r => String(r.id) === String(run.id)), results, localized: okCount, failed: failed.length };
     },
     // 删掉某一版产出（以及它的文件）。
     // 用户会同一段生成好几版镜头，留着占地方、挑片子时也碍眼——但**删是不可逆的**，
@@ -1242,6 +1362,10 @@ export async function handleStoryFilmPlan(ctx, res, id) {
 
 export async function handleStoryRunDelete(ctx, res, id, body) {
   try { return json(res, 200, await createStoryOrchestrator(ctx).deleteRun(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryRunLocalize(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).localizeRun(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
 }
 
 export async function handleStoryRecipes(ctx, res, body) {

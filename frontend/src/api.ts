@@ -191,11 +191,13 @@ export const StoryApi = {
   storyboard: (id: string, body: { idea?: string; count?: number; model?: { provider: string; id: string } }) => api<{ project: StoryProject; beatCount: number; sceneCount: number; characters?: number; characterNames?: string[] }>(`/api/story/projects/${encodeURIComponent(id)}/storyboard`, { method: 'POST', body, timeoutMs: 120000 }),
   // 成片合成：按分镜顺序把成功的视频片段拼成长片，并把这一版写回 project.films。
   // 传 clips 就按你挑的版本与顺序拼（同一段生成过好几版镜头时用得上）；不传就退回"每段取最新成功"。
-  film: (id: string, body: { clips?: { beatId: string; runId: string }[] } = {}) => api<{ project: StoryProject; film: StoryFilm; url: string; clipCount: number; method: string; beatIds: string[]; skipped?: { beatId: string; runId: string; reason: string }[] }>(`/api/story/projects/${encodeURIComponent(id)}/film`, { method: 'POST', body, timeoutMs: 900000 }),
+  film: (id: string, body: { clips?: { beatId: string; runId: string }[] } = {}) => api<{ project: StoryProject; film: StoryFilm; url: string; clipCount: number; method: string; beatIds: string[]; skipped?: { beatId: string; runId: string; reason: string }[]; localized?: { beatId: string; runId: string; from: string; url: string }[] }>(`/api/story/projects/${encodeURIComponent(id)}/film`, { method: 'POST', body, timeoutMs: 900000 }),
   // 合成前的候选清单（只读）：哪几段能进片子、各自有哪些版本
   filmPlan: (id: string) => api<StoryFilmPlan>(`/api/story/projects/${encodeURIComponent(id)}/film-plan`),
   // 删掉某一版产出：记录必删，文件只在没有别处引用时才删
   deleteRun: (id: string, body: { sceneId: string; runId: string; force?: boolean; keepFiles?: boolean }) => api<StoryRunDeleteResult>(`/api/story/projects/${encodeURIComponent(id)}/run-delete`, { method: 'POST', body }),
+  // 把某一版还挂在外站的产物下载到本地（只补下载，不重新生成——省钱也保住同一个产物）
+  localizeRun: (id: string, body: { sceneId: string; runId: string }) => api<{ project: StoryProject; run: StoryGenerationRun; results: { url: string; ok: boolean; alreadyLocal?: boolean; saved?: string; reason?: string }[]; localized: number; failed: number }>(`/api/story/projects/${encodeURIComponent(id)}/run-localize`, { method: 'POST', body, timeoutMs: 180000 }),
   // 生成配方：调好的生成设置，可存/套用/导出/导入（跨项目共用）
   recipes: () => api<{ recipes: StoryRecipe[] }>('/api/story/recipes'),
   // 分集：短剧/系列内容的组织单位（场用 episodeId 归属；删集只解绑不删场）

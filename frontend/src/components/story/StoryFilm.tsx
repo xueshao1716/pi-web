@@ -53,7 +53,8 @@ export default function StoryFilm({ project, busy, onDone, onNotice, onError }: 
       const r = await StoryApi.film(project.id, { clips: picks })
       if (r.project) onDone(r.project)
       const skipped = r.skipped || []
-      onNotice(`成片已生成：${r.clipCount} 段拼接完成${r.method === 'copy' ? '（只有一段，直接落盘）' : ''}，按你挑的版本与顺序。${skipped.length ? ` 有 ${skipped.length} 段没拼进去：${skipped.map(s => s.reason).join('；')}` : ''}`)
+      const localized = r.localized || []
+      onNotice(`成片已生成：${r.clipCount} 段拼接完成${r.method === 'copy' ? '（只有一段，直接落盘）' : ''}，按你挑的版本与顺序。${localized.length ? ` 其中 ${localized.length} 段原本是外站临时链接，已先下载到本地再拼（并写回项目）。` : ''}${skipped.length ? ` 有 ${skipped.length} 段没拼进去：${skipped.map(s => s.reason).join('；')}` : ''}`)
       await load()
     } catch (e: any) { onError(e?.message || '合成失败') } finally { setLoading(false) }
   }
@@ -67,6 +68,7 @@ export default function StoryFilm({ project, busy, onDone, onNotice, onError }: 
       <p className="story-hint">
         同一段生成过好几版镜头时，在这里挑。<strong>默认就是原来那套</strong>（每段用最新可用的一版、按分镜顺序）——
         改了才按你的来。列表顺序就是成片里的先后。
+        外站临时链接的片段会<strong>先下载到本地再拼</strong>（并写回项目），不用你手动处理。
       </p>
       {loading && !plan && <p className="story-hint">正在读可用的片段…</p>}
       {msg && <p role="status" className="story-notice">{msg}</p>}
@@ -83,7 +85,7 @@ export default function StoryFilm({ project, busy, onDone, onNotice, onError }: 
             </div>
             {none
               ? <div className="story-film-pick-none">
-                {b.candidates.length ? `这一段有 ${b.candidates.length} 版，但本地都找不到片子了（可能被删或移走）` : '这一段还没有成功的视频；先给它生成一段视频再合成'}
+                {b.candidates.length ? `这一段有 ${b.candidates.length} 版，但都不是可用的片子（文件已被移走，也不是能下载的链接）` : '这一段还没有成功的视频；先给它生成一段视频再合成'}
               </div>
               : <>
                 <select aria-label={`第 ${b.beatNo} 段用哪一版`} disabled={busy || isDropped} value={picked?.runId || ''}
@@ -93,8 +95,8 @@ export default function StoryFilm({ project, busy, onDone, onNotice, onError }: 
                     return [...rest, { beatId: b.beatId, runId: e.target.value }]
                   })}>
                   <option value="">（不选，这一段不进成片）</option>
-                  {b.candidates.filter(c => c.exists).map((c, i) => <option key={c.runId} value={c.runId}>
-                    第 {i + 1} 版 · {statusLabel[c.status] || c.status}{c.seed != null ? ` · seed ${c.seed}` : ''}{c.runId === b.recommendedRunId ? ' ·（最新）' : ''}
+                  {b.candidates.filter(c => c.localable).map((c, i) => <option key={c.runId} value={c.runId}>
+                    第 {i + 1} 版 · {statusLabel[c.status] || c.status}{c.seed != null ? ` · seed ${c.seed}` : ''}{c.runId === b.recommendedRunId ? ' ·（最新）' : ''}{c.exists ? '' : ' · 外链（合成时先下载到本地）'}
                   </option>)}
                 </select>
                 <div className="story-film-pick-actions">

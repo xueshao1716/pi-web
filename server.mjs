@@ -88,7 +88,7 @@ import * as confirmRegistry from "./engine/tools/confirm-registry.mjs";
 import { initRefineApi, readRefineJson, runRefineScript, handleRefineStatus, handleRefineList, detectSkillDomain, handleRefineFeedback, handleRefineGenes, handleRefinePlan, handleRefineApprove, handleRefineReject, handleRefineRollback } from "./engine/refine-api.mjs";
 import { initMcpServer, handleMcp } from "./engine/mcp-server.mjs";
 import { initMcpChat } from "./engine/mcp-chat.mjs";
-import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryRunCheck, handleStoryRunCheckMany, handleStoryAssist, handleStoryPortrait, handleStoryAssetRef, handleStoryLint, handleStoryStoryboard, handleStoryAdapt, handleStoryFilm, handleStoryFilmPlan, handleStoryRunDelete, handleStoryEpisodes, handleStoryEpisodeAdd, handleStoryEpisodeUpdate, handleStoryEpisodeRemove, handleStorySceneAssign, handleStoryScriptStats, handleStoryExportScript, handleStoryPlayground, handleStoryPlaygroundClear, handleStoryMethods, handleStoryMethodDelete, handleStoryMethodCapture, handleStoryMethodApply, handleStoryRecipes, handleStoryRecipesExport, handleStoryRecipesImport, handleStoryRecipeDelete } from "./engine/story-orchestrator.mjs";
+import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryRunCheck, handleStoryRunCheckMany, handleStoryAssist, handleStoryPortrait, handleStoryAssetRef, handleStoryLint, handleStoryStoryboard, handleStoryAdapt, handleStoryFilm, handleStoryFilmPlan, handleStoryRunDelete, handleStoryRunLocalize, handleStoryEpisodes, handleStoryEpisodeAdd, handleStoryEpisodeUpdate, handleStoryEpisodeRemove, handleStorySceneAssign, handleStoryScriptStats, handleStoryExportScript, handleStoryPlayground, handleStoryPlaygroundClear, handleStoryMethods, handleStoryMethodDelete, handleStoryMethodCapture, handleStoryMethodApply, handleStoryRecipes, handleStoryRecipesExport, handleStoryRecipesImport, handleStoryRecipeDelete } from "./engine/story-orchestrator.mjs";
 import { startShare, stopShareSync, handleShare, handleShareStatus, handleShareStop } from "./engine/share-api.mjs";
 import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
@@ -1710,12 +1710,15 @@ const API_ROUTES = [
   ["POST", /^\/api\/story\/projects\/([^/]+)\/lint$/, async (res, req, url, m) => handleStoryLint({ root: WS_ROOT }, res, m[1], await readBody(req, 8))],
   // 一键分镜：从梗概一次生成整场分镜表并追加进项目
   ["POST", /^\/api\/story\/projects\/([^/]+)\/storyboard$/, async (res, req, url, m) => handleStoryStoryboard({ root: WS_ROOT, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 16))],
-  // 成片合成：按分镜顺序把成功的视频片段拼成长片并落盘为正式产物
-  ["POST", /^\/api\/story\/projects\/([^/]+)\/film$/, async (res, req, url, m) => handleStoryFilm({ root: WS_ROOT, saveArtifactFromFile }, res, m[1], await readBody(req, 8))],
+  // 成片合成：按分镜顺序把成功的视频片段拼成长片并落盘为正式产物。
+  // 传 saveArtifact 是因为**外链片段要先下载到本地**（本地化契约），ffmpeg 只认本地文件。
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/film$/, async (res, req, url, m) => handleStoryFilm({ root: WS_ROOT, saveArtifact, saveArtifactFromFile }, res, m[1], await readBody(req, 8))],
   // 合成前的候选清单（只读）：同一段生成过好几版镜头时，挑哪一版、要哪几段、什么顺序
   ["GET", /^\/api\/story\/projects\/([^/]+)\/film-plan$/, (res, req, url, m) => handleStoryFilmPlan({ root: WS_ROOT }, res, m[1])],
   // 删掉某一版产出：记录必删，文件只在**没有别处引用**时才删（删文件不可逆，宁可多留）
   ["POST", /^\/api\/story\/projects\/([^/]+)\/run-delete$/, async (res, req, url, m) => handleStoryRunDelete({ root: WS_ROOT }, res, m[1], await readBody(req, 8))],
+  // 把某一版还挂在外站的产物下载到本地（本地化契约的重试入口：只补下载，不重新生成）
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/run-localize$/, async (res, req, url, m) => handleStoryRunLocalize({ root: WS_ROOT, saveArtifact }, res, m[1], await readBody(req, 8))],
   // 原著改编：小说原文/小说工坊章节 → 分集大纲（集+场+段）一次落进项目。
   // preview=true 只读书报字数，不调模型——先看清要花多少钱再决定。
   ["POST", /^\/api\/story\/projects\/([^/]+)\/adapt$/, async (res, req, url, m) => handleStoryAdapt({ root: WS_ROOT, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList, readNovelBook: readStoryNovelBook }, res, m[1], await readBody(req, 64))],
