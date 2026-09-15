@@ -5,6 +5,7 @@ import { applyStoryDraft, bibleText, editedBible } from '../lib/story-draft'
 import StoryStart from '../components/story/StoryStart'
 import StorySettings from '../components/story/StorySettings'
 import StoryResults from '../components/story/StoryResults'
+import StoryProducts from '../components/story/StoryProducts'
 import '../components/story/story.css'
 
 const emptyBeat: StoryBeat = { id: 'beat-1', kind: 'novel', prompt: '', references: [] }
@@ -193,6 +194,7 @@ export function StoryPanel() {
           {compiled && <details open><summary>本次生成输入</summary><div className="story-prose">{compiled}</div></details>}
         </section>{scene && beat && <StoryResults scene={scene} beat={beat} />}</div>
         <StorySettings values={bibleDraft} busy={Boolean(busy)} characters={project.bible.characters || []} onPortrait={portrait} onChange={setBibleDraft} onSave={saveBible} />
+        <StoryProducts project={project} onPick={setSelected} />
       </main>
     </div>}
   </div>

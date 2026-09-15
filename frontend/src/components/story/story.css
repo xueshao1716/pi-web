@@ -67,6 +67,29 @@
 .story-output img, .story-output video { width: 100%; max-height: 480px; object-fit: contain; background: var(--pi-bg2); border-radius: 12px; margin-top: 12px; }
 .story-output-empty { padding: 36px 16px; background: var(--pi-bg2); color: var(--pi-dim); border-radius: 12px; font-size: 13px; line-height: 1.8; }
 .story-prose { white-space: pre-wrap; line-height: 1.9; font-size: 15px; max-height: 640px; overflow: auto; overflow-wrap: anywhere; padding: 16px 0; }
+/* 本段结果：每个版本一块，全部平铺（新的在最上面），不再只显示最新一版 */
+.story-version { padding-block: 14px; border-top: 1px solid var(--pi-border-soft); }
+.story-version:first-of-type { border-top: 0; }
+.story-version-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.story-version-head strong { font-size: 14px; font-weight: 650; color: var(--pi-text); }
+.story-version-head span { font-size: 12px; color: var(--pi-dim); }
+/* 作品列表：跨段落摊平整个项目跑出过的成品 */
+.story-products { margin-top: 20px; border-top: 1px solid var(--pi-border-soft); padding-top: 12px; }
+.story-products summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; padding-block: 10px; }
+.story-products-title { font-size: 15px; font-weight: 650; color: var(--pi-text); }
+.story-products-count { font-size: 12px; color: var(--pi-dim); }
+.story-product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; padding-top: 8px; }
+.story-product-card { display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-md); background: var(--pi-bg1); min-width: 0; }
+.story-product-card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+.story-product-card-head strong { font-size: 13px; color: var(--pi-text); }
+.story-product-card-head span { font-size: 11px; color: var(--pi-dim); }
+.story-product-meta { font-size: 11px; color: var(--pi-dim2); }
+.story-product-thumb { width: 100%; max-height: 200px; object-fit: contain; background: var(--pi-bg2); border-radius: var(--pi-r-sm); }
+.story-product-prose { font-size: 12px; line-height: 1.7; color: var(--pi-dim); max-height: 120px; overflow: auto; overflow-wrap: anywhere; }
+.story-product-prompt { font-size: 11px; color: var(--pi-dim2); overflow-wrap: anywhere; }
+.story-product-card .story-actions { gap: 8px; }
+.story-product-card .story-actions :is(.btn-ghost) { padding: 6px 10px; font-size: 11px; }
+.story-product-card .story-actions a { font-size: 11px; }
 .story-settings { border-top: 1px solid var(--pi-border-soft); padding-top: 12px; }
 .story-settings summary { cursor: pointer; font-size: 14px; line-height: 1.7; padding-block: 10px; }
 .story-settings summary span { font-size: 12px; color: var(--pi-dim); margin-left: 8px; }
