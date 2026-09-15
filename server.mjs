@@ -28,6 +28,7 @@ import { readActivityRhythm } from "./engine/activity-rhythm.mjs";
 import { settleTurnMemory } from "./engine/turn-memory.mjs";
 import { advanceGoalTurn, noteGoalError, goalPrompt, listGoals, createGoal, armGoal, pauseGoal, settleGoal, disarmAllGoals } from "./engine/goals.mjs";
 import { sandboxModeView, recordSandboxMode } from "./engine/sandbox-session.mjs";
+import { sweepInterruptedRuns } from "./engine/story-store.mjs";
 import { extractPromises, recordPromises, loadPromises, pendingPromises, closePromise, pendingPromiseText } from "./engine/promises.mjs";
 import { createSoilReader } from "./engine/aibody-soil.mjs";
 // ── 会话解析纯函数（拆模块）：消息/文本/图片/文件提取 ──
@@ -87,7 +88,7 @@ import * as confirmRegistry from "./engine/tools/confirm-registry.mjs";
 import { initRefineApi, readRefineJson, runRefineScript, handleRefineStatus, handleRefineList, detectSkillDomain, handleRefineFeedback, handleRefineGenes, handleRefinePlan, handleRefineApprove, handleRefineReject, handleRefineRollback } from "./engine/refine-api.mjs";
 import { initMcpServer, handleMcp } from "./engine/mcp-server.mjs";
 import { initMcpChat } from "./engine/mcp-chat.mjs";
-import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryAssist, handleStoryPortrait, handleStoryLint, handleStoryStoryboard, handleStoryFilm } from "./engine/story-orchestrator.mjs";
+import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryRunPreview, handleStoryRun, handleStoryAssist, handleStoryPortrait, handleStoryLint, handleStoryStoryboard, handleStoryFilm, handleStoryRecipes, handleStoryRecipesExport, handleStoryRecipesImport, handleStoryRecipeDelete } from "./engine/story-orchestrator.mjs";
 import { startShare, stopShareSync, handleShare, handleShareStatus, handleShareStop } from "./engine/share-api.mjs";
 import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
@@ -1684,6 +1685,12 @@ const API_ROUTES = [
   ["POST", /^\/api\/story\/projects\/([^/]+)\/storyboard$/, async (res, req, url, m) => handleStoryStoryboard({ root: WS_ROOT, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 16))],
   // 成片合成：按分镜顺序把成功的视频片段拼成长片并落盘为正式产物
   ["POST", /^\/api\/story\/projects\/([^/]+)\/film$/, async (res, req, url, m) => handleStoryFilm({ root: WS_ROOT, saveArtifactFromFile }, res, m[1], await readBody(req, 8))],
+  // 生成配方（可存/可套用/可导出导入的生成设置）——挂在 /api/story/recipes，与项目平级，因为它跨项目
+  ["GET", "/api/story/recipes", (res) => handleStoryRecipes({ root: WS_ROOT }, res)],
+  ["GET", "/api/story/recipes/export", (res) => handleStoryRecipesExport({ root: WS_ROOT }, res)],
+  ["POST", "/api/story/recipes", async (res, req) => handleStoryRecipes({ root: WS_ROOT }, res, await readBody(req, 4))],
+  ["POST", "/api/story/recipes/import", async (res, req) => handleStoryRecipesImport({ root: WS_ROOT }, res, await readBody(req, 4))],
+  ["DELETE", /^\/api\/story\/recipes\/([^/]+)$/, (res, req, url, m) => handleStoryRecipeDelete({ root: WS_ROOT }, res, m[1])],
   // ── 会话数据库（08-29 真落地：编号/健康度/批量清理；必须先于 :id 正则路由）──
   ["GET", "/api/sessions/db/list", (res) => handleDbList(res)],
   ["GET", "/api/sessions/db/stats", (res) => handleDbStats(res)],
@@ -2416,7 +2423,8 @@ server.on("error", (err) => {
   }
 });
 function startServer() {
-  server.listen(CONFIG.port, CONFIG.host, () => {
+  // async：启动收尾里有需要 await 的清理（例如连续创作的孤儿运行）
+  server.listen(CONFIG.port, CONFIG.host, async () => {
     listenAttempt = 0; // 监听成功 → 重置重试计数
     try { initTuiBridge(server, { token: CONFIG.token, cwd: WS_ROOT }); console.log("  TUI 桥接: ws://…/ws/tui 已就绪"); } catch {}
     console.log("");
@@ -2460,6 +2468,10 @@ function startServer() {
       // 跨轮目标：重启后一律回到未武装态，必须人类重新确认——重启不该自动续跑
       const dg = disarmAllGoals(CONFIG.cwd, { reason: "服务重启后需人类重新确认" });
       if (dg?.disarmed) console.log(`[goals] ${dg.disarmed} 个进行中的目标已解除武装（重启不自动续跑）`);
+      // 连续创作的孤儿运行：状态还是 running、但没有 finishedAt 的那些，持有它的进程已经没了，
+      // 不清理就会永远显示「正在生成」（既不会成功也不会失败）。启动这一刻判它，是确定的。
+      const sw = await sweepInterruptedRuns(WS_ROOT);
+      if (sw?.swept) console.log(`[story] 清理 ${sw.swept} 条被中断的运行（${sw.touched.map(t => `${t.id.slice(0, 8)}×${t.runs}`).join(', ')}）`);
     } catch {}
     // 时间引擎：定时任务调度（触发时跑 unifiedChat + 结果落盘 文档/时间引擎日志.md）
     try {

@@ -1,10 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { negotiateCapabilities, createGenerationRun, appendRun, createStoryOrchestrator } from '../../engine/story-orchestrator.mjs';
-import { createProject, writeProject } from '../../engine/story-store.mjs';
+import { createProject, writeProject, readProject, sweepInterruptedRuns } from '../../engine/story-store.mjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+
+// 按 root+id 读写项目的小包装（sweep 的测试要独立核对磁盘上的结果）
+const api0 = {
+  get: (root, id) => readProject(root, id),
+  create: async (root, input) => { const p = createProject(input, { id: () => `p-${Date.now().toString(36)}` }); await writeProject(root, p); return p },
+};
 
 test('preview is read-only and a continuing novel receives the actual previous prose', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-continuity-'));
@@ -158,6 +164,83 @@ test('适配器上报的降级要并进 run.degradation，而不是停在 output
   const result = await api.runGeneration('pn', { sceneId: 's1', beatId: 'b1', kind: 'video' });
   assert.equal(result.run.status, 'degraded');
   assert.ok(result.run.degradation.includes('参考图未上送：上游拒绝了这张图'));
+});
+
+// 孤儿运行：状态还是 running、但没有 finishedAt 的那些——持有它的进程已经死了，
+// 不清理就会永远显示「正在生成」（真实案例：用户项目里挂着一条 07:40:12 的 running，
+// 被重启服务打断，既不会成功也不会失败）。启动这一刻判它，是确定的，不需要超时猜测。
+test('启动时清理被中断的运行：running 且无 finishedAt → failed，并说清原因', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-story-orphan-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const project = createProject({
+    title: '孤儿',
+    scenes: [{
+      id: 's1', index: 1, title: '一', summary: '',
+      beats: [{ id: 'b1', kind: 'video', prompt: 'x', references: [] }, { id: 'b2', kind: 'image', prompt: 'y', references: [] }],
+      outputs: [
+        { id: 'r-running', beatId: 'b1', kind: 'video', status: 'running', createdAt: '2026-09-15T07:40:12.000Z' },
+        { id: 'r-done', beatId: 'b2', kind: 'image', status: 'succeeded', createdAt: '2026-09-15T07:00:00.000Z', finishedAt: '2026-09-15T07:01:00.000Z' },
+        // running 但有 finishedAt：形状不完整但不是孤儿（收尾写过一半），不该被动
+        { id: 'r-odd', beatId: 'b2', kind: 'image', status: 'running', createdAt: '2026-09-15T07:02:00.000Z', finishedAt: '2026-09-15T07:03:00.000Z' },
+      ],
+    }],
+  }, { id: () => 'po' });
+  await writeProject(root, project);
+
+  const first = await sweepInterruptedRuns(root, { now: () => '2026-09-15T09:00:00.000Z' });
+  assert.equal(first.swept, 1, '只动真正孤立的那个');
+  assert.deepEqual(first.touched, [{ id: 'po', runs: 1 }]);
+  const after = await api0.get(root, 'po');
+  const runs = after.scenes[0].outputs;
+  const swept = runs.find(r => r.id === 'r-running');
+  assert.equal(swept.status, 'failed');
+  assert.equal(swept.finishedAt, '2026-09-15T09:00:00.000Z');
+  assert.ok(swept.degradation.some(d => d.includes('生成被中断')), '要说清是"被中断"，不是含糊的"失败"');
+  assert.equal(runs.find(r => r.id === 'r-done').status, 'succeeded', '已经收尾的运行一个都不能动');
+  assert.equal(runs.find(r => r.id === 'r-odd').status, 'running');
+
+  const second = await sweepInterruptedRuns(root, { now: () => '2026-09-15T10:00:00.000Z' });
+  assert.equal(second.swept, 0, '幂等：再扫一次无事可做');
+});
+
+// 一键分镜段数不稳定：实测同一提示词请求 4 段，三次真实调用给 4 / 1 / 4 段。
+// 段数明显不足时再要一次，并把"重试过"如实告诉用户。
+test('分镜段数明显不足时自动重试一次，并如实上报重试', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-story-retry-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const project = await api0.create(root, { title: '重试' });
+  const short = JSON.stringify({ scenes: [{ title: 's', beats: [{ kind: 'video', prompt: '只给一段', dialogue: '甲：一' }] }] });
+  const full = JSON.stringify({ scenes: [1, 2, 3, 4].map(i => ({ title: `s${i}`, beats: [{ kind: 'video', prompt: `第 ${i} 段`, dialogue: `甲：${i}` }] })) });
+  const prompts = [];
+  const api = createStoryOrchestrator({
+    root,
+    directChat: async (model, prompt) => { prompts.push(prompt); return { text: prompts.length === 1 ? short : full } },
+    getModelList: () => [],
+  });
+  const r = await api.storyboard(project.id, { idea: '试', count: 4 });
+  assert.equal(prompts.length, 2, '第一次只给 1 段（要 4 段）→ 必须再要一次');
+  assert.equal(r.beatCount, 4);
+  assert.equal(r.attempts, 2);
+  assert.equal(r.retried, true);
+  assert.equal(r.firstBeatCount, 1);
+  assert.match(prompts[1], /补充要求/, '第二次要把话说明白');
+  assert.match(prompts[1], /上一次你只给了 1 段/);
+  assert.equal(r.short, undefined, '给够了就不该有"还是不够"的提示');
+
+  // 第一次就给够 → 不该多烧一次调用
+  const prompts2 = [];
+  const api2 = createStoryOrchestrator({ root, directChat: async (model, prompt) => { prompts2.push(prompt); return { text: full } }, getModelList: () => [] });
+  const r2 = await api2.storyboard(project.id, { idea: '试', count: 4 });
+  assert.equal(prompts2.length, 1);
+  assert.equal(r2.attempts, 1);
+  assert.equal(r2.retried, false);
+
+  // 两次都不够：如实说"两次都只给了 N 段"，而不是假装完成
+  const api3 = createStoryOrchestrator({ root, directChat: async () => ({ text: short }), getModelList: () => [] });
+  const r3 = await api3.storyboard(project.id, { idea: '试', count: 6 });
+  assert.equal(r3.beatCount, 1);
+  assert.equal(r3.short, true);
+  assert.match(r3.note, /两次都只给了 1 段/, '要如实说清模型没给够，让用户知道该再点一次');
 });
 
 test('runGeneration selects a capable image model when auto is requested', async () => {

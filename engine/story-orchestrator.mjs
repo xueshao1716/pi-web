@@ -9,6 +9,7 @@ import { buildStoryAssistPrompt, parseStoryAssist, buildStoryboardPrompt, parseS
 import { lintStoryProject } from './story-lint.mjs';
 import { collectFilmClips, concatClips } from './story-film.mjs';
 import { materializeMedia } from './media-inline.mjs';
+import { listRecipes, saveRecipe, deleteRecipe, importRecipes, exportRecipes } from './story-recipes.mjs';
 import { json } from './http-utils.mjs';
 
 const makeId = () => crypto.randomUUID();
@@ -347,23 +348,54 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       const project = await readProject(root, id);
       return lintStoryProject(project, { kind: input.kind || 'image', capabilities: input.capabilities || null });
     },
-    // 一键分镜：一次生成整场分镜表并追加进项目，自动串好 inheritFromBeatId 继承链。
+    // 配方（生成设置的具名资产）：存/列/删/导出/导入。跨项目共用，所以落在项目目录之外。
+    listRecipes: input => listRecipes(root, input || {}),
+    saveRecipe: input => saveRecipe(root, input, clock),
+    deleteRecipe: id => deleteRecipe(root, id),
+    importRecipes: payload => importRecipes(root, payload, clock),
+    exportRecipes: async (ids) => {
+      const all = await listRecipes(root);
+      const want = Array.isArray(ids) && ids.length ? all.filter(r => ids.includes(r.id)) : all;
+      return exportRecipes(want, clock);
+    },
+    // 一键分镜：一次生成整场分镜表并追加进项目，自动串好 inheritBeatId 继承链。
     // 之前 assist 只产出 1 段，用户得一段一段点「从此处继续」。
+    //
+    // 2026-09-15 补自动重试：实测同一提示词、请求 4 段，三次真实调用给的是 4 / 1 / 4 段
+    // （agnes-3.0-flash）。要点 4 段只给 1 段是模型侧的抖动，对用户就是"这功能时好时坏"。
+    // 段数明显不足时**再要一次**，并且把"重试过"如实告诉用户——不默默替他做决定。
     storyboard: async (id, input = {}) => {
       const project = await readProject(root, id);
       if (typeof directChat !== 'function') throw Object.assign(new Error('智能填充引擎未接入'), { statusCode: 503 });
       const idea = String(input.idea || '').trim().slice(0, 2000);
       const count = Math.max(2, Math.min(12, Number(input.count) || 6));
       const model = pickJsonModel(input.model);
-      const prompt = buildStoryboardPrompt({ title: project.title, logline: project.logline, idea, current: project.bible, count });
-      const result = await directChat(model, prompt, [], { maxTokens: 3000, timeout: 90000 });
-      if (!result?.text) throw new Error('分镜模型没有返回内容');
-      let storyboard;
-      try { storyboard = parseStoryboard(result.text); }
-      catch (error) {
-        // 解析失败时把模型原文留在服务端日志里：不然只能看到"解析不出来"，无从判断是形状不符还是模型跑偏
-        console.log(`[story] 分镜解析失败（模型 ${model?.provider}/${model?.id}，原文 ${String(result.text).length} 字）：${String(result.text).replace(/\s+/g, ' ').slice(0, 1200)}`);
-        throw error;
+      const basePrompt = buildStoryboardPrompt({ title: project.title, logline: project.logline, idea, current: project.bible, count });
+      // 少于一半才算"明显不足"：模型偶尔给 count-1 段是正常波动，不该为它多烧一次调用。
+      const short = n => n < Math.max(2, Math.ceil(count / 2));
+      let storyboard = null, attempts = 0, retried = false, firstCount = 0;
+      let prompt = basePrompt;
+      while (attempts < 2) {
+        attempts += 1;
+        const result = await directChat(model, prompt, [], { maxTokens: 3000, timeout: 90000 });
+        if (!result?.text) {
+          if (attempts === 1) { prompt = basePrompt; continue; }   // 没返回内容也值得再要一次
+          throw new Error('分镜模型没有返回内容');
+        }
+        let parsed;
+        try { parsed = parseStoryboard(result.text); }
+        catch (error) {
+          // 解析失败时把模型原文留在服务端日志里：不然只能看到"解析不出来"，无从判断是形状不符还是模型跑偏
+          console.log(`[story] 分镜解析失败（模型 ${model?.provider}/${model?.id}，原文 ${String(result.text).length} 字）：${String(result.text).replace(/\s+/g, ' ').slice(0, 1200)}`);
+          if (attempts === 1) { prompt = basePrompt; continue; }
+          throw error;
+        }
+        if (attempts === 1) firstCount = parsed.beatCount;
+        storyboard = parsed;
+        if (!short(parsed.beatCount) || attempts === 2) break;
+        // 第二次把话说明白：上一次只给了几段、这次必须给足
+        retried = true;
+        prompt = `${basePrompt}\n\n【补充要求】上一次你只给了 ${parsed.beatCount} 段，不够。这一次必须给足 ${count} 段（scenes 数组里每一段 beats 至少 1 条，合计不少于 ${count} 条），不要合并、不要省略、不要用省略号带过。`;
       }
       const scenes = [...(project.scenes || [])];
       // 先并设定：段落引用要按**合并后**的角色 id 挂，否则引用指向的是不存在的 id。
@@ -396,6 +428,10 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
         characters: cast.length,
         characterNames: cast.map(c => String(c.name || '')).filter(Boolean),
         model: { provider: model?.provider || '', id: model?.id || '' },
+        // 如实上报重试与段数偏差：用户要能看出"这次是模型第一次没给够、我替你又要了一遍"
+        requested: count, attempts, retried,
+        ...(firstCount && firstCount !== storyboard.beatCount ? { firstBeatCount: firstCount } : {}),
+        ...(short(storyboard.beatCount) ? { short: true, note: `模型两次都只给了 ${storyboard.beatCount} 段（要的是 ${count} 段），可以再点一次或把想法写具体些` } : {}),
       };
     },
     // 成片合成：按分镜顺序把**成功**的视频片段拼成一条长片，并落盘为正式产物。
@@ -476,8 +512,34 @@ export async function handleStoryFilm(ctx, res, id, body) {
   try { return json(res, 200, await createStoryOrchestrator(ctx).assembleFilm(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
 }
 
-export async function handleStoryAssist(ctx, res, id, body) {  try {
-    if (typeof ctx.directChat !== 'function' || typeof ctx.getDefaultModel !== 'function') throw Object.assign(new Error('智能填充引擎未接入'), { statusCode: 503 });
+export async function handleStoryRecipes(ctx, res, body) {
+  try {
+    if (body === undefined) return json(res, 200, { recipes: await listRecipes(ctx.root) });
+    const saved = await saveRecipe(ctx.root, bodyOrEmpty(body));
+    return json(res, 201, saved);
+  } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryRecipeDelete(ctx, res, id) {
+  try {
+    const r = await deleteRecipe(ctx.root, id);
+    return json(res, r.ok ? 200 : 404, r);
+  } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryRecipesExport(ctx, res) {
+  try {
+    const all = await listRecipes(ctx.root);
+    // 导出的是**自足**的一份文件：换成别的机器/别人，导入即可用
+    return json(res, 200, exportRecipes(all, (ctx && ctx.clock) || {}));
+  } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryRecipesImport(ctx, res, body) {
+  try { return json(res, 200, await importRecipes(ctx.root, body)); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryAssist(ctx, res, id, body) {  try {    if (typeof ctx.directChat !== 'function' || typeof ctx.getDefaultModel !== 'function') throw Object.assign(new Error('智能填充引擎未接入'), { statusCode: 503 });
     const project = await readProject(ctx.root, id);
     const idea = String(bodyOrEmpty(body).idea || '').trim().slice(0, 2000);
     if (!idea) throw Object.assign(new Error('请输入想补充的故事想法'), { statusCode: 400 });

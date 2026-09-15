@@ -170,3 +170,41 @@ export async function listProjects(root) {
   }
   return out.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
 }
+
+// 服务启动时清理**孤儿运行**：状态还是 running、但没有 finishedAt 的那些。
+//
+// 为什么只在启动时判：一次生成由某个进程持有，进程没了，那些 running 就永远不会再有人来收尾——
+// 界面上会一直显示「正在生成」，而它既不会成功也不会失败（真实案例：2026-09-15 用户的项目里
+// 就挂着一条 07:40:12 的 running，被我重启服务时打断）。启动这一刻，凡是 running 的必然是孤儿，
+// 这个判据是确定的，不需要超时猜测，也不会误杀正在跑的任务（正在跑的那个进程已经死了）。
+export const INTERRUPTED_REASON = '生成被中断：服务在生成过程中重启，这一版没有产出';
+export function sweepInterruptedRunsInProject(project, now) {
+  let hit = 0;
+  for (const scene of project?.scenes || []) {
+    for (const run of scene.outputs || []) {
+      if (run?.status !== 'running' || run.finishedAt) continue;
+      run.status = 'failed';
+      run.finishedAt = now;
+      run.degradation = [...(run.degradation || []), INTERRUPTED_REASON];
+      hit += 1;
+    }
+  }
+  return hit;
+}
+
+export async function sweepInterruptedRuns(root, clock = {}) {
+  const now = (clock.now || (() => new Date().toISOString()))();
+  const projects = await listProjects(root);
+  let scanned = 0, swept = 0;
+  const touched = [];
+  for (const project of projects) {
+    scanned += project.scenes?.reduce((n, s) => n + (s.outputs?.length || 0), 0) || 0;
+    const hit = sweepInterruptedRunsInProject(project, now);
+    if (!hit) continue;
+    await writeProject(root, { ...project, updatedAt: now });
+    swept += hit;
+    touched.push({ id: project.id, runs: hit });
+  }
+  return { projects: projects.length, scanned, swept, touched };
+}
+

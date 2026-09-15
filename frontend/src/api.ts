@@ -1,4 +1,4 @@
-import type { Model, Session, ChatMessage, SessionMessages, Artifact, AssetDelivery, SkillSummary, StoryProject, StoryGenerationRun, StoryFilm, StoryPlanStep } from './types'
+import type { Model, Session, ChatMessage, SessionMessages, Artifact, AssetDelivery, SkillSummary, StoryProject, StoryGenerationRun, StoryFilm, StoryPlanStep, StoryRecipe } from './types'
 import { parseSseBlocks, type RunEvent, type RunStatus } from './lib/run-events'
 import { rememberDownload } from './lib/downloads'
 import { saveNativeDownload } from './lib/native-download'
@@ -183,6 +183,12 @@ export const StoryApi = {
   storyboard: (id: string, body: { idea?: string; count?: number; model?: { provider: string; id: string } }) => api<{ project: StoryProject; beatCount: number; sceneCount: number; characters?: number; characterNames?: string[] }>(`/api/story/projects/${encodeURIComponent(id)}/storyboard`, { method: 'POST', body, timeoutMs: 120000 }),
   // 成片合成：按分镜顺序把成功的视频片段拼成长片，并把这一版写回 project.films
   film: (id: string) => api<{ project: StoryProject; film: StoryFilm; url: string; clipCount: number; method: string }>(`/api/story/projects/${encodeURIComponent(id)}/film`, { method: 'POST', body: {}, timeoutMs: 900000 }),
+  // 生成配方：调好的生成设置，可存/套用/导出/导入（跨项目共用）
+  recipes: () => api<{ recipes: StoryRecipe[] }>('/api/story/recipes'),
+  saveRecipe: (body: Partial<StoryRecipe> & { name: string }) => api<{ recipe: StoryRecipe; recipes: StoryRecipe[] }>('/api/story/recipes', { method: 'POST', body }),
+  deleteRecipe: (id: string) => api<{ ok: boolean; recipes: StoryRecipe[] }>(`/api/story/recipes/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  exportRecipes: () => api<{ format: string; version: number; exportedAt: string; recipes: StoryRecipe[] }>('/api/story/recipes/export'),
+  importRecipes: (payload: unknown) => api<{ added: number; updated: number; skipped: { name: string; reason: string }[]; recipes: StoryRecipe[] }>('/api/story/recipes/import', { method: 'POST', body: payload }),
 }
 export const MessagesApi = {
   add: (sid: string, text: string) => api<{ ok: boolean; id: string }>(`/api/sessions/${encodeURIComponent(sid)}/messages`, { method: 'POST', body: { text } }),

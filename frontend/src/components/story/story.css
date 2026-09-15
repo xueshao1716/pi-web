@@ -126,6 +126,22 @@
 .story-plan-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; align-items: start; }
 .story-plan-row dt { font-size: 11px; color: var(--pi-dim2); }
 .story-plan-row dd { margin: 0; font-size: 12px; color: var(--pi-dim); overflow-wrap: anywhere; white-space: pre-wrap; }
+/* 配方：调好的生成设置，可存/套用/导出导入（只存工艺，不存故事） */
+.story-recipes { border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-md); padding: 10px 12px; background: var(--pi-bg1); }
+.story-recipes-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--pi-dim); }
+.story-recipes-head .btn-ghost { padding: 6px 10px; font-size: 11px; }
+.story-recipes-body { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--pi-border-soft); }
+.story-recipes-body .story-hint { margin: 0 0 8px; }
+.story-recipe-list { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 8px; }
+.story-recipe-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-sm); background: var(--pi-bg2); }
+.story-recipe-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.story-recipe-meta strong { font-size: 12px; color: var(--pi-text); }
+.story-recipe-meta span { font-size: 11px; color: var(--pi-dim2); overflow-wrap: anywhere; }
+.story-recipe-item .story-actions { gap: 6px; }
+.story-recipe-item .story-actions :is(.btn-ghost) { padding: 4px 8px; font-size: 11px; }
+.story-recipe-save { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.story-recipe-save input { min-height: 32px; font-size: 12px; flex: 1 1 160px; }
+.story-recipe-save .btn-ghost { padding: 6px 10px; font-size: 11px; }
 .story-settings summary { cursor: pointer; font-size: 14px; line-height: 1.7; padding-block: 10px; }
 .story-settings summary span { font-size: 12px; color: var(--pi-dim); margin-left: 8px; }
 .story-settings-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; margin: 16px 0; }

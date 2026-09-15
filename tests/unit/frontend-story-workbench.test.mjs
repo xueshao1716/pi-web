@@ -48,6 +48,22 @@ test('产线参数必须留在界面上：负向 / seed / 变体数 / 执行链 
   assert.match(types, /StoryPlanStep/);
 });
 
+test('配方必须留在界面上：保存 / 套用 / 套用到全项目 / 导出 / 导入', () => {
+  assert.match(source, /StoryRecipes/, '配方面板要挂在制作台里');
+  const rec = fs.readFileSync('frontend/src/components/story/StoryRecipes.tsx', 'utf8');
+  for (const need of ['StoryApi.saveRecipe', 'StoryApi.deleteRecipe', 'StoryApi.exportRecipes', 'StoryApi.importRecipes', '套用到本项目所有段落', '导入 JSON', '导出全部']) {
+    assert.ok(rec.includes(need), `配方面板缺「${need}」`);
+  }
+  assert.match(source, /applyRecipe/, '套用要接回制作台');
+  // 工艺参数要真的能选：params 以前是个没人填的空字段，配方要携带它就必须先有它
+  assert.match(source, /aria-label="尺寸"/);
+  assert.match(source, /aria-label="时长"/);
+  assert.match(source, /params: paramDraft/);
+  const api = fs.readFileSync('frontend/src/api.ts', 'utf8');
+  assert.match(api, /recipes: \(\) => api<\{ recipes: StoryRecipe\[\] \}>/);
+  assert.match(api, /\/api\/story\/recipes\/import/);
+});
+
 test('作品列表：段号取生成时的定格值、失败可见、成片落回项目', () => {  const products = fs.readFileSync('frontend/src/components/story/StoryProducts.tsx', 'utf8');
   // 段号优先用 run.beatNo（生成时刻定格），只在旧数据上按当前分镜顺序回退
   assert.match(products, /run\.beatNo/);

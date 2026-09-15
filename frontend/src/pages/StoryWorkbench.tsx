@@ -7,6 +7,7 @@ import StorySettings from '../components/story/StorySettings'
 import StoryResults from '../components/story/StoryResults'
 import StoryProducts from '../components/story/StoryProducts'
 import StoryMaterials from '../components/story/StoryMaterials'
+import StoryRecipes from '../components/story/StoryRecipes'
 import type { StoryBeatInput } from '../types'
 import '../components/story/story.css'
 
@@ -42,6 +43,8 @@ export function StoryPanel() {
   const [variantsDraft, setVariantsDraft] = useState('1')
   // 「这次到底会做什么」——预览与实跑共用同一个 plan，界面照它显示，而不是只给一段提示词
   const [plan, setPlan] = useState<StoryPlanStep[]>([])
+  // 工艺参数（尺寸 / 时长）。以前 params 是个**没人填的空字段**——配方要携带它，就必须先有它。
+  const [paramDraft, setParamDraft] = useState<Record<string, string>>({})
   const [compiled, setCompiled] = useState('')
   const [timelineOpen, setTimelineOpen] = useState(() => window.innerWidth > 640)
   const [storyboardIdea, setStoryboardIdea] = useState('')
@@ -104,6 +107,35 @@ export function StoryPanel() {
     ...(seedDraft.trim() && Number.isFinite(Number(seedDraft.trim())) ? { seed: Number(seedDraft.trim()) } : {}),
     ...(Number(variantsDraft) > 1 ? { variants: Number(variantsDraft) } : {}),
     ...(negativeDraft.trim() ? { negative: negativeDraft.trim() } : {}),
+    ...(Object.keys(paramDraft).length ? { params: paramDraft } : {}),
+  })
+  const IMAGE_SIZES = ['1024x1024', '832x1472', '1472x832']
+  const VIDEO_SIZES = ['720P', '1080P']
+  const VIDEO_SECONDS = ['5', '10']
+  const setParam = (key: string, value: string) => setParamDraft(prev => {
+    const next = { ...prev }
+    if (value) next[key] = value; else delete next[key]
+    return next
+  })
+  // 套用配方：把配方里的**工艺**灌回制作台（不动提示词/台词/素材——那些是故事，不是工艺）
+  const applyRecipe = (r: any, toAll: boolean) => action(toAll ? `正在把「${r.name}」套用到全部段落` : `正在套用配方「${r.name}」`, async () => {
+    if (!project) return
+    if (['novel', 'image', 'video'].includes(r.kind)) setSelectedKind(r.kind)
+    if (r.model?.provider && r.model.provider !== 'auto') setSelectedModel(modelKey(r.model))
+    setNegativeDraft(r.negative || '')
+    setSeedDraft(r.seed != null ? String(r.seed) : '')
+    setVariantsDraft(String(r.variants || 1))
+    setParamDraft({ ...(r.params || {}) })
+    setCompiled('')
+    if (!toAll) { setNotice(`已套用配方「${r.name}」：${kindLabel[r.kind] || r.kind} / ${r.model?.provider || 'auto'}${r.negative ? ' / 带负向' : ''}${r.variants > 1 ? ` / ${r.variants} 版` : ''}`); return }
+    // 套用到全项目只写**能存在段落上的**工艺（类型与负向）——模型/尺寸/seed 是每次生成时的选择
+    const scenes = project.scenes.map(scene => ({
+      ...scene,
+      beats: (scene.beats || []).map(b => ({ ...b, ...(['novel', 'image', 'video'].includes(r.kind) ? { kind: r.kind } : {}), negative: r.negative || '' })),
+    }))
+    const res = await StoryApi.patchProject(project.id, { scenes })
+    update(res.project)
+    setNotice(`配方「${r.name}」已套用到本项目全部 ${scenes.reduce((n, s) => n + (s.beats?.length || 0), 0)} 段（类型与负向）`)
   })
   const run = () => action(`正在生成${kindLabel[selectedKind]}，请稍候`, async () => {
     const saved = await persist()
@@ -238,7 +270,17 @@ export function StoryPanel() {
           <div className="story-form-row">
             <label>seed（留空=每版现掷并记下来）<input aria-label="seed" disabled={Boolean(busy)} value={seedDraft} onChange={e=>setSeedDraft(e.target.value.replace(/[^0-9]/g,''))} placeholder="填数字即锁定，可复现" /></label>
             <label>一次出几版<select aria-label="变体数量" value={variantsDraft} disabled={Boolean(busy)} onChange={e=>setVariantsDraft(e.target.value)}>{['1','2','3','4'].map(n=><option key={n} value={n}>{n} 版</option>)}</select></label>
+            {selectedKind === 'image' && <label>尺寸<select aria-label="尺寸" disabled={Boolean(busy)} value={paramDraft.size || ''} onChange={e=>setParam('size', e.target.value)}><option value="">默认</option>{IMAGE_SIZES.map(sz=><option key={sz} value={sz}>{sz}</option>)}</select></label>}
+            {selectedKind === 'video' && <label>尺寸<select aria-label="尺寸" disabled={Boolean(busy)} value={paramDraft.size || ''} onChange={e=>setParam('size', e.target.value)}><option value="">默认</option>{VIDEO_SIZES.map(sz=><option key={sz} value={sz}>{sz}</option>)}</select></label>}
+            {selectedKind === 'video' && <label>时长<select aria-label="时长" disabled={Boolean(busy)} value={paramDraft.seconds || ''} onChange={e=>setParam('seconds', e.target.value)}><option value="">默认</option>{VIDEO_SECONDS.map(s=><option key={s} value={s}>{s} 秒</option>)}</select></label>}
           </div>
+          <StoryRecipes
+            current={{ kind: selectedKind, model: selectedModelInfo || { provider: 'auto', id: 'auto' }, params: paramDraft, negative: negativeDraft.trim(), seed: seedDraft.trim() ? Number(seedDraft.trim()) : null, variants: Number(variantsDraft) || 1 }}
+            busy={Boolean(busy)}
+            onApply={r => applyRecipe(r, false)}
+            onApplyToProject={r => applyRecipe(r, true)}
+            onPatchProject={() => void load()}
+          />
           <div className="story-form-row"><label>构思模型<select value={planningModel} disabled={Boolean(busy)} onChange={e=>setPlanningModel(e.target.value)}><option value="">自动选择文本模型</option>{models.filter(m=>capable(m,'novel')).map(m=><option key={modelKey(m)} value={modelKey(m)}>{m.name || m.id}</option>)}</select></label><div className="story-actions"><button className="btn-ghost" disabled={Boolean(busy)} onClick={assist}>让 AI 完善本段</button></div></div>
           {assistResult && <div className="story-draft"><h3>AI 草稿 · 确认后一起保存</h3><p>{assistResult.scene?.summary}</p><p>{assistResult.beat?.prompt}</p><p className="story-hint">人物：{assistResult.characters?.map((c:any)=>[c.name,c.appearance].filter(Boolean).join(' · ')).join('；') || '沿用既有设定'}</p><div className="story-actions"><button className="btn-primary" disabled={Boolean(busy)} onClick={applyAssist}>采用并保存设定</button><button className="btn-ghost" disabled={Boolean(busy)} onClick={()=>setAssistResult(null)}>暂不采用</button></div></div>}
           <p className="story-hint">{selectedKind==='novel'?'续写会带上已保存的设定和继承段落的实际正文。':`已生成的定妆照会作为真实参考图注入（画面走图生图、视频走 reference），用来锁住人物外貌；还没有定妆照的角色只能靠文字描述。当前 ${portraitCount}/${(project.bible.characters||[]).length} 个角色有定妆照。`}{selectedKind==='video'?' 每次生成一个视频片段，攒够成功的片段后用左侧「合成成片」拼成长片。':''}</p>

@@ -103,6 +103,21 @@ export interface StoryGenerationRun {
 }
 // 「这次到底会做什么」的一步。预览与实跑共用同一个 plan，界面照它显示。
 export interface StoryPlanStep { label: string; detail: string }
+// 生成配方：把"调好的生成设置"变成一份可存/可套用/可导出导入的资产（对标 ComfyUI 的工作流）。
+// 刻意**只存工艺、不存故事**：提示词/台词/素材属于故事，配方只管类型、模型、尺寸、负向、seed、变体数。
+export interface StoryRecipe {
+  id: string
+  name: string
+  kind: 'novel' | 'image' | 'video'
+  model: { provider: string; id: string }
+  params: Record<string, string>
+  negative: string
+  seed: number | null
+  variants: number
+  note?: string
+  createdAt: string
+  updatedAt: string
+}
 // 挂在某一段上的素材：别的工作台（AI 绘画 / 视频工坊 / 小说工坊）的产出。
 // 与 `references`（指向 bible 实体的 id）刻意分开：这类素材是**已经存在的成品文件**，自带地址。
 export interface StoryBeatInput { id: string; type: 'image' | 'video' | 'text'; name?: string; url?: string; text?: string; path?: string }
