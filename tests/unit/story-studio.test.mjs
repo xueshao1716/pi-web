@@ -45,7 +45,10 @@ test('体检：条件齐备时不报 warn，且文本段落不因参考图能力
     scenes: [{ id: 's1', title: '第一场', summary: '摘要', beats: [{ id: 'b1', kind: 'novel', prompt: '开场' }] }],
   };
   const clean = lintStoryProject(project, { kind: 'image', capabilities: { reference: true } });
-  assert.deepEqual(clean.issues, []);
+  // 2026-09-16：原来断言 `issues` 全空。现在"还没有深度构思"会以 **info** 出现
+  //（它确实值得提醒，但不该吓人）——所以这里锁的是原本的意图：**不报 warn、总级别 ok**。
+  assert.deepEqual(clean.issues.filter(i => i.level === 'warn'), []);
+  assert.deepEqual(clean.issues.map(i => i.code), ['no-craft']);
   assert.equal(clean.summary.level, 'ok');
   // 文本段落不该因为参考图能力被告警
   const novel = lintStoryProject(project, { kind: 'novel', capabilities: { reference: false } });

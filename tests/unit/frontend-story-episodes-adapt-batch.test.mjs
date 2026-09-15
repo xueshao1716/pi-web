@@ -19,6 +19,7 @@ const css = read('frontend/src/components/story/story.css');
 const server = read('server.mjs');
 const orchestrator = read('engine/story-orchestrator.mjs');
 const store = read('engine/story-store.mjs');
+const craft = read('engine/story-craft.mjs');
 
 test('分集：面板挂在制作台，点某一场要真的跳到那一场', () => {
   assert.match(workbench, /StoryEpisodes/, '分集面板要挂在制作台里');
@@ -223,6 +224,53 @@ test('项目：不用下拉框了，改成能看能删的项目架', () => {
   assert.match(orchestrator, /deleteProject: async/);
   assert.match(store, /export async function trashProject/, '先留副本再删');
   assert.match(css, /\.story-project-item/);
+});
+
+test('台词专科：先机检（不花钱）再诊断（花一次）；改写必须给依据，采纳只写回那一句', () => {
+  const panel = read('frontend/src/components/story/StoryDialogue.tsx')
+  assert.match(workbench, /StoryDialogue/, '台词面板要挂在制作台里');
+  assert.match(panel, /StoryApi\.dialogueAudit/, '机检要能单独跑（不花钱）');
+  assert.match(panel, /StoryApi\.dialogueDoctor/, '诊断才调模型');
+  assert.match(panel, /台词体检（不花钱）/, '界面上要说清哪一步不花钱');
+  assert.match(panel, /3\.5~5 字\/秒/, '语速基准要写在界面上');
+  assert.match(panel, /单句超过 24 字就得拆镜/, '拆镜阈值要说出来');
+  assert.match(panel, /依据不足/, '依据不足 3 条的改写要标出来');
+  assert.match(panel, /机检查不了/, '哪几维机检查不了要老实说');
+  assert.match(panel, /同段其它台词一个字不动/, '采纳必须只写回那一句');
+  assert.match(panel, /只替换这一句/, '代码注释也要说明这条边界');
+  assert.match(api, /dialogue-audit/);
+  assert.match(api, /dialogue-doctor/);
+  assert.match(server, /dialogue-audit\$/);
+  assert.match(server, /dialogue-doctor\$/);
+  assert.match(orchestrator, /dialogueAudit: async/);
+  assert.match(orchestrator, /dialogueDoctor: async/);
+  assert.match(craft, /speechCheck|dialogueAudit/);
+  assert.match(css, /\.story-dialogue/);
+});
+
+test('深度构思：情绪契约 / 人物四件套 / 矛盾单元 / 分集地图 / 伏笔账都要看得见', () => {
+  const panel = read('frontend/src/components/story/StoryCraft.tsx')
+  assert.match(workbench, /StoryCraft/, '构思面板要挂在制作台里');
+  assert.match(panel, /StoryApi\.storyEngine/, '构思走模型');
+  assert.match(panel, /StoryApi\.saveCraft/, '草稿要人确认后才保存');
+  assert.match(panel, /StoryApi\.applyEpisodeMap/, '分集地图要能一键建成集');
+  assert.match(panel, /还没写进项目/, '草稿状态要说清');
+  assert.match(panel, /情绪契约/);
+  assert.match(panel, /语言指纹|欲望|秘密|弧光/, '人物四件套要摊开');
+  assert.match(panel, /矛盾单元|硬帽/, '单元与硬帽要看得见');
+  assert.match(panel, /断章钩子|前 3 秒/, '每集的目标/开场/钩子要看得见');
+  assert.match(panel, /伏笔账|没写回收集/, '伏笔回收要说清');
+  assert.match(panel, /机检只查结构/, '机检边界要老实说');
+  assert.match(api, /story-engine/);
+  assert.match(api, /episode-map/);
+  assert.match(server, /story-engine\$/);
+  assert.match(server, /episode-map\$/);
+  assert.match(orchestrator, /storyEngine: async/);
+  assert.match(orchestrator, /applyEpisodeMap: async/);
+  // craft 是项目字段：白名单不登记就写不回来（这个坑踩过四次）
+  assert.match(store, /\.\.\.\(input\.craft \? \{ craft: input\.craft \}/);
+  assert.match(types, /craft\?: StoryCraftEngine/);
+  assert.match(css, /\.story-craft/);
 });
 
 test('风格预设：是可选的统一画风，不是又一句自由发挥', () => {

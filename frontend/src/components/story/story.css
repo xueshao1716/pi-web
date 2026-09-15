@@ -303,6 +303,62 @@
 .story-project-item .story-actions { margin-top: 6px; }
 .story-project-item .story-actions .btn-ghost { padding: 4px 10px; font-size: 11px; }
 .story-project-item .story-confirm { margin-top: 8px; }
+/* 台词专科：先机检（不花钱）再诊断（花一次）。数字要显眼，问题要指到原句 */
+.story-dialogue { border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-md); padding: 10px 12px; background: var(--pi-bg1); }
+.story-dialogue-body { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--pi-border-soft); }
+.story-dialogue-scene { margin-top: 10px; }
+.story-dialogue-scene-head { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
+.story-dialogue-scene-head span { font-size: 11px; color: var(--pi-dim2); }
+.story-dialogue-beat { margin-top: 6px; padding: 8px 10px; border: 1px solid var(--pi-border-soft); border-left-width: 3px; border-radius: var(--pi-r-sm); background: var(--pi-bg2); }
+.story-dialogue-beat.is-warn { border-left-color: var(--pi-warn, #d08770); }
+.story-dialogue-beat.is-info { border-left-color: var(--pi-accent); }
+.story-dialogue-metrics { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--pi-dim2); }
+.story-dialogue-metrics .is-bad { color: var(--pi-danger, #bf616a); font-weight: 600; }
+.story-dialogue-issues { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 3px; font-size: 11px; color: var(--pi-dim); }
+.story-dialogue-issues .is-warn { color: var(--pi-warn, #d08770); }
+.story-dialogue-issues em { font-style: normal; color: var(--pi-dim2); margin-left: 4px; }
+.story-dialogue-doctor { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--pi-border-soft); }
+.story-doctor-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.story-doctor-head span { font-size: 11px; color: var(--pi-dim2); }
+.story-doctor-summary { margin: 6px 0; font-size: 12px; line-height: 1.7; color: var(--pi-text); }
+.story-doctor-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.story-doctor-line { padding: 8px 10px; border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-sm); background: var(--pi-bg2); font-size: 12px; }
+.story-doctor-line.is-adopted { opacity: .6; border-color: var(--pi-ok, #a3be8c); }
+.story-doctor-orig, .story-doctor-new, .story-doctor-keep { display: flex; gap: 8px; line-height: 1.7; }
+.story-doctor-orig > span, .story-doctor-new > span, .story-doctor-keep > span { flex: 0 0 auto; width: 16px; color: var(--pi-dim2); }
+.story-doctor-orig { color: var(--pi-dim); }
+.story-doctor-new { color: var(--pi-text); font-weight: 600; }
+.story-doctor-reasons { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 2px; font-size: 11px; color: var(--pi-dim2); }
+.story-doctor-shots { margin-top: 6px; font-size: 11px; color: var(--pi-dim); }
+.story-doctor-shots > span { color: var(--pi-dim2); margin-right: 6px; }
+.story-doctor-shots div { display: flex; gap: 8px; }
+.story-doctor-shots em { font-style: normal; color: var(--pi-accent); }
+.story-doctor-shots div span { color: var(--pi-dim2); }
+.story-doctor-adopted { font-size: 11px; color: var(--pi-ok, #a3be8c); }
+.story-hint.is-warn, .is-warn { color: var(--pi-warn, #d08770); }
+/* 深度构思：那口气 / 人物四件套 / 矛盾单元 / 分集地图 / 伏笔账 */
+.story-craft { border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-md); padding: 10px 12px; background: var(--pi-bg1); }
+.story-craft-body { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--pi-border-soft); }
+.story-craft-gen { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.story-craft-gen input { flex: 1 1 240px; min-height: 32px; font-size: 12px; }
+.story-craft-gen label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--pi-dim); }
+.story-craft-gen label input { width: 68px; flex: 0 0 auto; }
+.story-craft-audit { margin: 8px 0; padding: 8px 10px; border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-sm); background: var(--pi-bg2); font-size: 11px; }
+.story-craft-audit ul { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 2px; color: var(--pi-dim); }
+.story-craft-audit .is-warn { color: var(--pi-warn, #d08770); }
+.story-craft-block { margin-top: 10px; padding: 8px 10px; border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-sm); background: var(--pi-bg2); font-size: 12px; }
+.story-craft-block > strong { display: block; margin-bottom: 4px; }
+.story-craft-block p { margin: 0 0 4px; line-height: 1.7; }
+.story-craft-cast, .story-craft-units, .story-craft-map, .story-craft-ledger { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.story-craft-cast li, .story-craft-units li, .story-craft-map li { padding: 6px 8px; border: 1px solid var(--pi-border-soft); border-radius: var(--pi-r-sm); background: var(--pi-bg1); font-size: 11px; line-height: 1.7; }
+.story-craft-cast b, .story-craft-units b, .story-craft-map b { font-size: 12px; }
+.story-craft-slot { margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--pi-bg2); color: var(--pi-dim2); }
+.story-craft-ledger li { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; }
+.story-craft-ledger li span:first-child, .story-craft-ledger li span:nth-child(2) { color: var(--pi-dim2); }
+.story-craft-ledger .is-bad { color: var(--pi-danger, #bf616a); font-weight: 600; }
+.story-craft-beats { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 11px; line-height: 1.7; }
+.story-craft-link { margin-left: 8px; color: var(--pi-accent); }
+.story-craft-map li.is-warn, .story-craft-units li.is-warn, .story-craft-beats li.is-warn { border-color: var(--pi-warn, #d08770); }
 .story-portrait-empty { width: 100%; aspect-ratio: 1; display: grid; place-items: center; border-radius: var(--pi-r-sm); border: 1px dashed var(--pi-border); background: var(--pi-bg2); color: var(--pi-dim); font-size: 12px; }
 .story-portrait-card strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .story-model-select { max-width: 220px; }

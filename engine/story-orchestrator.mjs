@@ -5,7 +5,10 @@ import path from 'node:path';
 import { createProject, listProjects, readProject, writeProject, validateProject, mergeBeatContext, trashProject } from './story-store.mjs';
 import { compileStoryPrompt, buildPortraitPrompt, buildAssetPrompt } from './story-prompts.mjs';
 import { createImageAdapter, createNovelAdapter, createVideoAdapter } from './story-adapters.mjs';
-import { buildStoryAssistPrompt, parseStoryAssist, buildStoryboardPrompt, parseStoryboard, buildAdaptPrompt, parseAdapt } from './story-assist.mjs';
+import { buildStoryAssistPrompt, parseStoryAssist, buildStoryboardPrompt, parseStoryboard, buildAdaptPrompt, parseAdapt, extractJsonObjects } from './story-assist.mjs';
+// 台词与深度构思的"手艺"：机检规则 + 提示词 + 宽容解析（见 story-craft.mjs 开头的研究结论）
+import { dialogueAudit, auditEngine, buildDialogueDoctorPrompt, parseDialogueDoctor, buildStoryEnginePrompt, parseStoryEngine, CRAFT_NOTES } from './story-craft.mjs';
+import { parseDialogueLines } from './story-screenplay.mjs';
 import { lintStoryProject } from './story-lint.mjs';
 import { concatClips, filmPlan, localPathFromArtifactUrl } from './story-film.mjs';
 import { materializeMedia } from './media-inline.mjs';
@@ -1250,6 +1253,132 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       await writeProject(root, next);
       return { project: next, run: next.scenes.find(s => s.id === scene.id).outputs.find(r => String(r.id) === String(run.id)), results, localized: okCount, failed: failed.length };
     },
+    // ── 台词与深度构思（用户说"人物场景搭上了，对话和构思还是不行"）──
+    // 台词体检：**纯机检、不花模型钱**，随用随看。语速/时长/拆镜这些本来就是能算的，
+    // 以前却要花一次模型调用才能从"听起来别扭"里猜。
+    dialogueAudit: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const scene = input.sceneId ? findScene(project, input.sceneId) : null;
+      const targets = scene ? [scene] : (project.scenes || []);
+      const scenes = targets.map(s => {
+        const beats = (s.beats || []).map(b => {
+          const dialogue = String(b.dialogue || '').trim();
+          if (!dialogue) return null;
+          const budgetSec = Number(b?.params?.seconds) > 0 ? Number(b.params.seconds) : null;
+          return { beatId: b.id, beatKind: b.kind, budgetSec, audit: dialogueAudit({ dialogue, budgetSec, genre: String(project.genre || '') }) };
+        }).filter(Boolean);
+        return { sceneId: s.id, title: s.title || '', beats };
+      }).filter(s => s.beats.length);
+      const all = scenes.flatMap(s => s.beats.map(b => b.audit));
+      return {
+        scenes,
+        totals: {
+          beats: all.length,
+          chars: all.reduce((n, a) => n + a.speech.chars, 0),
+          warn: all.reduce((n, a) => n + a.issues.filter(i => i.level === 'warn').length, 0),
+          info: all.reduce((n, a) => n + a.issues.filter(i => i.level === 'info').length, 0),
+        },
+        notes: CRAFT_NOTES,
+      };
+    },
+    // 台词诊断与重构：**出草稿，不落盘**（人在界面上逐条决定采不采用）。
+    // 机检结果一并喂给模型，逼它针对真问题改，而不是自由发挥一遍。
+    dialogueDoctor: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const scene = findScene(project, input.sceneId) || (project.scenes || [])[0];
+      if (!scene) throw Object.assign(new Error('这个项目还没有场景'), { statusCode: 400 });
+      if (typeof directChat !== 'function') throw Object.assign(new Error('台词诊断引擎未接入'), { statusCode: 503 });
+      const rows = (scene.beats || []).flatMap(b => parseDialogueLines(String(b.dialogue || '')).filter(r => r.type === 'dialogue'));
+      if (!rows.length) throw Object.assign(new Error('这一场还没有台词：先在段落里写台词，或点「一键分镜」让它先出一版'), { statusCode: 400 });
+      const dialogueText = rows.map(r => `${r.speaker}：${r.text}`).join('\n');
+      const budgetSec = Number((scene.beats || []).find(b => Number(b?.params?.seconds) > 0)?.params?.seconds) || null;
+      const audit = dialogueAudit({ dialogue: dialogueText, budgetSec, genre: String(project.genre || '') });
+      const method = await methodOf(root, project.methodId);
+      const model = pickJsonModel(input.model);
+      const prompt = buildDialogueDoctorPrompt({
+        scene, rows, audit, bible: project.bible || {}, genre: String(project.genre || ''),
+        method: method ? `${method.name}：${method.goal || ''}` : null,
+      });
+      let lastError = '台词诊断模型没有返回内容';
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const result = await directChat(model, attempt === 0 ? prompt : `${prompt}\n\n【补充要求】上一次你的回复无法解析。这一次**只输出那一个 JSON 对象**，不要解释、不要代码块。`, [], { maxTokens: 4000, timeout: 120000 });
+        if (!result?.text) { lastError = '台词诊断模型没有返回内容'; continue; }
+        try {
+          const parsed = parseDialogueDoctor(result.text, extractJsonObjects);
+          return { project, sceneId: scene.id, sceneTitle: scene.title || '', audit, doctor: parsed, model: { provider: model?.provider || '', id: model?.id || '' }, ...(attempt ? { retried: true } : {}) };
+        } catch (error) {
+          lastError = String(error?.message || error);
+          console.log(`[story] 台词诊断解析失败（模型 ${model?.provider}/${model?.id}，第 ${attempt + 1} 次）：${String(result.text).replace(/\s+/g, ' ').slice(0, 800)}`);
+        }
+      }
+      throw Object.assign(new Error(lastError), { statusCode: 502 });
+    },
+    // 深度构思：情绪契约 / 人物四件套 / 矛盾单元 / 分集地图 / 因果节拍 / 四账台账。
+    // 同样**出草稿不落盘**；界面上确认后再 saveCraft 写进项目。
+    storyEngine: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      if (typeof directChat !== 'function') throw Object.assign(new Error('构思引擎未接入'), { statusCode: 503 });
+      const model = pickJsonModel(input.model);
+      const episodes = Math.max(0, Math.min(200, Number(input.episodes) || (project.episodes || []).length || 0));
+      const prompt = buildStoryEnginePrompt({
+        title: project.title, logline: project.logline,
+        idea: String(input.idea || '').trim().slice(0, 2000),
+        bible: project.bible || {}, episodes, genre: String(project.genre || ''),
+        episodesPerUnit: Math.max(10, Math.min(40, Number(input.episodesPerUnit) || 25)),
+      });
+      let lastError = '构思模型没有返回内容';
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const result = await directChat(model, attempt === 0 ? prompt : `${prompt}\n\n【补充要求】上一次你的回复无法解析。这一次**只输出那一个 JSON 对象**，不要解释、不要代码块。`, [], { maxTokens: 8000, timeout: 180000 });
+        if (!result?.text) { lastError = '构思模型没有返回内容'; continue; }
+        try {
+          const engine = parseStoryEngine(result.text, extractJsonObjects);
+          return { project, engine, audit: auditEngine(engine, { currentEpisode: (project.episodes || []).length, plannedEpisodes: episodes }), model: { provider: model?.provider || '', id: model?.id || '' }, ...(attempt ? { retried: true } : {}) };
+        } catch (error) {
+          lastError = String(error?.message || error);
+          console.log(`[story] 深度构思解析失败（模型 ${model?.provider}/${model?.id}，第 ${attempt + 1} 次）：${String(result.text).replace(/\s+/g, ' ').slice(0, 800)}`);
+        }
+      }
+      throw Object.assign(new Error(lastError), { statusCode: 502 });
+    },
+    // 构思体检（只读）：**已保存的构思也要能随时体检**。
+    // 真机上踩到：面板只在"生成/保存"之后才算体检，于是打开一个已有构思的项目时，
+    // 那条"伏笔没写回收集"安安静静地躺着——体检的价值就在于当下看得见。
+    craftAudit: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const planned = Math.max(0, Number(input.plannedEpisodes) || (project.episodes || []).length || (project.craft?.episodeMap || []).length || 0);
+      return { audit: auditEngine(project.craft, { currentEpisode: (project.episodes || []).length, plannedEpisodes: planned }), plannedEpisodes: planned, hasCraft: Boolean(project.craft) };
+    },
+    // 把确认过的构思写进项目（人在界面上看过之后才走到这里）
+    saveCraft: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const engine = input.craft || input.engine;
+      if (!engine || typeof engine !== 'object') throw Object.assign(new Error('没有要保存的构思内容'), { statusCode: 400 });
+      const next = withUpdated({ ...project, craft: engine });
+      validateProject(next);
+      await writeProject(root, next);
+      return { project: next, audit: auditEngine(engine, { currentEpisode: (project.episodes || []).length }) };
+    },
+    // 分集地图 → 真的建集（连同每集的目标与钩子写进集里）。
+    // 这一步是"构思落到能干活的东西上"：地图不会自己变成集，用户点一下就该有。
+    applyEpisodeMap: async (id, input = {}) => {
+      const project = await readProject(root, id);
+      const map = Array.isArray(input.episodeMap) ? input.episodeMap : (project.craft?.episodeMap || []);
+      if (!map.length) throw Object.assign(new Error('还没有分集地图：先做一次深度构思'), { statusCode: 400 });
+      const episodes = normalizeEpisodes(project.episodes);
+      const created = [];
+      for (const [i, item] of map.slice(0, 200).entries()) {
+        const no = Number(item?.no) || i + 1;
+        if (episodes.some(e => e.no === no)) continue; // 已存在的不覆盖：手工改过的集不该被地图冲掉
+        const summary = [String(item?.goal || '').trim(), String(item?.hook || '').trim() ? `钩子：${String(item.hook).trim()}` : ''].filter(Boolean).join('｜');
+        const episode = createEpisode({ no, title: `第 ${no} 集`, summary }, clock);
+        episodes.push(episode);
+        created.push(episode);
+      }
+      const next = withUpdated({ ...project, episodes: normalizeEpisodes(episodes) });
+      validateProject(next);
+      await writeProject(root, next);
+      return { project: next, created, skipped: map.length - created.length };
+    },
     // 删项目。比删一版产出严重得多（人物、分集、成片历史都在里面），所以：
     // 1) **一定先留副本**（story-projects/.trash/），手滑删掉整部戏是不可逆的；
     // 2) 产物文件默认**不动**——它们在工作区里还能从「资产」找到，而且可能被别的项目引用；
@@ -1497,6 +1626,31 @@ export async function handleStoryFilm(ctx, res, id, body) {
 
 export async function handleStoryFilmPlan(ctx, res, id) {
   try { return json(res, 200, await createStoryOrchestrator(ctx).filmPlan(id)); } catch (e) { return sendError(res, e); }
+}
+
+// ── 台词与深度构思 ──
+export async function handleStoryDialogueAudit(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).dialogueAudit(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryDialogueDoctor(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).dialogueDoctor(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryEngine(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).storyEngine(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryCraftSave(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).saveCraft(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryCraftAudit(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).craftAudit(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
+}
+
+export async function handleStoryEpisodeMapApply(ctx, res, id, body) {
+  try { return json(res, 200, await createStoryOrchestrator(ctx).applyEpisodeMap(id, bodyOrEmpty(body))); } catch (e) { return sendError(res, e); }
 }
 
 export async function handleStoryRunDelete(ctx, res, id, body) {

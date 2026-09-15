@@ -1,4 +1,4 @@
-import type { Model, Session, ChatMessage, SessionMessages, Artifact, AssetDelivery, SkillSummary, StoryProject, StoryGenerationRun, StoryFilm, StoryPlanStep, StoryRecipe, StoryEpisode, StoryEpisodeGroup, StoryAdaptResult, StoryMethod, StoryFilmPlan, StoryRunDeleteResult } from './types'
+import type { Model, Session, ChatMessage, SessionMessages, Artifact, AssetDelivery, SkillSummary, StoryProject, StoryGenerationRun, StoryFilm, StoryPlanStep, StoryRecipe, StoryEpisode, StoryEpisodeGroup, StoryAdaptResult, StoryMethod, StoryFilmPlan, StoryRunDeleteResult, StoryDialogueAuditResult, StoryDialogueDoctorResult, StoryCraftEngine, StoryCraftAudit } from './types'
 import { parseSseBlocks, type RunEvent, type RunStatus } from './lib/run-events'
 import { rememberDownload } from './lib/downloads'
 import { saveNativeDownload } from './lib/native-download'
@@ -220,6 +220,17 @@ export const StoryApi = {
   deleteMethod: (id: string) => api<{ ok: boolean; methods: StoryMethod[] }>(`/api/story/methods/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   captureMethod: (id: string, body: { name?: string }) => api<{ method: StoryMethod; methods: StoryMethod[]; capturedFrom: { id: string; title: string } }>(`/api/story/projects/${encodeURIComponent(id)}/method-capture`, { method: 'POST', body }),
   applyMethod: (id: string, body: { methodId: string }) => api<{ project: StoryProject; method: StoryMethod | null; applied: { episodes: number; style: boolean } }>(`/api/story/projects/${encodeURIComponent(id)}/method`, { method: 'POST', body }),
+  // ── 台词与深度构思 ──
+  // 台词体检：纯机检（语速/时长/拆镜），不花模型钱
+  dialogueAudit: (id: string, body: { sceneId?: string } = {}) => api<StoryDialogueAuditResult>(`/api/story/projects/${encodeURIComponent(id)}/dialogue-audit`, { method: 'POST', body }),
+  // 台词诊断与重构：出草稿不落盘（每条改写要给 ≥3 条维度依据）
+  dialogueDoctor: (id: string, body: { sceneId?: string; model?: { provider: string; id: string } }) => api<StoryDialogueDoctorResult>(`/api/story/projects/${encodeURIComponent(id)}/dialogue-doctor`, { method: 'POST', body, timeoutMs: 180000 }),
+  // 深度构思：情绪契约 / 人物四件套 / 矛盾单元 / 分集地图 / 因果节拍 / 四账台账（草稿）
+  storyEngine: (id: string, body: { idea?: string; episodes?: number; episodesPerUnit?: number; model?: { provider: string; id: string } }) => api<{ project: StoryProject; engine: StoryCraftEngine; audit: StoryCraftAudit; model: { provider: string; id: string }; retried?: boolean }>(`/api/story/projects/${encodeURIComponent(id)}/story-engine`, { method: 'POST', body, timeoutMs: 240000 }),
+  saveCraft: (id: string, body: { craft: StoryCraftEngine }) => api<{ project: StoryProject; audit: StoryCraftAudit }>(`/api/story/projects/${encodeURIComponent(id)}/craft`, { method: 'POST', body, timeoutMs: 60000 }),
+  // 构思体检（只读）：已保存的构思也要能随时体检
+  craftAudit: (id: string, body: { plannedEpisodes?: number } = {}) => api<{ audit: StoryCraftAudit; plannedEpisodes: number; hasCraft: boolean }>(`/api/story/projects/${encodeURIComponent(id)}/craft-audit`, { method: 'POST', body, timeoutMs: 30000 }),
+  applyEpisodeMap: (id: string, body: { episodeMap?: StoryCraftEngine['episodeMap'] } = {}) => api<{ project: StoryProject; created: StoryEpisode[]; skipped: number }>(`/api/story/projects/${encodeURIComponent(id)}/episode-map`, { method: 'POST', body, timeoutMs: 60000 }),
   // 剧本要素与导出（Laper 的地基：能出图出片，还要能拿出一个能给人看的剧本文件）
   scriptStats: (id: string) => api<{ scenes: number; actions: number; dialogueLines: number; transitions: number; speakers: string[] }>(`/api/story/projects/${encodeURIComponent(id)}/script-stats`),
   exportScript: (id: string, body: { format: string }) => api<{ format: string; ext: string; mime: string; body: string; filename: string; stats: { scenes: number; dialogueLines: number; speakers: string[] } }>(`/api/story/projects/${encodeURIComponent(id)}/script-export`, { method: 'POST', body }),

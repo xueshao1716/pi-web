@@ -3,9 +3,22 @@
 // 目的：把"这次生成能不能保住人物一致性"的已知条件**提前摊开**给用户，
 // 而不是等生成失败、或者看到人物一段一个样才发现。
 // 纯函数，不碰磁盘、不调模型，因此可以完整单元测试。
+//
+// 2026-09-16 扩展：用户说「人物、场景搭上了，对话与深度构思还是不行」。
+// 台词那部分最要命的几条**本来就是能算的**（同行也是这么做的：语速 3.5~5 字/秒、
+// 单句 >24 字必须拆镜），以前却要花一次模型调用才能从"听起来别扭"里猜出来。
+// 现在并进体检：不花钱就能看到"这一句 37 字，最快也要 7.4 秒，而这段只有 5 秒"。
+import { dialogueAudit, auditEngine } from './story-craft.mjs';
 
 const text = value => String(value ?? '').trim();
 const list = value => (Array.isArray(value) ? value : []);
+
+// 这一段的时间预算：优先用段落自己写的时长，其次方法的单集时长/场数折算，最后给个保守默认
+function budgetOf(beat, project) {
+  const own = Number(beat?.params?.seconds);
+  if (Number.isFinite(own) && own > 0) return own;
+  return null;
+}
 
 export function lintStoryProject(project, { kind = 'image', capabilities = null } = {}) {
   const issues = [];
@@ -48,9 +61,45 @@ export function lintStoryProject(project, { kind = 'image', capabilities = null 
   }
 
   const portraits = characters.filter(c => text(c?.refImage) || text(c?.ref)).length;
-  const level = issues.some(i => i.level === 'warn') ? 'warn' : issues.length ? 'info' : 'ok';
+
+  // ── 台词体检（不花钱的那部分）──
+  // 只对"有话可说的段落"报：没台词的段落不该被扣分。
+  let dialogueIssues = 0;
+  for (const scene of scenes) {
+    const title = text(scene?.title) || text(scene?.id) || '未命名场景';
+    for (const [index, beat] of list(scene?.beats).entries()) {
+      const dialogue = text(beat?.dialogue);
+      if (!dialogue) continue;
+      const audit = dialogueAudit({ dialogue, budgetSec: budgetOf(beat, project), genre: text(project?.genre) });
+      for (const issue of audit.issues) {
+        // 只把 warn 与"说不完/超长"这类硬问题抬进体检；info 级的风格提示留在台词面板里，
+        // 免得体检被一堆"可以更好"淹没。
+        if (issue.level !== 'warn') continue;
+        dialogueIssues += 1;
+        add('warn', `dialogue-${issue.code || issue.dim || 'issue'}`, `「${title}」第 ${index + 1} 段台词：${issue.message}${issue.text ? `（原句：${String(issue.text).slice(0, 30)}…）` : ''}`);
+      }
+    }
+  }
+
+  // ── 构思体检（结构性的那几条）──
+  const engine = auditEngine(project?.craft, { currentEpisode: list(project?.episodes).length });
+  if (!project?.craft) {
+    // 标 advisory：缺深度构思是**建议**，不是"不能开拍"。它不该把体检的总级别拉下来——
+    // 总级别的含义是"现在能不能生成"，被一堆建议染黄就没人看了。
+    issues.push({ level: 'info', code: 'no-craft', advisory: true, message: '还没有深度构思（情绪契约 / 人物四件套 / 分集钩子 / 伏笔账）：写到中段容易松' });
+  } else {
+    for (const issue of engine.issues) {
+      if (issue.level !== 'warn') continue;
+      add('warn', `craft-${issue.code}`, `构思：${issue.message}`);
+    }
+    const unpaid = list(project?.craft?.ledger?.setups).filter(s => !s?.payoffAt).length;
+    if (unpaid) issues.push({ level: 'info', code: 'craft-open-setups', advisory: true, message: `${unpaid} 条伏笔还没写回收集` });
+  }
+
+  const blocking = issues.filter(i => !i.advisory);
+  const level = blocking.some(i => i.level === 'warn') ? 'warn' : blocking.length ? 'info' : 'ok';
   return {
     issues,
-    summary: { characters: characters.length, portraits, scenes: scenes.length, beats: beats.length, level },
+    summary: { characters: characters.length, portraits, scenes: scenes.length, beats: beats.length, dialogueIssues, craftLevel: engine.level, level },
   };
 }

@@ -88,7 +88,7 @@ import * as confirmRegistry from "./engine/tools/confirm-registry.mjs";
 import { initRefineApi, readRefineJson, runRefineScript, handleRefineStatus, handleRefineList, detectSkillDomain, handleRefineFeedback, handleRefineGenes, handleRefinePlan, handleRefineApprove, handleRefineReject, handleRefineRollback } from "./engine/refine-api.mjs";
 import { initMcpServer, handleMcp } from "./engine/mcp-server.mjs";
 import { initMcpChat } from "./engine/mcp-chat.mjs";
-import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryProjectDelete, handleStoryRunPreview, handleStoryRun, handleStoryRunCheck, handleStoryRunCheckMany, handleStoryAssist, handleStoryPortrait, handleStoryAssetRef, handleStoryLint, handleStoryStoryboard, handleStoryAdapt, handleStoryFilm, handleStoryFilmPlan, handleStoryRunDelete, handleStoryRunLocalize, handleStoryLocalizeAll, handleStoryEpisodes, handleStoryEpisodeAdd, handleStoryEpisodeUpdate, handleStoryEpisodeRemove, handleStorySceneAssign, handleStoryScriptStats, handleStoryExportScript, handleStoryPlayground, handleStoryPlaygroundClear, handleStoryMethods, handleStoryMethodDelete, handleStoryMethodCapture, handleStoryMethodApply, handleStoryRecipes, handleStoryRecipesExport, handleStoryRecipesImport, handleStoryRecipeDelete } from "./engine/story-orchestrator.mjs";
+import { handleStoryProjects, handleStoryProject, handleStoryProjectPatch, handleStoryProjectDelete, handleStoryRunPreview, handleStoryRun, handleStoryRunCheck, handleStoryRunCheckMany, handleStoryAssist, handleStoryPortrait, handleStoryAssetRef, handleStoryLint, handleStoryStoryboard, handleStoryAdapt, handleStoryFilm, handleStoryFilmPlan, handleStoryRunDelete, handleStoryRunLocalize, handleStoryLocalizeAll, handleStoryDialogueAudit, handleStoryDialogueDoctor, handleStoryEngine, handleStoryCraftSave, handleStoryCraftAudit, handleStoryEpisodeMapApply, handleStoryEpisodes, handleStoryEpisodeAdd, handleStoryEpisodeUpdate, handleStoryEpisodeRemove, handleStorySceneAssign, handleStoryScriptStats, handleStoryExportScript, handleStoryPlayground, handleStoryPlaygroundClear, handleStoryMethods, handleStoryMethodDelete, handleStoryMethodCapture, handleStoryMethodApply, handleStoryRecipes, handleStoryRecipesExport, handleStoryRecipesImport, handleStoryRecipeDelete } from "./engine/story-orchestrator.mjs";
 import { startShare, stopShareSync, handleShare, handleShareStatus, handleShareStop } from "./engine/share-api.mjs";
 import { createStaticServer } from "./lib/static.mjs";
 import { CodeRuntime } from "./code-mode/code-runtime.mjs";
@@ -1727,6 +1727,17 @@ const API_ROUTES = [
   // 原著改编：小说原文/小说工坊章节 → 分集大纲（集+场+段）一次落进项目。
   // preview=true 只读书报字数，不调模型——先看清要花多少钱再决定。
   ["POST", /^\/api\/story\/projects\/([^/]+)\/adapt$/, async (res, req, url, m) => handleStoryAdapt({ root: WS_ROOT, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList, readNovelBook: readStoryNovelBook }, res, m[1], await readBody(req, 64))],
+  // ── 台词与深度构思（用户："人物场景搭上了，对话和构思还是不行"）──
+  // 台词体检：纯机检（语速/时长/拆镜），不花模型钱
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/dialogue-audit$/, async (res, req, url, m) => handleStoryDialogueAudit({ root: WS_ROOT }, res, m[1], await readBody(req, 4))],
+  // 台词诊断与重构：出草稿不落盘（照七维 + 语速标准，每条要 ≥3 条维度依据）
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/dialogue-doctor$/, async (res, req, url, m) => handleStoryDialogueDoctor({ root: WS_ROOT, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 16))],
+  // 深度构思：情绪契约 / 人物四件套 / 矛盾单元 / 分集地图 / 因果节拍 / 四账台账（出草稿不落盘）
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/story-engine$/, async (res, req, url, m) => handleStoryEngine({ root: WS_ROOT, directChat, getDefaultModel: () => defaultModel, getModelList: () => modelList }, res, m[1], await readBody(req, 16))],
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/craft$/, async (res, req, url, m) => handleStoryCraftSave({ root: WS_ROOT }, res, m[1], await readBody(req, 64))],
+  // 构思体检（只读）：已保存的构思也要能随时体检，而不是只在生成/保存之后
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/craft-audit$/, async (res, req, url, m) => handleStoryCraftAudit({ root: WS_ROOT }, res, m[1], await readBody(req, 4))],
+  ["POST", /^\/api\/story\/projects\/([^/]+)\/episode-map$/, async (res, req, url, m) => handleStoryEpisodeMapApply({ root: WS_ROOT }, res, m[1], await readBody(req, 16))],
   // 分集：短剧/系列内容的组织单位（场用 episodeId 归属；删集只解绑不删场）
   ["GET", /^\/api\/story\/projects\/([^/]+)\/episodes$/, (res, req, url, m) => handleStoryEpisodes({ root: WS_ROOT }, res, m[1])],
   ["POST", /^\/api\/story\/projects\/([^/]+)\/episodes$/, async (res, req, url, m) => handleStoryEpisodeAdd({ root: WS_ROOT }, res, m[1], await readBody(req, 8))],

@@ -28,6 +28,9 @@ export function createProject(input = {}, clock = {}) {
     // 这一部戏用的方法包（创作方法，不是工艺参数——工艺参数在配方里）。
     // 同样必须显式登记：不登记就写不回来，一键分镜/改编会悄悄退回"没有方法"。
     ...(input.methodId ? { methodId: String(input.methodId) } : {}),
+    // 深度构思（情绪契约 / 人物四件套 / 矛盾单元 / 分集地图 / 因果节拍 / 四账台账）。
+    // 同一个铁律第四次了：新字段不在这里登记，写进去就读不回来。
+    ...(input.craft ? { craft: input.craft } : {}),
     activeSceneId: input.activeSceneId,
     createdAt: now,
     updatedAt: now,

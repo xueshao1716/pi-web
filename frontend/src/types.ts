@@ -210,7 +210,53 @@ export interface StoryMethod {
   deliverables: (string | StoryMethodStep)[]
   createdAt?: string
 }
-export interface StoryProject { id: string; title: string; logline?: string; bible: StoryBible; scenes: StoryScene[]; films?: StoryFilm[]; episodes?: StoryEpisode[]; adaptations?: StoryAdaptation[]; methodId?: string; activeSceneId?: string; defaultRecipeId?: string; createdAt: string; updatedAt: string }
+// ── 台词与深度构思（用户："人物场景搭上了，对话和构思还是不行"）──
+// 台词体检是**机检**（语速 3.5~5 字/秒、单句 >24 字要拆镜），不花模型钱；
+// 台词诊断与深度构思是模型出的**草稿**，人在界面上逐条/整体确认后才写进项目。
+export interface StorySpeechLine { text: string; chars: number; minSec: number; maxSec: number; pauses: number }
+export interface StorySpeechIssue { code?: string; dim?: string; level: 'warn' | 'info'; text?: string; message: string; speaker?: string; chars?: number; budgetSec?: number }
+export interface StorySpeechCheck { chars: number; lines: StorySpeechLine[]; minSec: number; maxSec: number; pauses: number; longest: StorySpeechLine | null; issues: StorySpeechIssue[]; level: string }
+export interface StoryDialogueAudit {
+  rows: { speaker: string; paren: string; text: string; chars: number }[]
+  speakers: { speaker: string; lines: number; chars: number; longest: number }[]
+  speech: StorySpeechCheck
+  issues: StorySpeechIssue[]
+  dims: string[]
+  hitDims: string[]
+  humanDims: string[]
+  level: string
+}
+export interface StoryDialogueAuditResult {
+  scenes: { sceneId: string; title: string; beats: { beatId: string; beatKind: string; budgetSec: number | null; audit: StoryDialogueAudit }[] }[]
+  totals: { beats: number; chars: number; warn: number; info: number }
+  notes: Record<string, string>
+}
+export interface StoryDialogueDoctorLine { speaker: string; original: string; rewritten: string; reasons: string[]; shots: { shot: string; text: string; chars: number }[]; thin: boolean }
+export interface StoryDialogueDoctorResult {
+  project?: StoryProject
+  sceneId: string; sceneTitle: string
+  audit: StoryDialogueAudit
+  doctor: { summary: string; lines: StoryDialogueDoctorLine[]; keep: string[]; changed: number }
+  model: { provider: string; id: string }
+  retried?: boolean
+}
+export interface StoryCraftCharacter { name: string; slot: string; desire: string; secret: string; arc: string; voicePrint: string }
+export interface StoryCraftUnit { no: number; spine: string; episodes: string; rounds: string; cap: number | null; seam: { ember: string; opponent: string; arc: string } }
+export interface StoryCraftEngine {
+  emotionContract: { line: string; neverDo: string[] }
+  characters: StoryCraftCharacter[]
+  units: StoryCraftUnit[]
+  episodeMap: { no: number; goal: string; coldOpen: string; hook: string }[]
+  beats: { no: number; event: string; link: string; changes: string[] }[]
+  ledger: {
+    setups: { text: string; setupAt: number | null; payoffAt: number | null; note: string }[]
+    characters: { text: string; at: number | null }[]
+    props: { text: string; at: number | null }[]
+    rules: { text: string }[]
+  }
+}
+export interface StoryCraftAudit { issues: { code: string; level: 'warn' | 'info'; message: string; name?: string; episode?: number; unit?: number; text?: string }[]; level: string }
+export interface StoryProject { id: string; title: string; logline?: string; bible: StoryBible; scenes: StoryScene[]; films?: StoryFilm[]; episodes?: StoryEpisode[]; adaptations?: StoryAdaptation[]; methodId?: string; craft?: StoryCraftEngine; activeSceneId?: string; defaultRecipeId?: string; createdAt: string; updatedAt: string }
 
 // 交付物（/api/ws/deliveries）条目
 export interface AssetDelivery {
