@@ -98,6 +98,8 @@ export interface StoryGenerationRun {
   referenceImages?: string[]
   // 负向提示词（这一趟实际用的那份）。以前没有这个概念。
   negative?: string
+  // 这一趟用的参考图策略（几张、谁优先、实际用了几张）——事后要能回答"为什么这张图没带定妆照"
+  reference?: { images: number; prefer: string; used: number }
   createdAt: string
   finishedAt?: string
 }
@@ -112,6 +114,8 @@ export interface StoryRecipe {
   model: { provider: string; id: string }
   params: Record<string, string>
   negative: string
+  // 参考图策略：用几张、谁优先（画面默认 1 张素材优先；视频默认 4 张定妆照优先）
+  reference: { images: number; prefer: 'material' | 'portrait' }
   seed: number | null
   variants: number
   note?: string
@@ -124,7 +128,7 @@ export interface StoryBeatInput { id: string; type: 'image' | 'video' | 'text'; 
 export interface StoryBeat { id: string; kind: 'novel' | 'image' | 'video'; prompt: string; references: StoryAssetRef[]; inheritFromBeatId?: string; activeRunId?: string; dialogue?: string; inputs?: StoryBeatInput[]; negative?: string }
 export interface StoryScene { id: string; index: number; title: string; summary: string; beats: StoryBeat[]; outputs: StoryGenerationRun[]; activeRunId?: string }
 export interface StoryFilm { id: string; url: string; clipCount: number; method: string; beatIds: string[]; createdAt: string }
-export interface StoryProject { id: string; title: string; logline?: string; bible: StoryBible; scenes: StoryScene[]; films?: StoryFilm[]; activeSceneId?: string; negative?: string; createdAt: string; updatedAt: string }
+export interface StoryProject { id: string; title: string; logline?: string; bible: StoryBible; scenes: StoryScene[]; films?: StoryFilm[]; activeSceneId?: string; defaultRecipeId?: string; createdAt: string; updatedAt: string }
 
 // 交付物（/api/ws/deliveries）条目
 export interface AssetDelivery {

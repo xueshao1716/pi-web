@@ -64,6 +64,26 @@ test('配方必须留在界面上：保存 / 套用 / 套用到全项目 / 导�
   assert.match(api, /\/api\/story\/recipes\/import/);
 });
 
+test('参考图策略与项目默认配方必须留在界面上', () => {
+  assert.match(source, /aria-label="参考图张数"/, '张数要能设（0 = 明确不用参考图）');
+  assert.match(source, /aria-label="参考图优先"/, '谁优先要能设');
+  assert.match(source, /reference: refDraft/, '策略要跟着这次生成上送');
+  assert.match(source, /setDefaultRecipe/, '要能设为项目默认');
+  assert.match(source, /recipeBeatPatch\(currentDefaultRecipe\)/, '新段落要盖上默认配方的类型与负向');
+  const rec = fs.readFileSync('frontend/src/components/story/StoryRecipes.tsx', 'utf8');
+  assert.match(rec, /设为项目默认/);
+  assert.match(rec, /取消项目默认/);
+  assert.match(rec, /refStrategyLabel/, '配方卡上要看得见参考图策略');
+  // 前端默认值必须和后端一致，否则界面显示的和真正发出去的不是一回事
+  const lib = fs.readFileSync('frontend/src/lib/story-ref.ts', 'utf8');
+  assert.match(lib, /kind === 'image' \? 1 : kind === 'video' \? 4 : 0/);
+  const be = fs.readFileSync('engine/story-recipes.mjs', 'utf8');
+  assert.match(be, /images: kind === 'image' \? 1 : kind === 'video' \? 4 : 0/, '后端那份是权威，两处必须同一套默认值');
+  const types = fs.readFileSync('frontend/src/types.ts', 'utf8');
+  assert.match(types, /defaultRecipeId\?: string/);
+  assert.match(types, /reference: \{ images: number; prefer: 'material' \| 'portrait' \}/);
+});
+
 test('作品列表：段号取生成时的定格值、失败可见、成片落回项目', () => {  const products = fs.readFileSync('frontend/src/components/story/StoryProducts.tsx', 'utf8');
   // 段号优先用 run.beatNo（生成时刻定格），只在旧数据上按当前分镜顺序回退
   assert.match(products, /run\.beatNo/);

@@ -20,6 +20,24 @@ export const RECIPE_KINDS = ['novel', 'image', 'video'];
 export const RECIPE_FORMAT = 'yuanshu-story-recipes';
 export const RECIPE_FORMAT_VERSION = 1;
 export const RECIPE_MAX = 100;
+// 参考图策略：用几张、谁优先。默认值按"用户显式做了什么"来定，而不是拍脑袋：
+//  - 画面（图生图）只有一张入口：用户显式挂的素材**必然**是他的意图，所以默认素材优先；
+//    反过来会让"挂了素材却什么都没发生"——最坏的一种静默失败。
+//  - 视频（reference 模式）能吃多张：默认先定妆照（保人物），素材跟在后面给场景依据。
+export const REF_IMAGES_MAX = 4;
+export const defaultRefStrategy = (kind) => ({
+  images: kind === 'image' ? 1 : kind === 'video' ? 4 : 0,
+  prefer: kind === 'image' ? 'material' : 'portrait',
+});
+export function normalizeRefStrategy(input, kind) {
+  const fallback = defaultRefStrategy(kind);
+  const src = input && typeof input === 'object' ? input : {};
+  const raw = Number(src.images);
+  return {
+    images: Number.isFinite(raw) ? Math.max(0, Math.min(REF_IMAGES_MAX, Math.round(raw))) : fallback.images,
+    prefer: src.prefer === 'material' || src.prefer === 'portrait' ? src.prefer : fallback.prefer,
+  };
+}
 const FILE = 'story-recipes.json';
 
 const makeId = () => crypto.randomUUID();
@@ -35,7 +53,11 @@ export function normalizeRecipe(input = {}, clock = {}) {
   const params = input.params && typeof input.params === 'object' && !Array.isArray(input.params)
     ? Object.fromEntries(Object.entries(input.params).filter(([, v]) => v != null && String(v).trim() !== '').slice(0, 12).map(([k, v]) => [String(k).slice(0, 40), String(v).slice(0, 60)]))
     : {};
-  const seed = Number.isFinite(Number(input.seed)) && String(input.seed).trim() !== '' ? Number(input.seed) : null;
+  // seed 的三态要分清：null/undefined/'' = 没锁；0 是**合法的 seed**，不能被当成"没锁"。
+  // 第一版写成 `Number.isFinite(Number(input.seed)) && String(input.seed).trim() !== ''`，
+  // 于是前端传 `seed: null`（没锁）会走进 `Number(null) === 0` 这条分支，静默变成一个锁死的 0。
+  const rawSeed = input.seed;
+  const seed = rawSeed == null || String(rawSeed).trim() === '' || !Number.isFinite(Number(rawSeed)) ? null : Number(rawSeed);
   const variants = Math.max(1, Math.min(4, Number(input.variants) || 1));
   return {
     id: String(input.id || `rcp-${makeId()}`),
@@ -44,6 +66,9 @@ export function normalizeRecipe(input = {}, clock = {}) {
     model: { provider: String(input?.model?.provider || 'auto'), id: String(input?.model?.id || 'auto') },
     params,
     negative: String(input.negative || '').trim().slice(0, 1000),
+    // 参考图策略是配方的一部分：同一个故事，用几张定妆照、素材优先还是人物优先，
+    // 直接决定画面像不像同一个人。以前这条策略是硬编码在编排层里的，用户看不到也改不了。
+    reference: normalizeRefStrategy(input.reference, kind),
     seed,
     variants,
     note: String(input.note || '').trim().slice(0, 200),

@@ -9,7 +9,7 @@ import { buildStoryAssistPrompt, parseStoryAssist, buildStoryboardPrompt, parseS
 import { lintStoryProject } from './story-lint.mjs';
 import { collectFilmClips, concatClips } from './story-film.mjs';
 import { materializeMedia } from './media-inline.mjs';
-import { listRecipes, saveRecipe, deleteRecipe, importRecipes, exportRecipes } from './story-recipes.mjs';
+import { listRecipes, saveRecipe, deleteRecipe, importRecipes, exportRecipes, normalizeRefStrategy } from './story-recipes.mjs';
 import { json } from './http-utils.mjs';
 
 const makeId = () => crypto.randomUUID();
@@ -156,31 +156,38 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
   // 一次生成要做的事，全部在这里算清楚。**预览与实跑共用它**：
   // 两边各算一遍的话，「检查生成输入」显示的就不是真正会发出去的东西。
   // （ComfyUI 把整张工作流摆在画布上，人看得见每一步；元枢此前只能给一段提示词文本。）
-  const buildRunPlan = (project, scene, beat, input = {}) => {
+  //
+  // defaultRecipe：项目级默认配方的回退层。**seed 刻意不从它取**——配方里锁一个 seed
+  // 是"这一镜要复现"，如果它悄悄成了全项目默认，每个段落都会拿到同一个 seed，
+  // 那是没人要的副作用。想锁 seed 就在制作台上明写。
+  const buildRunPlan = (project, scene, beat, input = {}, defaultRecipe = null) => {
     const kind = ['novel', 'image', 'video'].includes(input.kind) ? input.kind : beat.kind;
-    const model = resolveModel(input.model, kind, input.model);
+    const model = resolveModel(
+      input.model && !(input.model.provider === 'auto' && input.model.id === 'auto') ? input.model : defaultRecipe?.model,
+      kind, input.model,
+    );
     const context = mergeBeatContext(project, scene, beat);
-    // 负向提示词（段落级）。先写进提示词块（所有通道都吃、都看得见），
+    // 负向提示词（段落级 > 项目默认配方）。先写进提示词块（所有通道都吃、都看得见），
     // 再作为 negative 传给图像通道——上游认不认那个字段是另一回事，但请求里必须看得见。
-    const negative = String(input.negative ?? beat.negative ?? '').trim();
+    const negative = String(input.negative ?? beat.negative ?? defaultRecipe?.negative ?? '').trim();
     const compiled = compileStoryPrompt({ bible: project.bible, scene, beat, inherited: context, negative });
     // seed 不再靠运气：用户没指定就现掷一个**并记下来**，这条 run 因此可复现。
     // 以前 run.seed 恒为 undefined，而能力声明却写着支持固定 seed——声称支持却从未生效。
     const seed = Number.isFinite(Number(input?.seed)) ? Number(input.seed) : randomSeed();
-    const variants = Math.max(1, Math.min(VARIANT_MAX, Number(input?.variants) || 1));
+    const variants = Math.max(1, Math.min(VARIANT_MAX, Number(input?.variants) || Number(defaultRecipe?.variants) || 1));
+    // 参考图策略：显式 > 段落 > 项目默认配方 > 按类型的默认（见 story-recipes.defaultRefStrategy）
+    const refStrategy = normalizeRefStrategy(input.reference ?? beat.reference ?? defaultRecipe?.reference, kind);
     const caps = capabilitiesFor(kind, model);
     const materials = Array.isArray(context.materials) ? context.materials : [];
     const picked = caps.supported.reference ? pickReferenceImages(project, compiled.text) : [];
     const materialImages = caps.supported.reference ? materials.filter(m => m.type === 'image' && m.url).map(m => m.url) : [];
     const materialVideos = materials.filter(m => m.type === 'video' && m.url).map(m => m.url);
-    // 参考图的顺序按用途定，而且**要跟真实能力对齐**（适配器用不到的不许假装用到了）：
-    //  - 画面（图生图）只有一张入口 → 用户显式挂的素材优先，定妆照退居其次；
-    //    反过来会让"挂了素材却什么都没发生"，那是最坏的一种静默失败。
-    //  - 视频（reference 模式）能吃多张 → 定妆照在前（保人物），素材在后（给场景/构图依据）。
-    const orderedImages = kind === 'image'
-      ? [...materialImages, ...picked].slice(0, 1)
-      : [...picked, ...materialImages].slice(0, 4);
-    const usedRefs = [...new Set([...picked, ...materialImages])].slice(0, 4);
+    // 谁优先由策略决定（默认：画面素材优先、视频定妆照优先），张数也由策略定（0 = 明确不用参考图）
+    const pool = refStrategy.prefer === 'material'
+      ? [...materialImages, ...picked]
+      : [...picked, ...materialImages];
+    const orderedImages = refStrategy.images > 0 ? [...new Set(pool)].slice(0, refStrategy.images) : [];
+    const usedRefs = orderedImages;
     const notes = [];
     const upstreamImages = [];
     for (const ref of orderedImages) {
@@ -196,13 +203,14 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
     }
     // 挂载了素材就要在产物历史里留下痕迹：没有它，"这一段用过哪些素材"事后无从对账
     const materialAssets = materials.map((m, i) => ({ id: m.id || `material-${i + 1}`, role: m.type === 'text' ? 'source-text' : 'reference', type: m.type, ...(m.url ? { url: m.url } : {}), ...(m.name ? { name: m.name } : {}) }));
-    const params = input.params && typeof input.params === 'object' ? { ...input.params } : {};
+    // 参数：项目默认配方打底，显式传的覆盖它
+    const params = { ...(defaultRecipe?.params || {}), ...(input.params && typeof input.params === 'object' ? input.params : {}) };
     const adapterParams = {
       ...params,
       ...(negative ? { negative } : {}),
       ...(upstreamVideos.length ? { videos: upstreamVideos } : {}),
     };
-    return { kind, model, context, compiled, negative, seed, variants, caps, usedRefs, upstreamImages, params, adapterParams, materialAssets, notes };
+    return { kind, model, context, compiled, negative, seed, variants, refStrategy, caps, usedRefs, upstreamImages, params, adapterParams, materialAssets, notes, defaultRecipe };
   };
 
   // 把 plan 摊成「这次到底会做什么」的清单给界面看。步骤可见，是 ComfyUI 那种画布的核心价值。
@@ -211,12 +219,14 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       { label: '输出类型', detail: kindLabel[plan.kind] || plan.kind },
       { label: '模型', detail: plan.model?.provider ? `${plan.model.provider}/${plan.model.id}` : '（未指定，交给上游默认）' },
       { label: 'seed', detail: plan.variants > 1 ? `${plan.seed} ~ ${plan.seed + plan.variants - 1}（${plan.variants} 个变体）` : String(plan.seed) },
-      { label: '参考图', detail: plan.usedRefs.length ? `${plan.usedRefs.length} 张` : plan.caps.supported.reference ? '无（没有可用定妆照/素材）' : '未注入（模型未声明支持参考资产）' },
+      { label: '参考图', detail: plan.refStrategy.images === 0 ? '不使用（配方/设置里把参考图关掉了）' : plan.usedRefs.length ? `${plan.usedRefs.length} 张` : plan.caps.supported.reference ? '无（没有可用定妆照/素材）' : '未注入（模型未声明支持参考资产）' },
+      { label: '参考图策略', detail: plan.refStrategy.images === 0 ? '不用参考图' : `${plan.refStrategy.images} 张 · ${plan.refStrategy.prefer === 'material' ? '素材优先' : '定妆照优先'}` },
       { label: '参考图清单', detail: plan.usedRefs.map((u, i) => `${i + 1}. ${String(u).slice(0, 90)}`).join('\n') || '—' },
       { label: '挂载素材', detail: plan.materialAssets.length ? plan.materialAssets.map(a => `${a.type}:${a.name || a.url || a.id}`).join('、') : '无' },
-      { label: '负向提示词', detail: plan.negative || '未设置' },
+      { label: '负向提示词', detail: plan.negative ? `${plan.negative}${plan.defaultRecipe ? `（段落没写，取自项目默认配方「${plan.defaultRecipe.name}」）` : ''}` : '未设置' },
       { label: '上送参数', detail: JSON.stringify(plan.adapterParams).slice(0, 300) || '—' },
     ];
+    if (plan.defaultRecipe) steps.unshift({ label: '项目默认配方', detail: `「${plan.defaultRecipe.name}」在段落没说的地方生效（模型/参数/负向/变体数/参考图策略）` });
     const warn = [...(plan.caps.degradation || []), ...(plan.notes || []), ...(run?.degradation || [])].filter(Boolean);
     if (warn.length) steps.push({ label: '注意', detail: [...new Set(warn)].join('；') });
     return steps;
@@ -238,6 +248,13 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
     novel: adapters.novel || createNovelAdapter({ directChat }),
     video: adapters.video || createVideoAdapter({ generateVideo, saveArtifact }),
   };
+  // 项目级默认配方：段落自己没说的地方由它兜底（模型/参数/负向/变体数/参考图策略）。
+  // 找不到（被删了）就当没有——**不报错**：一条配方被删不该让整个项目生成不了。
+  const loadDefaultRecipe = async (project) => {
+    const id = project?.defaultRecipeId;
+    if (!id) return null;
+    try { return (await listRecipes(root)).find(r => r.id === id) || null; } catch { return null; }
+  };
   return {
     list: () => listProjects(root),
     create: async input => { const project = createProject(input, clock); await writeProject(root, project); return project; },
@@ -256,7 +273,7 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       if (!scene || !beat) throw Object.assign(new Error('sceneId 或 beatId 不存在'), { statusCode: 400 });
       // 预览与实跑**共用同一个 plan**：两边各算一次的话，
       // 「检查生成输入」显示的就不是真正会发出去的东西了（这正是它以前只敢显示提示词的原因）。
-      const plan = buildRunPlan(project, scene, beat, input);
+      const plan = buildRunPlan(project, scene, beat, input, await loadDefaultRecipe(project));
       const run = createGenerationRun({ ...input, kind: plan.kind, model: withCatalogCapabilities(plan.model), projectId: id, sceneId: scene.id, beatId: beat.id, seed: plan.seed, params: plan.params, inputAssets: input?.inputAssets || plan.compiled.referenceIds.map(assetId => ({ id: assetId, role: 'reference' })) }, clock);
       return { project, run, context: { ...plan.compiled, prompt: plan.compiled.text }, plan: describeRunPlan(plan, run) };
     },
@@ -265,7 +282,7 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       const scene = findScene(project, input.sceneId);
       const beat = findBeat(scene, input.beatId);
       if (!scene || !beat) throw Object.assign(new Error('sceneId 或 beatId 不存在'), { statusCode: 400 });
-      const plan = buildRunPlan(project, scene, beat, input);
+      const plan = buildRunPlan(project, scene, beat, input, await loadDefaultRecipe(project));
       // 段号（跨场景连续）在生成时定格，随产物一起存下来——见 createGenerationRun 里的说明
       const beatNo = (() => {
         let n = 0;
@@ -285,6 +302,8 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
         }, clock);
         if (plan.usedRefs.length) run.referenceImages = plan.usedRefs;
         if (plan.negative) run.negative = plan.negative;
+        // 记下这一趟用的参考图策略：事后要能回答"为什么这张图没带定妆照"
+        run.reference = { images: plan.refStrategy.images, prefer: plan.refStrategy.prefer, used: plan.usedRefs.length };
         // 上送用的那份和记录下来的那份分开：记录存原始引用，上送才内联（见 plan.materialize）
         // 只在真有话说时才写 degradation——空数组会让"没有降级"变成另一种形状，
         // 也白白撑大项目 JSON。
@@ -398,6 +417,9 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
         prompt = `${basePrompt}\n\n【补充要求】上一次你只给了 ${parsed.beatCount} 段，不够。这一次必须给足 ${count} 段（scenes 数组里每一段 beats 至少 1 条，合计不少于 ${count} 条），不要合并、不要省略、不要用省略号带过。`;
       }
       const scenes = [...(project.scenes || [])];
+      // 新段落自动套用项目默认配方的**类型与负向**（模型/尺寸/seed 是每次生成时的选择，
+      // 不落到段落上）。一键分镜一次产出十几段，正是"点了 10 遍同一套设置"最痛的地方。
+      const stampRecipe = await loadDefaultRecipe(project);
       // 先并设定：段落引用要按**合并后**的角色 id 挂，否则引用指向的是不存在的 id。
       const bible = mergeStoryboardBible(project.bible, storyboard.bible);
       const cast = Array.isArray(bible.characters) ? bible.characters : [];
@@ -406,9 +428,11 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
       storyboard.scenes.forEach((scene, index) => {
         const beats = scene.beats.map((beat, beatIndex) => {
           const id = `beat-${stamp}-${index}-${beatIndex}`;
+          const kind = ['novel', 'image', 'video'].includes(stampRecipe?.kind) ? stampRecipe.kind : beat.kind;
           const item = {
-            id, kind: beat.kind, prompt: beat.prompt,
+            id, kind, prompt: beat.prompt,
             ...(beat.dialogue ? { dialogue: String(beat.dialogue).slice(0, 2000) } : {}),
+            ...(stampRecipe?.negative ? { negative: stampRecipe.negative } : {}),
             references: pickBeatReferences(cast, beat.prompt),
             ...(previousId ? { inheritFromBeatId: previousId } : {}),
           };

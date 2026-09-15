@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import useSWR from 'swr'
 import { StoryApi } from '../../api'
 import type { StoryRecipe } from '../../types'
+import { refStrategyLabel } from '../../lib/story-ref'
 
 const kindLabel: Record<string, string> = { novel: '文字', image: '画面', video: '视频' }
 
@@ -14,11 +15,14 @@ const kindLabel: Record<string, string> = { novel: '文字', image: '画面', vi
 //
 // 边界：配方**只存工艺，不存故事**——类型/模型/尺寸或时长/负向/seed/变体数。
 // 提示词、台词、素材属于故事，混进配方就变成"换个配方顺手把台词也换了"。
-export default function StoryRecipes({ current, busy, onApply, onApplyToProject, onPatchProject }: {
+export default function StoryRecipes({ current, busy, onApply, onApplyToProject, defaultRecipeId, onSetDefault, onPatchProject }: {
   current: Partial<StoryRecipe>
   busy: boolean
   onApply: (recipe: StoryRecipe) => void
   onApplyToProject: (recipe: StoryRecipe) => void
+  defaultRecipeId?: string
+  onSetDefault?: (id: string) => void
+  onChanged?: () => void
   onPatchProject?: () => void
 }) {
   const { data, mutate } = useSWR('story-recipes', () => StoryApi.recipes(), { revalidateOnFocus: false, dedupingInterval: 10000 })
@@ -38,6 +42,7 @@ export default function StoryRecipes({ current, busy, onApply, onApplyToProject,
         model: current.model || { provider: 'auto', id: 'auto' },
         params: current.params || {},
         negative: current.negative || '',
+        reference: current.reference,
         seed: current.seed ?? null,
         variants: current.variants || 1,
       })
@@ -84,15 +89,18 @@ export default function StoryRecipes({ current, busy, onApply, onApplyToProject,
     {open && <div className="story-recipes-body">
       <p className="story-hint">配方只存**工艺**（类型 / 模型 / 尺寸 / 负向 / seed / 变体数），不存提示词与台词——换配方不会动你的故事。</p>
       {recipes.length > 0 && <ul className="story-recipe-list">
-        {recipes.map(r => <li key={r.id} className="story-recipe-item">
+        {recipes.map(r => <li key={r.id} className={`story-recipe-item${r.id === defaultRecipeId ? ' is-default' : ''}`}>
           <div className="story-recipe-meta">
-            <strong>{r.name}</strong>
-            <span>{kindLabel[r.kind] || r.kind} · {r.model?.provider}/{r.model?.id}{Object.keys(r.params || {}).length ? ` · ${Object.values(r.params).join('/')}` : ''}{r.negative ? ' · 有负向' : ''}{r.variants > 1 ? ` · ${r.variants} 版` : ''}{r.seed != null ? ` · seed ${r.seed}` : ''}</span>
+            <strong>{r.name}{r.id === defaultRecipeId ? ' · 项目默认' : ''}</strong>
+            <span>{kindLabel[r.kind] || r.kind} · {r.model?.provider}/{r.model?.id}{Object.keys(r.params || {}).length ? ` · ${Object.values(r.params).join('/')}` : ''} · 参考图 {refStrategyLabel(r.kind, r.reference || { images: 1, prefer: 'portrait' })}{r.negative ? ' · 有负向' : ''}{r.variants > 1 ? ` · ${r.variants} 版` : ''}{r.seed != null ? ` · seed ${r.seed}` : ''}</span>
             {r.note && <span>{r.note}</span>}
           </div>
           <div className="story-actions">
             <button className="btn-ghost" disabled={busy} onClick={() => onApply(r)}>套用</button>
             <button className="btn-ghost" disabled={busy} onClick={() => onApplyToProject(r)}>套用到本项目所有段落</button>
+            {onSetDefault && (r.id === defaultRecipeId
+              ? <button className="btn-ghost" disabled={busy} onClick={() => onSetDefault('')}>取消项目默认</button>
+              : <button className="btn-ghost" disabled={busy} onClick={() => onSetDefault(r.id)}>设为项目默认</button>)}
             <button className="btn-ghost" disabled={busy} onClick={() => remove(r)}>删除</button>
           </div>
         </li>)}

@@ -139,6 +139,7 @@
 .story-recipe-meta span { font-size: 11px; color: var(--pi-dim2); overflow-wrap: anywhere; }
 .story-recipe-item .story-actions { gap: 6px; }
 .story-recipe-item .story-actions :is(.btn-ghost) { padding: 4px 8px; font-size: 11px; }
+.story-recipe-item.is-default { border-color: var(--pi-accent); background: color-mix(in oklab, var(--pi-accent) 8%, var(--pi-bg2)); }
 .story-recipe-save { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .story-recipe-save input { min-height: 32px; font-size: 12px; flex: 1 1 160px; }
 .story-recipe-save .btn-ghost { padding: 6px 10px; font-size: 11px; }

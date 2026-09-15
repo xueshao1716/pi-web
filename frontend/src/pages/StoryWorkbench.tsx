@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
+import useSWR from 'swr'
 import { ModelsApi, StoryApi, withFileToken } from '../api'
-import type { Model, StoryBeat, StoryCharacter, StoryGenerationRun, StoryPlanStep, StoryProject } from '../types'
+import type { Model, StoryBeat, StoryCharacter, StoryGenerationRun, StoryPlanStep, StoryProject, StoryRecipe } from '../types'
 import { applyStoryDraft, bibleText, editedBible } from '../lib/story-draft'
 import StoryStart from '../components/story/StoryStart'
 import StorySettings from '../components/story/StorySettings'
@@ -8,6 +9,7 @@ import StoryResults from '../components/story/StoryResults'
 import StoryProducts from '../components/story/StoryProducts'
 import StoryMaterials from '../components/story/StoryMaterials'
 import StoryRecipes from '../components/story/StoryRecipes'
+import { defaultRefStrategy, normalizeRefStrategy, refStrategyLabel, recipeBeatPatch } from '../lib/story-ref'
 import type { StoryBeatInput } from '../types'
 import '../components/story/story.css'
 
@@ -45,6 +47,8 @@ export function StoryPanel() {
   const [plan, setPlan] = useState<StoryPlanStep[]>([])
   // 工艺参数（尺寸 / 时长）。以前 params 是个**没人填的空字段**——配方要携带它，就必须先有它。
   const [paramDraft, setParamDraft] = useState<Record<string, string>>({})
+  // 参考图策略：用几张、谁优先。以前这条策略硬编码在编排层里，用户在界面上既看不到也改不了。
+  const [refDraft, setRefDraft] = useState<{ images: number; prefer: 'material' | 'portrait' }>({ images: 1, prefer: 'material' })
   const [compiled, setCompiled] = useState('')
   const [timelineOpen, setTimelineOpen] = useState(() => window.innerWidth > 640)
   const [storyboardIdea, setStoryboardIdea] = useState('')
@@ -58,8 +62,10 @@ export function StoryPanel() {
   const hydrateBible = (p: StoryProject) => setBibleDraft(bibleText(p.bible))
   const update = (p: StoryProject) => { setProject(p); setProjects(items => [p, ...items.filter(item => item.id !== p.id)]) }
   const choose = (p: StoryProject | null) => { setProject(p); setSelected(p?.scenes[0]?.beats[0]?.id || ''); if (p) hydrateBible(p); setAssistResult(null); setCompiled(''); setError(''); setNotice('') }
-  const setGenerationKind = (kind: StoryBeat['kind']) => { setSelectedKind(kind); setSelectedModel(''); setCompiled('') }
-  useEffect(() => { if (beat) { setSelectedKind(beat.kind); setPromptDraft(beat.prompt); setDialogueDraft(beat.dialogue || ''); setInputDrafts(beat.inputs || []); setNegativeDraft(beat.negative || ''); setSeedDraft('') } setAssistResult(null); setCompiled('') }, [project?.id, beat?.id, beat?.kind, beat?.prompt, beat?.dialogue, beat?.inputs, beat?.negative])
+  useEffect(() => { if (beat) { setSelectedKind(beat.kind); setPromptDraft(beat.prompt); setDialogueDraft(beat.dialogue || ''); setInputDrafts(beat.inputs || []); setNegativeDraft(beat.negative || ''); setSeedDraft(''); setRefDraft(normalizeRefStrategy((beat as any).reference, beat.kind)) } setAssistResult(null); setCompiled('') }, [project?.id, beat?.id, beat?.kind, beat?.prompt, beat?.dialogue, beat?.inputs, beat?.negative])
+  // 切换输出类型时，参考图策略的默认值跟着类型走（画面 1 张素材优先 / 视频 4 张定妆照优先）——
+  // 否则从视频切到画面会沿用"4 张"，把一个只吃一张的通道撑爆。
+  const setGenerationKind = (kind: StoryBeat['kind']) => { setSelectedKind(kind); setSelectedModel(''); setCompiled(''); setRefDraft(normalizeRefStrategy(undefined, kind)) }
   useEffect(() => { if (selectedModel && !availableModels.some(m => modelKey(m) === selectedModel)) setSelectedModel('') }, [selectedKind, models, selectedModel])
   const load = async () => {
     setBusy('正在加载故事'); setError('')
@@ -108,6 +114,7 @@ export function StoryPanel() {
     ...(Number(variantsDraft) > 1 ? { variants: Number(variantsDraft) } : {}),
     ...(negativeDraft.trim() ? { negative: negativeDraft.trim() } : {}),
     ...(Object.keys(paramDraft).length ? { params: paramDraft } : {}),
+    reference: refDraft,
   })
   const IMAGE_SIZES = ['1024x1024', '832x1472', '1472x832']
   const VIDEO_SIZES = ['720P', '1080P']
@@ -117,7 +124,17 @@ export function StoryPanel() {
     if (value) next[key] = value; else delete next[key]
     return next
   })
-  // 套用配方：把配方里的**工艺**灌回制作台（不动提示词/台词/素材——那些是故事，不是工艺）
+  // 项目默认配方：段落没说的地方由它兜底（服务端在 buildRunPlan 里做同一件事）。
+  // 前端拿它干两件事：显示"当前默认是谁"，以及给**新段落**盖上类型与负向。
+  const { data: recipeData, mutate: mutateRecipes } = useSWR('story-recipes', () => StoryApi.recipes(), { revalidateOnFocus: false, dedupingInterval: 10000 })
+  const patchProjectField = async (changes: Record<string, unknown>, note: string) => action(note, async () => {
+    if (!project) return
+    const r = await StoryApi.patchProject(project.id, changes as any)
+    update(r.project)
+    setNotice(note)
+  })
+  const setDefaultRecipe = (recipeId: string) => patchProjectField({ defaultRecipeId: recipeId || undefined }, recipeId ? '已设为项目默认配方，新段落会自动套用它的类型与负向' : '已取消项目默认配方')
+  const currentDefaultRecipe: StoryRecipe | undefined = (recipeData?.recipes || []).find(r => r.id === project?.defaultRecipeId)
   const applyRecipe = (r: any, toAll: boolean) => action(toAll ? `正在把「${r.name}」套用到全部段落` : `正在套用配方「${r.name}」`, async () => {
     if (!project) return
     if (['novel', 'image', 'video'].includes(r.kind)) setSelectedKind(r.kind)
@@ -126,6 +143,7 @@ export function StoryPanel() {
     setSeedDraft(r.seed != null ? String(r.seed) : '')
     setVariantsDraft(String(r.variants || 1))
     setParamDraft({ ...(r.params || {}) })
+    setRefDraft(normalizeRefStrategy(r.reference, r.kind))
     setCompiled('')
     if (!toAll) { setNotice(`已套用配方「${r.name}」：${kindLabel[r.kind] || r.kind} / ${r.model?.provider || 'auto'}${r.negative ? ' / 带负向' : ''}${r.variants > 1 ? ` / ${r.variants} 版` : ''}`); return }
     // 套用到全项目只写**能存在段落上的**工艺（类型与负向）——模型/尺寸/seed 是每次生成时的选择
@@ -179,7 +197,8 @@ export function StoryPanel() {
     const saved = await persist()
     const currentScene = saved.project.scenes.find(s => s.id === saved.sceneId)!
     const previous = currentScene.beats.find(b => b.id === saved.beatId)!
-    const next: StoryBeat = {id:`beat-${Date.now()}`,kind:selectedKind,prompt:'承接上一段的结尾，推进下一件具体事件，保持人物与设定一致，不重复开场。',references:previous.references || [],inheritFromBeatId:previous.id}
+    // 新段落自动套用项目默认配方（类型与负向）——否则"默认配方"对新段落就是一句空话
+    const next: StoryBeat = {id:`beat-${Date.now()}`,kind:selectedKind,prompt:'承接上一段的结尾，推进下一件具体事件，保持人物与设定一致，不重复开场。',references:previous.references || [],inheritFromBeatId:previous.id,...recipeBeatPatch(currentDefaultRecipe)}
     const r = await StoryApi.patchProject(saved.project.id, {scenes:saved.project.scenes.map(s => s.id !== currentScene.id ? s : {...s,beats:[...s.beats,next]})})
     update(r.project); setSelected(next.id)
     await requestDraft(r.project, `为下一段构思具体情节：${next.prompt}\n之前的段落和实际产出：${JSON.stringify(currentScene).slice(-10000)}`, selectedKind)
@@ -274,11 +293,19 @@ export function StoryPanel() {
             {selectedKind === 'video' && <label>尺寸<select aria-label="尺寸" disabled={Boolean(busy)} value={paramDraft.size || ''} onChange={e=>setParam('size', e.target.value)}><option value="">默认</option>{VIDEO_SIZES.map(sz=><option key={sz} value={sz}>{sz}</option>)}</select></label>}
             {selectedKind === 'video' && <label>时长<select aria-label="时长" disabled={Boolean(busy)} value={paramDraft.seconds || ''} onChange={e=>setParam('seconds', e.target.value)}><option value="">默认</option>{VIDEO_SECONDS.map(s=><option key={s} value={s}>{s} 秒</option>)}</select></label>}
           </div>
+          {selectedKind !== 'novel' && <div className="story-form-row">
+            <label>参考图张数<select aria-label="参考图张数" disabled={Boolean(busy)} value={String(refDraft.images)} onChange={e=>setRefDraft({ ...refDraft, images: Number(e.target.value) })}>{['0','1','2','3','4'].map(n=><option key={n} value={n}>{n === '0' ? '不用' : `${n} 张`}</option>)}</select></label>
+            <label>谁优先<select aria-label="参考图优先" disabled={Boolean(busy) || refDraft.images === 0} value={refDraft.prefer} onChange={e=>setRefDraft({ ...refDraft, prefer: e.target.value as 'material' | 'portrait' })}><option value="material">挂载素材优先</option><option value="portrait">定妆照优先</option></select></label>
+            <span className="story-hint">当前：{refStrategyLabel(selectedKind, refDraft)}</span>
+          </div>}
           <StoryRecipes
-            current={{ kind: selectedKind, model: selectedModelInfo || { provider: 'auto', id: 'auto' }, params: paramDraft, negative: negativeDraft.trim(), seed: seedDraft.trim() ? Number(seedDraft.trim()) : null, variants: Number(variantsDraft) || 1 }}
+            current={{ kind: selectedKind, model: selectedModelInfo || { provider: 'auto', id: 'auto' }, params: paramDraft, negative: negativeDraft.trim(), reference: refDraft, seed: seedDraft.trim() ? Number(seedDraft.trim()) : null, variants: Number(variantsDraft) || 1 }}
             busy={Boolean(busy)}
             onApply={r => applyRecipe(r, false)}
             onApplyToProject={r => applyRecipe(r, true)}
+            defaultRecipeId={project?.defaultRecipeId || ''}
+            onSetDefault={setDefaultRecipe}
+            onChanged={() => void mutateRecipes()}
             onPatchProject={() => void load()}
           />
           <div className="story-form-row"><label>构思模型<select value={planningModel} disabled={Boolean(busy)} onChange={e=>setPlanningModel(e.target.value)}><option value="">自动选择文本模型</option>{models.filter(m=>capable(m,'novel')).map(m=><option key={modelKey(m)} value={modelKey(m)}>{m.name || m.id}</option>)}</select></label><div className="story-actions"><button className="btn-ghost" disabled={Boolean(busy)} onClick={assist}>让 AI 完善本段</button></div></div>

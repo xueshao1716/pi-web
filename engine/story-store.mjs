@@ -16,6 +16,9 @@ export function createProject(input = {}, clock = {}) {
     // 成片历史。assembleFilm 之前只把文件存进产物库就返回，项目里没有任何记录——
     // 刷新页面后「成片」链接就丢了，用户以为合成失败。产物是历史，必须落回项目。
     films: Array.isArray(input.films) ? input.films : [],
+    // 项目级默认配方（可空）。createProject 是白名单式构造，**漏掉一个字段就等于这个功能不存在**：
+    // 第一版就漏了它，于是"设为项目默认"存进去、再读出来就没了（测试当场抓到）。
+    ...(input.defaultRecipeId ? { defaultRecipeId: String(input.defaultRecipeId) } : {}),
     activeSceneId: input.activeSceneId,
     createdAt: now,
     updatedAt: now,

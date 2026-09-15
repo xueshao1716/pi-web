@@ -16,6 +16,7 @@ import {
   normalizeRecipe, listRecipes, saveRecipe, deleteRecipe, exportRecipes,
   parseRecipeImport, importRecipes, RECIPE_FORMAT, RECIPE_FORMAT_VERSION,
 } from '../../engine/story-recipes.mjs';
+import * as mod from '../../engine/story-recipes.mjs';
 
 const tmpRoot = async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'yuanshu-recipes-'));
@@ -103,4 +104,34 @@ test('配方跨项目：存在工作区根，不在任何一个项目里', async
   await saveRecipe(root, { name: '跨项目' });
   assert.ok((await fs.readdir(root)).includes('story-recipes.json'), '换项目还看得见，才叫可复用');
   assert.deepEqual(await fs.readdir(path.join(root, 'story-projects')), []);
+});
+
+// 参考图策略：用几张、谁优先。以前这条策略硬编码在编排层里，用户在界面上既看不到也改不了。
+test('参考图策略的默认值要跟"用户显式做了什么"对齐', () => {
+  const { defaultRefStrategy, normalizeRefStrategy } = mod;
+  assert.deepEqual(defaultRefStrategy('image'), { images: 1, prefer: 'material' },
+    '画面只有一个入口：用户显式挂的素材必须优先，否则"挂了却没发生"是最坏的静默失败');
+  assert.deepEqual(defaultRefStrategy('video'), { images: 4, prefer: 'portrait' },
+    '视频能吃多张：先保人物（定妆照），素材跟在后面给场景依据');
+  assert.deepEqual(defaultRefStrategy('novel'), { images: 0, prefer: 'portrait' });
+  // 收敛与兜底
+  assert.deepEqual(normalizeRefStrategy({ images: 9, prefer: '乱写' }, 'image'), { images: 4, prefer: 'material' });
+  assert.deepEqual(normalizeRefStrategy({ images: -3 }, 'video'), { images: 0, prefer: 'portrait' }, '0 是合法值=明确不用参考图');
+  assert.deepEqual(normalizeRefStrategy(undefined, 'video'), { images: 4, prefer: 'portrait' });
+  const saved = normalizeRecipe({ name: '策略', kind: 'image', reference: { images: 2, prefer: 'portrait' } });
+  assert.deepEqual(saved.reference, { images: 2, prefer: 'portrait' }, '策略要能存进配方');
+  assert.deepEqual(normalizeRecipe({ name: '默认策略', kind: 'video' }).reference, { images: 4, prefer: 'portrait' });
+});
+
+// seed 有三态：null/undefined/'' = 没锁；0 是**合法 seed**。第一版把 null 走进了 Number(null)===0
+// 这条分支，"没锁"静默变成了"锁死 0"——界面探针上表现为配方卡凭空显示 `seed 0`。
+test('seed 的三态：null/undefined/空串都是"没锁"，但 0 是合法 seed', () => {
+  assert.equal(normalizeRecipe({ name: 'a', seed: null }).seed, null, '前端传 null = 没锁，不能变成 0');
+  assert.equal(normalizeRecipe({ name: 'b' }).seed, null);
+  assert.equal(normalizeRecipe({ name: 'c', seed: '' }).seed, null);
+  assert.equal(normalizeRecipe({ name: 'd', seed: '   ' }).seed, null);
+  assert.equal(normalizeRecipe({ name: 'e', seed: 0 }).seed, 0, '0 是真 seed，不能被当成"没锁"');
+  assert.equal(normalizeRecipe({ name: 'f', seed: '0' }).seed, 0);
+  assert.equal(normalizeRecipe({ name: 'g', seed: 12345 }).seed, 12345);
+  assert.equal(normalizeRecipe({ name: 'h', seed: 'abc' }).seed, null, '不是数字就别装作锁了');
 });
