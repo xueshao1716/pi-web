@@ -96,7 +96,7 @@ export default function StoryFilm({ project, busy, onDone, onNotice, onError }: 
                   })}>
                   <option value="">（不选，这一段不进成片）</option>
                   {b.candidates.filter(c => c.localable).map((c, i) => <option key={c.runId} value={c.runId}>
-                    第 {i + 1} 版 · {statusLabel[c.status] || c.status}{c.seed != null ? ` · seed ${c.seed}` : ''}{c.runId === b.recommendedRunId ? ' ·（最新）' : ''}{c.exists ? '' : ' · 外链（合成时先下载到本地）'}
+                    第 {i + 1} 版 · {statusLabel[c.status] || c.status}{c.seed != null ? ` · seed ${c.seed}` : ''}{c.chosen ? ' ·（你采用的）' : (c.runId === b.recommendedRunId ? ' ·（最新）' : '')}{c.exists ? '' : ' · 外链（合成时先下载到本地）'}
                   </option>)}
                 </select>
                 <div className="story-film-pick-actions">

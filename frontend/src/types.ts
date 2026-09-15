@@ -142,14 +142,14 @@ export interface StoryShot {
   size?: string; angle?: string; move?: string; light?: string
   tone?: string; texture?: string; ending?: string; carry?: string
 }
-export interface StoryBeat { id: string; kind: 'novel' | 'image' | 'video'; prompt: string; references: StoryAssetRef[]; inheritFromBeatId?: string; activeRunId?: string; dialogue?: string; inputs?: StoryBeatInput[]; negative?: string; reference?: { images: number; prefer: string }; action?: string; transition?: string; playground?: StoryPlaygroundTurn[]; shot?: StoryShot; params?: Record<string, unknown> }
+export interface StoryBeat { id: string; kind: 'novel' | 'image' | 'video'; prompt: string; references: StoryAssetRef[]; inheritFromBeatId?: string; activeRunId?: string; dialogue?: string; inputs?: StoryBeatInput[]; negative?: string; reference?: { images: number; prefer: string }; action?: string; transition?: string; playground?: StoryPlaygroundTurn[]; shot?: StoryShot; params?: Record<string, unknown>; chosenRunId?: string }
 // 分集：短剧/系列内容的组织单位。场用 episodeId 归属；没归属的场进"未分集"，不会被强行塞进某一集。
 export interface StoryEpisode { id: string; no: number; title: string; summary: string; targetSeconds?: number; createdAt?: string; stats?: { scenes: number; beats: number; withOutput: number; pending: number; failed: number; running: number } }
 export interface StoryEpisodeGroup { episode: StoryEpisode | null; scenes: { id: string; title: string; beats: number }[] }
 export interface StoryScene { id: string; index: number; title: string; summary: string; beats: StoryBeat[]; outputs: StoryGenerationRun[]; activeRunId?: string; slug?: StorySceneSlug; episodeId?: string }
 export interface StoryFilm { id: string; url: string; clipCount: number; method: string; beatIds: string[]; picks?: { beatId: string; runId: string }[]; createdAt: string }
 // 合成前的候选清单：同一段可能生成过好几版镜头，用户要能挑哪一版、要哪几段、什么顺序。
-export interface StoryFilmCandidate { runId: string; status: string; seed: number | null; createdAt?: string; url: string; exists: boolean; external?: boolean; downloadable?: boolean; localable?: boolean; degradation?: string[] }
+export interface StoryFilmCandidate { runId: string; status: string; seed: number | null; createdAt?: string; url: string; exists: boolean; external?: boolean; downloadable?: boolean; localable?: boolean; degradation?: string[]; chosen?: boolean }
 export interface StoryFilmBeat {
   beatId: string; sceneId: string; sceneTitle: string; beatNo: number
   kind: string; title: string
@@ -157,6 +157,7 @@ export interface StoryFilmBeat {
   usableCount: number
   externalCount?: number
   recommendedRunId: string
+  chosenRunId?: string
 }
 export interface StoryFilmPlan { beats: StoryFilmBeat[]; usable: number; total: number }
 export interface StoryRunDeleteResult {

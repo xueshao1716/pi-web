@@ -96,13 +96,18 @@ export function filmPlan(project, wsRoot, { localPathOf = localPathFromArtifactU
         })
         .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
       const usable = candidates.filter(c => c.localable);
+      // 默认推荐：① 用户在「本段结果」里**采用**过的那一版（他挑过就别再替他挑）
+      // ② 否则最新的一个可用版本（与"快速合成"一致，用户不改就是原来那版）
+      const chosen = usable.find(c => c.runId === beat.chosenRunId);
       beats.push({
         beatId: beat.id, sceneId: scene.id, sceneTitle: scene.title || '', beatNo,
         kind: beat.kind, title: (beat.prompt || beat.dialogue || beat.id).replace(/\s+/g, ' ').slice(0, 60),
-        candidates, usableCount: usable.length,
+        candidates: candidates.map(c => ({ ...c, chosen: c.runId === beat.chosenRunId })),
+        usableCount: usable.length,
         externalCount: usable.filter(c => !c.exists).length,
-        // 默认推荐：最新的一个可用版本（与"快速合成"一致，用户不改就是原来那版）
-        recommendedRunId: usable.length ? usable[usable.length - 1].runId : '',
+        recommendedRunId: chosen ? chosen.runId : (usable.length ? usable[usable.length - 1].runId : ''),
+        // 让界面能说明"这版是你选的"与"这版是按最新的推荐的"
+        chosenRunId: chosen ? chosen.runId : '',
       });
     }
   }

@@ -52,6 +52,34 @@ async function addRun(api, root, { runId, beatId, url, status = 'succeeded', cre
   await writeProject(root, { ...project, scenes: [scene] });
 }
 
+// 采用这一版（beat.chosenRunId）：用户挑过的就别再替他挑——合成分镜时默认用它，
+// 而不是"最新的那一版"。这条是「本段结果」里那个「采用这一版」按钮的服务端一半。
+test('采用过的那一版优先被推荐（用户挑过的别再替他挑），并在候选里标出来', async t => {
+  const { root, api } = await setup(t);
+  const older = await makeMedia(root, 'older.mp4');
+  const newer = await makeMedia(root, 'newer.mp4');
+  await addRun(api, root, { runId: 'r-old', beatId: 'b1', url: older.url, createdAt: '2026-09-16T01:00:00.000Z' });
+  await addRun(api, root, { runId: 'r-new', beatId: 'b1', url: newer.url, createdAt: '2026-09-16T05:00:00.000Z' });
+  // 没选之前：推荐最新
+  assert.equal((await api.filmPlan('p1')).beats[0].recommendedRunId, 'r-new');
+  // 采用较旧的那一版
+  const project = await api.get('p1');
+  project.scenes[0].beats[0].chosenRunId = 'r-old';
+  await writeProject(root, project);
+  const plan = await api.filmPlan('p1');
+  assert.equal(plan.beats[0].recommendedRunId, 'r-old', '采用过的版本要盖过"最新"');
+  assert.equal(plan.beats[0].chosenRunId, 'r-old');
+  assert.equal(plan.beats[0].candidates.find(c => c.runId === 'r-old').chosen, true);
+  assert.equal(plan.beats[0].candidates.find(c => c.runId === 'r-new').chosen, false);
+  // 采用了一版但那条 run 已经不可用（被删/外链失效）时，退回最新可用，而不是给一个空推荐
+  const p2 = await api.get('p1');
+  p2.scenes[0].beats[0].chosenRunId = 'r-gone';
+  await writeProject(root, p2);
+  const fallback = await api.filmPlan('p1');
+  assert.equal(fallback.beats[0].recommendedRunId, 'r-new', '选的那版不在可用候选里就退回最新');
+  assert.equal(fallback.beats[0].chosenRunId, '');
+});
+
 test('候选清单：本地已有 vs 需要下载（外链）分得清，真的不可用的也如实标出来', async t => {
   const { root, api } = await setup(t);
   const a = await makeMedia(root, 'a.mp4');

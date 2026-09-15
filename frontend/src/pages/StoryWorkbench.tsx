@@ -353,6 +353,27 @@ export function StoryPanel() {
     else setNotice(`已把 ${r.localized} 个外站产物下载到本地并写回项目——外站链接失效也不影响了。（挂载素材不重复落盘：它引用的是别的工作台的产物。）`)
   })
   const currentRuns = scene?.outputs.filter(r => r.beatId === beat?.id) || []
+  // 采用这一版：写回 beat.chosenRunId，合成成片时默认用它（filmPlan 会优先推荐它）。
+  // 再点同一版就是**取消采用**——选择必须能撤销，否则手滑点错就永远改不回去。
+  const adopt = (run: StoryGenerationRun) => action(run.id === beat?.chosenRunId ? '正在取消采用' : '正在采用这一版', async () => {
+    if (!project || !scene || !beat) return
+    const dropping = run.id === beat.chosenRunId
+    const scenes = project.scenes.map(s => s.id !== scene.id ? s : {
+      ...s,
+      beats: s.beats.map(b => {
+        if (b.id !== beat.id) return b
+        const next: StoryBeat = { ...b }
+        if (dropping) delete next.chosenRunId
+        else next.chosenRunId = run.id
+        return next
+      }),
+    })
+    const r = await StoryApi.patchProject(project.id, { scenes })
+    update(r.project)
+    setNotice(dropping
+      ? '已取消采用：合成成片时按最新的可用版本推荐。'
+      : `已采用这一版${run.seed != null ? `（seed ${run.seed}）` : ''}：合成成片时默认用它，不用每段再挑一次。`)
+  })
   // ── 状态条上的动作：复用已有处理器，做完**重新取一次项目** ──
   // patch/run 这些接口返回的项目里没有 flow（那是服务端算出来的），不重取就会一直显示旧状态，
   // 于是"刚做完还提示你做同一件事"——比没有状态条更让人困惑。
@@ -526,7 +547,7 @@ export function StoryPanel() {
             </div>}
             <details><summary>编译后的提示词全文</summary><div className="story-prose">{compiled}</div></details>
           </details>}
-        </section>{scene && beat && <StoryResults scene={scene} beat={beat} busy={Boolean(busy)} onRerun={rerun} onCheck={checkOne} onDelete={deleteRun} onLocalize={localizeRun} />}</div>
+        </section>{scene && beat && <StoryResults scene={scene} beat={beat} busy={Boolean(busy)} onRerun={rerun} onCheck={checkOne} onDelete={deleteRun} onLocalize={localizeRun} onAdopt={adopt} canAdopt={selectedKind === 'video'} />}</div>
         <StorySettings values={bibleDraft} busy={Boolean(busy)} characters={project.bible.characters || []} locations={(project.bible.locations || []) as any} props={(project.bible.props || []) as any} externalAssets={externalAssets} onPortrait={portrait} onAssetRef={assetRef} onLocalizeAll={localizeAll} onChange={setBibleDraft} onSave={saveBible} />
         <StoryProducts project={project} onPick={setSelected} />
       </main>
