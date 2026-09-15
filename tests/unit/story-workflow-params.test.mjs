@@ -158,6 +158,9 @@ test('负向要落到 run 上并进上送参数；同参重跑才有依据', asy
   const r = await api.runGeneration('p1', { sceneId: 's1', beatId: 'b1', kind: 'image', model: { provider: 'p', id: 'img-1' }, negative: '水印' });
   assert.equal(seen.params.negative, '水印', '负向要进上送参数（图像通道据此发 negative_prompt）');
   assert.match(seen.prompt, /## 必须避免/);
+  // 镜头规格（story-shot-prompt.mjs）要排在提示词最前面：上游对开头的权重最高
+  assert.match(seen.prompt, /## 镜头规格/);
+  assert.ok(seen.prompt.indexOf('## 镜头规格') < seen.prompt.indexOf('## 必须避免'), '镜头规格必须在正文之前');
   assert.equal(r.run.negative, '水印', 'run 里要记下这一趟用的负向，重跑才知道该带什么');
   assert.equal((await api.get('p1')).scenes[0].outputs[0].negative, '水印');
 });

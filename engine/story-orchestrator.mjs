@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createProject, listProjects, readProject, writeProject, validateProject, mergeBeatContext, trashProject } from './story-store.mjs';
 import { compileStoryPrompt, buildPortraitPrompt, buildAssetPrompt } from './story-prompts.mjs';
+import { compileShotPrompt, shotFieldsFromBeat, assetRefsForShot, splitRefs, resolveStyle } from './story-shot-prompt.mjs';
 import { createImageAdapter, createNovelAdapter, createVideoAdapter } from './story-adapters.mjs';
 import { buildStoryAssistPrompt, parseStoryAssist, buildStoryboardPrompt, parseStoryboard, buildAdaptPrompt, parseAdapt, extractJsonObjects } from './story-assist.mjs';
 // 台词与深度构思的"手艺"：机检规则 + 提示词 + 宽容解析（见 story-craft.mjs 开头的研究结论）
@@ -268,7 +269,26 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
     // 负向提示词（段落级 > 项目默认配方）。先写进提示词块（所有通道都吃、都看得见），
     // 再作为 negative 传给图像通道——上游认不认那个字段是另一回事，但请求里必须看得见。
     const negative = String(input.negative ?? beat.negative ?? defaultRecipe?.negative ?? '').trim();
-    const compiled = compileStoryPrompt({ bible: project.bible, scene, beat, inherited: context, negative });
+    // 镜头规格（story-shot-prompt.mjs）：把景别/机位/运镜/光线/落幅/承接 + 风格库 + @资产引用
+    // 编译成一条提示词，放在提示词最前面。只对画面/视频做——文字段落要的是故事状态文档。
+    // 整段包在 try 里：**编译失败不许影响生成**，这只是"更好"，不是"必须"。
+    const shotSpec = kind === 'novel' ? '' : (() => {
+      try {
+        const rawStyle = beat?.style || project?.style || project?.bible?.style?.code || project?.bible?.style?.style
+          || project?.bible?.style?.name || project?.bible?.style?.visual || '';
+        const shot = shotFieldsFromBeat(beat);
+        const found = assetRefsForShot({ bible: project.bible, scene, text: `${beat?.prompt || ''} ${beat?.dialogue || ''} ${scene?.title || ''}` });
+        const refs = splitRefs(found, scene?.title);
+        return compileShotPrompt({
+          style: resolveStyle(rawStyle), shot, refs, kind,
+          // 时长：这一次显式传的 > 段落上存的。它不只是提示词里的一行字，
+          // 也是配音/剪辑对表的依据（【时长】4s）。
+          durationSec: Number(input?.params?.seconds ?? beat?.params?.seconds ?? defaultRecipe?.params?.seconds) || null,
+          negative,
+        });
+      } catch { return ''; }
+    })();
+    const compiled = compileStoryPrompt({ bible: project.bible, scene, beat, inherited: context, negative, shotSpec });
     // seed 不再靠运气：用户没指定就现掷一个**并记下来**，这条 run 因此可复现。
     // 以前 run.seed 恒为 undefined，而能力声明却写着支持固定 seed——声称支持却从未生效。
     //
@@ -882,6 +902,11 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
           const item = {
             id, kind, prompt: beat.prompt,
             ...(beat.dialogue ? { dialogue: String(beat.dialogue).slice(0, 2000) } : {}),
+            // 镜头语言字段（景别/机位/运镜/光线/色调/落幅/承接）与时长必须落到段落上：
+            // 它们是"镜头提示词编译器"（story-shot-prompt.mjs）的输入，
+            // 在这里丢掉就等于让模型白写了一遍结构化分镜。
+            ...(beat.shot && Object.keys(beat.shot).length ? { shot: beat.shot } : {}),
+            ...(beat.params?.seconds ? { params: { ...(beat.params || {}) } } : {}),
             ...(stampRecipe?.negative ? { negative: stampRecipe.negative } : {}),
             references: pickBeatReferences(cast, beat.prompt),
             ...(previousId ? { inheritFromBeatId: previousId } : {}),
@@ -999,6 +1024,9 @@ export function createStoryOrchestrator({ root, clock = {}, adapters = {}, gener
               kind: ['novel', 'image', 'video'].includes(beat.kind) ? beat.kind : (stampRecipe?.kind || 'image'),
               prompt: beat.prompt,
               ...(beat.dialogue ? { dialogue: String(beat.dialogue).slice(0, 2000) } : {}),
+              // 与"一键分镜"同一条规则：镜头语言字段与时长要落到段落上（供编译器使用）
+              ...(beat.shot && Object.keys(beat.shot).length ? { shot: beat.shot } : {}),
+              ...(beat.params?.seconds ? { params: { ...(beat.params || {}) } } : {}),
               ...(stampRecipe?.negative ? { negative: stampRecipe.negative } : {}),
               references: pickBeatReferences(cast, beat.prompt),
               ...(previousId ? { inheritFromBeatId: previousId } : {}),

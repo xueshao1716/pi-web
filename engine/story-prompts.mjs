@@ -60,7 +60,7 @@ export function negativeBlock(negative) {
   return lines ? `## 必须避免\n- 以下内容**不要**出现在这一段的成品里：\n${lines}` : '';
 }
 
-export function compileStoryPrompt({ bible, scene, beat, inherited, negative } = {}) {
+export function compileStoryPrompt({ bible, scene, beat, inherited, negative, shotSpec = '' } = {}) {
   const b = normalizeBible(bible);
   const refs = [];
   for (const item of [...(inherited?.referenceIds || []), ...(beat?.references || [])]) {
@@ -69,6 +69,10 @@ export function compileStoryPrompt({ bible, scene, beat, inherited, negative } =
   }
   const style = Object.entries(b.style).filter(([, value]) => value != null && String(value).trim()).map(([k, v]) => `${k}: ${String(v).trim()}`).join('，');
   const blocks = [
+    // 镜头规格（由 story-shot-prompt.mjs 编译）放在**最前面**：上游对开头的权重最高，
+    // 而景别/机位/光线/色调/质感/落幅正是决定"出片像不像电影"的那几样。
+    // 没有它时这一段为空——不占位置，也不假装有。
+    String(shotSpec || '').trim() ? `## 镜头规格（优先据此生成，不要改写成别的镜头）\n${String(shotSpec).trim()}` : '',
     '你正在执行元枢连续创作，请严格保持故事状态一致。',
     section('角色', b.characters),
     section('场景资产', b.locations),

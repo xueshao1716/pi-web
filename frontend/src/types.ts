@@ -135,7 +135,14 @@ export interface StoryBeatInput { id: string; type: 'image' | 'video' | 'text'; 
 // 会把"镜头怎么推"写进剧本，那不是剧作该写的东西。
 export interface StorySceneSlug { interior?: 'interior' | 'exterior' | 'mixed'; location?: string; timeOfDay?: string }
 export interface StoryPlaygroundTurn { role: 'writer' | 'character'; text: string; at?: string }
-export interface StoryBeat { id: string; kind: 'novel' | 'image' | 'video'; prompt: string; references: StoryAssetRef[]; inheritFromBeatId?: string; activeRunId?: string; dialogue?: string; inputs?: StoryBeatInput[]; negative?: string; reference?: { images: number; prefer: string }; action?: string; transition?: string; playground?: StoryPlaygroundTurn[] }
+// 镜头规格（照同行那份有效提示词学来的八件事）：景别/机位/运镜/光线/色调/质感/落幅/承接。
+// 它们不是剧本内容，是**发给视频模型的镜头语言**——由 story-shot-prompt.mjs 编译成提示词最前面那几句。
+// 落幅尤其关键：一镜"最后定格在哪"不写，剪起来就是跳的。
+export interface StoryShot {
+  size?: string; angle?: string; move?: string; light?: string
+  tone?: string; texture?: string; ending?: string; carry?: string
+}
+export interface StoryBeat { id: string; kind: 'novel' | 'image' | 'video'; prompt: string; references: StoryAssetRef[]; inheritFromBeatId?: string; activeRunId?: string; dialogue?: string; inputs?: StoryBeatInput[]; negative?: string; reference?: { images: number; prefer: string }; action?: string; transition?: string; playground?: StoryPlaygroundTurn[]; shot?: StoryShot; params?: Record<string, unknown> }
 // 分集：短剧/系列内容的组织单位。场用 episodeId 归属；没归属的场进"未分集"，不会被强行塞进某一集。
 export interface StoryEpisode { id: string; no: number; title: string; summary: string; targetSeconds?: number; createdAt?: string; stats?: { scenes: number; beats: number; withOutput: number; pending: number; failed: number; running: number } }
 export interface StoryEpisodeGroup { episode: StoryEpisode | null; scenes: { id: string; title: string; beats: number }[] }

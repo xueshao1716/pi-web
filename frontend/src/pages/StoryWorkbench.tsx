@@ -62,6 +62,9 @@ export function StoryPanel() {
   // 剧本要素：动作与转场单独存（action 留空则导出时用画面描述兜底）。
   // 场景标题的三要素（内外景/地点/时间）存在场景上，不是段落上。
   const [actionDraft, setActionDraft] = useState('')
+  // 镜头规格（景别/机位/运镜/光线/落幅/承接）：发往视频模型的"镜头语言"。
+  // 以前只存在于提示词散文里，模型爱写不写；现在是可编辑字段，编译时放在提示词最前面。
+  const [shotDraft, setShotDraft] = useState<{ size: string; angle: string; move: string; light: string; ending: string; carry: string }>({ size: '', angle: '', move: '', light: '', ending: '', carry: '' })
   const [transitionDraft, setTransitionDraft] = useState('')
   const [slugDraft, setSlugDraft] = useState<{ interior: string; location: string; timeOfDay: string }>({ interior: 'interior', location: '', timeOfDay: '' })
   const [compiled, setCompiled] = useState('')
@@ -79,7 +82,7 @@ export function StoryPanel() {
   const hydrateBible = (p: StoryProject) => setBibleDraft(bibleText(p.bible))
   const update = (p: StoryProject) => { setProject(p); setProjects(items => [p, ...items.filter(item => item.id !== p.id)]) }
   const choose = (p: StoryProject | null) => { setProject(p); setSelected(p?.scenes[0]?.beats[0]?.id || ''); if (p) hydrateBible(p); setAssistResult(null); setCompiled(''); setError(''); setNotice('') }
-  useEffect(() => { if (beat) { setSelectedKind(beat.kind); setPromptDraft(beat.prompt); setDialogueDraft(beat.dialogue || ''); setInputDrafts(beat.inputs || []); setNegativeDraft(beat.negative || ''); setSeedDraft(''); setRefDraft(normalizeRefStrategy((beat as any).reference, beat.kind)); setActionDraft(beat.action || ''); setTransitionDraft(beat.transition || '') } setAssistResult(null); setCompiled('') }, [project?.id, beat?.id, beat?.kind, beat?.prompt, beat?.dialogue, beat?.inputs, beat?.negative, beat?.action, beat?.transition])
+  useEffect(() => { if (beat) { setSelectedKind(beat.kind); setPromptDraft(beat.prompt); setDialogueDraft(beat.dialogue || ''); setInputDrafts(beat.inputs || []); setNegativeDraft(beat.negative || ''); setSeedDraft(''); setRefDraft(normalizeRefStrategy((beat as any).reference, beat.kind)); setActionDraft(beat.action || ''); setTransitionDraft(beat.transition || ''); const sh = (beat.shot || {}) as any; setShotDraft({ size: sh.size || '', angle: sh.angle || '', move: sh.move || '', light: sh.light || '', ending: sh.ending || '', carry: sh.carry || '' }) } setAssistResult(null); setCompiled('') }, [project?.id, beat?.id, beat?.kind, beat?.prompt, beat?.dialogue, beat?.inputs, beat?.negative, beat?.action, beat?.transition, (beat as any)?.shot])
   // 场景标题三要素跟着场景走
   useEffect(() => { const s = scene?.slug; setSlugDraft({ interior: s?.interior || 'interior', location: s?.location || '', timeOfDay: s?.timeOfDay || '' }) }, [project?.id, scene?.id, scene?.slug?.interior, scene?.slug?.location, scene?.slug?.timeOfDay])
   // 切换输出类型时，参考图策略的默认值跟着类型走（画面 1 张素材优先 / 视频 4 张定妆照优先）——
@@ -112,7 +115,12 @@ export function StoryPanel() {
     if (!project) throw new Error('请先开始一个故事')
     const scenes = project.scenes.length ? project.scenes : [{id:'scene-1',index:1,title:'开场',summary:project.logline || '',beats:[],outputs:[]}]
     const target = scene || scenes[0]
-    const nextBeat = { ...(beat || emptyBeat), kind:selectedKind, prompt:promptDraft.trim(), dialogue:dialogueDraft.trim(), inputs:inputDrafts, negative:negativeDraft.trim(), action:actionDraft.trim(), transition:transitionDraft.trim() }
+    // 镜头规格只写填了的字段：空字符串会让"没写"和"写了空"变成两件事，编译时又多一个要判的分支；
+    // 全清空时要**真的删掉**这个键，否则 {...beat} 会把旧规格带回来。
+    const shotFields: Record<string, string> = {}
+    for (const [k, v] of Object.entries(shotDraft)) if (String(v || '').trim()) shotFields[k] = String(v).trim()
+    const nextBeat = { ...(beat || emptyBeat), kind:selectedKind, prompt:promptDraft.trim(), dialogue:dialogueDraft.trim(), inputs:inputDrafts, negative:negativeDraft.trim(), action:actionDraft.trim(), transition:transitionDraft.trim(), ...(Object.keys(shotFields).length ? { shot: shotFields } : {}) }
+    if (!Object.keys(shotFields).length) delete (nextBeat as any).shot
     // 场景标题三要素存回场景上（空值不写，避免给项目塞一堆没用的字段）
     const slug = { ...(slugDraft.location.trim() ? { location: slugDraft.location.trim() } : {}), ...(slugDraft.timeOfDay.trim() ? { timeOfDay: slugDraft.timeOfDay.trim() } : {}), ...(slugDraft.interior !== 'interior' ? { interior: slugDraft.interior as 'interior' } : {}) }
     const r = await StoryApi.patchProject(project.id, { bible: editedBible(project.bible, bibleDraft), scenes: scenes.map(s => s.id !== target.id ? s : {...s, ...(Object.keys(slug).length ? { slug } : {}), beats:s.beats.some(b => b.id === nextBeat.id) ? s.beats.map(b => b.id === nextBeat.id ? nextBeat : b) : [...s.beats,nextBeat]}) })
@@ -460,6 +468,20 @@ export function StoryPanel() {
           <div className="story-form-row"><label>构思模型<select value={planningModel} disabled={Boolean(busy)} onChange={e=>setPlanningModel(e.target.value)}><option value="">自动选择文本模型</option>{models.filter(m=>capable(m,'novel')).map(m=><option key={modelKey(m)} value={modelKey(m)}>{m.name || m.id}</option>)}</select></label><div className="story-actions"><button className="btn-ghost" disabled={Boolean(busy)} onClick={assist}>让 AI 完善本段</button></div></div>
           {assistResult && <div className="story-draft"><h3>AI 草稿 · 确认后一起保存</h3><p>{assistResult.scene?.summary}</p><p>{assistResult.beat?.prompt}</p><p className="story-hint">人物：{assistResult.characters?.map((c:any)=>[c.name,c.appearance].filter(Boolean).join(' · ')).join('；') || '沿用既有设定'}</p><div className="story-actions"><button className="btn-primary" disabled={Boolean(busy)} onClick={applyAssist}>采用并保存设定</button><button className="btn-ghost" disabled={Boolean(busy)} onClick={()=>setAssistResult(null)}>暂不采用</button></div></div>}
           <p className="story-hint">{selectedKind==='novel'?'续写会带上已保存的设定和继承段落的实际正文。':`已生成的定妆照会作为真实参考图注入（画面走图生图、视频走 reference），用来锁住人物外貌；还没有定妆照的角色只能靠文字描述。当前 ${portraitCount}/${(project.bible.characters||[]).length} 个角色有定妆照。`}{selectedKind==='video'?' 每次生成一个视频片段，攒够成功的片段后用左侧「合成成片」拼成长片。':''}</p>
+          {/* 镜头规格：这六格是**发往视频模型的镜头语言**，编译时排在提示词最前面。
+              以前它们只存在于提示词散文里（模型爱写不写），于是出片"像 AI 图动了一下"——
+              同一句话创意，人家写全了景别/机位/光线/落幅才像电影。落幅尤其别省。 */}
+          {selectedKind !== 'novel' && <div className="story-form-row story-shot-spec">
+            <label>景别<select aria-label="景别" disabled={Boolean(busy)} value={shotDraft.size} onChange={e=>{setShotDraft({...shotDraft, size:e.target.value});setCompiled('')}}><option value="">不指定</option>{['大远景','远景','全景','中全景','中景','中近景','近景','特写','大特写'].map(v=><option key={v} value={v}>{v}</option>)}</select></label>
+            <label>机位<select aria-label="机位" disabled={Boolean(busy)} value={shotDraft.angle} onChange={e=>{setShotDraft({...shotDraft, angle:e.target.value});setCompiled('')}}><option value="">不指定</option>{['平视','俯拍','仰拍','斜角','过肩','主观'].map(v=><option key={v} value={v}>{v}</option>)}</select></label>
+            <label>运镜<select aria-label="运镜" disabled={Boolean(busy)} value={shotDraft.move} onChange={e=>{setShotDraft({...shotDraft, move:e.target.value});setCompiled('')}}><option value="">不指定</option>{['固定','缓缓推近','拉远','横移','跟拍','摇镜','升降','环绕','手持'].map(v=><option key={v} value={v}>{v}</option>)}</select></label>
+            <label>光线<input aria-label="光线" disabled={Boolean(busy)} value={shotDraft.light} onChange={e=>{setShotDraft({...shotDraft, light:e.target.value});setCompiled('')}} placeholder="例如 窗外折射的柔和自然光" /></label>
+          </div>}
+          {selectedKind !== 'novel' && <div className="story-form-row story-shot-spec">
+            <label>落幅 · 这一镜最后定格在哪<textarea aria-label="落幅" disabled={Boolean(busy)} rows={2} value={shotDraft.ending} onChange={e=>{setShotDraft({...shotDraft, ending:e.target.value});setCompiled('')}} placeholder="例如 落幅定格在她落寞无助的侧脸（不写，剪起来就是跳的）" /></label>
+            <label>承接 · 从上一镜的哪个落点接起<textarea aria-label="承接" disabled={Boolean(busy)} rows={2} value={shotDraft.carry} onChange={e=>{setShotDraft({...shotDraft, carry:e.target.value});setCompiled('')}} placeholder="例如 承接上一镜她关上冰柜门的落点" /></label>
+          </div>}
+          <p className="story-hint">镜头规格会编译成提示词最前面那几句（景别+机位 → 光线/色调/质感 → 画面 → 运镜 → 落幅 → 承接）。留空不编造；点「检查生成输入」能看到编译后的全文。</p>
           <div className="story-actions"><button className="btn-primary" disabled={Boolean(busy)||!promptDraft.trim()} onClick={run}>生成当前{kindLabel[selectedKind]}</button><button className="btn-ghost" disabled={Boolean(busy)||!promptDraft.trim()} onClick={preview}>检查生成输入</button><button className="btn-ghost" disabled={Boolean(busy)||!hasOutput} onClick={continueFromBeat}>从此处继续 · AI 构思下一段</button></div>
           {!hasOutput && <p className="story-hint">先生成本段成品，再继续下一段。结果不满意时可以修改内容重新生成，旧版本会保留。</p>}
           {compiled && <details open><summary>本次生成输入</summary>

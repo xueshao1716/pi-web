@@ -109,13 +109,23 @@ export function buildStoryboardPrompt({ title = '', logline = '', idea = '', cur
    台词是这个故事的骨头：要有具体用词、语气和潜台词，让人不看画面也知道说话人是谁、在图什么。
    禁止"两人交谈了几句""她表达了不满"这类概述，也禁止把台词写成旁白解说。
 2. prompt 只写**画面与动作**（动作、构图、镜头、光线），不要写文学评论，也不要把台词塞进画面描述。
-3. 段与段之间必须接得上：第 2 段起承接上一段结尾，推进新事件，不重复开场。
-4. kind 只能是 novel（文字段落）/ image（画面）/ video（视频片段）；整场同一种 kind 更连贯。
-5. bible 里登记**本片真正出场**的人物与场景：characters 的 appearance 要写清年龄、体型、发型、服装、辨识特征（供后续生成定妆照锁定长相）；已在「已有设定」里的角色按原名原样重复一遍，不要改名，也不要凭空新增没出场的角色。
-6. 段落提示词里要**写出角色姓名**，后续靠姓名把定妆照挂到对应段落上。
+3. **shot 要把镜头语言拆成字段**（画面/视频段落必填，别留空、别把整段塞进一个字段）：
+   - size 景别：大远景/远景/全景/中全景/中景/中近景/近景/特写/大特写
+   - angle 机位：平视/俯拍/仰拍/斜角/过肩/主观
+   - move 运镜：固定/缓缓推近/拉远/横移/跟拍/摇镜/升降/环绕/手持（一次只写一个主要运镜）
+   - light 光线：这段画面的光从哪来（窗外折射的柔和自然光 / 单侧硬光 / 霓虹与街灯…）
+   - tone 色调：冷暖与情绪（温暖复古略带怀旧 / 冷调局部暖色提示…）
+   - ending **落幅**：这一镜的最后一个画面定格在哪（镜头之间不跳的关键，必须写）
+   - carry **承接**：从第 2 段起，写明"承接上一段哪个落点"（上一段的 ending 就是这一段的入场状态）
+   - seconds 时长（秒，整数，4–15）
+   写 shot 的依据是"摄影指导会怎么拍"，不是你希望观众感觉到什么。
+4. 段与段之间必须接得上：第 2 段起承接上一段结尾，推进新事件，不重复开场。
+5. kind 只能是 novel（文字段落）/ image（画面）/ video（视频片段）；整场同一种 kind 更连贯。
+6. bible 里登记**本片真正出场**的人物与场景：characters 的 appearance 要写清年龄、体型、发型、服装、辨识特征（供后续生成定妆照锁定长相）；已在「已有设定」里的角色按原名原样重复一遍，不要改名，也不要凭空新增没出场的角色。
+7. 段落提示词里要**写出角色姓名**，后续靠姓名把定妆照挂到对应段落上。
 
 只返回 JSON，不要 Markdown：
-{"bible":{"characters":[{"name":"","appearance":""}],"locations":[{"name":"","description":""}],"props":[{"name":"","description":""}],"style":{"visual":"","tone":""}},"scenes":[{"title":"","summary":"","beats":[{"kind":"video","prompt":"","dialogue":"角色名：台词"}]}]}`;
+{"bible":{"characters":[{"name":"","appearance":""}],"locations":[{"name":"","description":""}],"props":[{"name":"","description":""}],"style":{"visual":"","tone":""}},"scenes":[{"title":"","summary":"","beats":[{"kind":"video","prompt":"","shot":{"size":"","angle":"","move":"","light":"","tone":"","ending":"","carry":""},"seconds":4,"dialogue":"角色名：台词"}]}]}`;
 }
 
 // 收集文本里**所有**配平的 JSON 对象。
@@ -172,6 +182,20 @@ function firstString(source, keys) {
   return '';
 }
 
+// 镜头语言字段白名单：size/angle/move/light/tone/texture/ending/carry（见 story-shot-prompt.mjs）。
+// 为什么要在这里收：这些字段进项目后会被"镜头提示词编译器"读走，
+// 变成发往视频模型的提示词最前面那几句（景别/机位/光线/质感/落幅）。丢掉它们 = 白让模型写一遍。
+const SHOT_KEYS = ['size', 'angle', 'move', 'light', 'tone', 'texture', 'ending', 'carry'];
+export function cleanShotFields(src) {
+  if (!src || typeof src !== 'object' || Array.isArray(src)) return {};
+  const out = {};
+  for (const key of SHOT_KEYS) {
+    const value = src[key];
+    if (value != null && String(value).trim()) out[key] = String(value).trim().slice(0, 120);
+  }
+  return out;
+}
+
 const cleanBeat = (item) => {
   if (typeof item === 'string') return item.trim() ? { kind: 'image', prompt: item.trim() } : null;
   if (!item || typeof item !== 'object') return null;
@@ -186,7 +210,15 @@ const cleanBeat = (item) => {
     const hit = KIND_HINT.find(([re]) => re.test(String(item.kind || item.type || '')));
     kind = hit ? hit[1] : 'image';
   }
-  return { kind, prompt, ...(dialogue ? { dialogue } : {}) };
+  const shot = cleanShotFields(item.shot || item.camera || item.shot_spec);
+  const asked = Number(item.seconds ?? item.duration ?? item.duration_sec ?? item.durationSec);
+  const seconds = Number.isFinite(asked) && asked > 0 ? Math.max(1, Math.min(60, Math.round(asked))) : null;
+  return {
+    kind, prompt,
+    ...(dialogue ? { dialogue } : {}),
+    ...(Object.keys(shot).length ? { shot } : {}),
+    ...(seconds ? { params: { seconds } } : {}),
+  };
 };
 
 function beatsOf(scene) {
